@@ -2,6 +2,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { RigidBody, type RapierRigidBody } from "@react-three/rapier";
 import { useRef } from "react";
 import * as THREE from "three";
+import { useSceneReadyRef, useSetMoveableHover } from "./SceneState";
 
 export interface DrawerData {
   uuid: string;
@@ -45,6 +46,8 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
   const cursorTarget = useRef(new THREE.Vector3());
 
   const { camera, raycaster, pointer, controls } = useThree();
+  const sceneReadyRef = useSceneReadyRef();
+  const setMoveableHover = useSetMoveableHover();
 
   const applyTranslation = () => {
     if (!rb.current) return;
@@ -91,6 +94,9 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
   });
 
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (!sceneReadyRef?.current) return;
+    // Left mouse / primary touch only.
+    if (e.button !== 0) return;
     if (!rb.current) return;
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -129,6 +135,14 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
     if (controls) (controls as { enabled?: boolean }).enabled = true;
   };
 
+  const onPointerOver = () => {
+    if (!sceneReadyRef?.current) return;
+    setMoveableHover(true);
+  };
+  const onPointerOut = () => {
+    setMoveableHover(false);
+  };
+
   return (
     <RigidBody
       ref={rb}
@@ -141,6 +155,8 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
         onPointerDown={onPointerDown}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onPointerOver={onPointerOver}
+        onPointerOut={onPointerOut}
       >
         <primitive object={drawer.object} />
       </group>

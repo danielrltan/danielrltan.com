@@ -7,12 +7,19 @@ import {
 } from "@react-three/rapier";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
+import { useSceneReadyRef, useSetMoveableHover } from "./SceneState";
 
 interface Props {
   name: string;
   position: [number, number, number];
   half: [number, number, number];
   throwable?: boolean;
+  /**
+   * When false, this body only wakes from pointer pick / support-ray miss,
+   * not from `bodyRegistry` proximity. Use for meshes parked against fixed
+   * neighbours so stray dynamics do not start overlap jitter.
+   */
+  proximityActivate?: boolean;
   children: ReactNode;
 }
 
@@ -51,6 +58,7 @@ export function DraggableRigidBody({
   position,
   half,
   children,
+  proximityActivate = true,
 }: Props) {
   const halfHeight = half[1];
   const useCuboid =
@@ -77,6 +85,8 @@ export function DraggableRigidBody({
 
   const { camera, raycaster, pointer, controls } = useThree();
   const { rapier, world } = useRapier();
+  const sceneReadyRef = useSceneReadyRef();
+  const setMoveableHover = useSetMoveableHover();
 
   useEffect(() => {
     activatedRef.current = activated;
@@ -150,17 +160,19 @@ export function DraggableRigidBody({
         supportMisses.current = 0;
       }
 
-      for (const [otherName, entry] of bodyRegistry) {
-        if (otherName === name) continue;
-        if (!entry.isActivated()) continue;
-        const otherPos = entry.getPosition();
-        if (!otherPos) continue;
-        const dx = pos.x - otherPos.x;
-        const dy = pos.y - otherPos.y;
-        const dz = pos.z - otherPos.z;
-        if (dx * dx + dy * dy + dz * dz < PROXIMITY_SQ) {
-          activateNow();
-          return;
+      if (proximityActivate) {
+        for (const [otherName, entry] of bodyRegistry) {
+          if (otherName === name) continue;
+          if (!entry.isActivated()) continue;
+          const otherPos = entry.getPosition();
+          if (!otherPos) continue;
+          const dx = pos.x - otherPos.x;
+          const dy = pos.y - otherPos.y;
+          const dz = pos.z - otherPos.z;
+          if (dx * dx + dy * dy + dz * dz < PROXIMITY_SQ) {
+            activateNow();
+            return;
+          }
         }
       }
       return;
@@ -225,6 +237,10 @@ export function DraggableRigidBody({
   });
 
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (!sceneReadyRef?.current) return;
+    // Left mouse / primary touch only. Middle / right / trackpad-secondary
+    // are reserved for OrbitControls (orbit, pan, shift+middle pan).
+    if (e.button !== 0) return;
     if (!rb.current) return;
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -278,6 +294,14 @@ export function DraggableRigidBody({
     if (controls) (controls as { enabled?: boolean }).enabled = true;
   };
 
+  const onPointerOver = () => {
+    if (!sceneReadyRef?.current) return;
+    setMoveableHover(true);
+  };
+  const onPointerOut = () => {
+    setMoveableHover(false);
+  };
+
   return (
     <RigidBody
       ref={rb}
@@ -298,6 +322,8 @@ export function DraggableRigidBody({
         onPointerDown={onPointerDown}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onPointerOver={onPointerOver}
+        onPointerOut={onPointerOut}
       >
         {children}
       </group>

@@ -28,3 +28,54 @@ canvas {
   display: block;
   touch-action: none;
 }
+
+/* Custom pointer after the intro — see MoveableCursor.tsx */
+.moveable-cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10000;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.moveable-cursor__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  transition:
+    transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
+    opacity 0.2s ease,
+    box-shadow 0.25s ease;
+}
+
+.moveable-cursor__dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  transition:
+    transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
+    opacity 0.2s ease;
+}
+
+.moveable-cursor--hot .moveable-cursor__ring {
+  transform: scale(1.55);
+  opacity: 1;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 0 20px 3px rgba(255, 255, 255, 0.28);
+}
+
+.moveable-cursor--hot .moveable-cursor__dot {
+  transform: scale(0.45);
+  opacity: 0.85;
+}

@@ -19,11 +19,16 @@ dist-ssr
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*]
+pnpm-debug.log*
+*.log
 
+# TS incremental build cache
+*.tsbuildinfo
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Local AI tool state / personal config
 .claude
-
-package-lock.json
-package.json
-
-node_modules
