@@ -95,7 +95,7 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
         pendingOpenSfx.current &&
         currentZ.current < closedZ - OPEN_SFX_TRIGGER_DELTA
       ) {
-        playOneShot("drawer_open", 0.5);
+        playOneShot("drawer_open", .5);
         pendingOpenSfx.current = false;
       }
       applyTranslation();
