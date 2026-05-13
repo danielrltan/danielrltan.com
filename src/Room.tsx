@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, type RefObject } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { CuboidCollider, RigidBody } from "@react-three/rapier";
 import * as THREE from "three";
 import { DraggableRigidBody } from "./DraggableRigidBody";
 import { Drawer, type DrawerData } from "./Drawer";
-import { useSceneReadyRef } from "./SceneState";
+import { useSceneReadyRef, useStartDeskView } from "./SceneState";
 
 // Drawer meshes are handled by Drawer.tsx (kinematic slide). They MUST NOT
 // go through DraggableRigidBody — the kinematic translation handler would
@@ -77,6 +77,9 @@ const HARDCODED_STATICS: ReadonlyArray<{ name: string } & CuboidSpec> = [
 ];
 
 const HARDCODED_NAMES = new Set(HARDCODED_STATICS.map((s) => s.name));
+
+/** Static trimesh names that receive pointer picks for “focus desk” (raycasts stay on). */
+const DESK_FOCUS_STATIC_NAMES = new Set<string>(["desk"]);
 
 const SKIP_NAMES = new Set<string>([
   "wall_right",
@@ -323,6 +326,17 @@ interface RoomProps {
 export function Room({ roomGroupRef }: RoomProps) {
   const { scene } = useGLTF(ROOM_URL);
   const sceneReadyRef = useSceneReadyRef();
+  const startDeskView = useStartDeskView();
+
+  const onDeskAreaPointerDown = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      if (!sceneReadyRef?.current) return;
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      startDeskView();
+    },
+    [sceneReadyRef, startDeskView],
+  );
 
   const mouseMeshRef = useRef<THREE.Object3D | null>(null);
   const pressedKeysRef = useRef<Set<string>>(new Set());
@@ -479,7 +493,7 @@ export function Room({ roomGroupRef }: RoomProps) {
     for (const d of drawers) applyEmissive(d.object);
     for (const s of statics) {
       applyEmissive(s.object);
-      disableRaycasts(s.object);
+      if (!DESK_FOCUS_STATIC_NAMES.has(s.name)) disableRaycasts(s.object);
     }
   }, [visualScene, interactive, statics, drawers]);
 
@@ -499,6 +513,8 @@ export function Room({ roomGroupRef }: RoomProps) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!sceneReadyRef?.current) return;
+      if (e.ctrlKey || e.metaKey) return;
+      if (e.code === "KeyR" && e.defaultPrevented) return;
       const meshName = KEY_MAP[e.code];
       if (!meshName) return;
       e.preventDefault();
@@ -506,6 +522,8 @@ export function Room({ roomGroupRef }: RoomProps) {
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (!sceneReadyRef?.current) return;
+      if (e.ctrlKey || e.metaKey) return;
+      if (e.code === "KeyR" && e.defaultPrevented) return;
       const meshName = KEY_MAP[e.code];
       if (!meshName) return;
       e.preventDefault();
@@ -582,6 +600,16 @@ export function Room({ roomGroupRef }: RoomProps) {
           position={s.pos}
           colliders={false}
         >
+          {s.name === "desk_surface" && (
+            <mesh onPointerDown={onDeskAreaPointerDown}>
+              <boxGeometry args={[s.half[0] * 2, s.half[1] * 2, s.half[2] * 2]} />
+              <meshBasicMaterial
+                transparent
+                opacity={0}
+                depthWrite={false}
+              />
+            </mesh>
+          )}
           <CuboidCollider args={s.half} />
         </RigidBody>
       ))}
@@ -594,7 +622,13 @@ export function Room({ roomGroupRef }: RoomProps) {
           position={s.bodyPos}
           colliders="trimesh"
         >
-          <primitive object={s.object} />
+          {DESK_FOCUS_STATIC_NAMES.has(s.name) ? (
+            <group onPointerDown={onDeskAreaPointerDown}>
+              <primitive object={s.object} />
+            </group>
+          ) : (
+            <primitive object={s.object} />
+          )}
         </RigidBody>
       ))}
 

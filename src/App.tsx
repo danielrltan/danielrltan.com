@@ -10,6 +10,7 @@ import { Lighting } from "./Lighting";
 import { IntroController } from "./IntroController";
 import { SceneStateProvider } from "./SceneState";
 import { MoveableCursor } from "./MoveableCursor";
+import { DeskViewController } from "./DeskViewController";
 
 export default function App() {
   const roomGroupRef = useRef<THREE.Group | null>(null);
@@ -20,6 +21,9 @@ export default function App() {
   const [transitionStarted, setTransitionStarted] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
   const [moveableHover, setMoveableHover] = useState(false);
+  const [roomResetKey, setRoomResetKey] = useState(0);
+  const deskViewImplRef = useRef<(() => void) | null>(null);
+  const startDeskView = useCallback(() => deskViewImplRef.current?.(), []);
 
   const startTransition = useCallback(() => {
     if (!transitionStarted) setTransitionStarted(true);
@@ -30,16 +34,21 @@ export default function App() {
     setSceneReady(true);
   }, []);
 
-  // While Shift is held, middle mouse switches from orbit -> pan.
+  // Shift + left button = pan; release Shift = left rotates again (slow rotateSpeed below).
   useEffect(() => {
     if (!sceneReady) return;
+    const applyShiftPan = (shift: boolean) => {
+      const c = controlsRef.current;
+      if (!c) return;
+      c.mouseButtons.LEFT = shift ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+    };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Shift" || !controlsRef.current) return;
-      controlsRef.current.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
+      if (e.code !== "ShiftLeft" && e.code !== "ShiftRight") return;
+      applyShiftPan(true);
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key !== "Shift" || !controlsRef.current) return;
-      controlsRef.current.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE;
+      if (e.code !== "ShiftLeft" && e.code !== "ShiftRight") return;
+      if (!e.shiftKey) applyShiftPan(false);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -47,6 +56,28 @@ export default function App() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
+  }, [sceneReady]);
+
+  // Full room + physics reset (capture so Room's KeyR → key mesh handler does not run).
+  useEffect(() => {
+    if (!sceneReady) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== "KeyR" || e.repeat) return;
+      if (e.ctrlKey || e.metaKey) return;
+      const el = e.target;
+      if (
+        el instanceof HTMLElement &&
+        (el.isContentEditable || el.closest("input, textarea, select"))
+      ) {
+        return;
+      }
+      e.preventDefault();
+      setMoveableHover(false);
+      setRoomResetKey((k) => k + 1);
+    };
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", onKeyDown, { capture: true });
   }, [sceneReady]);
 
   return (
@@ -91,12 +122,12 @@ export default function App() {
         }}
       >
         <SceneStateProvider
-          value={{ sceneReadyRef, setMoveableHover }}
+          value={{ sceneReadyRef, setMoveableHover, startDeskView }}
         >
           <Suspense fallback={null}>
             <Lighting />
             <Physics gravity={[0, -9.81, 0]}>
-              <Room roomGroupRef={roomGroupRef} />
+              <Room key={roomResetKey} roomGroupRef={roomGroupRef} />
             </Physics>
             <IntroController
               cameraRef={cameraRef}
@@ -106,27 +137,31 @@ export default function App() {
               onComplete={completeTransition}
             />
             {sceneReady && (
-              <OrbitControls
-                ref={controlsRef}
-                makeDefault
-                target={[0, 0.8, 0]}
-                minDistance={2}
-                maxDistance={7}
-                maxPolarAngle={Math.PI * 0.48}
-                mouseButtons={{
-                  LEFT: undefined as unknown as THREE.MOUSE,
-                  MIDDLE: THREE.MOUSE.ROTATE,
-                  RIGHT: THREE.MOUSE.PAN,
-                }}
-                touches={{
-                  ONE: undefined as unknown as THREE.TOUCH,
-                  TWO: THREE.TOUCH.DOLLY_ROTATE,
-                }}
-                enableZoom
-                zoomSpeed={0.8}
-                enablePan
-                panSpeed={0.6}
-              />
+              <>
+                <OrbitControls
+                  ref={controlsRef}
+                  makeDefault
+                  target={[0, 0.8, 0]}
+                  minDistance={1.2}
+                  maxDistance={7}
+                  maxPolarAngle={Math.PI * 0.48}
+                  rotateSpeed={0.36}
+                  panSpeed={0.65}
+                  mouseButtons={{
+                    LEFT: THREE.MOUSE.ROTATE,
+                    MIDDLE: THREE.MOUSE.DOLLY,
+                    RIGHT: THREE.MOUSE.PAN,
+                  }}
+                  touches={{
+                    ONE: THREE.TOUCH.ROTATE,
+                    TWO: THREE.TOUCH.DOLLY_PAN,
+                  }}
+                  enableZoom
+                  zoomSpeed={0.8}
+                  enablePan
+                />
+                <DeskViewController implRef={deskViewImplRef} />
+              </>
             )}
             <EffectComposer>
               <Bloom

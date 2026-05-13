@@ -14,11 +14,14 @@ interface SceneStateValue {
   sceneReadyRef: RefObject<boolean>;
   /** Drive the custom cursor when hovering draggable / drawer meshes. */
   setMoveableHover: (hover: boolean) => void;
+  /** Animate camera to the seated-at-desk view (no-op until DeskViewController mounts). */
+  startDeskView: () => void;
 }
 
 const SceneStateContext = createContext<SceneStateValue | null>(null);
 
 const noopHover = () => {};
+const noopDesk = () => {};
 
 export function SceneStateProvider({
   value,
@@ -45,4 +48,8 @@ export function useSceneReadyRef(): RefObject<boolean> | undefined {
 
 export function useSetMoveableHover(): (hover: boolean) => void {
   return useContext(SceneStateContext)?.setMoveableHover ?? noopHover;
+}
+
+export function useStartDeskView(): () => void {
+  return useContext(SceneStateContext)?.startDeskView ?? noopDesk;
 }
