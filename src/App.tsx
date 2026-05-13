@@ -14,6 +14,7 @@ import { IntroController } from "./IntroController";
 import { SceneStateProvider } from "./SceneState";
 import { MoveableCursor } from "./MoveableCursor";
 import { DeskViewController } from "./DeskViewController";
+import { startAmbience } from "./audio";
 
 export default function App() {
   const roomGroupRef = useRef<THREE.Group | null>(null);
@@ -21,6 +22,7 @@ export default function App() {
   const isHoveringRef = useRef(false);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const deskViewActiveRef = useRef(false);
   const [transitionStarted, setTransitionStarted] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
   const [moveableHover, setMoveableHover] = useState(false);
@@ -29,7 +31,10 @@ export default function App() {
   const startDeskView = useCallback(() => deskViewImplRef.current?.(), []);
 
   const startTransition = useCallback(() => {
-    if (!transitionStarted) setTransitionStarted(true);
+    if (transitionStarted) return;
+    setTransitionStarted(true);
+    // First user gesture — unlocks audio and starts the ambient loop.
+    startAmbience(0.22);
   }, [transitionStarted]);
 
   const completeTransition = useCallback(() => {
@@ -67,6 +72,9 @@ export default function App() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code !== "KeyR" || e.repeat) return;
       if (e.ctrlKey || e.metaKey) return;
+      // Reset is disabled while seated at the desk (and through the
+      // fromDesk return lerp — the ref stays true until that completes).
+      if (deskViewActiveRef.current) return;
       const el = e.target;
       if (
         el instanceof HTMLElement &&
@@ -100,7 +108,6 @@ export default function App() {
       }}
     >
       <Canvas
-        shadows
         camera={{
           position: [25, 25, 25],
           fov: 11,
@@ -117,6 +124,12 @@ export default function App() {
           gl.outputColorSpace = THREE.SRGBColorSpace;
           (gl as unknown as { useLegacyLights?: boolean }).useLegacyLights =
             false;
+          // Cap DPR at 1.5 — retina screens drop 50%+ of GPU fill rate for
+          // almost no perceptible difference at this art style.
+          gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+          // Shadow maps are the single biggest perf cost; warm point-light
+          // falloff is doing the visual job already.
+          gl.shadowMap.enabled = false;
           // Single perspective camera throughout: starts at [20,20,20] with
           // FOV 8 (looks identical to ortho) and smoothly lerps to
           // [3.5,2.5,3.5] FOV 50 on the click transition — no swap.
@@ -125,7 +138,12 @@ export default function App() {
         }}
       >
         <SceneStateProvider
-          value={{ sceneReadyRef, setMoveableHover, startDeskView }}
+          value={{
+            sceneReadyRef,
+            deskViewActiveRef,
+            setMoveableHover,
+            startDeskView,
+          }}
         >
           <Suspense fallback={null}>
             <Lighting />
@@ -153,11 +171,13 @@ export default function App() {
                   makeDefault
                   target={[0, 0.8, 0]}
                   minDistance={1.2}
-                  maxDistance={7}
-                  maxPolarAngle={Math.PI * 0.48}
-                  enableDamping={false}
+                  maxDistance={8}
+                  minPolarAngle={Math.PI * 0.1}
+                  maxPolarAngle={Math.PI * 0.55}
+                  enableDamping
+                  dampingFactor={0.05}
                   rotateSpeed={0.36}
-                  panSpeed={0.65}
+                  panSpeed={1.0}
                   mouseButtons={{
                     LEFT: THREE.MOUSE.ROTATE,
                     MIDDLE: THREE.MOUSE.DOLLY,
@@ -168,7 +188,8 @@ export default function App() {
                     TWO: THREE.TOUCH.DOLLY_PAN,
                   }}
                   enableZoom
-                  zoomSpeed={0.8}
+                  zoomSpeed={1.2}
+                  zoomToCursor={false}
                   enablePan
                 />
                 <DeskViewController implRef={deskViewImplRef} />

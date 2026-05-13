@@ -134,23 +134,15 @@ export function Lighting() {
         rotation={[0, PI, 0]}
       />
 
-      {/* 9a. Monitor backglow */}
+      {/* 9. Monitor backglow — merged 9a + 9b (intensity summed,
+              positioned at the centroid). Each extra light is a full
+              geometry pass in the renderer. */}
       <rectAreaLight
         color="#ffbb88"
-        intensity={1.5}
+        intensity={3.5}
         width={0.3}
         height={0.3}
-        position={[1.467, 1.13, -2.024]}
-        rotation={[0, PI, 0]}
-      />
-
-      {/* 9b. Monitor backglow */}
-      <rectAreaLight
-        color="#ffbb88"
-        intensity={2.0}
-        width={0.3}
-        height={0.3}
-        position={[1.453, 1.06, -2.124]}
+        position={[1.460, 1.095, -2.074]}
         rotation={[0, PI, 0]}
       />
 

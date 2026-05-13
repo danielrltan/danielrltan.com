@@ -5,7 +5,13 @@ import { CuboidCollider, RigidBody } from "@react-three/rapier";
 import * as THREE from "three";
 import { DraggableRigidBody } from "./DraggableRigidBody";
 import { Drawer, type DrawerData } from "./Drawer";
-import { useSceneReadyRef, useStartDeskView } from "./SceneState";
+import { GlowBox } from "./GlowBox";
+import { playOneShot } from "./audio";
+import {
+  useDeskViewActiveRef,
+  useSceneReadyRef,
+  useStartDeskView,
+} from "./SceneState";
 
 // Drawer meshes are handled by Drawer.tsx (kinematic slide). They MUST NOT
 // go through DraggableRigidBody — the kinematic translation handler would
@@ -34,7 +40,12 @@ const EXTRA_THROWABLE_NAMES = new Set<string>(["clk_mirror_round"]);
  * throwable moves nearby turns them dynamic while still overlapping that
  * trimesh → Rapier contact jitter.
  */
-const TH_NO_PROXIMITY_WAKE = new Set<string>(["th_wristrest"]);
+const TH_NO_PROXIMITY_WAKE = new Set<string>([
+  "th_wristrest",
+  // Wall-mounted dome mirror — proximity-wake would let the standing mirror
+  // knock it off its bracket just by being dragged past.
+  "clk_mirror_round",
+]);
 
 const ROOM_URL = "/room.glb";
 
@@ -74,12 +85,23 @@ const BOUNDARIES: ReadonlyArray<CuboidSpec> = [
 
 const HARDCODED_STATICS: ReadonlyArray<{ name: string } & CuboidSpec> = [
   { name: "desk_surface",     pos: [2.1863, 1.2249, -1.0111],  half: [0.3618, 0.012, 0.8502] },
-  { name: "dresser_top",      pos: [-0.1663, 0.8957, 2.1175],  half: [0.8810, 0.0250, 0.2860] },
-  { name: "dresser_bottom",   pos: [-0.1663, 0.0173, 2.1175],  half: [0.8810, 0.0250, 0.2860] },
-  { name: "dresser_left",     pos: [-1.0473, 0.4565, 2.1175],  half: [0.0250, 0.4392, 0.2860] },
-  { name: "dresser_right",    pos: [0.7147, 0.4565, 2.1175],   half: [0.0250, 0.4392, 0.2860] },
-  { name: "dresser_back",     pos: [-0.1663, 0.4565, 2.4034],  half: [0.8810, 0.4392, 0.0250] },
-  { name: "dresser_divider",  pos: [-0.5788, 0.4565, 2.1175],  half: [0.0250, 0.4392, 0.2860] },
+
+  // ----- Dresser shell -----
+  // Thin (thickness 0.02) outer panels + center divider + horizontal shelves
+  // between the three drawer rows. No front face — that side is open so
+  // items can be dropped into open drawer cavities. The drawers themselves
+  // (th_drawer_1..6) provide the sliding floor/front of each slot via the
+  // kinematic Drawer component.
+  { name: "d_top",      pos: [-0.1632, 0.8957, 2.0659], half: [0.881, 0.01, 0.286] },
+  { name: "d_bottom",   pos: [-0.1632, 0.0173, 2.0659], half: [0.881, 0.01, 0.286] },
+  { name: "d_left",     pos: [-1.0442, 0.4565, 2.0659], half: [0.01, 0.439, 0.286] },
+  { name: "d_right",    pos: [0.7178, 0.4565, 2.0659],  half: [0.01, 0.439, 0.286] },
+  { name: "d_back",     pos: [-0.1632, 0.4565, 2.3518], half: [0.881, 0.439, 0.01] },
+  { name: "d_div_v",    pos: [-0.1629, 0.4565, 2.0659], half: [0.01, 0.439, 0.286] },
+  { name: "d_shelf_l1", pos: [-0.5768, 0.5732, 2.0659], half: [0.405, 0.01, 0.286] },
+  { name: "d_shelf_l2", pos: [-0.5768, 0.3358, 2.0659], half: [0.405, 0.01, 0.286] },
+  { name: "d_shelf_r1", pos: [ 0.2509, 0.5732, 2.0659], half: [0.405, 0.01, 0.286] },
+  { name: "d_shelf_r2", pos: [ 0.2509, 0.3358, 2.0659], half: [0.405, 0.01, 0.286] },
 ];
 
 const HARDCODED_NAMES = new Set(HARDCODED_STATICS.map((s) => s.name));
@@ -219,12 +241,13 @@ interface ExtractedBody {
   meshLocalPos: Triple;
   meshLocalQuat: Quat;
   meshLocalScale: Triple;
+  /** AABB half-extents in body-local space. Used for the GlowBox hover outline. */
+  half: Triple;
   object: THREE.Object3D;
 }
 
 interface InteractiveBody extends ExtractedBody {
   throwable: boolean;
-  half: Triple;
   /** If false, only pointer interaction calls `activateNow` (no neighbour wake). */
   proximityActivate: boolean;
 }
@@ -267,18 +290,17 @@ function replaceMushroomBulbs(root: THREE.Object3D) {
     if (!(obj as THREE.Mesh).isMesh) return;
     if (!obj.name.startsWith("mushroom_bulb")) return;
     const mesh = obj as THREE.Mesh;
-    mesh.material = new THREE.MeshPhysicalMaterial({
+    // Was MeshPhysicalMaterial w/ transmission — each transmission material
+    // costs a full extra scene render pass. Standard + transparent fakes the
+    // same look at a fraction of the cost.
+    mesh.material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(1.0, 0.85, 0.5),
-      transmission: 0.92,
-      thickness: 0.08,
-      roughness: 0.0,
-      metalness: 0.0,
-      ior: 1.5,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.35,
+      roughness: 0.05,
+      metalness: 0.1,
       emissive: new THREE.Color(1.0, 0.6, 0.2),
       emissiveIntensity: 0.4,
-      envMapIntensity: 1.2,
     });
   });
 }
@@ -292,16 +314,13 @@ function replaceClearGlass(root: THREE.Object3D) {
     const newMats = mats.map((m) => {
       if (!m || m.name !== "mat_glass_clear") return m;
       changed = true;
-      return new THREE.MeshPhysicalMaterial({
+      // Same swap as mushroom bulbs — drop the transmission render pass.
+      return new THREE.MeshStandardMaterial({
         color: new THREE.Color(0.95, 0.95, 0.95),
-        transmission: 0.95,
-        thickness: 0.05,
+        transparent: true,
+        opacity: 0.2,
         roughness: 0.05,
         metalness: 0.0,
-        ior: 1.45,
-        transparent: true,
-        opacity: 0.3,
-        envMapIntensity: 1.5,
         side: THREE.DoubleSide,
       });
     });
@@ -315,8 +334,6 @@ function applyEmissive(root: THREE.Object3D) {
   root.traverse((obj) => {
     if (!(obj as THREE.Mesh).isMesh) return;
     const mesh = obj as THREE.Mesh;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of mats) {
       if (!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial) continue;
@@ -352,98 +369,54 @@ function applyDeskFocusMeshRaycasts(root: THREE.Object3D) {
 }
 
 /**
- * White edge overlay on hover for the static keyboard frame only (no
- * postprocessing Selection — Outline was not visible in this pipeline).
+ * Hover-glow wrapper for the static keyboard. Wraps `object` in a group that
+ * tracks hover + click and renders a `GlowBox` sized to the keyboard's AABB
+ * (so there are no gaps between keys and frame). Always-on at low intensity
+ * once the scene is ready, brighter + pulsing on hover, with a shockwave
+ * burst on click. All disabled while seated at the desk.
  */
 function KeyboardStaticHoverEdges({
   sceneReadyRef,
   onPointerDown,
   object,
+  half,
 }: {
   sceneReadyRef: RefObject<boolean> | undefined;
   onPointerDown: (e: ThreeEvent<PointerEvent>) => void;
   object: THREE.Object3D;
+  half: Triple;
 }) {
   const [hover, setHover] = useState(false);
-  const groupRef = useRef<THREE.Group>(null);
-  const lineRefs = useRef<(THREE.LineSegments | null)[]>([]);
-  const invGroup = useRef(new THREE.Matrix4());
-  const mat = useRef(new THREE.Matrix4());
+  const deskViewActiveRef = useDeskViewActiveRef();
+  const shockwaveRef = useRef(0);
 
-  const meshes = useMemo(() => {
-    const list: THREE.Mesh[] = [];
-    object.updateMatrixWorld(true);
-    object.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh && m.geometry) list.push(m);
-    });
-    return list;
-  }, [object]);
-
-  const edgesGeoms = useMemo(
-    () =>
-      meshes.map((m) => {
-        const geo = m.geometry as THREE.BufferGeometry;
-        return new THREE.EdgesGeometry(geo, 18);
-      }),
-    [meshes],
-  );
-
-  useEffect(
-    () => () => {
-      for (const g of edgesGeoms) g.dispose();
-    },
-    [edgesGeoms],
-  );
-
-  useFrame(() => {
-    if (!hover || !groupRef.current) return;
-    const g = groupRef.current;
-    g.updateMatrixWorld(true);
-    invGroup.current.copy(g.matrixWorld).invert();
-    const lines = lineRefs.current;
-    for (let i = 0; i < meshes.length; i++) {
-      const mesh = meshes[i]!;
-      const line = lines[i];
-      if (!line) continue;
-      mesh.updateMatrixWorld(true);
-      mat.current.copy(invGroup.current).multiply(mesh.matrixWorld);
-      line.matrix.copy(mat.current);
-      line.matrixAutoUpdate = false;
-      line.updateMatrixWorld(true);
-    }
-  });
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (!sceneReadyRef?.current) return;
+    if (deskViewActiveRef?.current) return;
+    if (e.button !== 0) return;
+    shockwaveRef.current = 1;
+    onPointerDown(e);
+  };
 
   return (
     <group
-      ref={groupRef}
-      onPointerDown={onPointerDown}
+      onPointerDown={handlePointerDown}
       onPointerOver={() => {
-        if (sceneReadyRef?.current) setHover(true);
+        if (!sceneReadyRef?.current) return;
+        if (deskViewActiveRef?.current) return;
+        setHover(true);
       }}
       onPointerOut={() => setHover(false)}
     >
       <primitive object={object} />
-      {hover &&
-        meshes.map((mesh, i) => (
-          <lineSegments
-            key={`edge-${mesh.uuid}`}
-            ref={(el) => {
-              lineRefs.current[i] = el;
-            }}
-            geometry={edgesGeoms[i]!}
-            frustumCulled={false}
-            renderOrder={1000}
-          >
-            <lineBasicMaterial
-              color="#ffffff"
-              transparent
-              opacity={1}
-              depthTest={false}
-              toneMapped={false}
-            />
-          </lineSegments>
-        ))}
+      <GlowBox
+        half={half}
+        hover={hover}
+        shockwaveRef={shockwaveRef}
+        alwaysOn
+        padding={0.04}
+        radius={0.025}
+      />
     </group>
   );
 }
@@ -512,20 +485,23 @@ export function Room({ roomGroupRef }: RoomProps) {
 
       const buildEntry = (
         obj: THREE.Object3D,
-        center: THREE.Vector3,
+        box: THREE.Box3,
       ): ExtractedBody => {
+        box.getCenter(boxCenter);
+        box.getSize(boxSize);
         obj.matrixWorld.decompose(worldPos, worldQuat, worldScale);
         return {
           uuid: obj.uuid,
           name: obj.name,
-          bodyPos: [center.x, center.y, center.z],
+          bodyPos: [boxCenter.x, boxCenter.y, boxCenter.z],
           meshLocalPos: [
-            worldPos.x - center.x,
-            worldPos.y - center.y,
-            worldPos.z - center.z,
+            worldPos.x - boxCenter.x,
+            worldPos.y - boxCenter.y,
+            worldPos.z - boxCenter.z,
           ],
           meshLocalQuat: [worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w],
           meshLocalScale: [worldScale.x, worldScale.y, worldScale.z],
+          half: [boxSize.x / 2, boxSize.y / 2, boxSize.z / 2],
           object: obj,
         };
       };
@@ -537,24 +513,21 @@ export function Room({ roomGroupRef }: RoomProps) {
         if (isExplicitStatic(obj.name)) {
           const box = aabbFromSubtree(obj);
           if (!box) return;
-          box.getCenter(boxCenter);
-          statics.push(buildEntry(obj, boxCenter));
+          statics.push(buildEntry(obj, box));
           return;
         }
 
         if (DRAWER_NAMES.has(obj.name)) {
           const box = aabbFromSubtree(obj);
           if (!box) return;
-          box.getCenter(boxCenter);
-          drawers.push(buildEntry(obj, boxCenter));
+          drawers.push(buildEntry(obj, box));
           return;
         }
 
         if (TH_STATIC_NAMES.has(obj.name)) {
           const box = aabbFromSubtree(obj);
           if (!box) return;
-          box.getCenter(boxCenter);
-          statics.push(buildEntry(obj, boxCenter));
+          statics.push(buildEntry(obj, box));
           return;
         }
 
@@ -564,15 +537,16 @@ export function Room({ roomGroupRef }: RoomProps) {
           box.getSize(boxSize);
           const volume = boxSize.x * boxSize.y * boxSize.z;
           if (volume < MIN_VOLUME) return;
-          box.getCenter(boxCenter);
+          const base = buildEntry(obj, box);
           interactive.push({
-            ...buildEntry(obj, boxCenter),
-            throwable: true,
+            ...base,
+            // Clamp to MIN_HALF so Rapier never gets a degenerate collider.
             half: [
-              Math.max(boxSize.x / 2, MIN_HALF),
-              Math.max(boxSize.y / 2, MIN_HALF),
-              Math.max(boxSize.z / 2, MIN_HALF),
+              Math.max(base.half[0], MIN_HALF),
+              Math.max(base.half[1], MIN_HALF),
+              Math.max(base.half[2], MIN_HALF),
             ],
+            throwable: true,
             proximityActivate: !TH_NO_PROXIMITY_WAKE.has(obj.name),
           });
           return;
@@ -582,8 +556,7 @@ export function Room({ roomGroupRef }: RoomProps) {
         if (mesh.isMesh && mesh.geometry) {
           const box = meshWorldAABB(mesh);
           if (!box) return;
-          box.getCenter(boxCenter);
-          statics.push(buildEntry(obj, boxCenter));
+          statics.push(buildEntry(obj, box));
           return;
         }
 
@@ -649,6 +622,10 @@ export function Room({ roomGroupRef }: RoomProps) {
   // iso transition completes. preventDefault is scoped to keys that have a
   // matching mesh so OrbitControls and dev shortcuts still work.
   useEffect(() => {
+    // The keydown.mp3 / keyup.mp3 assets are inverted from their filenames
+    // (keydown.mp3 contains the release click, keyup.mp3 contains the press
+    // click), so we swap them here. Spacebar gets a deeper pitch on both.
+    const SPACE_RATE = 0.82;
     const onKeyDown = (e: KeyboardEvent) => {
       if (!sceneReadyRef?.current) return;
       if (e.ctrlKey || e.metaKey) return;
@@ -656,6 +633,12 @@ export function Room({ roomGroupRef }: RoomProps) {
       const meshName = KEY_MAP[e.code];
       if (!meshName) return;
       e.preventDefault();
+      // Auto-repeat fires repeated keydowns without a keyup between them —
+      // only play the sound on the initial press.
+      if (!pressedKeysRef.current.has(meshName)) {
+        const rate = meshName === "key_space" ? SPACE_RATE : 1;
+        playOneShot("keyup", 0.45, rate);
+      }
       pressedKeysRef.current.add(meshName);
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -666,6 +649,8 @@ export function Room({ roomGroupRef }: RoomProps) {
       if (!meshName) return;
       e.preventDefault();
       pressedKeysRef.current.delete(meshName);
+      const rate = meshName === "key_space" ? SPACE_RATE : 1;
+      playOneShot("keydown", 0.4, rate);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -761,6 +746,7 @@ export function Room({ roomGroupRef }: RoomProps) {
                 sceneReadyRef={sceneReadyRef}
                 onPointerDown={onDeskAreaPointerDown}
                 object={s.object}
+                half={s.half}
               />
             )
           ) : (

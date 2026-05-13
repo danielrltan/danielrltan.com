@@ -7,7 +7,12 @@ import {
 } from "@react-three/rapier";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
-import { useSceneReadyRef, useSetMoveableHover } from "./SceneState";
+import {
+  useDeskViewActiveRef,
+  useSceneReadyRef,
+  useSetMoveableHover,
+} from "./SceneState";
+import { playOneShot } from "./audio";
 
 interface Props {
   name: string;
@@ -38,7 +43,7 @@ const REST_ANGULAR_DAMPING = 2.8;
 const RESTITUTION = 0.2;
 const FRICTION = 0.7;
 
-const ACTIVATION_CHECK_INTERVAL = 0.05;
+const ACTIVATION_CHECK_INTERVAL = 0.2;
 const ACTIVATION_STARTUP_DELAY = 0.5;
 const SUPPORT_RAY_DISTANCE = 0.35;
 const SUPPORT_RAY_EPS = 0.005;
@@ -46,6 +51,65 @@ const PROXIMITY_SQ = 0.4 * 0.4;
 const SUPPORT_MISS_THRESHOLD = 3;
 
 const MIN_MASS = 0.5;
+
+// ----- Collision sound -----
+// Default clip is `tap`. Variation comes from:
+//   1. Impact speed → volume.
+//   2. AABB volume → base pitch (bigger props pitch the tap down, so a
+//      thrown mirror reads as a heavier thump than a dropped pen).
+//   3. Per-impact random jitter so identical drops don't sound robotic.
+// Specific props can override the clip entirely via NAME_CLIP_OVERRIDES
+// (e.g. the cat plush meows instead of tapping).
+const COLLISION_MIN_SPEED = 1.4; // below this → no sound (resting / shake / soft contact)
+const COLLISION_SPEED_FULL_VOL = 3.5; // speed at which volume maxes out
+// Per-body retrigger guard, picked by AABB volume. Large items (mirror,
+// chair, blanket) have a long cooldown because they're the ones whose
+// contacts stack into machine-gun spam when shaken; small items keep a
+// short cooldown so dropping pens / mugs stays responsive.
+const COLLISION_THROTTLE_SMALL_MS = 110;
+const COLLISION_THROTTLE_LARGE_MS = 420;
+const SIZE_LARGE_VOL_THRESHOLD = 0.005; // m³ AABB above this → "large"
+// Module-level cap is loose now — only blocks same-frame duplicates from
+// multiple bodies. The per-body throttle does the heavy lifting.
+const COLLISION_GLOBAL_THROTTLE_MS = 35;
+const COLLISION_BASE_VOLUME = 0.35; // overall ceiling for tap
+
+// Size-driven base pitch. Operates on log10(AABB volume) so it spans the
+// full ~5-order-of-magnitude prop range cleanly. Smaller body → higher
+// pitch; larger body → lower pitch.
+const COLLISION_PITCH_SMALL = 1.18; // base pitch at the small end
+const COLLISION_PITCH_LARGE = 0.7; // base pitch at the large end
+const COLLISION_LOG_VOL_MIN = -5; // log10(vol) treated as "as small as it gets"
+const COLLISION_LOG_VOL_MAX = -1; // log10(vol) treated as "big prop"
+const COLLISION_PITCH_JITTER = 0.08; // ± random shift on top of base each impact
+
+function basePitchForHalf(h: [number, number, number]): number {
+  const vol = h[0] * h[1] * h[2] * 8;
+  if (vol <= 0) return COLLISION_PITCH_SMALL;
+  const log10vol = Math.log10(vol);
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      (log10vol - COLLISION_LOG_VOL_MIN) /
+        (COLLISION_LOG_VOL_MAX - COLLISION_LOG_VOL_MIN),
+    ),
+  );
+  return (
+    COLLISION_PITCH_SMALL + (COLLISION_PITCH_LARGE - COLLISION_PITCH_SMALL) * t
+  );
+}
+
+const NAME_CLIP_OVERRIDES: Record<string, "tap" | "cat"> = {
+  th_cat_plush: "cat",
+};
+// Module-scoped (one value across every DraggableRigidBody instance).
+let lastGlobalCollisionAt = 0;
+// Per-clip volume ceiling on top of the speed-scaled envelope.
+const CLIP_VOLUME_TRIM: Record<"tap" | "cat", number> = {
+  tap: 1.0,
+  cat: 0.7, // cat plush mew — toned down so it doesn't overpower the tap mix
+};
 
 interface BodyEntry {
   getPosition: () => { x: number; y: number; z: number } | null;
@@ -87,7 +151,53 @@ export function DraggableRigidBody({
   const { camera, raycaster, pointer, controls } = useThree();
   const { rapier, world } = useRapier();
   const sceneReadyRef = useSceneReadyRef();
+  const deskViewActiveRef = useDeskViewActiveRef();
   const setMoveableHover = useSetMoveableHover();
+
+  const lastCollisionAt = useRef(0);
+  const basePitchRef = useRef(basePitchForHalf(half));
+  // Pick the per-body throttle from AABB volume once. Large items get
+  // the heavy cooldown (they're the ones whose shakes spam); small items
+  // stay snappy so dropping a pen / mug feels responsive.
+  const bodyThrottleMs = useRef(
+    half[0] * half[1] * half[2] * 8 >= SIZE_LARGE_VOL_THRESHOLD
+      ? COLLISION_THROTTLE_LARGE_MS
+      : COLLISION_THROTTLE_SMALL_MS,
+  );
+  useEffect(() => {
+    basePitchRef.current = basePitchForHalf(half);
+    bodyThrottleMs.current =
+      half[0] * half[1] * half[2] * 8 >= SIZE_LARGE_VOL_THRESHOLD
+        ? COLLISION_THROTTLE_LARGE_MS
+        : COLLISION_THROTTLE_SMALL_MS;
+  }, [half]);
+
+  const onCollisionEnter = () => {
+    if (!sceneReadyRef?.current) return;
+    if (!rb.current) return;
+    const now = performance.now();
+    // Two-stage throttle: per-body guard (size-keyed) kills self-spam;
+    // module-scoped guard blocks same-frame duplicates across bodies.
+    if (now - lastCollisionAt.current < bodyThrottleMs.current) return;
+    if (now - lastGlobalCollisionAt < COLLISION_GLOBAL_THROTTLE_MS) return;
+    const v = rb.current.linvel();
+    const speed = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (speed < COLLISION_MIN_SPEED) return;
+    lastCollisionAt.current = now;
+    lastGlobalCollisionAt = now;
+    const t = Math.min(
+      1,
+      (speed - COLLISION_MIN_SPEED) /
+        (COLLISION_SPEED_FULL_VOL - COLLISION_MIN_SPEED),
+    );
+    const clip = NAME_CLIP_OVERRIDES[name] ?? "tap";
+    // Named overrides (e.g. cat) play at neutral pitch with small jitter;
+    // taps inherit size-based base pitch so heavier props sound heavier.
+    const basePitch = clip === "tap" ? basePitchRef.current : 1.0;
+    const jitter = (Math.random() * 2 - 1) * COLLISION_PITCH_JITTER;
+    const rate = basePitch + jitter;
+    playOneShot(clip, COLLISION_BASE_VOLUME * CLIP_VOLUME_TRIM[clip] * t, rate);
+  };
 
   useEffect(() => {
     activatedRef.current = activated;
@@ -239,6 +349,8 @@ export function DraggableRigidBody({
 
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (!sceneReadyRef?.current) return;
+    // Interaction is locked out while seated at the desk.
+    if (deskViewActiveRef?.current) return;
     // Left mouse / primary touch only. Middle / right / trackpad-secondary
     // are reserved for OrbitControls (orbit, pan, shift+middle pan).
     if (e.button !== 0) return;
@@ -317,6 +429,7 @@ export function DraggableRigidBody({
       angularDamping={REST_ANGULAR_DAMPING}
       gravityScale={activated ? 1 : 0}
       canSleep
+      onCollisionEnter={onCollisionEnter}
     >
       {useCuboid && <CuboidCollider args={half} />}
       <group

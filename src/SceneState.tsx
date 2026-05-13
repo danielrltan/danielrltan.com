@@ -12,6 +12,12 @@ interface SceneStateValue {
    * if not ready.
    */
   sceneReadyRef: RefObject<boolean>;
+  /**
+   * True once the camera has fully settled into desk view (after the toDesk
+   * lerp completes). Interaction and OrbitControls are blocked while this
+   * is set; flips back to false at the start of the fromDesk lerp.
+   */
+  deskViewActiveRef: RefObject<boolean>;
   /** Drive the custom cursor when hovering draggable / drawer meshes. */
   setMoveableHover: (hover: boolean) => void;
   /** Animate camera to the seated-at-desk view (no-op until DeskViewController mounts). */
@@ -52,4 +58,12 @@ export function useSetMoveableHover(): (hover: boolean) => void {
 
 export function useStartDeskView(): () => void {
   return useContext(SceneStateContext)?.startDeskView ?? noopDesk;
+}
+
+/**
+ * Returns a ref whose `.current` is true while seated at the desk. Pointer
+ * handlers / OrbitControls / hover effects should bail when this is set.
+ */
+export function useDeskViewActiveRef(): RefObject<boolean> | undefined {
+  return useContext(SceneStateContext)?.deskViewActiveRef;
 }

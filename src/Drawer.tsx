@@ -2,7 +2,12 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { RigidBody, type RapierRigidBody } from "@react-three/rapier";
 import { useRef } from "react";
 import * as THREE from "three";
-import { useSceneReadyRef, useSetMoveableHover } from "./SceneState";
+import {
+  useDeskViewActiveRef,
+  useSceneReadyRef,
+  useSetMoveableHover,
+} from "./SceneState";
+import { playOneShot } from "./audio";
 
 export interface DrawerData {
   uuid: string;
@@ -41,12 +46,22 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
   // Snap state.
   const snapping = useRef(false);
   const targetZ = useRef(closedZ);
+  // Last settled endpoint — used to play the open/close sfx only on actual
+  // state changes (not on every release that re-confirms the same side).
+  const lastSettledZ = useRef(closedZ);
+  // Set on pointer down when the drawer is currently closed; cleared once
+  // the drawer has actually moved far enough for the open sfx to fire.
+  const pendingOpenSfx = useRef(false);
+  // First-motion threshold — how far the drawer must move out of "closed"
+  // before the open sound triggers. Stops a stray click from playing it.
+  const OPEN_SFX_TRIGGER_DELTA = 0.01;
 
   const plane = useRef(new THREE.Plane(UP, 0));
   const cursorTarget = useRef(new THREE.Vector3());
 
   const { camera, raycaster, pointer, controls } = useThree();
   const sceneReadyRef = useSceneReadyRef();
+  const deskViewActiveRef = useDeskViewActiveRef();
   const setMoveableHover = useSetMoveableHover();
 
   const applyTranslation = () => {
@@ -74,6 +89,15 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
         openZ,
         closedZ,
       );
+      // First-motion open sfx — fires the moment a closed drawer is pulled
+      // out far enough to count as a real drag (not a stray click).
+      if (
+        pendingOpenSfx.current &&
+        currentZ.current < closedZ - OPEN_SFX_TRIGGER_DELTA
+      ) {
+        playOneShot("drawer_open", 0.5);
+        pendingOpenSfx.current = false;
+      }
       applyTranslation();
       return;
     }
@@ -88,6 +112,17 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
       if (Math.abs(currentZ.current - targetZ.current) < SNAP_EPSILON) {
         currentZ.current = targetZ.current;
         snapping.current = false;
+        // Close thunk lands at the actual stopping moment (vs at release).
+        if (
+          targetZ.current === closedZ &&
+          lastSettledZ.current !== closedZ
+        ) {
+          playOneShot("drawer_close", 0.04);
+        // Heighten pitch by increasing the playbackRate for the close sound.
+        playOneShot("drawer_close", 0.04, /* playbackRate= */ 2.5);
+
+        }
+        lastSettledZ.current = targetZ.current;
       }
       applyTranslation();
     }
@@ -95,6 +130,8 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
 
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (!sceneReadyRef?.current) return;
+    // Interaction is locked out while seated at the desk.
+    if (deskViewActiveRef?.current) return;
     // Left mouse / primary touch only.
     if (e.button !== 0) return;
     if (!rb.current) return;
@@ -115,6 +152,9 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
 
     dragging.current = true;
     snapping.current = false;
+    // Only arm the open sfx if the drawer is currently closed; if it's
+    // already open, dragging it further does not retrigger.
+    pendingOpenSfx.current = lastSettledZ.current === closedZ;
     if (controls) (controls as { enabled?: boolean }).enabled = false;
   };
 
@@ -127,7 +167,11 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
       // already released
     }
 
-    // Snap toward whichever endpoint we're closer to.
+    // Snap toward whichever endpoint we're closer to. The open sfx
+    // already fired during the drag (first-motion trigger above); only
+    // the close thunk is left, and it lands on snap completion in
+    // useFrame.
+    pendingOpenSfx.current = false;
     targetZ.current = currentZ.current < halfway ? openZ : closedZ;
     snapping.current = true;
 
@@ -149,7 +193,10 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
       name={drawer.name}
       type="kinematicPosition"
       position={drawer.bodyPos}
-      colliders="hull"
+      // trimesh (not hull) — a convex hull fills the drawer's open top into
+      // a solid box; the trimesh keeps each face as the collider so items
+      // can fall into the drawer cavity when it's pulled out.
+      colliders="trimesh"
     >
       <group
         onPointerDown={onPointerDown}

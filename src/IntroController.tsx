@@ -10,16 +10,10 @@ interface Props {
   onComplete: () => void;
 }
 
-// ----- Pre-transition: float + parallax + hover lift -----
 const FLOAT_AMPLITUDE = 0.07;
 const FLOAT_FREQ = 0.8;
 const HOVER_LIFT = 0.14;
-const PARALLAX_X = 0.28;
-const PARALLAX_Y = 0.22;
-const LERP_PARALLAX = 0.08;
-const LERP_POSITION = 0.1;
 
-// ----- Transition (single camera, 1.5s) -----
 const START_POS = new THREE.Vector3(25, 25, 25);
 const END_POS = new THREE.Vector3(3.5, 2.5, 3.5);
 const START_FOV = 11;
@@ -32,12 +26,6 @@ function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
 
-/**
- * Single-camera intro. No ortho/perspective swap — the camera is a
- * PerspectiveCamera with a very narrow FOV (8°) that looks indistinguishable
- * from an orthographic projection at distance. The click transition lerps
- * camera position, FOV, and lookAt simultaneously to the free-orbit pose.
- */
 export function IntroController({
   cameraRef,
   roomGroupRef,
@@ -69,40 +57,35 @@ export function IntroController({
     const camera = cameraRef.current;
     if (!group || !camera) return;
 
-    // ----- Pre-transition: idle float + parallax tilt + hover lift -----
     if (phase.current === "pre") {
       const elapsed = state.clock.elapsedTime;
       const floatY = Math.sin(elapsed * FLOAT_FREQ) * FLOAT_AMPLITUDE;
       const hoverLift = isHoveringRef.current ? HOVER_LIFT : 0;
-      const yaw = state.pointer.x * PARALLAX_X;
-      const pitch = -state.pointer.y * PARALLAX_Y;
 
-      group.rotation.y = THREE.MathUtils.lerp(
-        group.rotation.y,
-        yaw,
-        LERP_PARALLAX,
-      );
-      group.rotation.x = THREE.MathUtils.lerp(
-        group.rotation.x,
-        pitch,
-        LERP_PARALLAX,
-      );
-      group.position.y = THREE.MathUtils.lerp(
-        group.position.y,
-        floatY + hoverLift,
-        LERP_POSITION,
-      );
+      // TEMP DEBUG: verify pointer.x actually reaches +1 on the right edge.
+      // If it stays ≤ 0 while the cursor is in the right half, something is
+      // intercepting pointermove on the canvas.
+      console.log("pointer.x:", state.pointer.x.toFixed(3));
+
+      // pointer.x: -1 (left) to +1 (right)
+      // pointer.y: -1 (bottom) to +1 (top)
+      // Cursor RIGHT  → room turns right (negative Y).
+      // Cursor UP     → room tilts back  (negative X).
+      group.rotation.y += (-state.pointer.x * 0.10 - group.rotation.y) * 0.08;
+      group.rotation.x += (-state.pointer.y * 0.07 - group.rotation.x) * 0.08;
+      group.rotation.z = 0;
+
+      group.position.y += (floatY + hoverLift - group.position.y) * 0.1;
       return;
     }
 
-    // ----- Transition: one camera, simultaneous lerps -----
     if (phase.current === "transition") {
       progress.current = Math.min(progress.current + dt / DURATION, 1);
       const t = easeOutCubic(progress.current);
 
-      // Snap the room group's pre-phase tilt/lift back to rest.
       group.rotation.x = startRotX.current * (1 - t);
       group.rotation.y = startRotY.current * (1 - t);
+      group.rotation.z = 0;
       group.position.y = startY.current * (1 - t);
 
       camera.position.lerpVectors(START_POS, END_POS, t);

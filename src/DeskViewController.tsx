@@ -2,7 +2,7 @@ import { useEffect, useRef, type MutableRefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { useSceneReadyRef } from "./SceneState";
+import { useDeskViewActiveRef, useSceneReadyRef } from "./SceneState";
 
 const DURATION = 2.6;
 
@@ -56,12 +56,19 @@ export function DeskViewController({
 }) {
   const { camera, controls } = useThree();
   const sceneReadyRef = useSceneReadyRef();
+  const sharedDeskActiveRef = useDeskViewActiveRef();
   const anim = useRef<DeskAnim | null>(null);
   const savedPoseRef = useRef<{
     cam: THREE.Vector3;
     target: THREE.Vector3;
   } | null>(null);
+  // Local mirror of the shared ref so the controller's checks don't have to
+  // cross the context boundary on every frame. Both stay in sync below.
   const deskViewActiveRef = useRef(false);
+  const writeDeskActive = (v: boolean) => {
+    deskViewActiveRef.current = v;
+    if (sharedDeskActiveRef) sharedDeskActiveRef.current = v;
+  };
 
   useEffect(() => {
     const run = () => {
@@ -104,7 +111,9 @@ export function DeskViewController({
       }
       e.preventDefault();
       const orbit = controls as OrbitControlsImpl;
-      deskViewActiveRef.current = false;
+      // NOTE: do NOT flip deskActive here. Keep it true through the entire
+      // fromDesk lerp so glow + clicks + drags all stay gated off until the
+      // camera has fully returned to the free-orbit pose (see write below).
       anim.current = {
         kind: "fromDesk",
         t: 0,
@@ -139,11 +148,16 @@ export function DeskViewController({
       camera.up.set(0, 1, 0);
       camera.lookAt(orbit.target);
       zeroCameraRoll(camera as THREE.PerspectiveCamera);
-      // One sync so Orbit’s internal spherical matches this pose before re-enable.
+      // One sync so Orbit’s internal spherical matches this pose. Camera
+      // controls stay disabled while seated — only re-enable on the way
+      // back to the free-orbit pose.
       orbit.update();
-      orbit.enabled = true;
+      orbit.enabled = a.kind === "fromDesk";
       anim.current = null;
-      if (a.kind === "toDesk") deskViewActiveRef.current = true;
+      if (a.kind === "toDesk") writeDeskActive(true);
+      // Glow + interactions stay gated off through the entire fromDesk lerp;
+      // clear the flag only once the camera has fully settled.
+      if (a.kind === "fromDesk") writeDeskActive(false);
     }
   });
 

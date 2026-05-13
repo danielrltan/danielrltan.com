@@ -53,13 +53,26 @@ canvas {
     box-shadow 0.25s ease;
 }
 
-.moveable-cursor__dot {
+/*
+ * Wrapper is parallax-shifted by JS via the --dot-x / --dot-y custom props,
+ * so the inner dot's own `transform: scale(...)` for the hot state doesn't
+ * fight with the parallax translate.
+ */
+.moveable-cursor__dot-shift {
   position: absolute;
   left: 50%;
   top: 50%;
   width: 5px;
   height: 5px;
   margin: -2.5px 0 0 -2.5px;
+  transform: translate(var(--dot-x, 0px), var(--dot-y, 0px));
+  will-change: transform;
+}
+
+.moveable-cursor__dot {
+  display: block; /* span is inline by default — width/height would be ignored */
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.95);
   transition:
