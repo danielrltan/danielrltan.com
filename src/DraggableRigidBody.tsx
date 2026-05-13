@@ -31,8 +31,9 @@ const DAMPING = 15;
 
 const HELD_LINEAR_DAMPING = 0.1;
 const HELD_ANGULAR_DAMPING = 0.4;
-const REST_LINEAR_DAMPING = 1.5;
-const REST_ANGULAR_DAMPING = 2.0;
+/** Slightly higher than typical props so hard throws stop ringing sooner (fewer active solver frames). */
+const REST_LINEAR_DAMPING = 2.1;
+const REST_ANGULAR_DAMPING = 2.8;
 
 const RESTITUTION = 0.2;
 const FRICTION = 0.7;
@@ -302,6 +303,7 @@ export function DraggableRigidBody({
     setMoveableHover(false);
   };
 
+  // No per-body CCD: hard impacts against trimesh/cuboids spiked frame time; hulls at 1/60 are enough here.
   return (
     <RigidBody
       ref={rb}
@@ -315,7 +317,6 @@ export function DraggableRigidBody({
       angularDamping={REST_ANGULAR_DAMPING}
       gravityScale={activated ? 1 : 0}
       canSleep
-      ccd
     >
       {useCuboid && <CuboidCollider args={half} />}
       <group

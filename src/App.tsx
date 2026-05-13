@@ -3,7 +3,10 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { Physics } from "@react-three/rapier";
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
+import {
+  EffectComposer,
+  Bloom,
+} from "@react-three/postprocessing";
 import * as THREE from "three";
 import { Room } from "./Room";
 import { Lighting } from "./Lighting";
@@ -126,7 +129,14 @@ export default function App() {
         >
           <Suspense fallback={null}>
             <Lighting />
-            <Physics gravity={[0, -9.81, 0]}>
+            <Physics
+              gravity={[0, -9.81, 0]}
+              timeStep={1 / 60}
+              numSolverIterations={3}
+              numInternalPgsIterations={1}
+              allowedLinearError={0.0025}
+              contactNaturalFrequency={22}
+            >
               <Room key={roomResetKey} roomGroupRef={roomGroupRef} />
             </Physics>
             <IntroController

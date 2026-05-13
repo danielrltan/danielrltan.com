@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { CuboidCollider, RigidBody } from "@react-three/rapier";
@@ -21,6 +21,12 @@ const DRAWER_NAMES = new Set<string>([
 
 /** `th_*` meshes default to interactive; these are fixed statics instead. */
 const TH_STATIC_NAMES = new Set<string>(["th_keyboard_frame"]);
+
+/**
+ * Moveables not named `th_*` that must be reparented to the clone root, or
+ * `processNode` never sees them (e.g. `clk_mirror_round` under `shelf`).
+ */
+const EXTRA_THROWABLE_NAMES = new Set<string>(["clk_mirror_round"]);
 
 /**
  * Skip DraggableRigidBody proximity wake-up for these names. They sit against
@@ -78,8 +84,25 @@ const HARDCODED_STATICS: ReadonlyArray<{ name: string } & CuboidSpec> = [
 
 const HARDCODED_NAMES = new Set(HARDCODED_STATICS.map((s) => s.name));
 
-/** Static trimesh names that receive pointer picks for “focus desk” (raycasts stay on). */
-const DESK_FOCUS_STATIC_NAMES = new Set<string>(["desk"]);
+/**
+ * Static bodies that can start seated desk view. `desk` uses a mesh allowlist
+ * (see `matchesDeskFocusPickMesh`); `th_keyboard_frame` is small enough to use
+ * the whole collider (keys live on the scene root, not on this body).
+ */
+const DESK_FOCUS_STATIC_NAMES = new Set<string>(["desk", "th_keyboard_frame"]);
+
+/** Under the `desk` static only: meshes that count as “desk peripherals” for focus. */
+const DESK_FOCUS_MESH_PREFIXES: ReadonlyArray<string> = ["monitor_"];
+const DESK_FOCUS_MESH_EXACT = new Set<string>([
+  "mousepad_static",
+  "clk_monitor_frame",
+  "screen",
+]);
+
+function matchesDeskFocusPickMesh(name: string): boolean {
+  if (DESK_FOCUS_MESH_EXACT.has(name)) return true;
+  return DESK_FOCUS_MESH_PREFIXES.some((p) => name.startsWith(p));
+}
 
 const SKIP_NAMES = new Set<string>([
   "wall_right",
@@ -315,9 +338,115 @@ function disableRaycasts(root: THREE.Object3D) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Room
-// ---------------------------------------------------------------------------
+/** Narrow desk hits to peripherals; other desk wood passes rays (e.g. to orbit). */
+function applyDeskFocusMeshRaycasts(root: THREE.Object3D) {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (matchesDeskFocusPickMesh(mesh.name)) {
+      mesh.raycast = THREE.Mesh.prototype.raycast.bind(mesh);
+    } else {
+      mesh.raycast = noRaycast;
+    }
+  });
+}
+
+/**
+ * White edge overlay on hover for the static keyboard frame only (no
+ * postprocessing Selection — Outline was not visible in this pipeline).
+ */
+function KeyboardStaticHoverEdges({
+  sceneReadyRef,
+  onPointerDown,
+  object,
+}: {
+  sceneReadyRef: RefObject<boolean> | undefined;
+  onPointerDown: (e: ThreeEvent<PointerEvent>) => void;
+  object: THREE.Object3D;
+}) {
+  const [hover, setHover] = useState(false);
+  const groupRef = useRef<THREE.Group>(null);
+  const lineRefs = useRef<(THREE.LineSegments | null)[]>([]);
+  const invGroup = useRef(new THREE.Matrix4());
+  const mat = useRef(new THREE.Matrix4());
+
+  const meshes = useMemo(() => {
+    const list: THREE.Mesh[] = [];
+    object.updateMatrixWorld(true);
+    object.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && m.geometry) list.push(m);
+    });
+    return list;
+  }, [object]);
+
+  const edgesGeoms = useMemo(
+    () =>
+      meshes.map((m) => {
+        const geo = m.geometry as THREE.BufferGeometry;
+        return new THREE.EdgesGeometry(geo, 18);
+      }),
+    [meshes],
+  );
+
+  useEffect(
+    () => () => {
+      for (const g of edgesGeoms) g.dispose();
+    },
+    [edgesGeoms],
+  );
+
+  useFrame(() => {
+    if (!hover || !groupRef.current) return;
+    const g = groupRef.current;
+    g.updateMatrixWorld(true);
+    invGroup.current.copy(g.matrixWorld).invert();
+    const lines = lineRefs.current;
+    for (let i = 0; i < meshes.length; i++) {
+      const mesh = meshes[i]!;
+      const line = lines[i];
+      if (!line) continue;
+      mesh.updateMatrixWorld(true);
+      mat.current.copy(invGroup.current).multiply(mesh.matrixWorld);
+      line.matrix.copy(mat.current);
+      line.matrixAutoUpdate = false;
+      line.updateMatrixWorld(true);
+    }
+  });
+
+  return (
+    <group
+      ref={groupRef}
+      onPointerDown={onPointerDown}
+      onPointerOver={() => {
+        if (sceneReadyRef?.current) setHover(true);
+      }}
+      onPointerOut={() => setHover(false)}
+    >
+      <primitive object={object} />
+      {hover &&
+        meshes.map((mesh, i) => (
+          <lineSegments
+            key={`edge-${mesh.uuid}`}
+            ref={(el) => {
+              lineRefs.current[i] = el;
+            }}
+            geometry={edgesGeoms[i]!}
+            frustumCulled={false}
+            renderOrder={1000}
+          >
+            <lineBasicMaterial
+              color="#ffffff"
+              transparent
+              opacity={1}
+              depthTest={false}
+              toneMapped={false}
+            />
+          </lineSegments>
+        ))}
+    </group>
+  );
+}
 
 interface RoomProps {
   roomGroupRef: RefObject<THREE.Group | null>;
@@ -364,6 +493,11 @@ export function Room({ roomGroupRef }: RoomProps) {
       for (const k of keys) {
         keyMeshes.set(k.name, k);
         keyRestY.set(k.name, k.position.y);
+      }
+
+      for (const name of EXTRA_THROWABLE_NAMES) {
+        const o = cloned.getObjectByName(name);
+        if (o && o.parent !== cloned) cloned.attach(o);
       }
 
       const interactive: InteractiveBody[] = [];
@@ -424,7 +558,7 @@ export function Room({ roomGroupRef }: RoomProps) {
           return;
         }
 
-        if (obj.name.startsWith("th_")) {
+        if (obj.name.startsWith("th_") || EXTRA_THROWABLE_NAMES.has(obj.name)) {
           const box = aabbFromSubtree(obj);
           if (!box) return;
           box.getSize(boxSize);
@@ -493,7 +627,11 @@ export function Room({ roomGroupRef }: RoomProps) {
     for (const d of drawers) applyEmissive(d.object);
     for (const s of statics) {
       applyEmissive(s.object);
-      if (!DESK_FOCUS_STATIC_NAMES.has(s.name)) disableRaycasts(s.object);
+      if (s.name === "desk") {
+        applyDeskFocusMeshRaycasts(s.object);
+      } else if (!DESK_FOCUS_STATIC_NAMES.has(s.name)) {
+        disableRaycasts(s.object);
+      }
     }
   }, [visualScene, interactive, statics, drawers]);
 
@@ -600,16 +738,6 @@ export function Room({ roomGroupRef }: RoomProps) {
           position={s.pos}
           colliders={false}
         >
-          {s.name === "desk_surface" && (
-            <mesh onPointerDown={onDeskAreaPointerDown}>
-              <boxGeometry args={[s.half[0] * 2, s.half[1] * 2, s.half[2] * 2]} />
-              <meshBasicMaterial
-                transparent
-                opacity={0}
-                depthWrite={false}
-              />
-            </mesh>
-          )}
           <CuboidCollider args={s.half} />
         </RigidBody>
       ))}
@@ -623,9 +751,18 @@ export function Room({ roomGroupRef }: RoomProps) {
           colliders="trimesh"
         >
           {DESK_FOCUS_STATIC_NAMES.has(s.name) ? (
-            <group onPointerDown={onDeskAreaPointerDown}>
-              <primitive object={s.object} />
-            </group>
+            s.name === "desk" ? (
+              <primitive
+                object={s.object}
+                onPointerDown={onDeskAreaPointerDown}
+              />
+            ) : (
+              <KeyboardStaticHoverEdges
+                sceneReadyRef={sceneReadyRef}
+                onPointerDown={onDeskAreaPointerDown}
+                object={s.object}
+              />
+            )
           ) : (
             <primitive object={s.object} />
           )}
