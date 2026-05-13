@@ -74,9 +74,6 @@ const HARDCODED_STATICS: ReadonlyArray<{ name: string } & CuboidSpec> = [
   { name: "dresser_right",    pos: [0.7147, 0.4565, 2.1175],   half: [0.0250, 0.4392, 0.2860] },
   { name: "dresser_back",     pos: [-0.1663, 0.4565, 2.4034],  half: [0.8810, 0.4392, 0.0250] },
   { name: "dresser_divider",  pos: [-0.5788, 0.4565, 2.1175],  half: [0.0250, 0.4392, 0.2860] },
-
-  // Nightstand collider (visual mesh stays in scene).
-  { name: "th_nightstand",    pos: [-1.8507, 0.3960, -0.1971], half: [0.2657, 0.3125, 0.2246] },
 ];
 
 const HARDCODED_NAMES = new Set(HARDCODED_STATICS.map((s) => s.name));
@@ -106,6 +103,7 @@ const EXPLICIT_STATIC_NAMES = new Set<string>([
   // (trimesh), no position/extent estimation needed.
   "desk",
   "shelf",
+  "bed_blanket",
 ]);
 
 const EXPLICIT_STATIC_PREFIXES: ReadonlyArray<string> = [
