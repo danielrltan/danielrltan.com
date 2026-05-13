@@ -145,6 +145,7 @@ export default function App() {
                   minDistance={1.2}
                   maxDistance={7}
                   maxPolarAngle={Math.PI * 0.48}
+                  enableDamping={false}
                   rotateSpeed={0.36}
                   panSpeed={0.65}
                   mouseButtons={{
