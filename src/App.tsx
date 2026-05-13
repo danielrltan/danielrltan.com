@@ -18,7 +18,7 @@ export default function App() {
         toneMappingExposure: 0.8,
       }}
       onCreated={({ scene, gl }) => {
-        scene.background = new THREE.Color("#0a0604");
+        scene.background = new THREE.Color("#330a05");
         gl.outputColorSpace = THREE.SRGBColorSpace;
         // Physically correct lights (decay/intensity match the brief's units).
         (gl as unknown as { useLegacyLights?: boolean }).useLegacyLights = false;

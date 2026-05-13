@@ -17,10 +17,6 @@ const DRAWER_NAMES = new Set<string>([
   "th_drawer_6",
 ]);
 
-// Meshes that should be treated as dynamic interactive bodies even though
-// their name doesn't carry the `th_` prefix.
-const FORCE_DYNAMIC_NAMES = new Set<string>(["dresser"]);
-
 const ROOM_URL = "/room.glb";
 
 // ---------------------------------------------------------------------------
@@ -63,17 +59,24 @@ const BOUNDARIES: ReadonlyArray<CuboidSpec> = [
   { pos: [ROOM.cx, ROOM.wallH, 2.498], half: [ROOM.hw, ROOM.wallH, 0.15] },
 ];
 
+// ONLY artificial colliders that have no corresponding mesh in the GLB —
+// thin slabs and the dresser shell. Real-mesh statics (bed/mattress/desk/
+// shelf/mousepad/rug) get trimesh colliders via EXPLICIT_STATIC_NAMES or the
+// `_static` suffix rule below.
 const HARDCODED_STATICS: ReadonlyArray<{ name: string } & CuboidSpec> = [
-  { name: "bed_frame_static", pos: [-0.978, 0.2, -1.315], half: [0.817, 0.2, 0.985] },
-  { name: "mattress_static", pos: [-0.993, 0.55, -1.304], half: [0.794, 0.15, 0.95] },
-  // Desk body — full volume of the desk along the +X wall.
-  { name: "desk", pos: [2.1863, 0.6238, -1.0111], half: [0.3618, 0.6011, 0.8502] },
-  // Desk surface — thin slab at the desk top so objects rest cleanly on top
-  // (avoids grazing the cuboid corner edge of the desk body).
-  { name: "desk_surface", pos: [2.1863, 1.2249, -1.0111], half: [0.3618, 0.012, 0.8502] },
-  { name: "shelf", pos: [-1.332, 1.059, 2.117], half: [0.226, 1.037, 0.274] },
-  { name: "mousepad_static", pos: [1.704, 0.742, -1.698], half: [0.25, 0.005, 0.25] },
-  { name: "rug_main", pos: [-0.938, 0.035, 0.463], half: [1.144, 0.013, 1.4] },
+  // Desk surface — thin slab so objects rest cleanly on top of the desk mesh.
+  { name: "desk_surface",     pos: [2.1863, 1.2249, -1.0111],  half: [0.3618, 0.012, 0.8502] },
+
+  // Dresser shell — 6 panels forming the box the drawers slide into.
+  { name: "dresser_top",      pos: [-0.1663, 0.8957, 2.1175],  half: [0.8810, 0.0250, 0.2860] },
+  { name: "dresser_bottom",   pos: [-0.1663, 0.0173, 2.1175],  half: [0.8810, 0.0250, 0.2860] },
+  { name: "dresser_left",     pos: [-1.0473, 0.4565, 2.1175],  half: [0.0250, 0.4392, 0.2860] },
+  { name: "dresser_right",    pos: [0.7147, 0.4565, 2.1175],   half: [0.0250, 0.4392, 0.2860] },
+  { name: "dresser_back",     pos: [-0.1663, 0.4565, 2.4034],  half: [0.8810, 0.4392, 0.0250] },
+  { name: "dresser_divider",  pos: [-0.5788, 0.4565, 2.1175],  half: [0.0250, 0.4392, 0.2860] },
+
+  // Nightstand collider (visual mesh stays in scene).
+  { name: "th_nightstand",    pos: [-1.8507, 0.3960, -0.1971], half: [0.2657, 0.3125, 0.2246] },
 ];
 
 const HARDCODED_NAMES = new Set(HARDCODED_STATICS.map((s) => s.name));
@@ -83,11 +86,12 @@ const SKIP_NAMES = new Set<string>([
   "floor",
   "jewelery_dish",
   "sun_target",
-  "bed_blanket",
   "mushroom_bulb_1",
   "mushroom_bulb_2",
   "mushroom_bulb_3",
   "mushroom_bulb_4",
+  "dresser",       // visual only — shell colliders are hardcoded above
+  "vinyl_disc",    // visual only — follows record player in render loop
 ]);
 
 const EXPLICIT_STATIC_NAMES = new Set<string>([
@@ -98,6 +102,10 @@ const EXPLICIT_STATIC_NAMES = new Set<string>([
   "mic_clamp",
   "clk_pegboard",
   "floor_lamp",
+  // Real-mesh statics — the collision shape is the mesh geometry itself
+  // (trimesh), no position/extent estimation needed.
+  "desk",
+  "shelf",
 ]);
 
 const EXPLICIT_STATIC_PREFIXES: ReadonlyArray<string> = [
@@ -125,8 +133,6 @@ const EMISSIVE_PATTERNS: Array<{
   { match: "emit_orange", intensity: 3, color: new THREE.Color().setRGB(1.0, 0.5, 0.15) },
   { match: "emit_light_orange", intensity: 3, color: new THREE.Color().setRGB(1.0, 0.3, 0.06) },
   { match: "lightbar_emission", intensity: 8, color: new THREE.Color().setRGB(1.0, 0.7, 0.4) },
-  // mushroom_bulb materials get fully replaced by replaceMushroomBulbs() —
-  // no emissive boost needed here.
 ];
 
 // ---------------------------------------------------------------------------
@@ -145,7 +151,6 @@ interface ExtractedBody {
 
 interface InteractiveBody extends ExtractedBody {
   throwable: boolean;
-  /** [halfWidth, halfHeight, halfDepth] in body-local frame, clamped to MIN_HALF. */
   half: Triple;
 }
 
@@ -153,7 +158,6 @@ interface InteractiveBody extends ExtractedBody {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** World-AABB of ONLY this mesh's geometry — no descendants. */
 function meshWorldAABB(mesh: THREE.Mesh): THREE.Box3 | null {
   if (!mesh.geometry) return null;
   mesh.updateWorldMatrix(true, false);
@@ -165,7 +169,6 @@ function meshWorldAABB(mesh: THREE.Mesh): THREE.Box3 | null {
   return box;
 }
 
-/** Union of every descendant mesh's own-geometry world AABB. */
 function aabbFromSubtree(root: THREE.Object3D): THREE.Box3 | null {
   const result = new THREE.Box3();
   let hasAny = false;
@@ -184,11 +187,6 @@ function aabbFromSubtree(root: THREE.Object3D): THREE.Box3 | null {
   return hasAny ? result : null;
 }
 
-/**
- * Replace mushroom_bulb_1..4 materials with a glassy transmission material —
- * gives the bulbs a refractive look that catches the nearby mushroom point
- * light. Requires ACES tone mapping (set in App.tsx).
- */
 function replaceMushroomBulbs(root: THREE.Object3D) {
   root.traverse((obj) => {
     if (!(obj as THREE.Mesh).isMesh) return;
@@ -282,7 +280,6 @@ export function Room() {
       if (SKIP_NAMES.has(obj.name)) return;
       if (HARDCODED_NAMES.has(obj.name)) return;
 
-      // Explicit static wins over any prefix.
       if (isExplicitStatic(obj.name)) {
         const box = aabbFromSubtree(obj);
         if (!box) return;
@@ -291,11 +288,6 @@ export function Room() {
         return;
       }
 
-      // All th_* (including th_drawer_*, th_dresser, th_record_player) become
-      // interactive throwables. No special drawer or vinyl handling — they
-      // get hull colliders and live in DraggableRigidBody.
-      // Drawers go through the dedicated Drawer component (kinematic slide),
-      // NOT DraggableRigidBody. Must be checked BEFORE the general th_ branch.
       if (DRAWER_NAMES.has(obj.name)) {
         const box = aabbFromSubtree(obj);
         if (!box) return;
@@ -304,12 +296,10 @@ export function Room() {
         return;
       }
 
-      if (obj.name.startsWith("th_") || FORCE_DYNAMIC_NAMES.has(obj.name)) {
+      if (obj.name.startsWith("th_")) {
         const box = aabbFromSubtree(obj);
         if (!box) return;
         box.getSize(boxSize);
-        // Skip degenerate geometry — feeding tiny AABBs to Rapier produces
-        // colliders that teleport out of the scene.
         const volume = boxSize.x * boxSize.y * boxSize.z;
         if (volume < MIN_VOLUME) return;
         box.getCenter(boxCenter);
@@ -325,8 +315,6 @@ export function Room() {
         return;
       }
 
-      // Unrecognized name. Leaf meshes → static. Groups → recurse so any
-      // th_* descendants still get caught.
       const mesh = obj as THREE.Mesh;
       if (mesh.isMesh && mesh.geometry) {
         const box = meshWorldAABB(mesh);
@@ -341,8 +329,6 @@ export function Room() {
 
     for (const child of cloned.children) processNode(child);
 
-    // Reparent extracted meshes: world transform becomes local inside the
-    // body (which sits at the geometry centroid with identity rotation).
     for (const item of [...interactive, ...statics, ...drawers]) {
       item.object.parent?.remove(item.object);
       item.object.position.set(...item.meshLocalPos);
@@ -351,10 +337,7 @@ export function Room() {
       item.object.updateMatrix();
     }
 
-    console.log(
-      "[Room] interactive:",
-      interactive.map((i) => i.name).sort(),
-    );
+    console.log("[Room] interactive:", interactive.map((i) => i.name).sort());
     console.log("[Room] drawers:", drawers.map((d) => d.name).sort());
     console.log("[Room] statics:", statics.length);
 
@@ -363,8 +346,6 @@ export function Room() {
 
   useEffect(() => {
     applyEmissive(visualScene);
-    // Run AFTER applyEmissive so the bulb material replacement wins over any
-    // emissive-pattern modification on the original material.
     replaceMushroomBulbs(visualScene);
     disableRaycasts(visualScene);
     for (const it of interactive) applyEmissive(it.object);
@@ -401,8 +382,6 @@ export function Room() {
         </RigidBody>
       ))}
 
-      {/* Auto-extracted static meshes — trimesh collider auto-generated from
-          the mesh inside, so collision matches the true shape. */}
       {statics.map((s) => (
         <RigidBody
           key={`static-${s.uuid}`}
@@ -415,8 +394,6 @@ export function Room() {
         </RigidBody>
       ))}
 
-      {/* Dynamic bodies — hull for normal-sized objects, explicit cuboid
-          for tiny ones (auto-hull on near-degenerate meshes is unstable). */}
       {interactive.map((t) => (
         <DraggableRigidBody
           key={t.uuid}
@@ -429,7 +406,6 @@ export function Room() {
         </DraggableRigidBody>
       ))}
 
-      {/* Drawers — kinematic Z-axis slide, never goes through DraggableRigidBody. */}
       {drawers.map((d) => (
         <Drawer key={d.uuid} drawer={d} />
       ))}
