@@ -11,6 +11,8 @@ interface Props {
   background?: string;
   /** Idle rotation speed in rad/sec. */
   rpm?: number;
+  /** Which axis (or axes) the model spins around. Default 'y'. */
+  axis?: "x" | "y" | "both";
 }
 
 /**
@@ -26,6 +28,7 @@ export function AsciiCatPlush({
   color = "#ff7842",
   background = "transparent",
   rpm = 0.9,
+  axis = "y",
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -132,7 +135,25 @@ export function AsciiCatPlush({
       const now = performance.now();
       const dt = (now - last) / 1000;
       last = now;
-      if (pivot) pivot.rotation.y += rpm * dt;
+      if (pivot) {
+        // Explicitly pin the un-selected axes to 0 each frame so any
+        // initial rotation from the GLB or accumulated drift never
+        // leaks into the visual.
+        if (axis === "x") {
+          pivot.rotation.y = 0;
+          pivot.rotation.z = 0;
+          pivot.rotation.x += rpm * dt;
+        } else if (axis === "y") {
+          pivot.rotation.x = 0;
+          pivot.rotation.z = 0;
+          pivot.rotation.y += rpm * dt;
+        } else {
+          // both
+          pivot.rotation.z = 0;
+          pivot.rotation.x += rpm * dt;
+          pivot.rotation.y += rpm * dt;
+        }
+      }
       effect.render(scene, camera);
       rafId = requestAnimationFrame(animate);
     };
@@ -144,7 +165,7 @@ export function AsciiCatPlush({
       if (el.parentNode === container) container.removeChild(el);
       renderer.dispose();
     };
-  }, [size, color, background, rpm]);
+  }, [size, color, background, rpm, axis]);
 
   return (
     <div

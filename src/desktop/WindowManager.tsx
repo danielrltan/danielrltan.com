@@ -97,9 +97,24 @@ export function WindowManagerProvider({
   const move = useCallback(
     (id: string, x: number, y: number) =>
       setWindows((ws) =>
-        ws.map((w) => (w.id === id ? { ...w, x, y } : w)),
+        ws.map((w) => {
+          if (w.id !== id) return w;
+          // Clamp so windows can't be dragged off-screen. Always keep
+          // the title bar (top ~30 px) on screen and at least 80 px
+          // of horizontal width visible so the user can grab and
+          // pull the window back.
+          const MIN_VISIBLE_X = 80;
+          const TITLE_H = 30;
+          const minX = MIN_VISIBLE_X - w.width;
+          const maxX = viewport.w - MIN_VISIBLE_X;
+          const minY = 0;
+          const maxY = viewport.h - TITLE_H;
+          const cx = Math.max(minX, Math.min(maxX, x));
+          const cy = Math.max(minY, Math.min(maxY, y));
+          return { ...w, x: cx, y: cy };
+        }),
       ),
-    [],
+    [viewport.w, viewport.h],
   );
 
   const resize = useCallback(

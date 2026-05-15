@@ -29,6 +29,11 @@ interface Props {
   onActivate: () => void;
   /** Drag callback — fires while the icon is being moved. */
   onMove: (id: string, x: number, y: number) => void;
+  /**
+   * Drop callback — fires once on pointer up after a drag. Parent
+   * decides whether to snap to the nearest open slot.
+   */
+  onDrop?: (id: string, x: number, y: number) => void;
   /** Selection callback — fires on pointer down before activate / drag is decided. */
   onSelect: (id: string) => void;
   /** Optional callback when the icon becomes the topmost desktop element. */
@@ -53,6 +58,7 @@ export function DesktopIcon({
   selected,
   onActivate,
   onMove,
+  onDrop,
   onSelect,
   onFocus,
 }: Props) {
@@ -63,8 +69,9 @@ export function DesktopIcon({
     offX: number;
     offY: number;
     moved: boolean;
+    lastX: number;
+    lastY: number;
   } | null>(null);
-
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     onSelect(id);
@@ -74,6 +81,8 @@ export function DesktopIcon({
       offX: e.clientX - x,
       offY: e.clientY - y,
       moved: false,
+      lastX: x,
+      lastY: y,
     };
     setPressing(true);
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
@@ -90,6 +99,8 @@ export function DesktopIcon({
       if (dx < DRAG_THRESHOLD_PX && dy < DRAG_THRESHOLD_PX) return;
       d.moved = true;
     }
+    d.lastX = nx;
+    d.lastY = ny;
     onMove(id, nx, ny);
   };
 
@@ -101,10 +112,16 @@ export function DesktopIcon({
     } catch {
       /* already released */
     }
-    const moved = d.moved;
+    const { moved, lastX, lastY } = d;
     dragRef.current = null;
     setPressing(false);
-    if (!moved) onActivate();
+    // Click vs drag distinguished by `moved`. The DRAG_THRESHOLD_PX
+    // guard above means tiny twitches stay classified as clicks.
+    if (moved) {
+      onDrop?.(id, lastX, lastY);
+    } else {
+      onActivate();
+    }
   };
 
   return (
@@ -147,8 +164,12 @@ export function DesktopIcon({
         touchAction: "none",
         color: "var(--text-dk)",
         transform: pressing ? "scale(0.97)" : "scale(1)",
-        transition:
-          "transform 0.1s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+        // Drag follows cursor instantly (no left/top tween); on
+        // release, the parent may re-position the icon (snap), and
+        // we want THAT change to glide smoothly.
+        transition: pressing
+          ? "transform 0.1s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease"
+          : "left 0.22s ease, top 0.22s ease, transform 0.1s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
         boxShadow: pressing ? "0 6px 18px rgba(0,0,0,0.18)" : "none",
         userSelect: "none",
       }}

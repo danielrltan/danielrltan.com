@@ -453,18 +453,25 @@ function MonitorGlow({ pose }: { pose: MonitorPose | null }) {
   const sceneReady = useSceneReadyRef();
   const startDeskView = useStartDeskView();
 
-  if (!pose || deskActive?.current) return null;
+  // Stay mounted across the desk-view transition so GlowBox can lerp
+  // base/hover intensities to zero over ~1 s instead of being yanked
+  // off-screen in a single frame. Pointer handlers below are gated on
+  // `!deskActive?.current` so the (now invisible) glow can't intercept
+  // clicks while seated.
+  if (!pose) return null;
   return (
     <group
       position={pose.center}
       onPointerOver={(e) => {
         if (!sceneReady?.current) return;
+        if (deskActive?.current) return;
         e.stopPropagation();
         setHover(true);
       }}
       onPointerOut={() => setHover(false)}
       onPointerDown={(e) => {
         if (!sceneReady?.current) return;
+        if (deskActive?.current) return;
         if (e.button !== 0) return;
         e.stopPropagation();
         shockwaveRef.current = 1;
@@ -752,19 +759,32 @@ export function Room({ roomGroupRef }: RoomProps) {
     ]);
     const isCombo = (e: KeyboardEvent) =>
       (e.ctrlKey || e.metaKey) && !MODIFIER_CODES.has(e.code);
+    // Skip the room keyboard animation when the user is typing into
+    // an OS input — otherwise preventDefault() below swallows the
+    // keystroke and the input never gets the character.
+    const isTypingTarget = (e: KeyboardEvent): boolean => {
+      const el = e.target;
+      return (
+        el instanceof HTMLElement &&
+        (el.isContentEditable ||
+          el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.tagName === "SELECT" ||
+          el.closest("input, textarea, select, [contenteditable='true']") !==
+            null)
+      );
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (!sceneReadyRef?.current) return;
       if (isCombo(e)) return;
+      if (isTypingTarget(e)) return;
       if (e.code === "KeyR" && e.defaultPrevented) return;
       const meshName = KEY_MAP[e.code];
       if (!meshName) return;
       e.preventDefault();
-      // Auto-repeat fires repeated keydowns without a keyup between them —
-      // only play the sound on the initial press.
       if (!pressedKeysRef.current.has(meshName)) {
         const isSpace = meshName === "key_space";
         const rate = isSpace ? SPACE_RATE : 1;
-        // Spacebar pressed twice as loud as the rest (caps at 1.0).
         const vol = isSpace ? Math.min(1, 0.45 * 2) : 0.45;
         playOneShot("keyup", vol, rate);
       }
@@ -773,6 +793,7 @@ export function Room({ roomGroupRef }: RoomProps) {
     const onKeyUp = (e: KeyboardEvent) => {
       if (!sceneReadyRef?.current) return;
       if (isCombo(e)) return;
+      if (isTypingTarget(e)) return;
       if (e.code === "KeyR" && e.defaultPrevented) return;
       const meshName = KEY_MAP[e.code];
       if (!meshName) return;

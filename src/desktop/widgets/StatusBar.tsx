@@ -1,17 +1,36 @@
-import { Moon, Sun } from "lucide-react";
-import { useState } from "react";
-import { useTheme } from "../theme";
-
-const WORKSPACES = 5;
+import { useEffect, useState } from "react";
+import { useWindows } from "../WindowManager";
 
 /**
- * Full-width status strip at the bottom of the grid. Not a Card — it has
- * its own dark slab background so the bg gap doesn't bleed underneath.
+ * Bottom status strip. Shows:
+ *   - left:  open-app activity dots + their labels
+ *   - center: ambient session info ("idle for Xm" or "active")
+ *   - right: live clock (seconds resolution) + version tag
+ *
+ * Inert / informational only — no controls. The fullscreen toggle
+ * has moved to the top-right corner of the desktop.
  */
 export function StatusBar() {
-  const { mode, toggle } = useTheme();
-  const [hoverToggle, setHoverToggle] = useState(false);
-  const activeWs = 1;
+  const { windows } = useWindows();
+  const [now, setNow] = useState(() => new Date());
+  const [sessionStart] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const sessionSec = Math.floor((now.getTime() - sessionStart) / 1000);
+  const sessionLabel =
+    sessionSec < 60
+      ? `${sessionSec}s`
+      : sessionSec < 3600
+      ? `${Math.floor(sessionSec / 60)}m`
+      : `${Math.floor(sessionSec / 3600)}h ${Math.floor((sessionSec % 3600) / 60)}m`;
+
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(
+    now.getMinutes(),
+  ).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
 
   return (
     <div
@@ -27,70 +46,69 @@ export function StatusBar() {
         alignItems: "center",
         fontFamily: "var(--font-mono)",
         fontSize: 11,
+        letterSpacing: 0.4,
+        border: "1px solid var(--surface-alt)",
       }}
     >
-      <div style={{ display: "flex", gap: 6 }}>
-        <span style={dot("var(--accent)")} />
-        <span style={dot("var(--accent2)")} />
-        <span style={dot("var(--muted)")} />
+      {/* Open apps */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        {windows.length === 0 ? (
+          <span style={{ color: "var(--muted)", letterSpacing: 1.5 }}>
+            no apps open
+          </span>
+        ) : (
+          windows.map((w) => (
+            <span
+              key={w.id}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                color: "var(--text-lt)",
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: "var(--accent)",
+                  display: "inline-block",
+                  boxShadow: "0 0 6px var(--accent)",
+                }}
+              />
+              {w.id}
+            </span>
+          ))
+        )}
       </div>
 
-      <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
-        {Array.from({ length: WORKSPACES }).map((_, i) => (
-          <span
-            key={i}
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background:
-                i === activeWs ? "var(--accent)" : "var(--surface-alt)",
-              border: `1px solid ${i === activeWs ? "var(--accent)" : "var(--muted)"}`,
-            }}
-          />
-        ))}
+      {/* Session uptime */}
+      <div
+        style={{
+          color: "var(--muted)",
+          letterSpacing: 2,
+          textTransform: "uppercase",
+          fontSize: 10,
+        }}
+      >
+        session · {sessionLabel}
       </div>
 
+      {/* Clock + version */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "flex-end",
-          gap: 10,
+          gap: 12,
         }}
       >
-        <button
-          onClick={toggle}
-          onMouseEnter={() => setHoverToggle(true)}
-          onMouseLeave={() => setHoverToggle(false)}
-          aria-label="Toggle warm / cool"
-          style={{
-            width: 20,
-            height: 20,
-            borderRadius: 4,
-            background: "transparent",
-            border: "none",
-            color: hoverToggle ? "var(--accent)" : "var(--muted)",
-            cursor: "pointer",
-            display: "grid",
-            placeItems: "center",
-            transition: "color 0.15s ease",
-          }}
-        >
-          {mode === "warm" ? <Sun size={13} /> : <Moon size={13} />}
-        </button>
-        <span style={{ color: "var(--muted)", letterSpacing: 0.6 }}>v1.0</span>
+        <span style={{ color: "var(--text-lt)" }}>{hhmm}</span>
+        <span style={{ color: "var(--muted)", letterSpacing: 0.6 }}>
+          roomos v1.0
+        </span>
       </div>
     </div>
   );
-}
-
-function dot(c: string): React.CSSProperties {
-  return {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    background: c,
-    display: "inline-block",
-  };
 }

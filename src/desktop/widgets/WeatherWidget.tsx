@@ -84,96 +84,147 @@ export function WeatherWidget() {
   const meta = live
     ? describe(live.code, live.isDay)
     : { label: err ? "offline" : "…", Icon: Cloud };
+  const palette = paletteFor(live?.code ?? 3, live?.isDay ?? true);
 
   return (
-    <Card>
+    <Card
+      style={{
+        position: "relative",
+        border: "1px solid var(--surface-alt)",
+      }}
+    >
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: 14,
+          position: "relative",
+          zIndex: 1,
+          display: "flex",
+          flexDirection: "column",
           height: "100%",
-          alignItems: "stretch",
+          justifyContent: "space-between",
         }}
       >
         <div
           style={{
             display: "flex",
+            justifyContent: "space-between",
             alignItems: "center",
-            justifyContent: "center",
-            paddingRight: 10,
-            borderRight: "1px solid var(--surface-alt)",
           }}
         >
+          <Eyebrow>weather · toronto</Eyebrow>
           <span
             style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 800,
-              fontSize: 16,
-              letterSpacing: 6,
-              color: "var(--muted)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              letterSpacing: 2,
               textTransform: "uppercase",
-              writingMode: "vertical-rl",
-              transform: "rotate(180deg)",
+              color: palette.accent,
             }}
           >
-            TORONTO
+            live
           </span>
         </div>
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-            gap: 8,
+            alignItems: "baseline",
+            gap: 4,
+            color: "var(--text-lt)",
           }}
         >
-          <Eyebrow>weather · live</Eyebrow>
-          <div
+          <span
             style={{
-              display: "flex",
-              alignItems: "baseline",
-              gap: 4,
-              color: "var(--text-lt)",
+              fontFamily: "var(--font-display)",
+              fontWeight: 700,
+              fontSize: 40,
+              lineHeight: 1,
             }}
           >
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontWeight: 700,
-                fontSize: 42,
-                lineHeight: 1,
-              }}
-            >
-              {live ? live.temp : "--"}
-            </span>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 18,
-                color: "var(--accent)",
-              }}
-            >
-              °C
-            </span>
-          </div>
-          <div
+            {live ? live.temp : "--"}
+          </span>
+          <span
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              color: "var(--accent2)",
               fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              letterSpacing: 1,
-              textTransform: "uppercase",
+              fontSize: 16,
+              color: palette.accent,
             }}
           >
-            <meta.Icon size={15} />
-            <span>{meta.label}</span>
-          </div>
+            °C
+          </span>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            color: "var(--muted)",
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: 2,
+            textTransform: "uppercase",
+          }}
+        >
+          <meta.Icon size={14} color={palette.accent} />
+          <span>{meta.label}</span>
         </div>
       </div>
     </Card>
   );
+}
+
+interface WeatherPalette {
+  blob: string;
+  accent: string;
+}
+
+/** Pick the signal-blob colour + accent based on WMO code + day/night. */
+function paletteFor(code: number, isDay: boolean): WeatherPalette {
+  if (!isDay)
+    return {
+      blob: "radial-gradient(circle, rgba(120,140,200,0.85) 0%, transparent 70%)",
+      accent: "#9bb0e0",
+    };
+  if (code === 0)
+    return {
+      blob: "radial-gradient(circle, rgba(255,205,110,0.95) 0%, transparent 65%)",
+      accent: "#ffc070",
+    };
+  if (code <= 2)
+    return {
+      blob: "radial-gradient(circle, rgba(255,210,140,0.9) 0%, transparent 65%)",
+      accent: "#ffb077",
+    };
+  if (code === 3)
+    return {
+      blob: "radial-gradient(circle, rgba(200,195,185,0.85) 0%, transparent 65%)",
+      accent: "#c9bfb2",
+    };
+  if (code === 45 || code === 48)
+    return {
+      blob: "radial-gradient(circle, rgba(220,220,215,0.7) 0%, transparent 60%)",
+      accent: "#bfb8ad",
+    };
+  if (code >= 51 && code <= 67)
+    return {
+      blob: "radial-gradient(circle, rgba(120,140,170,0.85) 0%, transparent 65%)",
+      accent: "#9bb0c8",
+    };
+  if (code >= 71 && code <= 77)
+    return {
+      blob: "radial-gradient(circle, rgba(220,225,235,0.9) 0%, transparent 65%)",
+      accent: "#cdd6e0",
+    };
+  if (code >= 80 && code <= 82)
+    return {
+      blob: "radial-gradient(circle, rgba(100,130,160,0.85) 0%, transparent 65%)",
+      accent: "#8aa6c4",
+    };
+  if (code >= 95)
+    return {
+      blob: "radial-gradient(circle, rgba(190,150,230,0.85) 0%, transparent 65%)",
+      accent: "#c8aaff",
+    };
+  return {
+    blob: "radial-gradient(circle, rgba(200,195,185,0.8) 0%, transparent 65%)",
+    accent: "#b8aea0",
+  };
 }

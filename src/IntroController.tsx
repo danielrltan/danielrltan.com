@@ -39,6 +39,9 @@ export function IntroController({
   const startRotY = useRef(0);
   const startY = useRef(0);
   const tmpLookAt = useRef(new THREE.Vector3());
+  // App-level isHoveringRef is now unused — the hitbox check below
+  // uses R3F's state.pointer directly.
+  void isHoveringRef;
 
   useEffect(() => {
     if (!transitionStarted || phase.current !== "pre") return;
@@ -60,7 +63,17 @@ export function IntroController({
     if (phase.current === "pre") {
       const elapsed = state.clock.elapsedTime;
       const floatY = Math.sin(elapsed * FLOAT_FREQ) * FLOAT_AMPLITUDE;
-      const hoverLift = isHoveringRef.current ? HOVER_LIFT : 0;
+
+      // Simple centred hitbox in normalized screen coords. Raycast
+      // against the room mesh worked in theory but the room is a
+      // collection of dozens of sub-meshes — the per-frame hit /
+      // miss flickered when the cursor grazed silhouette edges,
+      // making the lift spasm. A static square is rock-solid.
+      const HITBOX_HALF = 0.38; // ±0.38 of normalized viewport
+      const inHitbox =
+        Math.abs(state.pointer.x) < HITBOX_HALF &&
+        Math.abs(state.pointer.y) < HITBOX_HALF;
+      const hoverLift = inHitbox ? HOVER_LIFT : 0;
 
       // pointer.x: -1 (left) to +1 (right)
       // pointer.y: -1 (bottom) to +1 (top)

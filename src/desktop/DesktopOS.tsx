@@ -6,17 +6,21 @@ import { DesktopIcon } from "./DesktopIcon";
 import { APPS } from "./appRegistry";
 import { ClockWidget } from "./widgets/ClockWidget";
 import { WeatherWidget } from "./widgets/WeatherWidget";
-import { NowPlayingWidget } from "./widgets/NowPlayingWidget";
-import { SystemInfoWidget } from "./widgets/SystemInfoWidget";
-import { PaintWidget } from "./widgets/PaintWidget";
+import { SpotifyWidget } from "./widgets/SpotifyWidget";
+import { Eyebrow } from "./Card";
+import { DistroAsciiWidget } from "./widgets/DistroAsciiWidget";
 import { StatusBar } from "./widgets/StatusBar";
 import { Wallpaper } from "./Wallpaper";
 
 interface Props {
   width: number;
   height: number;
-  onClose?: () => void;
-  onFullscreen?: () => void;
+  /** Whether the OS is currently in fullscreen overlay mode. */
+  isFullscreen?: boolean;
+  /** Flip between desk-mounted and fullscreen overlay. */
+  onToggleFullscreen?: () => void;
+  /** Return the camera to the free-orbit room (closes OS entirely). */
+  onBackToRoom?: () => void;
 }
 
 /**
@@ -45,6 +49,23 @@ const ICON_GRID_ORIGIN = { x: 18, y: 18 };
 const ICON_CELL = { w: 98, h: 108 };
 const ICON_COLS = 2;
 
+// Icon hit-box for overlap testing during drag. The visible icon
+// is 92×108 (DesktopIcon's outer div); keep these in sync.
+const ICON_W = 92;
+const ICON_H = 108;
+
+function iconsOverlap(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): boolean {
+  return !(
+    a.x + ICON_W <= b.x ||
+    b.x + ICON_W <= a.x ||
+    a.y + ICON_H <= b.y ||
+    b.y + ICON_H <= a.y
+  );
+}
+
 function defaultIconPositions(ids: string[]): Record<string, { x: number; y: number }> {
   const out: Record<string, { x: number; y: number }> = {};
   ids.forEach((id, i) => {
@@ -58,7 +79,10 @@ function defaultIconPositions(ids: string[]): Record<string, { x: number; y: num
   return out;
 }
 
-function DesktopShell({ width, height }: Props) {
+function DesktopShell({
+  width,
+  height,
+}: Props) {
   const { colors } = useTheme();
   const { open, isOpen, windows } = useWindows();
   const desktopRef = useRef<HTMLDivElement>(null);
@@ -67,11 +91,78 @@ function DesktopShell({ width, height }: Props) {
     Record<string, { x: number; y: number }>
   >(() => defaultIconPositions(APPS.map((a) => a.id)));
 
+  // While dragging, the icon follows the cursor freely (it can pass
+  // over other icons). The snap happens on drop — see `dropIcon`.
   const moveIcon = (id: string, x: number, y: number) => {
-    // Clamp the drop position so icons can't be moved out of the desktop.
-    const cx = Math.max(0, Math.min(width - 92, x));
-    const cy = Math.max(0, Math.min(height - 108, y));
-    setIconPositions((p) => ({ ...p, [id]: { x: cx, y: cy } }));
+    const cx = Math.max(0, Math.min(width - ICON_W, x));
+    const cy = Math.max(0, Math.min(height - ICON_H, y));
+    setIconPositions((prev) => ({ ...prev, [id]: { x: cx, y: cy } }));
+  };
+
+  // MacOS Finder behaviour: on drop, if the icon's position overlaps
+  // another, slide to the nearest open grid slot. Slots are derived
+  // from ICON_GRID_ORIGIN + ICON_CELL × col/row. Search outward from
+  // the closest slot to the drop point, by squared cell distance.
+  const dropIcon = (id: string, x: number, y: number) => {
+    const cx = Math.max(0, Math.min(width - ICON_W, x));
+    const cy = Math.max(0, Math.min(height - ICON_H, y));
+    setIconPositions((prev) => {
+      const candidate = { x: cx, y: cy };
+      const overlapsAny = Object.entries(prev).some(
+        ([oid, opos]) => oid !== id && iconsOverlap(candidate, opos),
+      );
+      if (!overlapsAny) return { ...prev, [id]: candidate };
+
+      const cols = Math.max(
+        1,
+        Math.floor((width - ICON_GRID_ORIGIN.x) / ICON_CELL.w),
+      );
+      const rows = Math.max(
+        1,
+        Math.floor((height - ICON_GRID_ORIGIN.y) / ICON_CELL.h),
+      );
+      const nearestCol = Math.round(
+        (candidate.x - ICON_GRID_ORIGIN.x) / ICON_CELL.w,
+      );
+      const nearestRow = Math.round(
+        (candidate.y - ICON_GRID_ORIGIN.y) / ICON_CELL.h,
+      );
+
+      const slotOccupied = (col: number, row: number): boolean => {
+        const sx = ICON_GRID_ORIGIN.x + col * ICON_CELL.w;
+        const sy = ICON_GRID_ORIGIN.y + row * ICON_CELL.h;
+        for (const [oid, opos] of Object.entries(prev)) {
+          if (oid === id) continue;
+          if (iconsOverlap({ x: sx, y: sy }, opos)) return true;
+        }
+        return false;
+      };
+
+      // Scan all slots, ranked by squared distance from the dropped
+      // position's nearest cell, and return the first free one.
+      const ranked: { col: number; row: number; d: number }[] = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const dc = c - nearestCol;
+          const dr = r - nearestRow;
+          ranked.push({ col: c, row: r, d: dc * dc + dr * dr });
+        }
+      }
+      ranked.sort((a, b) => a.d - b.d);
+      for (const { col, row } of ranked) {
+        if (!slotOccupied(col, row)) {
+          return {
+            ...prev,
+            [id]: {
+              x: ICON_GRID_ORIGIN.x + col * ICON_CELL.w,
+              y: ICON_GRID_ORIGIN.y + row * ICON_CELL.h,
+            },
+          };
+        }
+      }
+      // No free slot — leave at the drop position (rare; desktop is full).
+      return { ...prev, [id]: candidate };
+    });
   };
 
   // Click on empty desktop → deselect.
@@ -122,6 +213,7 @@ function DesktopShell({ width, height }: Props) {
             selected={selectedIcon === app.id}
             onSelect={(id) => setSelectedIcon(id)}
             onMove={moveIcon}
+            onDrop={dropIcon}
             onActivate={() => {
               setSelectedIcon(app.id);
               open(app.id, { width: app.size[0], height: app.size[1] });
@@ -130,9 +222,9 @@ function DesktopShell({ width, height }: Props) {
         );
       })}
 
-      {/* Top-right widget cluster: clock + live Toronto weather. Sized
-          to fit the monitor's 1100×660 cssWidth/cssHeight; tweak the
-          numbers here if you bump the OS resolution. */}
+      {/* Top-right widget cluster: clock + live Toronto weather.
+          Fullscreen affordance moved out — see App.tsx for the
+          "press F to fullscreen" notification banner. */}
       <div
         style={{
           position: "absolute",
@@ -143,53 +235,82 @@ function DesktopShell({ width, height }: Props) {
           zIndex: 1,
         }}
       >
-        <div style={{ width: 280, height: 140 }}>
+        <div style={{ width: 264, height: 140 }}>
           <ClockWidget />
         </div>
-        <div style={{ width: 240, height: 140 }}>
+        <div style={{ width: 260, height: 140 }}>
           <WeatherWidget />
         </div>
       </div>
 
-      {/* Paint pad — right side, below clock/weather. */}
+      {/* One merged "current favourites" widget — single card with the
+          eyebrow at the top and both Spotify embeds stacked
+          underneath. Title sits above the embeds (in the same
+          wrapper) so it never overlaps them. */}
       <div
         style={{
           position: "absolute",
-          right: 14,
+          // Slotted under the clock + weather row on the right.
+          // Top: 12 + 140 (cluster height) + 8 (gap) = 160.
           top: 160,
-          width: 528,
+          right: 14,
+          // Width matches the cluster: clock 240 + gap 8 + weather
+          // 220 + gap 8 + fullscreen 56 = 532.
+          width: 532,
           zIndex: 1,
+          background: "var(--surface)",
+          borderRadius: 10,
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          boxSizing: "border-box",
         }}
       >
-        <PaintWidget />
+        <div style={{ paddingLeft: 4 }}>
+          <Eyebrow>current favourites</Eyebrow>
+        </div>
+        {/* Clip each iframe to its own rounded rect — Spotify's
+            embed renders rounded internal content, but the iframe
+            element itself is rectangular with a default white
+            backdrop that pokes through the corners. overflow:hidden
+            on a rounded wrapper crops that out. */}
+        <div
+          style={{
+            height: 152,
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          <SpotifyWidget playlistId="6iRfWw8xNLvslofQBvkvCy" />
+        </div>
+        <div
+          style={{
+            height: 152,
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          <SpotifyWidget playlistId="46avDHmN3Nlz3zN7J8bWpN" />
+        </div>
       </div>
 
-      {/* Now Playing — bottom-left. */}
-      <div
-        style={{
-          position: "absolute",
-          left: 14,
-          bottom: 44,
-          width: 420,
-          height: 170,
-          zIndex: 1,
-        }}
-      >
-        <NowPlayingWidget />
-      </div>
 
-      {/* System Info — bottom-right. */}
+      {/* Distro / neofetch-style ASCII art card — columned under
+          the Spotify widget (same width, right side only). Wide
+          rectangle that fills the gap between Spotify and the
+          status bar. */}
       <div
         style={{
           position: "absolute",
           right: 14,
+          top: 530,
+          width: 532,
           bottom: 44,
-          width: 400,
-          height: 170,
           zIndex: 1,
         }}
       >
-        <SystemInfoWidget />
+        <DistroAsciiWidget />
       </div>
 
       {/* Window layer */}

@@ -132,6 +132,7 @@ export function MonitorScreen({
       >
         <div
           data-os-root="true"
+          data-monitor-os-root="true"
           style={{ width: "100%", height: "100%" }}
         >
           {children}

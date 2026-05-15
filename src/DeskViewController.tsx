@@ -9,6 +9,15 @@ import {
 } from "./SceneState";
 
 const DURATION = 2.6;
+/** Faster, snappier lerp for the fullscreen dolly so the zoom reads as "into the screen". */
+const FULLSCREEN_DURATION = 0.7;
+
+// FOV ramp for the three poses. Lower FOV = more telephoto = less
+// perspective distortion. The big drop from DESK → FULLSCREEN
+// stacks with the camera's forward motion to exaggerate the dolly.
+const ROOM_FOV = 50;
+const DESK_FOV = 32;
+const FULLSCREEN_FOV = 26;
 
 const tmpEuler = new THREE.Euler();
 
@@ -26,13 +35,29 @@ function zeroCameraRoll(cam: THREE.PerspectiveCamera) {
  * grows (~1.5 m → wider frame) without jumping as far +Z as a pure “pull back”
  * (which had sat behind the chair at z ≈ -0.7).
  */
-const END_CAM = new THREE.Vector3(1.5, 1.38, -0.92);
+// X aligned to the monitor centre, Y barely above the look-at Y so
+// the camera is almost level → minimal keystone on the monitor face
+// while still showing keyboard / mouse / PC tower in the lower
+// quarter of the frame (FOV 32 has enough vertical cone to catch
+// them). Pulled back to ~0.5 m in Z.
+const END_CAM = new THREE.Vector3(1.4525, 1.12, -0.5);
 
 /**
- * Focal point: same **x** as the camera so the view lies in a vertical plane
- * (no horizontal skew / “dutch angle”). Low Y + -Z keeps keyboard + mouse in frame.
+ * Focal point — MUST match FULLSCREEN_LOOK so the dolly into / out of
+ * fullscreen is pure forward translation. Keyboard / mouse / PC stay
+ * in the lower half of the frame because the camera Y sits above the
+ * look-at Y (downward tilt).
  */
-const END_LOOK = new THREE.Vector3(1.5, 0.89, -2.32);
+const END_LOOK = new THREE.Vector3(1.4525, 1.0556, -2.0048);
+
+/**
+ * Fullscreen dolly pose — camera flies right up to the monitor face so
+ * the screen rect fills (close to) the entire viewport. Centered on
+ * the monitor frame (Blender Z-up converted: 1.4525, 1.0556, -2.0048)
+ * with a small +Z standoff so we don't clip through the Html plane.
+ */
+const FULLSCREEN_CAM = new THREE.Vector3(1.4525, 1.0556, -1.22);
+const FULLSCREEN_LOOK = new THREE.Vector3(1.4525, 1.0556, -2.0048);
 
 /** Smooth at both ends — avoids a harsh ease-out “snap” at t = 0. */
 function easeInOutCubic(t: number) {
@@ -40,12 +65,17 @@ function easeInOutCubic(t: number) {
 }
 
 type DeskAnim = {
-  kind: "toDesk" | "fromDesk";
+  kind: "toDesk" | "fromDesk" | "toFullscreen" | "fromFullscreen";
   t: number;
+  duration: number;
   startCam: THREE.Vector3;
   startTarget: THREE.Vector3;
   endCam: THREE.Vector3;
   endTarget: THREE.Vector3;
+  startFov: number;
+  endFov: number;
+  /** Optional callback fired when the lerp completes. */
+  onDone?: () => void;
 };
 
 /**
@@ -55,8 +85,18 @@ type DeskAnim = {
  */
 export function DeskViewController({
   implRef,
+  fullscreenImplRef,
 }: {
   implRef: MutableRefObject<(() => void) | null>;
+  /**
+   * Set by App. `.current.toFullscreen(onArrive)` lerps the camera into
+   * the monitor face; `.current.fromFullscreen()` lerps back to the
+   * seated desk pose.
+   */
+  fullscreenImplRef?: MutableRefObject<{
+    toFullscreen: (onArrive: () => void) => void;
+    fromFullscreen: (onArrive?: () => void) => void;
+  } | null>;
 }) {
   const { camera, controls } = useThree();
   const sceneReadyRef = useSceneReadyRef();
@@ -91,10 +131,13 @@ export function DeskViewController({
       anim.current = {
         kind: "toDesk",
         t: 0,
+        duration: DURATION,
         startCam: savedPoseRef.current.cam.clone(),
         startTarget: savedPoseRef.current.target.clone(),
         endCam: END_CAM.clone(),
         endTarget: END_LOOK.clone(),
+        startFov: (camera as THREE.PerspectiveCamera).fov,
+        endFov: DESK_FOV,
       };
       orbit.enabled = false;
     };
@@ -103,6 +146,51 @@ export function DeskViewController({
       implRef.current = null;
     };
   }, [camera, controls, implRef, sceneReadyRef]);
+
+  // Expose fullscreen dolly. Camera flies from the seated pose into
+  // the monitor face; on arrival, `onArrive()` fires (App mounts the
+  // fullscreen overlay there). Reverse pulls it back to the seated
+  // pose so the OS can fade back to the monitor-mounted view.
+  useEffect(() => {
+    if (!fullscreenImplRef) return;
+    fullscreenImplRef.current = {
+      toFullscreen: (onArrive) => {
+        if (!controls) return;
+        if (anim.current) return;
+        anim.current = {
+          kind: "toFullscreen",
+          t: 0,
+          duration: FULLSCREEN_DURATION,
+          startCam: camera.position.clone(),
+          startTarget: (controls as OrbitControlsImpl).target.clone(),
+          endCam: FULLSCREEN_CAM.clone(),
+          endTarget: FULLSCREEN_LOOK.clone(),
+          startFov: (camera as THREE.PerspectiveCamera).fov,
+          endFov: FULLSCREEN_FOV,
+          onDone: onArrive,
+        };
+      },
+      fromFullscreen: (onArrive) => {
+        if (!controls) return;
+        if (anim.current) return;
+        anim.current = {
+          kind: "fromFullscreen",
+          t: 0,
+          duration: FULLSCREEN_DURATION,
+          startCam: camera.position.clone(),
+          startTarget: (controls as OrbitControlsImpl).target.clone(),
+          endCam: END_CAM.clone(),
+          endTarget: END_LOOK.clone(),
+          startFov: (camera as THREE.PerspectiveCamera).fov,
+          endFov: DESK_FOV,
+          onDone: onArrive,
+        };
+      },
+    };
+    return () => {
+      if (fullscreenImplRef) fullscreenImplRef.current = null;
+    };
+  }, [camera, controls, fullscreenImplRef]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -125,10 +213,13 @@ export function DeskViewController({
       anim.current = {
         kind: "fromDesk",
         t: 0,
+        duration: DURATION,
         startCam: END_CAM.clone(),
         startTarget: END_LOOK.clone(),
         endCam: savedPoseRef.current.cam.clone(),
         endTarget: savedPoseRef.current.target.clone(),
+        startFov: (camera as THREE.PerspectiveCamera).fov,
+        endFov: ROOM_FOV,
       };
       orbit.enabled = false;
     };
@@ -141,31 +232,39 @@ export function DeskViewController({
     const orbit = controls as OrbitControlsImpl;
     const a = anim.current;
     a.t += Math.min(dt, 0.05);
-    const u = Math.min(a.t / DURATION, 1);
+    const u = Math.min(a.t / a.duration, 1);
     const s = easeInOutCubic(u);
     camera.position.lerpVectors(a.startCam, a.endCam, s);
     orbit.target.lerpVectors(a.startTarget, a.endTarget, s);
     camera.up.set(0, 1, 0);
-    // Do not call orbit.update() while lerping (see below). Do not tie target.x
-    // to camera.x mid-tween — when Orbit has separated them in X, that forces a
-    // huge first-frame target jump and reads as a snap before the zoom.
     camera.lookAt(orbit.target);
+    const persp = camera as THREE.PerspectiveCamera;
+    persp.fov = THREE.MathUtils.lerp(a.startFov, a.endFov, s);
+    persp.updateProjectionMatrix();
     if (u >= 1) {
       camera.position.copy(a.endCam);
       orbit.target.copy(a.endTarget);
       camera.up.set(0, 1, 0);
       camera.lookAt(orbit.target);
+      persp.fov = a.endFov;
+      persp.updateProjectionMatrix();
+      // Only re-sync orbit's spherical when we're handing control
+      // back to the user (fromDesk → free orbit). For toDesk /
+      // to-or-fromFullscreen, orbit stays disabled and calling
+      // .update() can nudge the camera off the look-at axis we just
+      // set with lookAt(), reintroducing keystone / roll.
+      if (a.kind === "fromDesk") {
+        orbit.update();
+      }
       zeroCameraRoll(camera as THREE.PerspectiveCamera);
-      // One sync so Orbit’s internal spherical matches this pose. Camera
-      // controls stay disabled while seated — only re-enable on the way
-      // back to the free-orbit pose.
-      orbit.update();
       orbit.enabled = a.kind === "fromDesk";
+      const done = a.onDone;
       anim.current = null;
       if (a.kind === "toDesk") writeDeskActive(true);
-      // Glow + interactions stay gated off through the entire fromDesk lerp;
-      // clear the flag only once the camera has fully settled.
       if (a.kind === "fromDesk") writeDeskActive(false);
+      // `to/fromFullscreen` don't touch deskActive — the user is still
+      // seated at the desk; only the camera distance changes.
+      done?.();
     }
   });
 

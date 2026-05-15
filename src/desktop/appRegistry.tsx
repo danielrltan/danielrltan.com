@@ -6,6 +6,7 @@ import { ResumeWindow } from "./windows/ResumeWindow";
 import { ContactWindow } from "./windows/ContactWindow";
 import { TerminalWindow } from "./windows/TerminalWindow";
 import { GithubWindow } from "./windows/GithubWindow";
+import { PaintWindow } from "./windows/PaintWindow";
 
 export interface AppDef {
   id: string;
@@ -28,5 +29,8 @@ export const APPS: AppDef[] = [
   { id: "resume", label: "resume", shape: "book", size: [640, 560], Body: ResumeWindow },
   { id: "contact", label: "contact", shape: "envelope", size: [480, 440], Body: ContactWindow },
   { id: "terminal", label: "terminal", shape: "monitor", size: [640, 420], Body: TerminalWindow },
-  { id: "github", label: "github", shape: "icosahedron", size: [560, 480], Body: GithubWindow },
+  // Bigger default so the contributions grid + top 6 repos fit
+  // without scrolling.
+  { id: "github", label: "github", shape: "icosahedron", size: [820, 720], Body: GithubWindow },
+  { id: "paint", label: "paint", shape: "cube", size: [620, 480], Body: PaintWindow },
 ];

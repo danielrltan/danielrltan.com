@@ -189,7 +189,7 @@ export function PaintWidget() {
         ref={wrapRef}
         style={{
           width: "100%",
-          height: 180,
+          height: 60,
           position: "relative",
           borderRadius: 6,
           overflow: "hidden",

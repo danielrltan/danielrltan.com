@@ -48,27 +48,51 @@ export function AboutWindow() {
       <p
         style={{
           marginTop: 22,
-          fontSize: 13,
-          lineHeight: 1.7,
+          fontFamily: "var(--font-display)",
+          fontSize: 18,
+          fontWeight: 600,
           color: "var(--text-lt)",
-          opacity: 0.86,
+          letterSpacing: -0.2,
+          lineHeight: 1.4,
         }}
       >
-        Builds interactive 3D experiences, generative tools, and the
-        occasional weird OS-in-a-room. Currently obsessed with how physics,
-        sound, and small UI flourishes compound into things that feel
-        alive — which is also what this whole site is.
+        Welcome to my website.
       </p>
       <p
         style={{
-          marginTop: 16,
+          marginTop: 12,
           fontSize: 13,
           lineHeight: 1.7,
           color: "var(--text-lt)",
-          opacity: 0.86,
+          opacity: 0.85,
+        }}
+      >
+        Thanks for stopping by. This whole site is a tiny 3D bedroom
+        you can poke at — drag the keyboard, throw the cat plush, sit
+        down at the desk and open this OS. Everything reacts.
+      </p>
+      <p
+        style={{
+          marginTop: 12,
+          fontSize: 13,
+          lineHeight: 1.7,
+          color: "var(--text-lt)",
+          opacity: 0.85,
         }}
       >
         Open the icons on the desktop to dig deeper.
+      </p>
+      <p
+        style={{
+          marginTop: 20,
+          fontFamily: "var(--font-mono)",
+          fontSize: 11,
+          letterSpacing: 2,
+          textTransform: "uppercase",
+          color: "var(--muted)",
+        }}
+      >
+        more under construction
       </p>
     </div>
   );

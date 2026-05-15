@@ -32,6 +32,39 @@ const MonitorScreen = lazy(() =>
   import("./MonitorScreen").then((m) => ({ default: m.MonitorScreen })),
 );
 
+/**
+ * Fullscreen overlay — the OS shown at full viewport size. The actual
+ * zoom-in is performed by `DeskViewController.toFullscreen` (a 3D
+ * camera dolly into the monitor mesh); App only mounts this overlay
+ * once the camera has arrived.
+ *
+ * Mounts INSTANTLY (no fade) so it's atomically swapped with the
+ * drei-Html-rendered OS that was on the monitor: in the same React
+ * commit, `MonitorScreen` unmounts and this overlay appears at full
+ * opacity. The old fade-in introduced ~200 ms where neither was
+ * visible, which read as a black-monitor "snap."
+ */
+function FullscreenOverlay({
+  open,
+  children,
+}: {
+  open: boolean;
+  children: React.ReactNode;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 50,
+      }}
+    >
+      <Suspense fallback={null}>{children}</Suspense>
+    </div>
+  );
+}
+
 export default function App() {
   const roomGroupRef = useRef<THREE.Group | null>(null);
   const sceneReadyRef = useRef(false);
@@ -55,6 +88,92 @@ export default function App() {
   }));
   const deskViewImplRef = useRef<(() => void) | null>(null);
   const startDeskView = useCallback(() => deskViewImplRef.current?.(), []);
+  const fullscreenImplRef = useRef<{
+    toFullscreen: (onArrive: () => void) => void;
+    fromFullscreen: (onArrive?: () => void) => void;
+  } | null>(null);
+  // Latch that's true while a fullscreen camera lerp + overlay swap is
+  // in flight. Without it, hammering the widget interleaves multiple
+  // toggle attempts: DeskViewController bails on the second click
+  // (anim is busy) but App's React state can still flip, leaving the
+  // camera at the fullscreen pose with no overlay mounted — reads as
+  // a black screen because the drei Html plane fills the viewport
+  // and the surrounding scene is occluded.
+  const cameraBusyRef = useRef(false);
+  // True while the camera is mid-fromDesk lerp on the way out. Used
+  // to fade the monitor-mounted OS to black like a real screen
+  // going to sleep, before MonitorScreen unmounts at the end of the
+  // lerp.
+  const [sleeping, setSleeping] = useState(false);
+  // Reset the sleep flag once the camera has fully landed back in
+  // the room (deskViewActive flips false at end of fromDesk).
+  useEffect(() => {
+    if (!deskViewActive) setSleeping(false);
+  }, [deskViewActive]);
+  // Boot sequence plays the first time the user sits at the desk per
+  // session. Subsequent re-entries skip it (the OS just fades in).
+  const [hasBooted, setHasBooted] = useState(false);
+  useEffect(() => {
+    if (deskViewActive && !hasBooted) {
+      // We're sitting at the desk for the first time. Mark booted so
+      // future desk-view entries skip the BootSequence.
+      // (Actual boot ticking happens inside the BootSequence comp.)
+      const t = setTimeout(() => setHasBooted(true), 3200);
+      return () => clearTimeout(t);
+    }
+  }, [deskViewActive, hasBooted]);
+
+  // Synthesised Escape lets the in-OS "room" button reuse the same
+  // fromDesk transition the keyboard handler in DeskViewController
+  // already runs.
+  const backToRoom = useCallback(() => {
+    if (cameraBusyRef.current) return;
+    const goRoom = () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    };
+    if (osOpen) {
+      cameraBusyRef.current = true;
+      // Unmount overlay first so the dolly is actually visible —
+      // then run fromFullscreen, then trigger the fromDesk return.
+      setOsOpen(false);
+      requestAnimationFrame(() => {
+        fullscreenImplRef.current?.fromFullscreen(() => {
+          cameraBusyRef.current = false;
+          goRoom();
+        });
+      });
+    } else {
+      goRoom();
+    }
+  }, [osOpen]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (cameraBusyRef.current) return;
+    if (!osOpen) {
+      cameraBusyRef.current = true;
+      // Keep MonitorScreen mounted during the entire dolly so the
+      // OS visibly grows with the camera. The fullscreen overlay
+      // takes over instantly at the END of the lerp.
+      fullscreenImplRef.current?.toFullscreen(() => {
+        setOsOpen(true);
+        cameraBusyRef.current = false;
+      });
+    } else {
+      cameraBusyRef.current = true;
+      // Unmount the fullscreen overlay FIRST so the user actually
+      // sees the camera dolly back to the seated pose. If we leave
+      // the overlay up during the lerp, it covers the viewport and
+      // the zoom-out is invisible — the visual effect of the
+      // overlay simply disappearing at the end reads as "we just
+      // deleted it" with no zoom feedback.
+      setOsOpen(false);
+      requestAnimationFrame(() => {
+        fullscreenImplRef.current?.fromFullscreen(() => {
+          cameraBusyRef.current = false;
+        });
+      });
+    }
+  }, [osOpen]);
 
   useEffect(() => {
     const onResize = () =>
@@ -63,26 +182,44 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // Keyboard shortcuts while at the desk:
+  //   F      → enter fullscreen (seated, not already fullscreen)
+  //   Escape → from fullscreen, take user all the way back to room
+  //            (intercepts in capture phase + stopImmediatePropagation
+  //             so DeskViewController's own Escape handler doesn't
+  //             race us and start a half-sequence fromDesk lerp).
   useEffect(() => {
     if (!sceneReady) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === "Escape" && osOpen) {
-        setOsOpen(false);
+      const el = e.target;
+      if (
+        el instanceof HTMLElement &&
+        (el.isContentEditable ||
+          el.closest("input, textarea, select, [contenteditable='true']"))
+      ) {
         return;
       }
-      if (e.code === "KeyO" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const el = e.target;
-        if (
-          el instanceof HTMLElement &&
-          (el.isContentEditable || el.closest("input, textarea, select"))
-        )
-          return;
-        setOsOpen((v) => !v);
+      if (e.code === "KeyF" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (deskViewActive && !osOpen) {
+          e.preventDefault();
+          toggleFullscreen();
+        }
+      } else if (e.code === "Escape" && osOpen) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        backToRoom();
+      } else if (e.code === "Escape" && deskViewActive && !osOpen) {
+        // Don't stop — DeskViewController's bubble-phase Escape
+        // handler still needs to fire fromDesk. Just trip the
+        // sleeping flag so the monitor OS fades to black during the
+        // lerp out.
+        setSleeping(true);
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [sceneReady, osOpen]);
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", onKey, { capture: true });
+  }, [sceneReady, osOpen, deskViewActive, toggleFullscreen, backToRoom]);
 
   const startTransition = useCallback(() => {
     if (transitionStarted) return;
@@ -164,7 +301,10 @@ export default function App() {
         // Two zones: in the room, hide the system cursor and let our
         // custom ring/dot do the work. At the desk, the OS uses the
         // native cursor — our custom one is unmounted below.
-        cursor: !sceneReady ? "pointer" : deskViewActive ? "auto" : "none",
+        // Always hide the OS cursor whenever the custom MoveableCursor
+        // is mounted (room view, any phase). Desk view restores the
+        // system cursor so the OS HTML overlay is usable normally.
+        cursor: deskViewActive ? "auto" : "none",
       }}
       onClick={startTransition}
       onPointerEnter={() => {
@@ -261,7 +401,10 @@ export default function App() {
                   zoomToCursor={false}
                   enablePan
                 />
-                <DeskViewController implRef={deskViewImplRef} />
+                <DeskViewController
+                  implRef={deskViewImplRef}
+                  fullscreenImplRef={fullscreenImplRef}
+                />
               </>
             )}
 
@@ -270,18 +413,49 @@ export default function App() {
                 CSS-3D plane clips through scene meshes from off-axis
                 angles, so the computer effectively "goes to sleep" when
                 Escape returns the camera to free-orbit. */}
-            {sceneReady && deskViewActive && (
+            {sceneReady && deskViewActive && !osOpen && (
               // Nested Suspense so the OS lazy-chunk's brief
-              // suspend-on-mount doesn't tear down the outer scene
-              // (lights, room, postprocessing) — without this, every
-              // desk transition flashed the entire website to black
-              // for the one frame React spent resolving the lazy
-              // import.
+              // suspend-on-mount doesn't tear down the outer scene.
+              // Unmounted entirely while the fullscreen overlay is
+              // up — otherwise two DesktopOS instances run side by
+              // side (double Spotify, double Weather fetch, etc.)
+              // and the monitor-mounted one bleeds through the
+              // overlay's transparent rounded corners.
               <Suspense fallback={null}>
                 <MonitorScreen>
-                  <BootSequence width={1100} height={660}>
-                    <DesktopOS width={1100} height={660} />
-                  </BootSequence>
+                  {/* `sleeping` wrapper — fades the OS to black like
+                      a screen powering off as the camera lerps back
+                      to the room. The wrapper has its own black bg
+                      so the unmount at end of lerp is invisible. */}
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      background: "#000",
+                      opacity: sleeping ? 0 : 1,
+                      transition: "opacity 1.2s ease",
+                    }}
+                  >
+                    {hasBooted ? (
+                      <DesktopOS
+                        width={1100}
+                        height={660}
+                        isFullscreen={osOpen}
+                        onToggleFullscreen={toggleFullscreen}
+                        onBackToRoom={backToRoom}
+                      />
+                    ) : (
+                      <BootSequence width={1100} height={660}>
+                        <DesktopOS
+                          width={1100}
+                          height={660}
+                          isFullscreen={osOpen}
+                          onToggleFullscreen={toggleFullscreen}
+                          onBackToRoom={backToRoom}
+                        />
+                      </BootSequence>
+                    )}
+                  </div>
                 </MonitorScreen>
               </Suspense>
             )}
@@ -298,7 +472,39 @@ export default function App() {
         </SceneStateProvider>
       </Canvas>
 
-      {sceneReady && !deskViewActive && <MoveableCursor hot={moveableHover} />}
+      {!deskViewActive && <MoveableCursor hot={moveableHover} />}
+
+      {/* Hint banner — appears centered at top of viewport. */}
+      {sceneReady && (deskViewActive || osOpen) && !sleeping && (
+        <div
+          style={{
+            position: "fixed",
+            top: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 60,
+            padding: "8px 14px",
+            background: "rgba(20, 18, 16, 0.65)",
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            borderRadius: 8,
+            color: "#f0e0d0",
+            fontFamily:
+              'ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace',
+            fontSize: 11,
+            letterSpacing: 2,
+            textTransform: "uppercase",
+            pointerEvents: "none",
+            opacity: 0.9,
+            transition: "opacity 0.3s ease",
+          }}
+        >
+          {osOpen
+            ? "press esc to return to room"
+            : "press f to fullscreen"}
+        </div>
+      )}
 
       <LoadingScreen />
 
@@ -348,18 +554,18 @@ export default function App() {
         </button>
       )}
 
-      {/* DesktopOS overlay */}
-      {osOpen && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
-          <Suspense fallback={null}>
-            <DesktopOS
-              width={osSize.w}
-              height={osSize.h}
-              onClose={() => setOsOpen(false)}
-            />
-          </Suspense>
-        </div>
-      )}
+      {/* Fullscreen DesktopOS — rendered at full window dimensions so
+          icons / widgets / paint canvas all reflow to use the
+          available space. */}
+      <FullscreenOverlay open={osOpen}>
+        <DesktopOS
+          width={osSize.w}
+          height={osSize.h}
+          isFullscreen={true}
+          onToggleFullscreen={toggleFullscreen}
+          onBackToRoom={backToRoom}
+        />
+      </FullscreenOverlay>
 
       <div
         style={{

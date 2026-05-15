@@ -41,7 +41,7 @@ const HOVER_BONUS = .6;
 const HOVER_PULSE_DEPTH = 0.5;
 const PULSE_RATE = 3.0;
 const SHOCKWAVE_DECAY = 6;
-const FADE_RATE = 0.06;
+const FADE_RATE = 0.025;
 
 /**
  * Rounded-box hover glow. Inverted-hull style (BackSide + slightly larger
