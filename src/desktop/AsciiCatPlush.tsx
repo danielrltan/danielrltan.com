@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { AsciiEffect, GLTFLoader } from "three-stdlib";
+import { AsciiEffect, DRACOLoader, GLTFLoader } from "three-stdlib";
 
 interface Props {
   /** CSS pixel size of the square widget (denser char grid at larger sizes). */
@@ -16,9 +16,10 @@ interface Props {
 /**
  * 3D cat plush from the room GLB, rendered as ASCII text via
  * `AsciiEffect`. Vanilla three.js (not R3F) because the effect wraps the
- * renderer and emits a DOM `<table>` — incompatible with R3F's render
- * loop. The browser HTTP-cache shares the GLB with the room, so this
- * doesn't pay a second download.
+ * renderer and emits a DOM `<table>`, incompatible with R3F's render
+ * loop. The room.glb is HTTP-cached by the time this mounts (the main
+ * scene loaded it first), so the only cost here is a one-time parse —
+ * well within the boot sequence's 3-second window.
  */
 export function AsciiCatPlush({
   size = 220,
@@ -40,13 +41,14 @@ export function AsciiCatPlush({
     const renderer = new THREE.WebGLRenderer({
       antialias: false,
       alpha: true,
+      powerPreference: "low-power",
     });
     renderer.setPixelRatio(1);
     renderer.setSize(size, size);
 
     // `invert: false` — bright pixels (the lit cat) → densest chars,
-    // black background → spaces. With `invert: true` the background was
-    // the dense one, which painted a solid orange box around the cat.
+    // black background → spaces. `invert: true` painted a solid orange
+    // box around the cat instead.
     const effect = new AsciiEffect(renderer, " .:-=+*#%@", {
       invert: false,
       resolution: 0.18,
@@ -82,7 +84,16 @@ export function AsciiCatPlush({
     let pivot: THREE.Group | null = null;
     let disposed = false;
 
+    // room.glb is Draco-compressed (KHR_draco_mesh_compression). The
+    // GLTFLoader needs a DRACOLoader bound to it before .load() or the
+    // mesh data comes back empty. gstatic ships the wasm decoder.
     const loader = new GLTFLoader();
+    const draco = new DRACOLoader();
+    draco.setDecoderPath(
+      "https://www.gstatic.com/draco/versioned/decoders/1.5.7/",
+    );
+    loader.setDRACOLoader(draco);
+
     loader.load(
       "/room.glb",
       (gltf) => {
@@ -96,8 +107,6 @@ export function AsciiCatPlush({
         const scale = 1.3 / maxDim;
         pivot = new THREE.Group();
         cat.position.sub(center);
-        // Neutral matte material so the ASCII intensity ramp reads cleanly
-        // independent of the room's warm lighting.
         cat.traverse((o) => {
           const m = o as THREE.Mesh;
           if (m.isMesh)

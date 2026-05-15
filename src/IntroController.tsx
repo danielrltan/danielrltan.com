@@ -62,11 +62,6 @@ export function IntroController({
       const floatY = Math.sin(elapsed * FLOAT_FREQ) * FLOAT_AMPLITUDE;
       const hoverLift = isHoveringRef.current ? HOVER_LIFT : 0;
 
-      // TEMP DEBUG: verify pointer.x actually reaches +1 on the right edge.
-      // If it stays ≤ 0 while the cursor is in the right half, something is
-      // intercepting pointermove on the canvas.
-      console.log("pointer.x:", state.pointer.x.toFixed(3));
-
       // pointer.x: -1 (left) to +1 (right)
       // pointer.y: -1 (bottom) to +1 (top)
       // Cursor RIGHT  → room turns right (negative Y).

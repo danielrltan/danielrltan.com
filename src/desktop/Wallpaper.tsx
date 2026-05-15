@@ -23,23 +23,24 @@ export function Wallpaper() {
       <div className="bw-blob bw-blob-a" />
       <div className="bw-blob bw-blob-b" />
       <div className="bw-blob bw-blob-c" />
-      <div className="bw-blob bw-blob-d" />
       <div className="bw-dotgrid" />
 
       <style>{`
         .bw-blob {
           position: absolute;
           border-radius: 50%;
-          filter: blur(80px);
+          /* 80px blur × 4 blobs × multiply blend was a heavy compositor
+             pass every frame. 48px blur on 3 blobs, no blend-mode, still
+             reads as soft warm gradients but is multiple-x cheaper. */
+          filter: blur(48px);
           will-change: transform;
-          mix-blend-mode: multiply;
         }
         .bw-blob-a {
           width: 720px; height: 720px;
           background: radial-gradient(circle, color-mix(in srgb, var(--accent) 70%, transparent) 0%, transparent 62%);
           top: -160px;
           left: -180px;
-          opacity: 0.95;
+          opacity: 0.85;
           animation: bw-drift-a 26s ease-in-out infinite alternate;
         }
         .bw-blob-b {
@@ -47,7 +48,7 @@ export function Wallpaper() {
           background: radial-gradient(circle, color-mix(in srgb, var(--accent2) 75%, transparent) 0%, transparent 64%);
           bottom: -180px;
           right: -160px;
-          opacity: 0.9;
+          opacity: 0.8;
           animation: bw-drift-b 32s ease-in-out infinite alternate;
         }
         .bw-blob-c {
@@ -55,16 +56,8 @@ export function Wallpaper() {
           background: radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent) 0%, transparent 68%);
           top: 30%;
           left: 38%;
-          opacity: 0.75;
-          animation: bw-drift-c 22s ease-in-out infinite alternate;
-        }
-        .bw-blob-d {
-          width: 540px; height: 540px;
-          background: radial-gradient(circle, color-mix(in srgb, var(--accent2) 50%, transparent) 0%, transparent 65%);
-          top: 8%;
-          right: 12%;
           opacity: 0.65;
-          animation: bw-drift-d 38s ease-in-out infinite alternate;
+          animation: bw-drift-c 22s ease-in-out infinite alternate;
         }
         .bw-dotgrid {
           position: absolute;
@@ -89,11 +82,6 @@ export function Wallpaper() {
           0%   { transform: translate(0, 0)        scale(1);   }
           50%  { transform: translate(-14vw, 12vh) scale(1.1); }
           100% { transform: translate(14vw, -10vh) scale(0.9); }
-        }
-        @keyframes bw-drift-d {
-          0%   { transform: translate(0, 0)        scale(1);    }
-          50%  { transform: translate(-18vw, 24vh) scale(0.92); }
-          100% { transform: translate(8vw, 10vh)   scale(1.05); }
         }
 
         @media (prefers-reduced-motion: reduce) {

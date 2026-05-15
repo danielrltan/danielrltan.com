@@ -86,30 +86,16 @@ export function MonitorScreen({
 
   useEffect(() => {
     const screen = scene.getObjectByName("clk_monitor_frame");
-    if (!screen) {
-      console.warn("[MonitorScreen] clk_monitor_frame not in GLB; using fallback pose");
-      return;
-    }
+    if (!screen) return;
     scene.updateMatrixWorld(true);
     // The GLB baked Blender world transforms into vertex coordinates, so
     // `matrixWorld.decompose` returns identity — useless. Read the actual
     // geometry world-AABB instead; that IS the mesh's world placement.
     const box = new THREE.Box3().setFromObject(screen);
-    if (!isFinite(box.min.x)) {
-      console.warn("[MonitorScreen] empty bounding box; keeping fallback");
-      return;
-    }
+    if (!isFinite(box.min.x)) return;
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const face = deriveFace(size);
-    console.log(
-      "[MonitorScreen] center:",
-      center.toArray().map((n) => n.toFixed(3)),
-      "size:",
-      size.toArray().map((n) => n.toFixed(3)),
-      "→ face:",
-      `${face.width.toFixed(3)} × ${face.height.toFixed(3)}`,
-    );
     setPose({ center, width: face.width, height: face.height, rotation: face.rotation });
   }, [scene]);
 

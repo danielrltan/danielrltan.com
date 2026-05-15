@@ -126,6 +126,10 @@ export function DraggableRigidBody({
   const activatedRef = useRef(false);
   const checkAccum = useRef(0);
   const elapsedTime = useRef(0);
+  // Sanity-check state: spawn pose for resets + frame counter so we
+  // only run the check every 10 frames (~6 Hz at 60 fps).
+  const spawnPos = useRef<[number, number, number]>(position);
+  const frameCount = useRef(0);
 
   const plane = useRef(new THREE.Plane());
   const cursorTarget = useRef(new THREE.Vector3());
@@ -261,6 +265,37 @@ export function DraggableRigidBody({
         }
       }
       return;
+    }
+
+    // ----- Sanity reset -----
+    // Activated, untouched bodies occasionally clip through a wall and
+    // free-fall into the void, or Rapier's solver gets a contact stack
+    // that drives the body to absurd velocity. Both look bad and stay
+    // broken until reload. Every ~6 Hz, check for either condition and
+    // teleport the body back to its spawn pose with zeroed velocity.
+    frameCount.current++;
+    if (!dragging.current && frameCount.current % 10 === 0) {
+      const pos = rb.current.translation();
+      const vel = rb.current.linvel();
+      const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
+      const outOfBounds =
+        pos.y < -2 ||
+        pos.y > 5 ||
+        Math.abs(pos.x) > 5 ||
+        Math.abs(pos.z) > 5;
+      const spazzing = speed > 50;
+      if (outOfBounds || spazzing) {
+        rb.current.setTranslation(
+          {
+            x: spawnPos.current[0],
+            y: spawnPos.current[1],
+            z: spawnPos.current[2],
+          },
+          true,
+        );
+        rb.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        rb.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      }
     }
 
     if (!dragging.current) return;

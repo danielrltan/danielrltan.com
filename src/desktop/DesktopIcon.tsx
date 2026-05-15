@@ -155,9 +155,14 @@ export function DesktopIcon({
     >
       <div style={{ width: 72, height: 72, pointerEvents: "none" }}>
         <Canvas
-          dpr={[1, 1.5]}
+          // dpr=1 is plenty at 72×72 — bumping to 1.5 doubled pixel work
+          // for no perceivable gain on a tiny icon. antialias off saves
+          // another large chunk of fillrate per icon, and the icons each
+          // own a WebGL context (6 contexts on the OS) so per-icon cost
+          // multiplies.
+          dpr={1}
           camera={{ position: [0, 0, 3.2], fov: 35 }}
-          gl={{ antialias: true, alpha: true }}
+          gl={{ antialias: false, alpha: true, powerPreference: "low-power" }}
           style={{ width: "100%", height: "100%" }}
         >
           <ambientLight intensity={0.55} />
@@ -249,7 +254,7 @@ function SpinningMesh({ shape, hover }: { shape: IconShape; hover: boolean }) {
     case "torus":
       return (
         <mesh ref={ref as React.RefObject<THREE.Mesh>}>
-          <torusGeometry args={[0.7, 0.28, 24, 64]} />
+          <torusGeometry args={[0.7, 0.28, 12, 28]} />
           {matAccent}
         </mesh>
       );
@@ -274,7 +279,7 @@ function SpinningMesh({ shape, hover }: { shape: IconShape; hover: boolean }) {
             {matAccent}
           </mesh>
           <mesh position={[0, 0, 0.51]}>
-            <ringGeometry args={[0.18, 0.34, 32]} />
+            <ringGeometry args={[0.18, 0.34, 20]} />
             {matAccent2}
           </mesh>
         </group>

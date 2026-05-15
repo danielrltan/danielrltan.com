@@ -4,8 +4,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Daniel's Room</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #330a05; }
+      /* Boot screen — visible immediately on first paint, before any JS
+         parses. React removes #boot-screen from the DOM once the scene is
+         ready (LoadingScreen handles that in App.tsx). */
+      #boot-screen {
+        position: fixed;
+        inset: 0;
+        background: #330a05;
+        color: #ffb077;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+        font-size: 12px;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        z-index: 9999;
+      }
+      #boot-screen .bs-pulse {
+        opacity: 0.55;
+        animation: bs-pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes bs-pulse {
+        0%, 100% { opacity: 0.30; }
+        50%      { opacity: 0.85; }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-screen"><span class="bs-pulse">loading</span></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -15,10 +15,22 @@ import { SceneStateProvider } from "./SceneState";
 import { MoveableCursor } from "./MoveableCursor";
 import { DeskViewController } from "./DeskViewController";
 import { startAmbience } from "./audio";
-import { DesktopOS } from "./desktop";
-import { BootSequence } from "./desktop/BootSequence";
-import { MonitorScreen } from "./MonitorScreen";
+import { LoadingScreen } from "./LoadingScreen";
 import { Monitor } from "lucide-react";
+
+// Lazy-load everything OS-related — none of it renders until the camera
+// is seated at the desk, so its code (~hundreds of kB before splitting)
+// stays out of the first paint. While the camera is in free-orbit the
+// browser keeps idle on this bundle entirely.
+const DesktopOS = lazy(() =>
+  import("./desktop").then((m) => ({ default: m.DesktopOS })),
+);
+const BootSequence = lazy(() =>
+  import("./desktop/BootSequence").then((m) => ({ default: m.BootSequence })),
+);
+const MonitorScreen = lazy(() =>
+  import("./MonitorScreen").then((m) => ({ default: m.MonitorScreen })),
+);
 
 export default function App() {
   const roomGroupRef = useRef<THREE.Group | null>(null);
@@ -83,6 +95,17 @@ export default function App() {
     sceneReadyRef.current = true;
     setSceneReady(true);
   }, []);
+
+  // Once the intro lands, kick off the OS chunk downloads so they're
+  // already cached when the user clicks the desk. Without this, the
+  // dark-monitor → boot-screen transition has a 100-500 ms gap while
+  // the chunks stream in (visible as a black flash).
+  useEffect(() => {
+    if (!sceneReady) return;
+    void import("./desktop");
+    void import("./desktop/BootSequence");
+    void import("./MonitorScreen");
+  }, [sceneReady]);
 
   // Shift + left button = pan; release Shift = left rotates again (slow rotateSpeed below).
   useEffect(() => {
@@ -248,11 +271,19 @@ export default function App() {
                 angles, so the computer effectively "goes to sleep" when
                 Escape returns the camera to free-orbit. */}
             {sceneReady && deskViewActive && (
-              <MonitorScreen>
-                <BootSequence width={1100} height={660}>
-                  <DesktopOS width={1100} height={660} />
-                </BootSequence>
-              </MonitorScreen>
+              // Nested Suspense so the OS lazy-chunk's brief
+              // suspend-on-mount doesn't tear down the outer scene
+              // (lights, room, postprocessing) — without this, every
+              // desk transition flashed the entire website to black
+              // for the one frame React spent resolving the lazy
+              // import.
+              <Suspense fallback={null}>
+                <MonitorScreen>
+                  <BootSequence width={1100} height={660}>
+                    <DesktopOS width={1100} height={660} />
+                  </BootSequence>
+                </MonitorScreen>
+              </Suspense>
             )}
 
             <EffectComposer>
@@ -268,6 +299,8 @@ export default function App() {
       </Canvas>
 
       {sceneReady && !deskViewActive && <MoveableCursor hot={moveableHover} />}
+
+      <LoadingScreen />
 
       {/* OS launcher chip hidden for prod — the OS is reached by clicking
           the keyboard / monitor in the 3D scene. Press `O` still toggles
@@ -318,11 +351,13 @@ export default function App() {
       {/* DesktopOS overlay */}
       {osOpen && (
         <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
-          <DesktopOS
-            width={osSize.w}
-            height={osSize.h}
-            onClose={() => setOsOpen(false)}
-          />
+          <Suspense fallback={null}>
+            <DesktopOS
+              width={osSize.w}
+              height={osSize.h}
+              onClose={() => setOsOpen(false)}
+            />
+          </Suspense>
         </div>
       )}
 

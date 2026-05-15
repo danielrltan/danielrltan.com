@@ -25,15 +25,23 @@ interface Props {
   padding?: number;
   /** Corner rounding radius. */
   radius?: number;
+  /**
+   * Amplitude of an idle (no-hover) breathing pulse, as a fraction of
+   * full intensity. 0 = no idle pulse (default, matches keyboard glow
+   * behaviour). Used for the monitor glow so it visibly breathes.
+   */
+  idlePulseDepth?: number;
+  /** Idle pulse cycles per second × 2π. Default 3.0 ≈ ~0.5 Hz. */
+  idlePulseRate?: number;
 }
 
 // Tuning constants — shared across every glow so they breathe in sync.
 const BASE_INTENSITY = 0.6;
-const HOVER_BONUS = 0.35;
-const HOVER_PULSE_DEPTH = 0.6;
+const HOVER_BONUS = .6;
+const HOVER_PULSE_DEPTH = 0.5;
 const PULSE_RATE = 3.0;
-const SHOCKWAVE_DECAY = 3.5;
-const FADE_RATE = 0.12;
+const SHOCKWAVE_DECAY = 6;
+const FADE_RATE = 0.06;
 
 /**
  * Rounded-box hover glow. Inverted-hull style (BackSide + slightly larger
@@ -48,6 +56,8 @@ export function GlowBox({
   alwaysOn = false,
   padding = 0.01,
   radius = 0.025,
+  idlePulseDepth = 0,
+  idlePulseRate = PULSE_RATE,
 }: Props) {
   // Read each frame — these refs flip without re-rendering, so a render-time
   // boolean would stay stale (glow staying visible after entering desk view).
@@ -89,7 +99,12 @@ export function GlowBox({
 
   useEffect(() => () => material.dispose(), [material]);
 
-  const smoothRef = useRef(0);
+  // Two smoothed channels so the breath (base) and the hover boost
+  // (hover) can be combined without one inheriting the other's
+  // behaviour: base pulses with idleFactor; hover adds a flat,
+  // unmodulated bonus on top so the "I'm hovered" cue stays steady.
+  const baseRef = useRef(0);
+  const hoverRef = useRef(0);
 
   useFrame((state, dt) => {
     const u = material.uniforms;
@@ -98,10 +113,14 @@ export function GlowBox({
     const enabled =
       sceneReadyRef?.current === true && deskViewActiveRef?.current !== true;
     const base = alwaysOn ? BASE_INTENSITY : 0;
-    const target = enabled ? base + (hover ? HOVER_BONUS : 0) : 0;
-    smoothRef.current = THREE.MathUtils.lerp(
-      smoothRef.current,
-      target,
+    baseRef.current = THREE.MathUtils.lerp(
+      baseRef.current,
+      enabled ? base : 0,
+      FADE_RATE,
+    );
+    hoverRef.current = THREE.MathUtils.lerp(
+      hoverRef.current,
+      enabled && hover ? HOVER_BONUS : 0,
       FADE_RATE,
     );
     if (shockwaveRef) {
@@ -110,18 +129,30 @@ export function GlowBox({
         shockwaveRef.current - dt * SHOCKWAVE_DECAY,
       );
     }
+    const shock = shockwaveRef?.current ?? 0;
+
+    // Idle pulse modulates the BASE intensity only. Hover bonus is
+    // additive and constant so hovering reads as a sustained brightness
+    // step that doesn't blink with the breath.
+    const idleFactor =
+      enabled && idlePulseDepth > 0
+        ? 1 + idlePulseDepth * Math.sin(state.clock.elapsedTime * idlePulseRate)
+        : 1;
+    u.intensity.value = baseRef.current * idleFactor + hoverRef.current + shock;
+
+    // Hover-only colour pulse (the original keyboard-style "tap" pulse,
+    // scales in with hover). Kept as a `pulse` shader uniform so it
+    // doesn't affect the alpha breathing above.
     const hoverProgress = THREE.MathUtils.clamp(
-      (smoothRef.current - base) / HOVER_BONUS,
+      hoverRef.current / HOVER_BONUS,
       0,
       1,
     );
-    const shock = shockwaveRef?.current ?? 0;
-    u.intensity.value = smoothRef.current + shock;
-    u.pulse.value =
-      1.0 +
+    const hoverPulse =
       HOVER_PULSE_DEPTH *
-        hoverProgress *
-        Math.sin(state.clock.elapsedTime * PULSE_RATE);
+      hoverProgress *
+      Math.sin(state.clock.elapsedTime * PULSE_RATE);
+    u.pulse.value = 1.0 + hoverPulse;
   });
 
   const size: [number, number, number] = [

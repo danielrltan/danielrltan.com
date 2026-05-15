@@ -110,11 +110,13 @@ const HARDCODED_STATICS: ReadonlyArray<{ name: string } & CuboidSpec> = [
 const HARDCODED_NAMES = new Set(HARDCODED_STATICS.map((s) => s.name));
 
 /**
- * Static bodies that can start seated desk view. `desk` uses a mesh allowlist
- * (see `matchesDeskFocusPickMesh`); `th_keyboard_frame` is small enough to use
- * the whole collider (keys live on the scene root, not on this body).
+ * Static bodies that can start seated desk view. Only the desk itself
+ * (and via the allowlist, only its monitor sub-meshes — see
+ * `matchesDeskFocusPickMesh`). The keyboard frame is no longer a
+ * trigger — the monitor is the visual focus and the only thing the
+ * user is expected to click to sit down.
  */
-const DESK_FOCUS_STATIC_NAMES = new Set<string>(["desk", "th_keyboard_frame"]);
+const DESK_FOCUS_STATIC_NAMES = new Set<string>(["desk"]);
 
 /** Under the `desk` static only: meshes that count as “desk peripherals” for focus. */
 const DESK_FOCUS_MESH_PREFIXES: ReadonlyArray<string> = ["monitor_"];
@@ -402,6 +404,15 @@ function KeyboardStaticHoverEdges({
     onPointerDown(e);
   };
 
+  // Hover state + shockwave are kept so the click flow (and the
+  // possibility of re-introducing a per-mesh effect later) still works,
+  // but the GlowBox has moved to the monitor instead — the keyboard
+  // sits flush with the desk and the white outline read as "selected"
+  // even when the user wasn't trying to focus it.
+  void hover;
+  void setHover;
+  void shockwaveRef;
+  void half;
   return (
     <group
       onPointerDown={handlePointerDown}
@@ -413,13 +424,72 @@ function KeyboardStaticHoverEdges({
       onPointerOut={() => setHover(false)}
     >
       <primitive object={object} />
+    </group>
+  );
+}
+
+interface MonitorPose {
+  center: [number, number, number];
+  half: [number, number, number];
+}
+
+/**
+ * Glow halo around the monitor — telegraphs the monitor as the
+ * clickable focus surface. AABB read from `clk_monitor_frame`.
+ *
+ * Behaviour:
+ *   - Always breathing (idle pulse) when not seated.
+ *   - Hover brightens it (HOVER_BONUS in GlowBox.tsx).
+ *   - Click triggers a shockwave + enters desk view.
+ *
+ * The glow mesh keeps raycast ON so the group catches pointer events.
+ * Calling `startDeskView` directly means we don't rely on the
+ * underlying desk-static's monitor-sub-mesh allowlist for this click.
+ */
+function MonitorGlow({ pose }: { pose: MonitorPose | null }) {
+  const [hover, setHover] = useState(false);
+  const shockwaveRef = useRef(0);
+  const deskActive = useDeskViewActiveRef();
+  const sceneReady = useSceneReadyRef();
+  const startDeskView = useStartDeskView();
+
+  if (!pose || deskActive?.current) return null;
+  return (
+    <group
+      position={pose.center}
+      onPointerOver={(e) => {
+        if (!sceneReady?.current) return;
+        e.stopPropagation();
+        setHover(true);
+      }}
+      onPointerOut={() => setHover(false)}
+      onPointerDown={(e) => {
+        if (!sceneReady?.current) return;
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        shockwaveRef.current = 1;
+        startDeskView();
+      }}
+    >
+      {/* ----- MONITOR GLOW TUNING -----------------------------------
+          padding         outline thickness from the monitor's AABB
+          radius          corner rounding of the glow box
+          idlePulseDepth  breath amplitude (0 = no pulse). Pulses
+                          INTENSITY now, so the outline visibly fades
+                          rather than blinking on/off.
+          idlePulseRate   pulse speed (radians/sec, ~2π/rate per cycle).
+          Hover bonus + shockwave decay live in GlowBox.tsx
+          (HOVER_BONUS, SHOCKWAVE_DECAY).
+          ----------------------------------------------------------- */}
       <GlowBox
-        half={half}
+        half={pose.half}
         hover={hover}
         shockwaveRef={shockwaveRef}
         alwaysOn
         padding={0.04}
         radius={0.025}
+        idlePulseDepth={0.4}
+        idlePulseRate={2.4}
       />
     </group>
   );
@@ -461,10 +531,37 @@ export function Room({ roomGroupRef }: RoomProps) {
     return () => window.removeEventListener("pointermove", onMove);
   }, []);
 
-  const { visualScene, interactive, statics, drawers, keyMeshes, keyRestY } =
-    useMemo(() => {
+  const {
+    visualScene,
+    interactive,
+    statics,
+    drawers,
+    keyMeshes,
+    keyRestY,
+    monitorPoseExtracted,
+  } = useMemo(() => {
       const cloned = scene.clone(true);
       cloned.updateMatrixWorld(true);
+
+      // Snapshot monitor world AABB before processNode reparents
+      // anything. Once statics are extracted from the cloned tree this
+      // lookup would return null — and even if it didn't, the bodyPos
+      // offset would no longer match the unmodified world transform.
+      let monitorPoseExtracted: MonitorPose | null = null;
+      {
+        const m = cloned.getObjectByName("clk_monitor_frame");
+        if (m) {
+          const box = new THREE.Box3().setFromObject(m);
+          if (isFinite(box.min.x)) {
+            const c = box.getCenter(new THREE.Vector3());
+            const s = box.getSize(new THREE.Vector3());
+            monitorPoseExtracted = {
+              center: [c.x, c.y, c.z],
+              half: [s.x / 2, s.y / 2, s.z / 2],
+            };
+          }
+        }
+      }
 
       // Pull every key_* mesh up to the cloned root using .attach() (which
       // preserves world transform). This guarantees the keys are NOT
@@ -591,11 +688,6 @@ export function Room({ roomGroupRef }: RoomProps) {
         item.object.updateMatrix();
       }
 
-      console.log("[Room] interactive:", interactive.map((i) => i.name).sort());
-      console.log("[Room] drawers:", drawers.map((d) => d.name).sort());
-      console.log("[Room] statics:", statics.length);
-      console.log("[Room] keys tracked:", keyMeshes.size);
-
       return {
         visualScene: cloned,
         interactive,
@@ -603,6 +695,7 @@ export function Room({ roomGroupRef }: RoomProps) {
         drawers,
         keyMeshes,
         keyRestY,
+        monitorPoseExtracted,
       };
     }, [scene]);
 
@@ -634,6 +727,7 @@ export function Room({ roomGroupRef }: RoomProps) {
       m.userData.restZ = m.position.z;
       m.userData.restY = m.position.y;
     }
+
   }, [visualScene]);
 
   // Window-level keyboard listeners — only register press state after the
@@ -811,6 +905,8 @@ export function Room({ roomGroupRef }: RoomProps) {
       {drawers.map((d) => (
         <Drawer key={d.uuid} drawer={d} />
       ))}
+
+      <MonitorGlow pose={monitorPoseExtracted} />
     </group>
   );
 }
