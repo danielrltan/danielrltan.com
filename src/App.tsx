@@ -138,7 +138,10 @@ export default function App() {
       style={{
         position: "absolute",
         inset: 0,
-        cursor: sceneReady ? "none" : "pointer",
+        // Two zones: in the room, hide the system cursor and let our
+        // custom ring/dot do the work. At the desk, the OS uses the
+        // native cursor — our custom one is unmounted below.
+        cursor: !sceneReady ? "pointer" : deskViewActive ? "auto" : "none",
       }}
       onClick={startTransition}
       onPointerEnter={() => {
@@ -264,7 +267,7 @@ export default function App() {
         </SceneStateProvider>
       </Canvas>
 
-      {sceneReady && <MoveableCursor hot={moveableHover} />}
+      {sceneReady && !deskViewActive && <MoveableCursor hot={moveableHover} />}
 
       {/* OS launcher chip hidden for prod — the OS is reached by clicking
           the keyboard / monitor in the 3D scene. Press `O` still toggles

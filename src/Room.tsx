@@ -432,7 +432,6 @@ interface RoomProps {
 export function Room({ roomGroupRef }: RoomProps) {
   const { scene } = useGLTF(ROOM_URL);
   const sceneReadyRef = useSceneReadyRef();
-  const deskViewActiveRef = useDeskViewActiveRef();
   const startDeskView = useStartDeskView();
 
   const onDeskAreaPointerDown = useCallback(
@@ -694,37 +693,8 @@ export function Room({ roomGroupRef }: RoomProps) {
       const rest = mouse.userData;
       const range = 0.18;
 
-      // While seated, remap the pointer-to-mousepad mapping so the bounds
-      // are the on-monitor OS rect (data-os-root) instead of the whole
-      // viewport. Moving the cursor inside the OS slides the 3D mouse on
-      // the mousepad to the matching spot — outside the OS, the mesh
-      // stays put.
-      let nx = state.pointer.x;
-      let ny = state.pointer.y;
-      const seated = deskViewActiveRef?.current === true;
-      if (seated) {
-        const osEl = document.querySelector(
-          "[data-os-root]",
-        ) as HTMLElement | null;
-        const canvas = state.gl.domElement;
-        const cRect = canvas.getBoundingClientRect();
-        const px = ((state.pointer.x + 1) / 2) * cRect.width + cRect.left;
-        const py = ((1 - state.pointer.y) / 2) * cRect.height + cRect.top;
-        if (osEl) {
-          const r = osEl.getBoundingClientRect();
-          if (r.width > 0 && r.height > 0) {
-            const lx = (px - r.left) / r.width;
-            const ly = (py - r.top) / r.height;
-            // Clamp so the mouse mesh doesn't drift off the pad when the
-            // user mouses outside the OS area.
-            nx = Math.max(0, Math.min(1, lx)) * 2 - 1;
-            ny = 1 - Math.max(0, Math.min(1, ly)) * 2;
-          }
-        }
-      }
-
-      const targetX = rest.restX + nx * range;
-      const targetZ = rest.restZ - ny * range;
+      const targetX = rest.restX + state.pointer.x * range;
+      const targetZ = rest.restZ - state.pointer.y * range;
 
       mouse.position.x = THREE.MathUtils.lerp(
         mouse.position.x,

@@ -2,7 +2,6 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   CuboidCollider,
   RigidBody,
-  useRapier,
   type RapierRigidBody,
 } from "@react-three/rapier";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -45,10 +44,7 @@ const FRICTION = 0.7;
 
 const ACTIVATION_CHECK_INTERVAL = 0.2;
 const ACTIVATION_STARTUP_DELAY = 0.5;
-const SUPPORT_RAY_DISTANCE = 0.35;
-const SUPPORT_RAY_EPS = 0.005;
 const PROXIMITY_SQ = 0.4 * 0.4;
-const SUPPORT_MISS_THRESHOLD = 3;
 
 const MIN_MASS = 0.5;
 
@@ -69,9 +65,6 @@ const COLLISION_SPEED_FULL_VOL = 3.5; // speed at which volume maxes out
 const COLLISION_THROTTLE_SMALL_MS = 110;
 const COLLISION_THROTTLE_LARGE_MS = 420;
 const SIZE_LARGE_VOL_THRESHOLD = 0.005; // m³ AABB above this → "large"
-// Module-level cap is loose now — only blocks same-frame duplicates from
-// multiple bodies. The per-body throttle does the heavy lifting.
-const COLLISION_GLOBAL_THROTTLE_MS = 35;
 const COLLISION_BASE_VOLUME = 0.35; // overall ceiling for tap
 
 // Size-driven base pitch. Operates on log10(AABB volume) so it spans the
@@ -103,8 +96,6 @@ function basePitchForHalf(h: [number, number, number]): number {
 const NAME_CLIP_OVERRIDES: Record<string, "tap" | "cat"> = {
   th_cat_plush: "cat",
 };
-// Module-scoped (one value across every DraggableRigidBody instance).
-let lastGlobalCollisionAt = 0;
 // Per-clip volume ceiling on top of the speed-scaled envelope.
 const CLIP_VOLUME_TRIM: Record<"tap" | "cat", number> = {
   tap: 1.0,
@@ -125,7 +116,6 @@ export function DraggableRigidBody({
   children,
   proximityActivate = true,
 }: Props) {
-  const halfHeight = half[1];
   const useCuboid =
     half[0] < TINY_THRESHOLD &&
     half[1] < TINY_THRESHOLD &&
@@ -136,7 +126,6 @@ export function DraggableRigidBody({
   const activatedRef = useRef(false);
   const checkAccum = useRef(0);
   const elapsedTime = useRef(0);
-  const supportMisses = useRef(0);
 
   const plane = useRef(new THREE.Plane());
   const cursorTarget = useRef(new THREE.Vector3());
@@ -149,7 +138,6 @@ export function DraggableRigidBody({
   const tmpClickPoint = useRef(new THREE.Vector3());
 
   const { camera, raycaster, pointer, controls } = useThree();
-  const { rapier, world } = useRapier();
   const sceneReadyRef = useSceneReadyRef();
   const deskViewActiveRef = useDeskViewActiveRef();
   const setMoveableHover = useSetMoveableHover();
