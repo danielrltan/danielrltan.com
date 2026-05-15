@@ -446,6 +446,20 @@ export function Room({ roomGroupRef }: RoomProps) {
 
   const mouseMeshRef = useRef<THREE.Object3D | null>(null);
   const pressedKeysRef = useRef<Set<string>>(new Set());
+  // Independent viewport-pointer tracker. R3F's `state.pointer` stops
+  // updating once drei's `<Html>` (the OS) intercepts events, which
+  // would freeze the desk mouse-mesh at whatever stale value pointer
+  // had when it left the canvas. A window-level listener keeps it
+  // current no matter what overlay is on top.
+  const viewportPointerRef = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      viewportPointerRef.current.x = (e.clientX / window.innerWidth) * 2 - 1;
+      viewportPointerRef.current.y = -((e.clientY / window.innerHeight) * 2 - 1);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
 
   const { visualScene, interactive, statics, drawers, keyMeshes, keyRestY } =
     useMemo(() => {
@@ -685,7 +699,7 @@ export function Room({ roomGroupRef }: RoomProps) {
 
   // Drive mouse mesh + key press animations every frame. Both gated on
   // sceneReady so nothing moves during the intro idle/transition.
-  useFrame((state) => {
+  useFrame(() => {
     if (!sceneReadyRef?.current) return;
 
     const mouse = mouseMeshRef.current;
@@ -693,8 +707,11 @@ export function Room({ roomGroupRef }: RoomProps) {
       const rest = mouse.userData;
       const range = 0.18;
 
-      const targetX = rest.restX + state.pointer.x * range;
-      const targetZ = rest.restZ - state.pointer.y * range;
+      // Read from the window-level pointer ref, not state.pointer, so
+      // the mesh keeps tracking even when the OS portal is on top.
+      const p = viewportPointerRef.current;
+      const targetX = rest.restX + p.x * range;
+      const targetZ = rest.restZ - p.y * range;
 
       mouse.position.x = THREE.MathUtils.lerp(
         mouse.position.x,
