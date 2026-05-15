@@ -12,7 +12,7 @@ import {
   useSceneReadyRef,
   useSetMoveableHover,
 } from "./SceneState";
-import { playOneShot } from "./audio";
+import { playOneShot, playTap } from "./audio";
 
 interface Props {
   name: string;
@@ -175,28 +175,34 @@ export function DraggableRigidBody({
   const onCollisionEnter = () => {
     if (!sceneReadyRef?.current) return;
     if (!rb.current) return;
-    const now = performance.now();
-    // Two-stage throttle: per-body guard (size-keyed) kills self-spam;
-    // module-scoped guard blocks same-frame duplicates across bodies.
-    if (now - lastCollisionAt.current < bodyThrottleMs.current) return;
-    if (now - lastGlobalCollisionAt < COLLISION_GLOBAL_THROTTLE_MS) return;
     const v = rb.current.linvel();
     const speed = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-    if (speed < COLLISION_MIN_SPEED) return;
-    lastCollisionAt.current = now;
-    lastGlobalCollisionAt = now;
-    const t = Math.min(
-      1,
-      (speed - COLLISION_MIN_SPEED) /
-        (COLLISION_SPEED_FULL_VOL - COLLISION_MIN_SPEED),
-    );
-    const clip = NAME_CLIP_OVERRIDES[name] ?? "tap";
-    // Named overrides (e.g. cat) play at neutral pitch with small jitter;
-    // taps inherit size-based base pitch so heavier props sound heavier.
-    const basePitch = clip === "tap" ? basePitchRef.current : 1.0;
-    const jitter = (Math.random() * 2 - 1) * COLLISION_PITCH_JITTER;
-    const rate = basePitch + jitter;
-    playOneShot(clip, COLLISION_BASE_VOLUME * CLIP_VOLUME_TRIM[clip] * t, rate);
+
+    // Named override (cat plush meow) keeps the old pooled path so the
+    // clip plays out without being hard-cut by other collisions.
+    const overrideClip = NAME_CLIP_OVERRIDES[name];
+    if (overrideClip) {
+      const now = performance.now();
+      if (now - lastCollisionAt.current < bodyThrottleMs.current) return;
+      if (speed < COLLISION_MIN_SPEED) return;
+      lastCollisionAt.current = now;
+      const tRaw = Math.min(
+        1,
+        (speed - COLLISION_MIN_SPEED) /
+          (COLLISION_SPEED_FULL_VOL - COLLISION_MIN_SPEED),
+      );
+      const jitter = (Math.random() * 2 - 1) * COLLISION_PITCH_JITTER;
+      playOneShot(
+        overrideClip,
+        COLLISION_BASE_VOLUME * CLIP_VOLUME_TRIM[overrideClip] * tRaw,
+        1.0 + jitter,
+      );
+      return;
+    }
+
+    // Everything else routes through the purpose-built tap channel,
+    // which owns its own single Audio element + cooldown + hard-cut.
+    playTap(speed);
   };
 
   useEffect(() => {
@@ -238,6 +244,11 @@ export function DraggableRigidBody({
     if (!rb.current) return;
 
     if (!activated) {
+      // Support-raycast auto-activation removed — it was the trigger that
+      // made pegboard / wall-hung items fall on load (those items have
+      // nothing directly below them so the downward ray always misses).
+      // Bodies now only wake on pointer click or proximity to an already
+      // -activated neighbour; wall-hung items stay fixed until grabbed.
       elapsedTime.current += dt;
       if (elapsedTime.current < ACTIVATION_STARTUP_DELAY) return;
 
@@ -245,33 +256,8 @@ export function DraggableRigidBody({
       if (checkAccum.current < ACTIVATION_CHECK_INTERVAL) return;
       checkAccum.current = 0;
 
-      const pos = rb.current.translation();
-
-      const rayOrigin = {
-        x: pos.x,
-        y: pos.y - halfHeight - SUPPORT_RAY_EPS,
-        z: pos.z,
-      };
-      const ray = new rapier.Ray(rayOrigin, { x: 0, y: -1, z: 0 });
-      const hit = world.castRay(
-        ray,
-        SUPPORT_RAY_DISTANCE,
-        true,
-        undefined,
-        undefined,
-        undefined,
-        rb.current,
-      );
-      if (!hit) {
-        supportMisses.current++;
-        if (supportMisses.current >= SUPPORT_MISS_THRESHOLD) {
-          activateNow();
-        }
-      } else {
-        supportMisses.current = 0;
-      }
-
       if (proximityActivate) {
+        const pos = rb.current.translation();
         for (const [otherName, entry] of bodyRegistry) {
           if (otherName === name) continue;
           if (!entry.isActivated()) continue;
@@ -415,7 +401,9 @@ export function DraggableRigidBody({
     setMoveableHover(false);
   };
 
-  // No per-body CCD: hard impacts against trimesh/cuboids spiked frame time; hulls at 1/60 are enough here.
+  // CCD only on the tiny cuboid props (wristrest, pens, dice, …). Large
+  // hull-based bodies don't tunnel in practice and CCD on those spikes
+  // frame time. This keeps the fix targeted to where the bug was visible.
   return (
     <RigidBody
       ref={rb}
@@ -429,6 +417,7 @@ export function DraggableRigidBody({
       angularDamping={REST_ANGULAR_DAMPING}
       gravityScale={activated ? 1 : 0}
       canSleep
+      ccd={useCuboid}
       onCollisionEnter={onCollisionEnter}
     >
       {useCuboid && <CuboidCollider args={half} />}

@@ -84,7 +84,10 @@ const BOUNDARIES: ReadonlyArray<CuboidSpec> = [
 ];
 
 const HARDCODED_STATICS: ReadonlyArray<{ name: string } & CuboidSpec> = [
-  { name: "desk_surface",     pos: [2.1863, 1.2249, -1.0111],  half: [0.3618, 0.012, 0.8502] },
+  // Desk surface — thickened from 0.012 → 0.05 half-Y (top still at
+  // 1.2369 = 1.1869 + 0.05) so fast tiny props (wristrest, pens, etc.)
+  // can't tunnel through the slab between physics steps.
+  { name: "desk_surface",     pos: [2.1863, 1.1869, -1.0111],  half: [0.3618, 0.05, 0.8502] },
 
   // ----- Dresser shell -----
   // Thin (thickness 0.02) outer panels + center divider + horizontal shelves
@@ -223,6 +226,7 @@ const KEY_MAP: Record<string, string> = {
   Quote: "key_quote", Slash: "key_slsh",
   Backslash: "key_bkslsh", BracketLeft: "key_sqbrktl",
   BracketRight: "key_sqrbrktr",
+  Comma: "key_comma", Period: "key_period",
   PageUp: "key_pgup", PageDown: "key_pgdn", End: "key_end",
   MetaLeft: "key_win",
   F1: "key_f1", F2: "key_f2", F3: "key_f3", F4: "key_f4",
@@ -428,6 +432,7 @@ interface RoomProps {
 export function Room({ roomGroupRef }: RoomProps) {
   const { scene } = useGLTF(ROOM_URL);
   const sceneReadyRef = useSceneReadyRef();
+  const deskViewActiveRef = useDeskViewActiveRef();
   const startDeskView = useStartDeskView();
 
   const onDeskAreaPointerDown = useCallback(
@@ -626,9 +631,23 @@ export function Room({ roomGroupRef }: RoomProps) {
     // (keydown.mp3 contains the release click, keyup.mp3 contains the press
     // click), so we swap them here. Spacebar gets a deeper pitch on both.
     const SPACE_RATE = 0.82;
+    // The modifier keys themselves set e.ctrlKey / e.metaKey true on their
+    // OWN press event — so a blind `e.ctrlKey || e.metaKey` filter would
+    // reject pressing left-ctrl / left-meta / etc. Allow modifier-code
+    // events through; only reject when a *different* key is being chorded.
+    const MODIFIER_CODES = new Set<string>([
+      "ControlLeft",
+      "ControlRight",
+      "MetaLeft",
+      "MetaRight",
+      "AltLeft",
+      "AltRight",
+    ]);
+    const isCombo = (e: KeyboardEvent) =>
+      (e.ctrlKey || e.metaKey) && !MODIFIER_CODES.has(e.code);
     const onKeyDown = (e: KeyboardEvent) => {
       if (!sceneReadyRef?.current) return;
-      if (e.ctrlKey || e.metaKey) return;
+      if (isCombo(e)) return;
       if (e.code === "KeyR" && e.defaultPrevented) return;
       const meshName = KEY_MAP[e.code];
       if (!meshName) return;
@@ -636,21 +655,26 @@ export function Room({ roomGroupRef }: RoomProps) {
       // Auto-repeat fires repeated keydowns without a keyup between them —
       // only play the sound on the initial press.
       if (!pressedKeysRef.current.has(meshName)) {
-        const rate = meshName === "key_space" ? SPACE_RATE : 1;
-        playOneShot("keyup", 0.45, rate);
+        const isSpace = meshName === "key_space";
+        const rate = isSpace ? SPACE_RATE : 1;
+        // Spacebar pressed twice as loud as the rest (caps at 1.0).
+        const vol = isSpace ? Math.min(1, 0.45 * 2) : 0.45;
+        playOneShot("keyup", vol, rate);
       }
       pressedKeysRef.current.add(meshName);
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (!sceneReadyRef?.current) return;
-      if (e.ctrlKey || e.metaKey) return;
+      if (isCombo(e)) return;
       if (e.code === "KeyR" && e.defaultPrevented) return;
       const meshName = KEY_MAP[e.code];
       if (!meshName) return;
       e.preventDefault();
       pressedKeysRef.current.delete(meshName);
-      const rate = meshName === "key_space" ? SPACE_RATE : 1;
-      playOneShot("keydown", 0.4, rate);
+      const isSpace = meshName === "key_space";
+      const rate = isSpace ? SPACE_RATE : 1;
+      const vol = isSpace ? Math.min(1, 0.4 * 2) : 0.4;
+      playOneShot("keydown", vol, rate);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -670,8 +694,37 @@ export function Room({ roomGroupRef }: RoomProps) {
       const rest = mouse.userData;
       const range = 0.18;
 
-      const targetX = rest.restX + state.pointer.x * range;
-      const targetZ = rest.restZ - state.pointer.y * range;
+      // While seated, remap the pointer-to-mousepad mapping so the bounds
+      // are the on-monitor OS rect (data-os-root) instead of the whole
+      // viewport. Moving the cursor inside the OS slides the 3D mouse on
+      // the mousepad to the matching spot — outside the OS, the mesh
+      // stays put.
+      let nx = state.pointer.x;
+      let ny = state.pointer.y;
+      const seated = deskViewActiveRef?.current === true;
+      if (seated) {
+        const osEl = document.querySelector(
+          "[data-os-root]",
+        ) as HTMLElement | null;
+        const canvas = state.gl.domElement;
+        const cRect = canvas.getBoundingClientRect();
+        const px = ((state.pointer.x + 1) / 2) * cRect.width + cRect.left;
+        const py = ((1 - state.pointer.y) / 2) * cRect.height + cRect.top;
+        if (osEl) {
+          const r = osEl.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) {
+            const lx = (px - r.left) / r.width;
+            const ly = (py - r.top) / r.height;
+            // Clamp so the mouse mesh doesn't drift off the pad when the
+            // user mouses outside the OS area.
+            nx = Math.max(0, Math.min(1, lx)) * 2 - 1;
+            ny = 1 - Math.max(0, Math.min(1, ly)) * 2;
+          }
+        }
+      }
+
+      const targetX = rest.restX + nx * range;
+      const targetZ = rest.restZ - ny * range;
 
       mouse.position.x = THREE.MathUtils.lerp(
         mouse.position.x,

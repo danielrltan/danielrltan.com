@@ -18,6 +18,12 @@ interface SceneStateValue {
    * is set; flips back to false at the start of the fromDesk lerp.
    */
   deskViewActiveRef: RefObject<boolean>;
+  /**
+   * React-state mirror of `deskViewActiveRef`. The ref doesn't trigger
+   * re-renders, so anything that needs to mount / unmount with desk view
+   * (e.g. the on-monitor DesktopOS) subscribes via this setter instead.
+   */
+  setDeskViewActive?: (v: boolean) => void;
   /** Drive the custom cursor when hovering draggable / drawer meshes. */
   setMoveableHover: (hover: boolean) => void;
   /** Animate camera to the seated-at-desk view (no-op until DeskViewController mounts). */
@@ -66,4 +72,15 @@ export function useStartDeskView(): () => void {
  */
 export function useDeskViewActiveRef(): RefObject<boolean> | undefined {
   return useContext(SceneStateContext)?.deskViewActiveRef;
+}
+
+const noopSetDesk = (_v: boolean) => {};
+/**
+ * React-state setter for desk-view transitions. Called by DeskViewController
+ * when the toDesk / fromDesk lerp finishes. Anything that needs to *render*
+ * differently when seated (vs anything that just *reads* state in event
+ * handlers) should subscribe via this so it actually re-renders.
+ */
+export function useSetDeskViewActive(): (v: boolean) => void {
+  return useContext(SceneStateContext)?.setDeskViewActive ?? noopSetDesk;
 }

@@ -2,7 +2,11 @@ import { useEffect, useRef, type MutableRefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { useDeskViewActiveRef, useSceneReadyRef } from "./SceneState";
+import {
+  useDeskViewActiveRef,
+  useSceneReadyRef,
+  useSetDeskViewActive,
+} from "./SceneState";
 
 const DURATION = 2.6;
 
@@ -57,17 +61,21 @@ export function DeskViewController({
   const { camera, controls } = useThree();
   const sceneReadyRef = useSceneReadyRef();
   const sharedDeskActiveRef = useDeskViewActiveRef();
+  const setDeskViewActive = useSetDeskViewActive();
   const anim = useRef<DeskAnim | null>(null);
   const savedPoseRef = useRef<{
     cam: THREE.Vector3;
     target: THREE.Vector3;
   } | null>(null);
   // Local mirror of the shared ref so the controller's checks don't have to
-  // cross the context boundary on every frame. Both stay in sync below.
+  // cross the context boundary on every frame. The setter and refs are kept
+  // in sync below — refs for hot-path reads, state setter so React-rendered
+  // things (like the on-monitor OS) can mount / unmount on the transition.
   const deskViewActiveRef = useRef(false);
   const writeDeskActive = (v: boolean) => {
     deskViewActiveRef.current = v;
     if (sharedDeskActiveRef) sharedDeskActiveRef.current = v;
+    setDeskViewActive(v);
   };
 
   useEffect(() => {

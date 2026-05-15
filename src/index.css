@@ -38,7 +38,11 @@ canvas {
   width: 20px;
   height: 20px;
   pointer-events: none;
-  will-change: transform;
+  will-change: transform, opacity;
+  /* Fades out smoothly when the pointer enters the OS (`data-os-root`)
+     so the cursor mode swap between room (custom) and PC (system) doesn't
+     pop. The JS toggles `opacity: 0/1` on the element. */
+  transition: opacity 0.18s ease;
 }
 
 .moveable-cursor__ring {

@@ -83,6 +83,44 @@ export function playOneShot(
   a.play().catch(() => {});
 }
 
+// ----- Tap collision sound (purpose-built, NOT pooled) -----------------
+// Single shared Audio element. Every retrigger hard-cuts the previous
+// play, so rapid impacts always sound clean rather than layering into a
+// "bones cracking" snare roll. 120 ms cooldown enforces ~8 taps/sec max.
+const tapElement = new Audio(URLS.tap);
+tapElement.preload = "auto";
+let tapLastPlayed = 0;
+const TAP_COOLDOWN_MS = 120;
+const TAP_MIN_SPEED = 0.5; // ignore micro-bumps
+const TAP_SPEED_FULL = 6.0; // m/s where volume saturates
+
+/**
+ * Collision tap. `speed` is the magnitude of the rigid body's `linvel()`
+ * at the moment of contact — not relative manifold velocity. Caller is
+ * expected to invoke this only from `onCollisionEnter` (never `Contact
+ * Force` or `IntersectionEnter`).
+ */
+export function playTap(speed: number): void {
+  const now = performance.now();
+  if (now - tapLastPlayed < TAP_COOLDOWN_MS) return;
+  if (speed < TAP_MIN_SPEED) return;
+  tapLastPlayed = now;
+
+  // Hard-cut whatever's still ringing out.
+  tapElement.pause();
+  try {
+    tapElement.currentTime = 0;
+  } catch {
+    /* metadata not ready — ignore */
+  }
+
+  const vol = Math.min(speed / TAP_SPEED_FULL, 1);
+  tapElement.volume = Math.max(0, Math.min(1, vol * MASTER_GAIN));
+  // ±10% pitch jitter so repeat drops don't sound robotic.
+  tapElement.playbackRate = 0.9 + Math.random() * 0.2;
+  tapElement.play().catch(() => {});
+}
+
 let ambience: HTMLAudioElement | null = null;
 
 export function startAmbience(volume = 0.4): void {

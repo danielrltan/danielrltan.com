@@ -37,6 +37,15 @@ export function MoveableCursor({ hot }: Props) {
 
     const onMove = (e: PointerEvent) => {
       rootEl.style.transform = `translate3d(${e.clientX}px,${e.clientY}px,0) translate(-50%,-50%)`;
+      // Two cursor "zones": the room (custom cursor) and the PC (system
+      // cursor). Any DOM element flagged `data-os-root` (and its
+      // descendants) hides the custom cursor smoothly via opacity —
+      // matched by `cursor: auto` on the OS root so the system cursor
+      // shows in its place.
+      const target = e.target as Element | null;
+      const overOS = !!target?.closest("[data-os-root]");
+      rootEl.style.opacity = overOS ? "0" : "1";
+
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
       lastX = e.clientX;

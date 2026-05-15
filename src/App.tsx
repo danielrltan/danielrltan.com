@@ -15,6 +15,10 @@ import { SceneStateProvider } from "./SceneState";
 import { MoveableCursor } from "./MoveableCursor";
 import { DeskViewController } from "./DeskViewController";
 import { startAmbience } from "./audio";
+import { DesktopOS } from "./desktop";
+import { BootSequence } from "./desktop/BootSequence";
+import { MonitorScreen } from "./MonitorScreen";
+import { Monitor } from "lucide-react";
 
 export default function App() {
   const roomGroupRef = useRef<THREE.Group | null>(null);
@@ -27,8 +31,46 @@ export default function App() {
   const [sceneReady, setSceneReady] = useState(false);
   const [moveableHover, setMoveableHover] = useState(false);
   const [roomResetKey, setRoomResetKey] = useState(0);
+  // State mirror of `deskViewActiveRef` — flips React when DeskView opens
+  // or closes. Gates the on-monitor DesktopOS mount so it doesn't render
+  // when the camera isn't seated (otherwise the CSS-3D plane clips
+  // through other meshes from off-axis angles).
+  const [deskViewActive, setDeskViewActive] = useState(false);
+  const [osOpen, setOsOpen] = useState(false);
+  const [osSize, setOsSize] = useState(() => ({
+    w: window.innerWidth,
+    h: window.innerHeight,
+  }));
   const deskViewImplRef = useRef<(() => void) | null>(null);
   const startDeskView = useCallback(() => deskViewImplRef.current?.(), []);
+
+  useEffect(() => {
+    const onResize = () =>
+      setOsSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!sceneReady) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Escape" && osOpen) {
+        setOsOpen(false);
+        return;
+      }
+      if (e.code === "KeyO" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const el = e.target;
+        if (
+          el instanceof HTMLElement &&
+          (el.isContentEditable || el.closest("input, textarea, select"))
+        )
+          return;
+        setOsOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sceneReady, osOpen]);
 
   const startTransition = useCallback(() => {
     if (transitionStarted) return;
@@ -141,6 +183,7 @@ export default function App() {
           value={{
             sceneReadyRef,
             deskViewActiveRef,
+            setDeskViewActive,
             setMoveableHover,
             startDeskView,
           }}
@@ -195,6 +238,20 @@ export default function App() {
                 <DeskViewController implRef={deskViewImplRef} />
               </>
             )}
+
+            {/* DesktopOS rendered onto the actual monitor surface in 3D.
+                Only mounted while the user is seated at the desk — the
+                CSS-3D plane clips through scene meshes from off-axis
+                angles, so the computer effectively "goes to sleep" when
+                Escape returns the camera to free-orbit. */}
+            {sceneReady && deskViewActive && (
+              <MonitorScreen>
+                <BootSequence width={1100} height={660}>
+                  <DesktopOS width={1100} height={660} />
+                </BootSequence>
+              </MonitorScreen>
+            )}
+
             <EffectComposer>
               <Bloom
                 mipmapBlur
@@ -208,6 +265,63 @@ export default function App() {
       </Canvas>
 
       {sceneReady && <MoveableCursor hot={moveableHover} />}
+
+      {/* OS launcher chip hidden for prod — the OS is reached by clicking
+          the keyboard / monitor in the 3D scene. Press `O` still toggles
+          the fullscreen overlay variant if needed during dev. */}
+      {false && sceneReady && !osOpen && (
+        <button
+          onClick={() => setOsOpen(true)}
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 14,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: "rgba(20, 18, 16, 0.55)",
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            color: "#f0e0d0",
+            fontSize: 12,
+            fontWeight: 500,
+            letterSpacing: 0.3,
+            cursor: "pointer",
+            zIndex: 20,
+            fontFamily:
+              "ui-monospace, 'JetBrains Mono', 'SF Mono', monospace",
+          }}
+        >
+          <Monitor size={14} />
+          Open OS
+          <span
+            style={{
+              marginLeft: 6,
+              padding: "2px 5px",
+              borderRadius: 4,
+              background: "rgba(255,255,255,0.08)",
+              fontSize: 10,
+              opacity: 0.7,
+            }}
+          >
+            O
+          </span>
+        </button>
+      )}
+
+      {/* DesktopOS overlay */}
+      {osOpen && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 50 }}>
+          <DesktopOS
+            width={osSize.w}
+            height={osSize.h}
+            onClose={() => setOsOpen(false)}
+          />
+        </div>
+      )}
 
       <div
         style={{
