@@ -33,16 +33,17 @@ const MonitorScreen = lazy(() =>
 );
 
 /**
- * Fullscreen overlay — the OS shown at full viewport size. The actual
- * zoom-in is performed by `DeskViewController.toFullscreen` (a 3D
- * camera dolly into the monitor mesh); App only mounts this overlay
- * once the camera has arrived.
+ * Fullscreen overlay — the OS shown at full viewport size.
  *
- * Mounts INSTANTLY (no fade) so it's atomically swapped with the
- * drei-Html-rendered OS that was on the monitor: in the same React
- * commit, `MonitorScreen` unmounts and this overlay appears at full
- * opacity. The old fade-in introduced ~200 ms where neither was
- * visible, which read as a black-monitor "snap."
+ * Mounting (enter): atomic — overlay appears opaque the same React
+ * commit that MonitorScreen unmounts, so the swap is instant at
+ * the end of the toFullscreen camera dolly.
+ *
+ * Unmounting (exit): a brief opacity fade-out (~280 ms) BEFORE the
+ * actual unmount. During that window, MonitorScreen has time to
+ * re-render its drei `<Html>` portal + DesktopOS subtree, so the
+ * user never sees a dark monitor flash between overlay-gone and
+ * MonitorScreen-ready.
  */
 function FullscreenOverlay({
   open,
@@ -51,13 +52,28 @@ function FullscreenOverlay({
   open: boolean;
   children: React.ReactNode;
 }) {
-  if (!open) return null;
+  const [mounted, setMounted] = useState(false);
+  const [opaque, setOpaque] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setOpaque(true);
+    } else {
+      setOpaque(false);
+      const t = setTimeout(() => setMounted(false), 320);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
+  if (!mounted) return null;
   return (
     <div
       style={{
         position: "absolute",
         inset: 0,
         zIndex: 50,
+        opacity: opaque ? 1 : 0,
+        transition: "opacity 280ms ease",
+        pointerEvents: opaque ? "auto" : "none",
       }}
     >
       <Suspense fallback={null}>{children}</Suspense>

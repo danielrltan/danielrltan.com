@@ -110,6 +110,16 @@ export function AsciiCatPlush({
         const scale = 1.3 / maxDim;
         pivot = new THREE.Group();
         cat.position.sub(center);
+        // Manual nudge so the rotation pivot sits on the visual body
+        // and the bbox-extending tail is effectively ignored. Tune
+        // here if the body still orbits off-centre — values are in
+        // model units (post-centering, pre-scale).
+        const TAIL_OFFSET_X = -.012;
+        const TAIL_OFFSET_Y = 0.0;
+        const TAIL_OFFSET_Z = 0.0;
+        cat.position.x += TAIL_OFFSET_X;
+        cat.position.y += TAIL_OFFSET_Y;
+        cat.position.z += TAIL_OFFSET_Z;
         cat.traverse((o) => {
           const m = o as THREE.Mesh;
           if (m.isMesh)

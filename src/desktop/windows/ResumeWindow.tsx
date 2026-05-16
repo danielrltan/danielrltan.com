@@ -435,7 +435,7 @@ export function ResumeWindow() {
       >
         <span>416-732-5553</span>
         <a
-          href="mailto:danielrltan@gmail.com"
+          href="mailto:hello@danielrltan"
           style={{ color: "var(--muted)", textDecoration: "none" }}
         >
           danielrltan@gmail.com

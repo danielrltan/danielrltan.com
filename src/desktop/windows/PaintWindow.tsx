@@ -272,21 +272,6 @@ export function PaintWindow() {
             e.currentTarget.style.transform = "scale(1)";
           }}
         >
-          {/* Top-left sheen */}
-          <span
-            aria-hidden
-            style={{
-              position: "absolute",
-              left: 4,
-              top: 3,
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              background:
-                "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.65), rgba(255,255,255,0) 70%)",
-              pointerEvents: "none",
-            }}
-          />
           <Pipette size={13} color="rgba(0,0,0,0.55)" />
           <input
             type="color"

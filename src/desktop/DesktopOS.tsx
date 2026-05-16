@@ -307,6 +307,12 @@ function DesktopShell({
           top: 530,
           width: 532,
           bottom: 44,
+          // Cap so the widget doesn't balloon on tall fullscreen
+          // viewports — without this, the bottom-anchor stretches
+          // the widget vertically while the cat hits its width/2
+          // sizing cap, leaving a half-empty rectangle. 220 ≈ the
+          // height users see on a typical laptop screen.
+          maxHeight: 220,
           zIndex: 1,
         }}
       >

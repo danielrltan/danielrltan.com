@@ -15,9 +15,9 @@ const TICK_MS = 60;
 const FADE_MS = 320;
 
 const LINES = [
-  "RoomOS / boot ▒",
+  "DanielPC / boot ",
   "mounting /dev/cat ✓",
-  "loading kernel ▓▓▓",
+  "thinking ✓",
   "linking widgets ✓",
   "hydrating windows ✓",
   "ready.",
@@ -95,7 +95,7 @@ export function BootSequence({
           transform: "translate(-50%, calc(-50% - 60px))",
         }}
       >
-        <AsciiCatPlush size={220} color="#ff7842" rpm={1.6} />
+        <AsciiCatPlush size={260} color="#ff7842" rpm={1.6} />
       </div>
 
       {/* Loading block. */}

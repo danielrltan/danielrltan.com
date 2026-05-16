@@ -6,11 +6,8 @@ import { useProgress } from "@react-three/drei";
  * index.html covers the JS-parse gap; this component takes over on
  * React mount, then fades itself out once loading completes.
  *
- * Visual: an ASCII cat that blinks. The blink is driven by CSS
- * keyframes (compositor thread) so it keeps ticking even while
- * the main thread is busy parsing JS / decoding the GLB. JS-driven
- * setTimeout was starved during the GLB decode → blink didn't fire
- * until the heavy work was done.
+ * Blink: simple state-toggle via setInterval + nested setTimeout for
+ * the brief closed-eyes window. One pre, one state, works every time.
  */
 const FADE_AFTER_DONE_MS = 500;
 const LOAD_COLOR = "#ffb077";
@@ -23,11 +20,20 @@ const CAT_CLOSED = ` /\\_/\\ \n( o.< )\n > ^ < `;
 export function LoadingScreen() {
   const { progress, active } = useProgress();
   const [visible, setVisible] = useState(true);
+  const [eyesOpen, setEyesOpen] = useState(true);
 
   // Pull the static index.html boot screen the moment React mounts.
   useEffect(() => {
     const bs = document.getElementById("boot-screen");
     if (bs && bs.parentNode) bs.parentNode.removeChild(bs);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setEyesOpen(false);
+      setTimeout(() => setEyesOpen(true), 150);
+    }, 1800);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -40,6 +46,15 @@ export function LoadingScreen() {
   if (!visible) return null;
 
   const fading = !active && progress >= 100;
+  const preStyle: React.CSSProperties = {
+    margin: 0,
+    fontSize: 16,
+    lineHeight: 1.1,
+    letterSpacing: 1,
+    color: LOAD_COLOR,
+    textShadow: `0 0 12px ${LOAD_COLOR}33`,
+    textAlign: "center",
+  };
 
   return (
     <div
@@ -61,51 +76,9 @@ export function LoadingScreen() {
         pointerEvents: fading ? "none" : "auto",
       }}
     >
-      <style>{`
-        /* Two stacked <pre>s; one shows open eyes, one shows closed.
-           Their opacity keyframes are inverses, so they crossfade in
-           sync — eyes open for ~92% of the cycle, briefly closed for
-           ~8% (read as a quick blink). Animations run on the
-           compositor thread, so they're immune to main-thread stalls
-           (the whole reason this loader exists). */
-        @keyframes ls-cat-open {
-          0%, 90% { opacity: 1; }
-          93%, 97% { opacity: 0; }
-          100% { opacity: 1; }
-        }
-        @keyframes ls-cat-closed {
-          0%, 90% { opacity: 0; }
-          93%, 97% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-        .ls-cat {
-          position: relative;
-          display: inline-block;
-        }
-        .ls-cat pre {
-          margin: 0;
-          font-size: 16px;
-          line-height: 1.1;
-          letter-spacing: 1px;
-          color: ${LOAD_COLOR};
-          text-shadow: 0 0 12px ${LOAD_COLOR}33;
-          text-align: center;
-          will-change: opacity;
-        }
-        /* Stack: closed sits on top of open (absolute), both same box. */
-        .ls-cat-open {
-          animation: ls-cat-open 1.6s linear infinite;
-        }
-        .ls-cat-closed {
-          position: absolute;
-          inset: 0;
-          animation: ls-cat-closed 1.6s linear infinite;
-        }
-      `}</style>
-      <div className="ls-cat" aria-hidden>
-        <pre className="ls-cat-open">{CAT_OPEN}</pre>
-        <pre className="ls-cat-closed">{CAT_CLOSED}</pre>
-      </div>
+      <pre style={preStyle} aria-hidden>
+        {eyesOpen ? CAT_OPEN : CAT_CLOSED}
+      </pre>
       <div
         style={{
           fontSize: 12,
