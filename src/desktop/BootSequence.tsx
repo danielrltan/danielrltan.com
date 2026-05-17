@@ -141,14 +141,20 @@ export function BootSequence({
             }}
           />
         </div>
-        {/* Status line crawl. Each line appears as the bar advances. */}
+        {/* Status line crawl. Fixed-height pane so the bar above stays
+            put; new lines appear at the bottom and earlier lines scroll
+            up like a normal CLI. */}
         <div
           style={{
             marginTop: 6,
             fontSize: 11,
             lineHeight: 1.6,
             color: "rgba(255,120,66,0.85)",
-            minHeight: 11 * 1.6 * 3,
+            height: Math.ceil(11 * 1.6 * LINES.length),
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "flex-end",
+            overflow: "hidden",
           }}
         >
           {LINES.slice(0, visibleLines).map((l, i) => (
