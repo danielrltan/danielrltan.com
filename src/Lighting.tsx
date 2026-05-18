@@ -60,6 +60,13 @@ const PI = Math.PI;
 export function Lighting() {
   return (
     <>
+      {/* 0. Ambient fill — lifts the corners + shadowed walls out of
+              pure black. CLAUDE.md spec called for one but the scene
+              had been running without it, which is why outside-the-pool
+              regions read as crushed maroon. Kept warm so it doesn't
+              cool down the cozy sunset palette. */}
+      <ambientLight color="#ffd4b0" intensity={0.28} />
+
       {/* 1. Arc floor lamp — main key light */}
       <pointLight
         color="#ffb077"
@@ -170,17 +177,20 @@ export function Lighting() {
         target={[1.423, 0, 0.886]}
       />
 
-      {/* 13. Ambient fill — very subtle, from outside */}
+      {/* 13. Ambient directional — soft wash from front-right, bumped
+              from 0.08 to lift the front face of the room where the
+              point lights don't reach. */}
       <directionalLight
         color="#ffcc99"
-        intensity={0.08}
+        intensity={0.18}
         position={[2.823, 3.0, 2.596]}
       />
 
-      {/* 14. Window sunset — faint sun angle */}
+      {/* 14. Window sunset — faint sun angle, bumped slightly so the
+              left wall and floor pick up a hair more rim. */}
       <directionalLight
         color="#ff9966"
-        intensity={0.15}
+        intensity={0.24}
         position={[-0.65, 2.209, 6.092]}
       />
     </>

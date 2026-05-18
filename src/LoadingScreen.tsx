@@ -235,6 +235,12 @@ export function LoadingScreen() {
         style={{
           fontSize: "var(--text-base)",
           letterSpacing: "var(--tracking-widest)",
+          // `letter-spacing` adds trailing space after the last letter
+          // too. Without compensation, centered uppercase text drifts
+          // ~half a tracking unit left of true center. Adding the same
+          // value as left padding rebalances the line so its visual
+          // mid-point lines up with the cat above.
+          paddingLeft: "var(--tracking-widest)",
           textTransform: "uppercase",
           opacity: 0.7,
           minWidth: 90,

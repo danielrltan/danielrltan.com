@@ -3,10 +3,6 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { Physics } from "@react-three/rapier";
-import {
-  EffectComposer,
-  Bloom,
-} from "@react-three/postprocessing";
 import * as THREE from "three";
 import { Room } from "./Room";
 import { Lighting } from "./Lighting";
@@ -16,7 +12,7 @@ import { MoveableCursor } from "./MoveableCursor";
 import { DeskViewController } from "./DeskViewController";
 import { startAmbience } from "./audio";
 import { LoadingScreen } from "./LoadingScreen";
-import { Monitor } from "lucide-react";
+import { RoomHUD } from "./RoomHUD";
 
 // Lazy-load everything OS-related — none of it renders until the camera
 // is seated at the desk, so its code (~hundreds of kB before splitting)
@@ -314,12 +310,13 @@ export default function App() {
       style={{
         position: "absolute",
         inset: 0,
+        // Background color now lives on the wrapper (not the Canvas's
+        // scene.background) so the giant "Daniel Tan" text below can
+        // show through wherever the 3D scene is transparent.
+        background: "#330a05",
         // Two zones: in the room, hide the system cursor and let our
         // custom ring/dot do the work. At the desk, the OS uses the
         // native cursor — our custom one is unmounted below.
-        // Always hide the OS cursor whenever the custom MoveableCursor
-        // is mounted (room view, any phase). Desk view restores the
-        // system cursor so the OS HTML overlay is usable normally.
         cursor: deskViewActive ? "auto" : "none",
       }}
       onClick={startTransition}
@@ -331,6 +328,47 @@ export default function App() {
         setMoveableHover(false);
       }}
     >
+      {/* Brand watermark — a giant "Daniel Tan" sits behind the canvas
+          and bleeds off the viewport edges. Subtle warm amber tint at
+          very low alpha so it reads as a watermark rather than copy.
+          `pointerEvents: none` so 3D interactions pass through. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          pointerEvents: "none",
+          userSelect: "none",
+          overflow: "hidden",
+        }}
+        aria-hidden
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-display)",
+            // Tuned to keep the full wordmark on-screen at typical
+            // desktop widths (~95% viewport at 1440px) with mild
+            // bleed-off on ultra-wide; previous value (25vw / 380px
+            // cap) was overflowing well past both edges.
+            fontSize: "clamp(94px, 25vw, 410px)",
+            fontWeight: 800,
+            letterSpacing: "-0.08em",
+            color: "rgba(255, 176, 119, 0.06)",
+            whiteSpace: "nowrap",
+            lineHeight: 1,
+            // Optical centering: "Daniel" (6 chars) sits left of the
+            // geometric mid-point while " Tan" (4 chars incl. space)
+            // sits right, so when the room silhouette crops both
+            // halves the visible mass on the right reads heavier.
+            // Small leftward nudge counteracts the perception.
+            transform: "translateX(-1.2%)",
+          }}
+        >
+          Daniel Tan
+        </span>
+      </div>
       <Canvas
         camera={{
           position: [25, 25, 25],
@@ -340,11 +378,15 @@ export default function App() {
         }}
         gl={{
           antialias: true,
+          // Transparent canvas so the watermark above shows through.
+          alpha: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 0.8,
         }}
-        onCreated={({ scene, gl, camera }) => {
-          scene.background = new THREE.Color("#330a05");
+        onCreated={({ gl, camera }) => {
+          // scene.background intentionally unset (null) — the wrapper
+          // div carries the maroon, leaving the canvas itself
+          // transparent so the watermark text reads through.
           gl.outputColorSpace = THREE.SRGBColorSpace;
           (gl as unknown as { useLegacyLights?: boolean }).useLegacyLights =
             false;
@@ -354,9 +396,6 @@ export default function App() {
           // Shadow maps are the single biggest perf cost; warm point-light
           // falloff is doing the visual job already.
           gl.shadowMap.enabled = false;
-          // Single perspective camera throughout: starts at [20,20,20] with
-          // FOV 8 (looks identical to ortho) and smoothly lerps to
-          // [3.5,2.5,3.5] FOV 50 on the click transition — no swap.
           cameraRef.current = camera as THREE.PerspectiveCamera;
           camera.lookAt(0, 0.6, 0);
         }}
@@ -476,19 +515,20 @@ export default function App() {
               </Suspense>
             )}
 
-            <EffectComposer>
-              <Bloom
-                mipmapBlur
-                luminanceThreshold={1.0}
-                intensity={0.7}
-                radius={0.85}
-              />
-            </EffectComposer>
+            {/* Post-processing removed — the bloom pass + extra
+                render targets were a real per-frame cost for an
+                effect the warm point-light falloff already implies. */}
           </Suspense>
         </SceneStateProvider>
       </Canvas>
 
       {!deskViewActive && <MoveableCursor hot={moveableHover} />}
+
+      {/* Persistent room chrome: brand, reset, mouse controls.
+          Hidden once the camera leaves the room (desk view / OS). */}
+      {sceneReady && !deskViewActive && !osOpen && (
+        <RoomHUD onReset={() => setRoomResetKey((k) => k + 1)} />
+      )}
 
       {/* Hint banner — appears centered at top of viewport. */}
       {sceneReady && (deskViewActive || osOpen) && !sleeping && (
@@ -522,51 +562,6 @@ export default function App() {
       )}
 
       <LoadingScreen />
-
-      {/* OS launcher chip hidden for prod — the OS is reached by clicking
-          the keyboard / monitor in the 3D scene. Press `O` still toggles
-          the fullscreen overlay variant if needed during dev. */}
-      {false && sceneReady && !osOpen && (
-        <button
-          onClick={() => setOsOpen(true)}
-          style={{
-            position: "absolute",
-            top: 14,
-            right: 14,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "8px 12px",
-            borderRadius: 10,
-            background: "rgba(20, 18, 16, 0.55)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
-            border: "1px solid rgba(255, 255, 255, 0.12)",
-            color: "#f0e0d0",
-            fontSize: 12,
-            fontWeight: 500,
-            letterSpacing: 0.3,
-            cursor: "pointer",
-            zIndex: 20,
-            fontFamily: "var(--font-mono)",
-          }}
-        >
-          <Monitor size={14} />
-          Open OS
-          <span
-            style={{
-              marginLeft: 6,
-              padding: "2px 5px",
-              borderRadius: 4,
-              background: "rgba(255,255,255,0.08)",
-              fontSize: 10,
-              opacity: 0.7,
-            }}
-          >
-            O
-          </span>
-        </button>
-      )}
 
       {/* Fullscreen DesktopOS — rendered at full window dimensions so
           icons / widgets / paint canvas all reflow to use the

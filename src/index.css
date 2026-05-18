@@ -7,11 +7,12 @@
    * boot sequence, and the desktop OS. Adding a face here propagates
    * everywhere via `var(--font-*)`.
    * ----------------------------------------------------------------*/
-  --font-display:
-    Inter, "SF Pro Text", system-ui, -apple-system, "Segoe UI", Roboto,
-    sans-serif;
-  --font-body:
-    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Both sans tokens collapsed onto Helvetica per request — Arial is
+     Windows's metric-compatible substitute for machines without true
+     Helvetica installed, so the rendered widths stay consistent
+     cross-platform. */
+  --font-display: Helvetica, "Helvetica Neue", Arial, sans-serif;
+  --font-body: Helvetica, "Helvetica Neue", Arial, sans-serif;
   --font-mono:
     "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo,
     Consolas, monospace;

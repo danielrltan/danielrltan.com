@@ -15,9 +15,12 @@ const FLOAT_FREQ = 0.8;
 const HOVER_LIFT = 0.14;
 
 const START_POS = new THREE.Vector3(25, 25, 25);
-const END_POS = new THREE.Vector3(3.5, 2.5, 3.5);
+// Camera position pushed back ~1.35× from the original (3.5, 2.5, 3.5)
+// to compensate for the tighter END_FOV — room fills the frame at the
+// same size but with a flatter, more cinematic "long lens" look.
+const END_POS = new THREE.Vector3(4.7, 3.3, 4.7);
 const START_FOV = 11;
-const END_FOV = 50;
+const END_FOV = 40;
 const START_LOOK_AT = new THREE.Vector3(0, 0.6, 0);
 const END_LOOK_AT = new THREE.Vector3(0, 0.8, 0);
 const DURATION = 1.5;
