@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
 import { BlinkingCat } from "./BlinkingCat";
 import { MouseIcon } from "./MouseIcon";
@@ -15,10 +15,29 @@ interface Props {
 
 const HUD_PADDING = 22;
 const HUD_Z = 30;
+const FADE_IN_MS = 700;
 
 export function RoomHUD({ onReset }: Props) {
+  // Mount-time fade-in. The HUD mounts the instant `sceneReady` flips
+  // at the end of the intro zoom — without this it'd snap into view.
+  // Initial render commits at opacity 0, then a rAF tick flips to 1
+  // so the CSS transition runs from 0 → 1.
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   return (
-    <>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        opacity: shown ? 1 : 0,
+        transition: `opacity ${FADE_IN_MS}ms ease`,
+      }}
+    >
       {/* Brand mark — cat logo + name. */}
       <div
         style={{
@@ -73,7 +92,7 @@ export function RoomHUD({ onReset }: Props) {
         <MouseHint icon={<MouseIcon highlight="right" />} label="pan" />
         <MouseHint icon={<MouseIcon highlight="scroll" />} label="zoom" />
       </div>
-    </>
+    </div>
   );
 }
 
@@ -98,9 +117,10 @@ function ResetButton({ onReset }: { onReset: () => void }) {
     letterSpacing: "var(--tracking-wide)",
     textTransform: "uppercase",
     cursor: "pointer",
-    // The room is always-on at `cursor: none`, so override here so
-    // the system arrow appears over the button — without it the user
-    // can't see what they're clicking.
+    // Parent HUD wrapper has `pointer-events: none` so the brand and
+    // mouse hints stay click-through. The button needs an explicit
+    // `auto` to remain clickable through that wrapper.
+    pointerEvents: "auto",
     transition:
       "background 0.18s ease, border-color 0.18s ease, color 0.18s ease",
   };

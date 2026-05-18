@@ -240,9 +240,87 @@ export default function App() {
     startAmbience(0.22);
   }, [transitionStarted]);
 
+  // Snapshot of the post-intro camera pose — explicitly captured the
+  // moment the intro dolly completes, so `resetRoom` has an unambiguous
+  // pose to lerp back to (more reliable than `OrbitControls.position0`,
+  // which gets captured during a React re-render commit and can be off
+  // by a frame or two of orbit damping).
+  const resetPoseRef = useRef<{
+    position: THREE.Vector3;
+    target: THREE.Vector3;
+  } | null>(null);
+  const resetAnimRef = useRef<number>(0);
+
   const completeTransition = useCallback(() => {
     sceneReadyRef.current = true;
     setSceneReady(true);
+    const camera = cameraRef.current;
+    if (camera) {
+      resetPoseRef.current = {
+        position: camera.position.clone(),
+        // Matches the OrbitControls `target` prop below.
+        target: new THREE.Vector3(0, 0.8, 0),
+      };
+    }
+  }, []);
+
+  // Full reset: smoothly glide the camera back to its post-intro
+  // framing FIRST, then remount the Room (physics + draggable
+  // positions) at the end of the lerp. The Room remount is a heavy
+  // React reconciliation (~50-150ms) — landing it on a still frame
+  // after the camera has stopped moving is dramatically less
+  // perceptible than letting it stutter the camera glide.
+  const resetRoom = useCallback(() => {
+    setMoveableHover(false);
+
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const pose = resetPoseRef.current;
+    // Without a camera/pose to lerp to (e.g. reset pressed before
+    // intro complete), just do the remount immediately.
+    if (!camera || !controls || !pose) {
+      setRoomResetKey((k) => k + 1);
+      return;
+    }
+
+    if (resetAnimRef.current) {
+      cancelAnimationFrame(resetAnimRef.current);
+      resetAnimRef.current = 0;
+    }
+
+    const startPos = camera.position.clone();
+    const startTarget = controls.target.clone();
+    const startTime = performance.now();
+    const duration = 1200;
+
+    controls.enabled = false;
+
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      // ease-out cubic — fast start, soft landing.
+      const eased = 1 - Math.pow(1 - t, 3);
+
+      camera.position.lerpVectors(startPos, pose.position, eased);
+      controls.target.lerpVectors(startTarget, pose.target, eased);
+      camera.lookAt(controls.target);
+
+      if (t < 1) {
+        resetAnimRef.current = requestAnimationFrame(tick);
+      } else {
+        controls.enabled = true;
+        // Sync OrbitControls' internal spherical state to the new
+        // position/target so the next drag starts from the right place.
+        controls.update();
+        resetAnimRef.current = 0;
+        // Camera has landed — NOW do the heavy Room remount. The
+        // reconciliation spike lands on a still frame instead of
+        // stuttering the camera glide.
+        setRoomResetKey((k) => k + 1);
+      }
+    };
+
+    resetAnimRef.current = requestAnimationFrame(tick);
   }, []);
 
   // Once the intro lands, kick off the OS chunk downloads so they're
@@ -297,13 +375,12 @@ export default function App() {
         return;
       }
       e.preventDefault();
-      setMoveableHover(false);
-      setRoomResetKey((k) => k + 1);
+      resetRoom();
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [sceneReady]);
+  }, [sceneReady, resetRoom]);
 
   return (
     <div
@@ -527,7 +604,7 @@ export default function App() {
       {/* Persistent room chrome: brand, reset, mouse controls.
           Hidden once the camera leaves the room (desk view / OS). */}
       {sceneReady && !deskViewActive && !osOpen && (
-        <RoomHUD onReset={() => setRoomResetKey((k) => k + 1)} />
+        <RoomHUD onReset={resetRoom} />
       )}
 
       {/* Hint banner — appears centered at top of viewport. */}

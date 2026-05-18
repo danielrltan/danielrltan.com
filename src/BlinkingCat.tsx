@@ -14,13 +14,13 @@ import { useEffect, useRef } from "react";
  * (`element.style.opacity = ...`) instead of React state so blinks
  * stay snappy even when the main thread is busy.
  */
-const BLINK_CLOSED_MS = 220;
-const BLINK_FADE_MS = 60;
-const BLINK_FIRST_MIN_MS = 400;
-const BLINK_FIRST_MAX_MS = 900;
+const BLINK_CLOSED_MS = 100;
+const BLINK_FADE_MS = 0;
+const BLINK_FIRST_MIN_MS = 200;
+const BLINK_FIRST_MAX_MS = 700;
 const BLINK_GAP_MIN_MS = 1600;
-const BLINK_GAP_MAX_MS = 4200;
-const DOUBLE_BLINK_CHANCE = 0.26;
+const BLINK_GAP_MAX_MS = 3600;
+const DOUBLE_BLINK_CHANCE = 0.28;
 const DOUBLE_BLINK_GAP_MIN_MS = 180;
 const DOUBLE_BLINK_GAP_MAX_MS = 300;
 const CAT_OPEN_SRC = "/images/cat.svg";

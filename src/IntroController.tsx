@@ -20,7 +20,7 @@ const START_POS = new THREE.Vector3(25, 25, 25);
 // same size but with a flatter, more cinematic "long lens" look.
 const END_POS = new THREE.Vector3(4.7, 3.3, 4.7);
 const START_FOV = 11;
-const END_FOV = 40;
+const END_FOV = 35;
 const START_LOOK_AT = new THREE.Vector3(0, 0.6, 0);
 const END_LOOK_AT = new THREE.Vector3(0, 0.8, 0);
 const DURATION = 1.5;
