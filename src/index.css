@@ -47,6 +47,58 @@
   box-sizing: border-box;
 }
 
+/* Disable text + image selection globally — including inside the
+   monitor OS. The site is an experience, not a document; selection
+   highlights only get triggered by accident (e.g. double-click on a
+   widget label) and break the polish. Inputs / textareas / contenteditable
+   regions opt back in below so typing UIs still work. */
+html,
+body {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none; /* suppresses iOS long-press menu */
+}
+
+img,
+svg {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+[contenteditable=""] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* Thin white chevron drifting down + fading away above the monitor —
+   non-verbal "click here" hint. The keyframe drives the drop + fade
+   pulse; outer wrapper handles show/hide via opacity. See
+   `MonitorClickHint` in Room.tsx for the 3D anchor. */
+@keyframes monitor-click-hint-drop {
+  0%   { transform: translateY(-4px); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateY(10px); opacity: 0; }
+}
+
+.monitor-click-hint {
+  pointer-events: none;
+  animation: monitor-click-hint-drop 1.8s ease-in-out infinite;
+  /* Two-pass white drop-shadow: tight inner halo for legibility +
+     softer outer bloom. Kept subtle so the chevron still reads as a
+     thin line rather than a glowing blob. */
+  filter:
+    drop-shadow(0 0 3px rgba(255, 255, 255, 0.35))
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.18));
+  display: inline-block;
+}
+
 html,
 body,
 #root {

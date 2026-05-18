@@ -6,27 +6,38 @@ import { MouseIcon } from "./MouseIcon";
 /**
  * Persistent chrome shown over the room view: brand mark top-left,
  * reset button bottom-left, mouse controls hint bottom-right.
- * Hidden during desk view / fullscreen OS since the camera is no
- * longer in free-orbit and the user isn't interacting with the room.
+ *
+ * Hidden during desk view / fullscreen OS — but rather than unmount
+ * abruptly, the parent passes `visible={false}` and we fade opacity
+ * down to 0 over `FADE_MS`. Mount-time fade-in uses the same
+ * mechanism: initial render commits at opacity 0, then a rAF tick
+ * flips `visible` → opacity 1 via the same CSS transition.
  */
 interface Props {
   onReset: () => void;
+  visible: boolean;
 }
 
 const HUD_PADDING = 22;
 const HUD_Z = 30;
-const FADE_IN_MS = 700;
+const FADE_MS = 700;
 
-export function RoomHUD({ onReset }: Props) {
-  // Mount-time fade-in. The HUD mounts the instant `sceneReady` flips
-  // at the end of the intro zoom — without this it'd snap into view.
-  // Initial render commits at opacity 0, then a rAF tick flips to 1
-  // so the CSS transition runs from 0 → 1.
+export function RoomHUD({ onReset, visible }: Props) {
+  // `shown` drives the actual rendered opacity. Always starts false so
+  // the first commit paints at 0, then the effect below decides whether
+  // to lift it to 1 (visible=true) or keep it at 0 (visible=false).
   const [shown, setShown] = useState(false);
+
   useEffect(() => {
-    const id = requestAnimationFrame(() => setShown(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
+    if (visible) {
+      // Defer one frame so the initial paint (opacity 0) lands before
+      // we kick the transition — otherwise the browser may collapse
+      // both state values into a single style and skip the animation.
+      const id = requestAnimationFrame(() => setShown(true));
+      return () => cancelAnimationFrame(id);
+    }
+    setShown(false);
+  }, [visible]);
 
   return (
     <div
@@ -35,7 +46,7 @@ export function RoomHUD({ onReset }: Props) {
         inset: 0,
         pointerEvents: "none",
         opacity: shown ? 1 : 0,
-        transition: `opacity ${FADE_IN_MS}ms ease`,
+        transition: `opacity ${FADE_MS}ms ease`,
       }}
     >
       {/* Brand mark — cat logo + name. */}
@@ -71,7 +82,7 @@ export function RoomHUD({ onReset }: Props) {
       </div>
 
       {/* Reset — bottom-left, glass pill matching the hint banner. */}
-      <ResetButton onReset={onReset} />
+      <ResetButton onReset={onReset} interactive={shown} />
 
       {/* Mouse controls — bottom-right, icon-above-label trio. */}
       <div
@@ -96,7 +107,13 @@ export function RoomHUD({ onReset }: Props) {
   );
 }
 
-function ResetButton({ onReset }: { onReset: () => void }) {
+function ResetButton({
+  onReset,
+  interactive,
+}: {
+  onReset: () => void;
+  interactive: boolean;
+}) {
   const base: CSSProperties = {
     position: "absolute",
     bottom: HUD_PADDING,
@@ -118,9 +135,10 @@ function ResetButton({ onReset }: { onReset: () => void }) {
     textTransform: "uppercase",
     cursor: "pointer",
     // Parent HUD wrapper has `pointer-events: none` so the brand and
-    // mouse hints stay click-through. The button needs an explicit
-    // `auto` to remain clickable through that wrapper.
-    pointerEvents: "auto",
+    // mouse hints stay click-through. The button gets `auto` only when
+    // the HUD is fully shown — during the fade-out it shouldn't be
+    // clickable just because the element is still in the DOM.
+    pointerEvents: interactive ? "auto" : "none",
     transition:
       "background 0.18s ease, border-color 0.18s ease, color 0.18s ease",
   };

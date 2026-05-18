@@ -56,7 +56,7 @@ export function AboutWindow() {
           lineHeight: 1.4,
         }}
       >
-        Welcome to my website.
+        Welcome to my website!
       </p>
       <p
         style={{
@@ -67,9 +67,12 @@ export function AboutWindow() {
           opacity: 0.85,
         }}
       >
-        Thanks for stopping by. This whole site is a tiny 3D bedroom
-        you can poke at — drag the keyboard, throw the cat plush, sit
-        down at the desk and open this OS. Everything reacts.
+        Thanks for stopping by. This whole site is a an exact replica of my real bedroom.
+        Everything is fully interactive, so feel free to poke around.  
+        <br />
+        <br />
+        I just started the devleopment of this website; so do expect some work-in-progress segments and 
+        occasional performance issues here and there.
       </p>
       <p
         style={{

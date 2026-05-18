@@ -514,7 +514,11 @@ export default function App() {
                   minDistance={1.2}
                   maxDistance={8}
                   minPolarAngle={Math.PI * 0.1}
-                  maxPolarAngle={Math.PI * 0.55}
+                  // 0.5π is the equator (camera level with target). Capping
+                  // just above that keeps the orbit from dipping under the
+                  // room and exposing the empty undersides of the floor /
+                  // furniture.
+                  maxPolarAngle={Math.PI * 0.49}
                   enableDamping
                   dampingFactor={0.05}
                   rotateSpeed={0.36}
@@ -602,9 +606,14 @@ export default function App() {
       {!deskViewActive && <MoveableCursor hot={moveableHover} />}
 
       {/* Persistent room chrome: brand, reset, mouse controls.
-          Hidden once the camera leaves the room (desk view / OS). */}
-      {sceneReady && !deskViewActive && !osOpen && (
-        <RoomHUD onReset={resetRoom} />
+          Mounted whenever the scene is ready; the `visible` prop drives
+          a fade in/out as the camera enters or leaves the room (rather
+          than the HUD popping in/out when the gating condition flips). */}
+      {sceneReady && (
+        <RoomHUD
+          onReset={resetRoom}
+          visible={!deskViewActive && !osOpen}
+        />
       )}
 
       {/* Hint banner — appears centered at top of viewport. */}

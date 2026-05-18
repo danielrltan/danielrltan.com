@@ -37,7 +37,7 @@ interface Props {
 
 // Tuning constants — shared across every glow so they breathe in sync.
 const BASE_INTENSITY = 0.6;
-const HOVER_BONUS = 100;
+const HOVER_BONUS = 1;
 const HOVER_PULSE_DEPTH = .5;
 const PULSE_RATE = 2;
 const SHOCKWAVE_DECAY = 6;

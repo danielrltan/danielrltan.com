@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { Html, useGLTF } from "@react-three/drei";
 import { CuboidCollider, RigidBody } from "@react-three/rapier";
 import * as THREE from "three";
 import { DraggableRigidBody } from "./DraggableRigidBody";
@@ -502,6 +502,70 @@ function MonitorGlow({ pose }: { pose: MonitorPose | null }) {
   );
 }
 
+/**
+ * Thin white chevron that drifts down + fades on a loop, floating just
+ * above the monitor. Read as "click here" without needing copy. Drei's
+ * `<Html>` anchors it to the monitor's world position, so it tracks the
+ * monitor through every orbit / pan / zoom. Hidden once the user is
+ * seated at the desk — at that point the cue has served its purpose
+ * and any in-frame HUD just clutters the OS view.
+ */
+function MonitorClickHint({ pose }: { pose: MonitorPose | null }) {
+  const deskActive = useDeskViewActiveRef();
+  const sceneReady = useSceneReadyRef();
+  // Refs don't trigger re-renders, so poll inside useFrame and mirror
+  // their combined truth-value into a local state that DOES.
+  const [show, setShow] = useState(false);
+  useFrame(() => {
+    const next = !!(sceneReady?.current && !deskActive?.current);
+    if (next !== show) setShow(next);
+  });
+
+  if (!pose) return null;
+
+  // Sit just above the monitor frame's top edge.
+  const HINT_LIFT = 0.09;
+  const hintPos: [number, number, number] = [
+    pose.center[0],
+    pose.center[1] + pose.half[1] + HINT_LIFT,
+    pose.center[2],
+  ];
+
+  return (
+    <Html
+      position={hintPos}
+      center
+      pointerEvents="none"
+      style={{ pointerEvents: "none" }}
+      zIndexRange={[10, 0]}
+    >
+      <div
+        style={{
+          opacity: show ? 1 : 0,
+          transition: "opacity 0.35s ease",
+          pointerEvents: "none",
+        }}
+      >
+        <div className="monitor-click-hint">
+          <svg
+            width="50"
+            height="16"
+            viewBox="0 0 50 16"
+            fill="none"
+            stroke="white"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <polyline points="3 4 25 13 47 4" />
+          </svg>
+        </div>
+      </div>
+    </Html>
+  );
+}
+
 interface RoomProps {
   roomGroupRef: RefObject<THREE.Group | null>;
 }
@@ -928,6 +992,7 @@ export function Room({ roomGroupRef }: RoomProps) {
       ))}
 
       <MonitorGlow pose={monitorPoseExtracted} />
+      <MonitorClickHint pose={monitorPoseExtracted} />
     </group>
   );
 }
