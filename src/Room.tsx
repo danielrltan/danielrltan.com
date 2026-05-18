@@ -291,11 +291,40 @@ function aabbFromSubtree(root: THREE.Object3D): THREE.Box3 | null {
   return hasAny ? result : null;
 }
 
+/**
+ * Tracks which materials we've already disposed so the replace-helpers
+ * below don't double-dispose a material that's shared across meshes
+ * (e.g. the same `mat_glass_clear` instance can appear on multiple
+ * glass meshes in the GLB). WeakSet lets the GC reclaim entries
+ * naturally as materials are freed.
+ */
+const disposedMaterials = new WeakSet<THREE.Material>();
+
+/**
+ * Replacing a material via `mesh.material = new ...` orphans the old
+ * one — three.js doesn't auto-dispose it, and `useGLTF` won't reclaim
+ * it either. This frees the GPU resources (program, uniforms) of the
+ * material we're swapping out. Safe to call multiple times on the same
+ * material thanks to the WeakSet guard.
+ */
+function disposeOldMaterial(
+  old: THREE.Material | THREE.Material[] | null | undefined,
+) {
+  if (!old) return;
+  const arr = Array.isArray(old) ? old : [old];
+  for (const mat of arr) {
+    if (!mat || disposedMaterials.has(mat)) continue;
+    disposedMaterials.add(mat);
+    mat.dispose();
+  }
+}
+
 function replaceMushroomBulbs(root: THREE.Object3D) {
   root.traverse((obj) => {
     if (!(obj as THREE.Mesh).isMesh) return;
     if (!obj.name.startsWith("mushroom_bulb")) return;
     const mesh = obj as THREE.Mesh;
+    const old = mesh.material;
     // Was MeshPhysicalMaterial w/ transmission — each transmission material
     // costs a full extra scene render pass. Standard + transparent fakes the
     // same look at a fraction of the cost.
@@ -308,6 +337,34 @@ function replaceMushroomBulbs(root: THREE.Object3D) {
       emissive: new THREE.Color(1.0, 0.6, 0.2),
       emissiveIntensity: 0.4,
     });
+    disposeOldMaterial(old);
+  });
+}
+
+/**
+ * Round wall mirror — swaps the default GLB material for a polished
+ * metallic look that doesn't depend on an env map. Tuned values
+ * (metalness 0.5 / roughness 0.25 / brighter base color) catch enough
+ * direct light from the warm scene lights to read as "reflective"
+ * without needing a PMREM-baked environment map (the scene-wide
+ * `scene.environment` we tried earlier added a per-pixel cubemap
+ * sample to EVERY material in the room, not just the mirror — net
+ * frame-rate loss far outweighed the visual gain).
+ */
+function replaceMirrorMaterial(root: THREE.Object3D) {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (mesh.name !== "clk_mirror_round") return;
+    const old = mesh.material;
+    mesh.material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0.85, 0.85, 0.88),
+      metalness: 0.5,
+      roughness: 0.25,
+      emissive: new THREE.Color(0.08, 0.07, 0.08),
+      emissiveIntensity: 0.6,
+    });
+    disposeOldMaterial(old);
   });
 }
 
@@ -317,9 +374,11 @@ function replaceClearGlass(root: THREE.Object3D) {
     const mesh = obj as THREE.Mesh;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     let changed = false;
+    const replaced: THREE.Material[] = [];
     const newMats = mats.map((m) => {
       if (!m || m.name !== "mat_glass_clear") return m;
       changed = true;
+      replaced.push(m);
       // Same swap as mushroom bulbs — drop the transmission render pass.
       return new THREE.MeshStandardMaterial({
         color: new THREE.Color(0.95, 0.95, 0.95),
@@ -332,6 +391,7 @@ function replaceClearGlass(root: THREE.Object3D) {
     });
     if (changed) {
       mesh.material = newMats.length === 1 ? newMats[0]! : (newMats as THREE.Material[]);
+      disposeOldMaterial(replaced);
     }
   });
 }
@@ -513,12 +573,15 @@ function MonitorGlow({ pose }: { pose: MonitorPose | null }) {
 function MonitorClickHint({ pose }: { pose: MonitorPose | null }) {
   const deskActive = useDeskViewActiveRef();
   const sceneReady = useSceneReadyRef();
-  // Refs don't trigger re-renders, so poll inside useFrame and mirror
-  // their combined truth-value into a local state that DOES.
-  const [show, setShow] = useState(false);
+  // Visibility is driven by direct DOM-style mutation (NOT React state)
+  // so the per-frame poll doesn't schedule React renders. The CSS
+  // transition on the element smooths the opacity change to 0.35s.
+  const wrapperRef = useRef<HTMLDivElement>(null);
   useFrame(() => {
-    const next = !!(sceneReady?.current && !deskActive?.current);
-    if (next !== show) setShow(next);
+    const el = wrapperRef.current;
+    if (!el) return;
+    const next = !!(sceneReady?.current && !deskActive?.current) ? "1" : "0";
+    if (el.style.opacity !== next) el.style.opacity = next;
   });
 
   if (!pose) return null;
@@ -540,8 +603,9 @@ function MonitorClickHint({ pose }: { pose: MonitorPose | null }) {
       zIndexRange={[10, 0]}
     >
       <div
+        ref={wrapperRef}
         style={{
-          opacity: show ? 1 : 0,
+          opacity: 0,
           transition: "opacity 0.35s ease",
           pointerEvents: "none",
         }}
@@ -774,10 +838,14 @@ export function Room({ roomGroupRef }: RoomProps) {
     applyEmissive(visualScene);
     replaceMushroomBulbs(visualScene);
     replaceClearGlass(visualScene);
+    replaceMirrorMaterial(visualScene);
     disableRaycasts(visualScene);
     for (const it of interactive) {
       applyEmissive(it.object);
       replaceClearGlass(it.object);
+      // `clk_mirror_round` is in the interactive set (it's a throwable),
+      // so the mirror swap also has to run on each interactive subtree.
+      replaceMirrorMaterial(it.object);
     }
     for (const d of drawers) applyEmissive(d.object);
     for (const s of statics) {

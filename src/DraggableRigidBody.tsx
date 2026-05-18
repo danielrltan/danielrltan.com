@@ -4,7 +4,13 @@ import {
   RigidBody,
   type RapierRigidBody,
 } from "@react-three/rapier";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import * as THREE from "three";
 import {
   useDeskViewActiveRef,
@@ -122,6 +128,13 @@ export function DraggableRigidBody({
     half[2] < TINY_THRESHOLD;
   const rb = useRef<RapierRigidBody | null>(null);
   const dragging = useRef(false);
+  // Activation drives the JSX `type` / `gravityScale` props directly —
+  // @react-three/rapier re-applies the `type` prop on every render, so
+  // an imperative `setBodyType` would get clobbered by the next render
+  // (which is what just broke drag). React is the single driver. The
+  // mirror ref `activatedRef` exists so `useFrame` and pointer handlers
+  // can read the current value synchronously without waiting for the
+  // commit cycle (fixes the one-frame stale-state hole that #7 caught).
   const [activated, setActivated] = useState(false);
   const activatedRef = useRef(false);
   const checkAccum = useRef(0);
@@ -197,45 +210,66 @@ export function DraggableRigidBody({
     playTap(speed);
   };
 
+  // Single activation path — flips the ref synchronously so `useFrame`
+  // / pointer handlers see `activatedRef.current === true` immediately,
+  // and schedules the React render that drives the JSX `type` /
+  // `gravityScale` flip. The mass adjustment lands in the `useEffect`
+  // below, AFTER react-three/rapier has propagated the new type to the
+  // underlying Rapier body — otherwise we'd be setting mass on a body
+  // that's about to be re-init'd.
+  const activateImpl = () => {
+    if (activatedRef.current) return;
+    activatedRef.current = true;
+    setActivated(true);
+  };
+
+  // Keep the ref in sync if anything ever sets `activated` outside
+  // `activateImpl` (currently nothing does, but cheap insurance).
   useEffect(() => {
     activatedRef.current = activated;
   }, [activated]);
 
+  // Mass adjustment runs after the type flip commits. Tiny props like
+  // pens / dice come in under MIN_MASS and feel weightless without
+  // this bump — applied imperatively because there's no Rapier prop
+  // for "minimum mass". Safe here because by the time this effect runs
+  // the body is already dynamic.
   useEffect(() => {
-    bodyRegistry.set(name, {
-      getPosition: () => (rb.current ? rb.current.translation() : null),
-      isActivated: () => activatedRef.current,
-      activate: () => {
-        if (activatedRef.current || !rb.current) return;
-        activatedRef.current = true;
-        setActivated(true);
-        rb.current.setBodyType(RB_DYNAMIC, true);
-        const mass = rb.current.mass();
-        if (mass < MIN_MASS) {
-          rb.current.setAdditionalMass(MIN_MASS - mass, true);
-        }
-      },
-    });
-    return () => {
-      bodyRegistry.delete(name);
-    };
-  }, [name]);
-
-  const activateNow = () => {
-    if (activatedRef.current || !rb.current) return;
-    activatedRef.current = true;
-    setActivated(true);
-    rb.current.setBodyType(RB_DYNAMIC, true);
+    if (!activated || !rb.current) return;
     const mass = rb.current.mass();
     if (mass < MIN_MASS) {
       rb.current.setAdditionalMass(MIN_MASS - mass, true);
     }
-  };
+  }, [activated]);
+
+  // Keyed by a stable per-instance id rather than `name` — `name` is
+  // taken from a GLB mesh name and is guaranteed unique today, but a
+  // future duplicate-name mesh would silently clobber the earlier
+  // registration and then its unmount would delete the wrong entry.
+  // `useId()` sidesteps that entirely.
+  const registryId = useId();
+  useEffect(() => {
+    bodyRegistry.set(registryId, {
+      getPosition: () => (rb.current ? rb.current.translation() : null),
+      isActivated: () => activatedRef.current,
+      activate: activateImpl,
+    });
+    return () => {
+      bodyRegistry.delete(registryId);
+    };
+    // `registryId` is stable for the lifetime of the component, and
+    // `activateImpl` closes over stable refs only — safe deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registryId]);
+
+  const activateNow = activateImpl;
 
   useFrame((_, dt) => {
     if (!rb.current) return;
 
-    if (!activated) {
+    // Read the ref, not the prior React state — the ref is updated
+    // synchronously by `activateImpl`, the state was one render behind.
+    if (!activatedRef.current) {
       // Support-raycast auto-activation removed — it was the trigger that
       // made pegboard / wall-hung items fall on load (those items have
       // nothing directly below them so the downward ray always misses).
@@ -250,8 +284,8 @@ export function DraggableRigidBody({
 
       if (proximityActivate) {
         const pos = rb.current.translation();
-        for (const [otherName, entry] of bodyRegistry) {
-          if (otherName === name) continue;
+        for (const [otherId, entry] of bodyRegistry) {
+          if (otherId === registryId) continue;
           if (!entry.isActivated()) continue;
           const otherPos = entry.getPosition();
           if (!otherPos) continue;
@@ -431,14 +465,19 @@ export function DraggableRigidBody({
     <RigidBody
       ref={rb}
       name={name}
+      // React-driven body type. @react-three/rapier re-applies these
+      // props on every render — imperative `setBodyType` / `setGravityScale`
+      // calls get clobbered on the next commit, so they MUST flow
+      // through React state (`activated`). The mass adjustment that
+      // can't be expressed as a prop lives in `useEffect([activated])`.
       type={activated ? "dynamic" : "fixed"}
+      gravityScale={activated ? 1 : 0}
       position={position}
       colliders={useCuboid ? false : "hull"}
       restitution={RESTITUTION}
       friction={FRICTION}
       linearDamping={REST_LINEAR_DAMPING}
       angularDamping={REST_ANGULAR_DAMPING}
-      gravityScale={activated ? 1 : 0}
       canSleep
       ccd={useCuboid}
       onCollisionEnter={onCollisionEnter}
