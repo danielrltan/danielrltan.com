@@ -77,8 +77,11 @@ export function useTheme(): Ctx {
 
 /**
  * Inline CSS variables for the active palette. Spread onto a wrapping
- * element so descendant components can use `var(--bg)` etc. Includes the
- * font-family tokens used across widgets.
+ * element so descendant components can use `var(--bg)` etc.
+ *
+ * Font tokens (`--font-display`, `--font-body`, `--font-mono`) live at
+ * `:root` in `src/index.css` so they're available everywhere — not
+ * just inside the OS subtree.
  */
 export function themeVars(c: ThemeColors): CSSProperties {
   return {
@@ -91,11 +94,5 @@ export function themeVars(c: ThemeColors): CSSProperties {
     "--text-dk": c.textDk,
     "--muted": c.muted,
     "--border": c.border,
-    "--font-display":
-      'Inter, "SF Pro Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-    "--font-body":
-      'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-    "--font-mono":
-      '"JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace',
   } as CSSProperties;
 }

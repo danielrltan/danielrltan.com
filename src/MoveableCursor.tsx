@@ -8,9 +8,9 @@ interface Props {
 // Parallax tuning — drift the center dot in the direction of motion so a
 // fast flick has trail; small jitter from a steady hand stays at center.
 const TRAIL_STRENGTH = 5;
-const TRAIL_MAX_PX = 14;
+const TRAIL_MAX_PX = 5;
 const SPRING = 0.16;
-const TARGET_DECAY = 0.93;
+const TARGET_DECAY = 0;
 
 /**
  * White ring + dot cursor for the *room* zone only. Visibility is

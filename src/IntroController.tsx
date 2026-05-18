@@ -69,7 +69,7 @@ export function IntroController({
       // collection of dozens of sub-meshes — the per-frame hit /
       // miss flickered when the cursor grazed silhouette edges,
       // making the lift spasm. A static square is rock-solid.
-      const HITBOX_HALF = 0.38; // ±0.38 of normalized viewport
+      const HITBOX_HALF = 0.65; // ±0.65 of normalized viewport (1.7× the old 0.38)
       const inHitbox =
         Math.abs(state.pointer.x) < HITBOX_HALF &&
         Math.abs(state.pointer.y) < HITBOX_HALF;
@@ -79,7 +79,7 @@ export function IntroController({
       // pointer.y: -1 (bottom) to +1 (top)
       // Cursor RIGHT  → room turns right (negative Y).
       // Cursor UP     → room tilts back  (negative X).
-      group.rotation.y += (-state.pointer.x * 0.10 - group.rotation.y) * 0.08;
+      group.rotation.y += (state.pointer.x * 0.10 - group.rotation.y) * 0.08;
       group.rotation.x += (-state.pointer.y * 0.07 - group.rotation.x) * 0.08;
       group.rotation.z = 0;
 

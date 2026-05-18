@@ -3,7 +3,96 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Daniel's Room</title>
+    <meta name="theme-color" content="#330a05" />
+
+    <!-- Favicon — same cat asset as the loading screen, so the browser
+         tab matches the site's mascot. Modern browsers render SVG
+         favicons crisp at every DPI. -->
+    <link rel="icon" type="image/svg+xml" href="/images/cat.svg" />
+
+    <title>Daniel Tan's Portfolio</title>
+    <meta
+      name="description"
+      content="Personal portfolio of Daniel Tan, software engineer and web developer. Interactive 3D bedroom showcasing projects, resume, and contact information."
+    />
+    <meta
+      name="keywords"
+      content="Daniel Tan, Daniel Tan, software engineer, web developer, frontend, full stack, portfolio, resume, React, TypeScript, three.js, interactive 3D"
+    />
+    <meta name="author" content="Daniel Tan" />
+
+    <!-- Hints for corporate web-filter auto-classification (Symantec/BlueCoat,
+         Forcepoint, Fortinet, Palo Alto, Zscaler, Cisco Talos all read these
+         when their crawlers build the initial category record). -->
+    <meta
+      name="category"
+      content="Personal Pages and Blogs, Information Technology, Business"
+    />
+    <meta name="rating" content="General" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="googlebot" content="index, follow" />
+    <link rel="canonical" href="https://danielrltan.com/" />
+
+    <!-- Open Graph (LinkedIn, Facebook, Slack, Discord previews — especially
+         important since recruiters share the link on LinkedIn). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://danielrltan.com/" />
+    <meta property="og:site_name" content="Daniel R.L. Tan" />
+    <meta property="og:title" content="Daniel R.L. Tan — Software Engineer Portfolio" />
+    <meta
+      property="og:description"
+      content="Interactive 3D portfolio of Daniel R.L. Tan — software engineer. Explore the room to view projects, resume, and contact."
+    />
+    <meta property="og:image" content="https://danielrltan.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter / X Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Daniel R.L. Tan — Software Engineer Portfolio" />
+    <meta
+      name="twitter:description"
+      content="Interactive 3D portfolio of Daniel R.L. Tan — software engineer."
+    />
+    <meta name="twitter:image" content="https://danielrltan.com/og-image.png" />
+
+    <!-- Structured data: identifies this as a Person + their portfolio WebSite.
+         Search engines and a growing number of filter vendors use schema.org
+         to disambiguate site purpose (portfolio vs. business vs. blog). -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Person",
+            "@id": "https://danielrltan.com/#person",
+            "name": "Daniel R.L. Tan",
+            "url": "https://danielrltan.com/",
+            "jobTitle": "Software Engineer",
+            "sameAs": [
+              "https://www.linkedin.com/in/danielrltan",
+              "https://github.com/danielrltan"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://danielrltan.com/#website",
+            "url": "https://danielrltan.com/",
+            "name": "Daniel R.L. Tan — Portfolio",
+            "description": "Personal portfolio of Daniel R.L. Tan, software engineer.",
+            "inLanguage": "en-US",
+            "publisher": { "@id": "https://danielrltan.com/#person" },
+            "about": [
+              "Software Engineering",
+              "Web Development",
+              "Interactive 3D"
+            ]
+          }
+        ]
+      }
+    </script>
+
     <style>
       html, body { margin: 0; height: 100%; background: #330a05; }
       /* Boot screen — visible immediately on first paint, before any JS
@@ -31,11 +120,86 @@
         0%, 100% { opacity: 0.30; }
         50%      { opacity: 0.85; }
       }
+      /* Crawler-only fallback. Hidden from sighted users (the canvas covers
+         everything) but indexable. Web-filter crawlers and search engines
+         use this to classify the site as a personal/portfolio page. */
+      .seo-fallback {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
     </style>
   </head>
   <body>
     <div id="boot-screen"><span class="bs-pulse">loading</span></div>
     <div id="root"></div>
+
+    <!-- Visible to crawlers and screen readers; hidden visually. Gives
+         classifiers concrete text to read so the site isn't filed as
+         "uncategorized" just because the foreground is a 3D canvas. -->
+    <main class="seo-fallback">
+      <h1>Daniel R.L. Tan — Software Engineer Portfolio</h1>
+      <p>
+        Welcome to the personal portfolio of Daniel R.L. Tan, a software
+        engineer and web developer. This site presents Daniel's resume,
+        software projects, contact information, and professional
+        background through an interactive 3D bedroom built with React,
+        TypeScript, and three.js.
+      </p>
+      <p>
+        Sections available inside the interactive desktop: About, Resume,
+        Projects, GitHub activity, and Contact. For recruiters and hiring
+        managers, the resume window contains the full work history and the
+        contact window includes a direct email link.
+      </p>
+      <p>
+        Connect with Daniel on
+        <a href="https://www.linkedin.com/in/danielrltan">LinkedIn</a>
+        or
+        <a href="https://github.com/danielrltan">GitHub</a>.
+      </p>
+    </main>
+
+    <noscript>
+      <div
+        style="
+          position: fixed;
+          inset: 0;
+          background: #330a05;
+          color: #ffb077;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 18px;
+          padding: 24px;
+          font-family: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+          z-index: 10000;
+          text-align: center;
+        "
+      >
+        <h1 style="margin: 0; font-size: 20px; letter-spacing: 2px;">
+          Daniel R.L. Tan — Software Engineer
+        </h1>
+        <p style="max-width: 540px; line-height: 1.6; font-size: 13px;">
+          This portfolio is an interactive 3D experience and requires
+          JavaScript. Please enable JavaScript, or reach Daniel directly
+          via the links below.
+        </p>
+        <p style="font-size: 13px;">
+          <a href="https://www.linkedin.com/in/danielrltan" style="color: #ffb077;">LinkedIn</a>
+          &nbsp;·&nbsp;
+          <a href="https://github.com/danielrltan" style="color: #ffb077;">GitHub</a>
+        </p>
+      </div>
+    </noscript>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -61,8 +61,7 @@ export function AsciiCatPlush({
     const el = effect.domElement;
     el.style.color = color;
     el.style.backgroundColor = background;
-    el.style.fontFamily =
-      'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace';
+    el.style.fontFamily = "var(--font-mono)";
     el.style.fontSize = "7px";
     el.style.lineHeight = "7px";
     el.style.letterSpacing = "0";

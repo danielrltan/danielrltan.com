@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+
+# Explicitly allow the major web-filter and recruiter crawlers so the
+# site is correctly classified rather than left "uncategorized".
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: LinkedInBot
+Allow: /
+
+User-agent: Slackbot
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+Sitemap: https://danielrltan.com/sitemap.xml

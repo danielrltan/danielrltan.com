@@ -1,5 +1,45 @@
 :root {
   color-scheme: dark;
+
+  /* ------------------------------------------------------------------
+   * Typography — font families
+   * Single source of truth across the room shell, loading screen,
+   * boot sequence, and the desktop OS. Adding a face here propagates
+   * everywhere via `var(--font-*)`.
+   * ----------------------------------------------------------------*/
+  --font-display:
+    Inter, "SF Pro Text", system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+  --font-body:
+    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo,
+    Consolas, monospace;
+
+  /* ------------------------------------------------------------------
+   * Typography — HUD type scale
+   * Only the sizes/tracking actually used by the system labels (loading
+   * caption, click-to-begin, hint banner, boot-sequence rows). Window
+   * content uses freeform sizes since each window is its own world.
+   * ----------------------------------------------------------------*/
+  --text-xs: 10px;       /* microcopy, status sub-rows */
+  --text-sm: 11px;       /* in-OS hint banner */
+  --text-base: 12px;     /* canonical HUD label (loading, click-to-begin) */
+
+  --tracking-wide: 2px;    /* hint banner */
+  --tracking-wider: 3px;   /* secondary HUD */
+  --tracking-widest: 4px;  /* canonical HUD label */
+
+  /* ------------------------------------------------------------------
+   * HUD palette
+   * The pre-room overlay (boot-screen → LoadingScreen → click-to-begin)
+   * shares the warm amber. The in-OS overlay (hint banner) uses cream
+   * to read against the warm cream OS chrome. `*-soft` variants are
+   * the same hue at low alpha for text-shadow glows.
+   * ----------------------------------------------------------------*/
+  --hud-amber: #ffb077;
+  --hud-amber-soft: rgba(255, 176, 119, 0.2);
+  --hud-cream: #f0e0d0;
 }
 
 * {
@@ -15,18 +55,21 @@ body,
   height: 100%;
   overflow: hidden;
   background: #0a0806;
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    sans-serif;
+  font-family: var(--font-body);
   color: #e8d8c8;
 }
 
 canvas {
   display: block;
   touch-action: none;
+}
+
+/* Hide the custom cursor while the LoadingScreen is up. The main thread
+   is heavily blocked during scene init (shader compile / texture upload),
+   which makes the parallax-tracked cursor visibly stutter. The overlay
+   toggles this class on the root element. */
+html.loading-active .moveable-cursor {
+  display: none;
 }
 
 /* Custom pointer after the intro — see MoveableCursor.tsx */

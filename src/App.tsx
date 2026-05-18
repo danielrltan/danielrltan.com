@@ -505,11 +505,10 @@ export default function App() {
             WebkitBackdropFilter: "blur(10px)",
             border: "1px solid rgba(255, 255, 255, 0.12)",
             borderRadius: 8,
-            color: "#f0e0d0",
-            fontFamily:
-              'ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace',
-            fontSize: 11,
-            letterSpacing: 2,
+            color: "var(--hud-cream)",
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-sm)",
+            letterSpacing: "var(--tracking-wide)",
             textTransform: "uppercase",
             pointerEvents: "none",
             opacity: 0.9,
@@ -549,8 +548,7 @@ export default function App() {
             letterSpacing: 0.3,
             cursor: "pointer",
             zIndex: 20,
-            fontFamily:
-              "ui-monospace, 'JetBrains Mono', 'SF Mono', monospace",
+            fontFamily: "var(--font-mono)",
           }}
         >
           <Monitor size={14} />
@@ -586,20 +584,22 @@ export default function App() {
       <div
         style={{
           position: "absolute",
-          top: "50%",
+          bottom: 28,
           left: "50%",
-          transform: "translate(-50%, -50%)",
-          color: "white",
+          transform: "translateX(-50%)",
+          color: "var(--hud-amber)",
+          textShadow: "0 0 12px var(--hud-amber-soft)",
           textTransform: "uppercase",
-          letterSpacing: "2px",
-          fontSize: "14px",
-          fontFamily: "sans-serif",
-          opacity: transitionStarted ? 0 : 0.5,
+          letterSpacing: "var(--tracking-widest)",
+          fontSize: "var(--text-base)",
+          fontFamily: "var(--font-mono)",
+          opacity: transitionStarted ? 0 : 0.7,
           transition: "opacity 0.5s ease",
           pointerEvents: "none",
           userSelect: "none",
         }}
       >
+        click to begin
       </div>
     </div>
   );

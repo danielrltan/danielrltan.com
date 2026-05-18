@@ -13,6 +13,11 @@ interface Props {
 
 const TICK_MS = 60;
 const FADE_MS = 320;
+// Same pattern as `LoadingScreen.HOLD_AFTER_READY_MS`: once the bar
+// reaches 100%, hold the boot UI fully opaque for a beat before the
+// fade kicks in. Gives the OS chunk a window to finish mounting under
+// cover so it doesn't visibly pop into view at the end of the fade.
+const HOLD_AFTER_READY_MS = 700;
 
 const LINES = [
   "DanielPC / boot ",
@@ -54,8 +59,10 @@ export function BootSequence({
       setProgress(p);
       if (p >= 1) {
         clearInterval(id);
-        setFading(true);
-        setTimeout(() => setDone(true), FADE_MS);
+        setTimeout(() => {
+          setFading(true);
+          setTimeout(() => setDone(true), FADE_MS);
+        }, HOLD_AFTER_READY_MS);
       }
     }, TICK_MS);
     return () => clearInterval(id);
@@ -76,8 +83,7 @@ export function BootSequence({
         height,
         background: "#000",
         color: "#ff7842",
-        fontFamily:
-          'ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace',
+        fontFamily: "var(--font-mono)",
         opacity: fading ? 0 : 1,
         transition: `opacity ${FADE_MS}ms ease`,
         overflow: "hidden",

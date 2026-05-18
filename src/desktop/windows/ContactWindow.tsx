@@ -40,8 +40,7 @@ export function ContactWindow() {
         aria-label="contact"
         style={{
           margin: 0,
-          fontFamily:
-            "var(--font-mono, ui-monospace, 'JetBrains Mono', 'SF Mono', monospace)",
+          fontFamily: "var(--font-mono)",
           fontSize: 13,
           lineHeight: 1.4,
           color: "var(--text-lt)",
