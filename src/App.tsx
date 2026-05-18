@@ -6,7 +6,14 @@ import { Physics } from "@react-three/rapier";
 import * as THREE from "three";
 import { Room } from "./Room";
 import { Lighting } from "./Lighting";
-import { IntroController } from "./IntroController";
+import {
+  IntroController,
+  START_POS,
+  START_FOV,
+  START_LOOK_AT,
+  END_LOOK_AT,
+  ORBIT_MAX_DISTANCE,
+} from "./IntroController";
 import { SceneStateProvider } from "./SceneState";
 import { MoveableCursor } from "./MoveableCursor";
 import { DeskViewController } from "./DeskViewController";
@@ -112,6 +119,11 @@ export default function App() {
   // a black screen because the drei Html plane fills the viewport
   // and the surrounding scene is occluded.
   const cameraBusyRef = useRef(false);
+  // Flag set right before we re-dispatch a synthetic Escape after the
+  // sleep-to-black fade. On that follow-up event the capture handler
+  // sees the flag, clears it, and bails out so the Escape propagates
+  // normally to DeskViewController (which runs the zoom-out lerp).
+  const sleepDispatchRef = useRef(false);
   // True while the camera is mid-fromDesk lerp on the way out. Used
   // to fade the monitor-mounted OS to black like a real screen
   // going to sleep, before MonitorScreen unmounts at the end of the
@@ -138,6 +150,22 @@ export default function App() {
   // Synthesised Escape lets the in-OS "room" button reuse the same
   // fromDesk transition the keyboard handler in DeskViewController
   // already runs.
+  // Pause the camera in the seated pose after `fromFullscreen` lands,
+  // before triggering the room zoom-out. The OS chunk re-mounts on the
+  // monitor surface during the fullscreen overlay teardown, and
+  // `deskViewActive` flipping in the fromDesk lerp causes more React
+  // work — letting the camera sit still for ~700ms means all that
+  // reconciliation lands on stationary frames instead of stuttering
+  // the zoom-out itself.
+  const FROM_FULLSCREEN_SETTLE_MS = 700;
+  // Monitor sleep-to-black fade duration. MUST match the CSS transition
+  // on the `sleeping` wrapper below (`opacity 1.2s ease`) — that's the
+  // visual "monitor powering off" cue. We hold the Escape event for
+  // this long before letting DeskViewController run the zoom-out, so
+  // the screen goes dark first and the zoom-out only starts on the
+  // empty monitor instead of fighting the fade for attention.
+  const SLEEP_FADE_MS = 1200;
+
   const backToRoom = useCallback(() => {
     if (cameraBusyRef.current) return;
     const goRoom = () => {
@@ -146,12 +174,17 @@ export default function App() {
     if (osOpen) {
       cameraBusyRef.current = true;
       // Unmount overlay first so the dolly is actually visible —
-      // then run fromFullscreen, then trigger the fromDesk return.
+      // then run fromFullscreen, settle in the seated pose, then
+      // trigger the fromDesk return.
       setOsOpen(false);
       requestAnimationFrame(() => {
         fullscreenImplRef.current?.fromFullscreen(() => {
-          cameraBusyRef.current = false;
-          goRoom();
+          // Hold `cameraBusyRef` true through the settle so re-presses
+          // of Escape don't try to start another transition mid-pause.
+          setTimeout(() => {
+            cameraBusyRef.current = false;
+            goRoom();
+          }, FROM_FULLSCREEN_SETTLE_MS);
         });
       });
     } else {
@@ -221,17 +254,47 @@ export default function App() {
         e.stopImmediatePropagation();
         backToRoom();
       } else if (e.code === "Escape" && deskViewActive && !osOpen) {
-        // Don't stop — DeskViewController's bubble-phase Escape
-        // handler still needs to fire fromDesk. Just trip the
-        // sleeping flag so the monitor OS fades to black during the
-        // lerp out.
+        // Re-dispatched event after the sleep fade — let it through
+        // to DeskViewController so fromDesk can finally run.
+        if (sleepDispatchRef.current) {
+          sleepDispatchRef.current = false;
+          return;
+        }
+        // Sleep fade already in flight from a previous press — swallow
+        // additional presses so we don't stack timers / re-dispatches.
+        if (sleeping) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return;
+        }
+        // First press: hold the event, fade the monitor to black,
+        // THEN re-dispatch so the zoom-out doesn't compete with the
+        // fade for visual attention. User reads it as "screen powers
+        // off → camera pulls back" instead of the two motions
+        // overlapping and reading as laggy.
+        e.preventDefault();
+        e.stopImmediatePropagation();
         setSleeping(true);
+        setTimeout(() => {
+          sleepDispatchRef.current = true;
+          window.dispatchEvent(
+            new KeyboardEvent("keydown", { code: "Escape" }),
+          );
+        }, SLEEP_FADE_MS);
       }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKey, { capture: true });
-  }, [sceneReady, osOpen, deskViewActive, toggleFullscreen, backToRoom]);
+  }, [
+    sceneReady,
+    osOpen,
+    deskViewActive,
+    toggleFullscreen,
+    backToRoom,
+    sleeping,
+    SLEEP_FADE_MS,
+  ]);
 
   const startTransition = useCallback(() => {
     if (transitionStarted) return;
@@ -259,7 +322,7 @@ export default function App() {
       resetPoseRef.current = {
         position: camera.position.clone(),
         // Matches the OrbitControls `target` prop below.
-        target: new THREE.Vector3(0, 0.8, 0),
+        target: END_LOOK_AT.clone(),
       };
     }
   }, []);
@@ -448,8 +511,11 @@ export default function App() {
       </div>
       <Canvas
         camera={{
-          position: [25, 25, 25],
-          fov: 11,
+          // Initial iso preview pose — kept in sync with IntroController
+          // via shared exports. Don't hardcode values here; the intro
+          // lerp reads from the same constants.
+          position: [START_POS.x, START_POS.y, START_POS.z],
+          fov: START_FOV,
           near: 0.1,
           far: 200,
         }}
@@ -474,7 +540,7 @@ export default function App() {
           // falloff is doing the visual job already.
           gl.shadowMap.enabled = false;
           cameraRef.current = camera as THREE.PerspectiveCamera;
-          camera.lookAt(0, 0.6, 0);
+          camera.lookAt(START_LOOK_AT);
         }}
       >
         <SceneStateProvider
@@ -510,9 +576,16 @@ export default function App() {
                 <OrbitControls
                   ref={controlsRef}
                   makeDefault
-                  target={[0, 0.8, 0]}
+                  // Matches `IntroController.END_LOOK_AT` exactly — if
+                  // these two differ, OrbitControls re-orients the
+                  // camera the instant it takes over and the user sees
+                  // a snap at the end of the intro lerp.
+                  target={[END_LOOK_AT.x, END_LOOK_AT.y, END_LOOK_AT.z]}
                   minDistance={1.2}
-                  maxDistance={8}
+                  // Derived from END_POS/END_LOOK_AT in IntroController.
+                  // Auto-tracks any future change to those vectors so
+                  // the post-intro snap-clamp bug can't recur.
+                  maxDistance={ORBIT_MAX_DISTANCE}
                   minPolarAngle={Math.PI * 0.1}
                   // 0.5π is the equator (camera level with target). Capping
                   // just above that keeps the orbit from dipping under the
@@ -608,13 +681,16 @@ export default function App() {
       {/* Persistent room chrome: brand, reset, mouse controls.
           Mounted whenever the scene is ready; the `visible` prop drives
           a fade in/out as the camera enters or leaves the room (rather
-          than the HUD popping in/out when the gating condition flips). */}
-      {sceneReady && (
-        <RoomHUD
-          onReset={resetRoom}
-          visible={!deskViewActive && !osOpen}
-        />
-      )}
+          than the HUD popping in/out when the gating condition flips).
+
+          Always mounted — the brand mark is visible during the iso
+          pre-view phase too. `interactive` flips once the intro lands,
+          which fades in the reset + mouse-hint controls. */}
+      <RoomHUD
+        onReset={resetRoom}
+        visible={!deskViewActive && !osOpen}
+        interactive={sceneReady}
+      />
 
       {/* Hint banner — appears centered at top of viewport. */}
       {sceneReady && (deskViewActive || osOpen) && !sleeping && (

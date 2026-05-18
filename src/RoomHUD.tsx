@@ -7,37 +7,52 @@ import { MouseIcon } from "./MouseIcon";
  * Persistent chrome shown over the room view: brand mark top-left,
  * reset button bottom-left, mouse controls hint bottom-right.
  *
- * Hidden during desk view / fullscreen OS — but rather than unmount
- * abruptly, the parent passes `visible={false}` and we fade opacity
- * down to 0 over `FADE_MS`. Mount-time fade-in uses the same
- * mechanism: initial render commits at opacity 0, then a rAF tick
- * flips `visible` → opacity 1 via the same CSS transition.
+ * The brand mark is always shown (including the iso pre-view phase
+ * before the user starts the intro). The controls (reset + mouse
+ * hints) only appear once `interactive=true`, since they reference
+ * actions that don't apply during the iso phase.
+ *
+ * `visible` drives the outer fade for desk-view / fullscreen-OS
+ * transitions — the whole HUD fades out together when the user is
+ * no longer looking at the room.
  */
 interface Props {
   onReset: () => void;
+  /** Outer visibility — fades the whole HUD in/out for desk-view transitions. */
   visible: boolean;
+  /** When true (post-intro), reset + mouse-hint controls fade in. */
+  interactive: boolean;
 }
 
 const HUD_PADDING = 22;
 const HUD_Z = 30;
 const FADE_MS = 700;
 
-export function RoomHUD({ onReset, visible }: Props) {
-  // `shown` drives the actual rendered opacity. Always starts false so
-  // the first commit paints at 0, then the effect below decides whether
-  // to lift it to 1 (visible=true) or keep it at 0 (visible=false).
+export function RoomHUD({ onReset, visible, interactive }: Props) {
+  // `shown` drives the OUTER opacity (whole HUD). Initial render
+  // commits at 0 so the first frame paints before the rAF tick flips
+  // it to 1 — otherwise the browser may collapse both state values
+  // into a single style and skip the animation.
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      // Defer one frame so the initial paint (opacity 0) lands before
-      // we kick the transition — otherwise the browser may collapse
-      // both state values into a single style and skip the animation.
       const id = requestAnimationFrame(() => setShown(true));
       return () => cancelAnimationFrame(id);
     }
     setShown(false);
   }, [visible]);
+
+  // Controls fade in on a delayed timer once `interactive` flips, so
+  // they don't pop in at the exact instant the camera lands.
+  const [controlsShown, setControlsShown] = useState(false);
+  useEffect(() => {
+    if (interactive) {
+      const id = requestAnimationFrame(() => setControlsShown(true));
+      return () => cancelAnimationFrame(id);
+    }
+    setControlsShown(false);
+  }, [interactive]);
 
   return (
     <div
@@ -49,7 +64,7 @@ export function RoomHUD({ onReset, visible }: Props) {
         transition: `opacity ${FADE_MS}ms ease`,
       }}
     >
-      {/* Brand mark — cat logo + name. */}
+      {/* Brand mark — always visible (including iso pre-view). */}
       <div
         style={{
           position: "absolute",
@@ -73,35 +88,47 @@ export function RoomHUD({ onReset, visible }: Props) {
             fontSize: 24,
             fontWeight: 400,
             letterSpacing: "-0.06em",
-            // Soft drop-shadow so the wordmark stays legible whether
-            // the camera frames a dark wall or a bright window behind.
           }}
         >
           Daniel Tan
         </span>
       </div>
 
-      {/* Reset — bottom-left, glass pill matching the hint banner. */}
-      <ResetButton onReset={onReset} interactive={shown} />
-
-      {/* Mouse controls — bottom-right, icon-above-label trio. */}
+      {/* Controls — reset + mouse hints. Wrapped in a non-positioned
+          div so the wrapper's `opacity` covers both without disturbing
+          the children's absolute positioning (which still resolves to
+          the outer HUD wrapper above). */}
       <div
         style={{
-          position: "absolute",
-          bottom: HUD_PADDING,
-          right: HUD_PADDING,
-          zIndex: HUD_Z,
-          display: "flex",
-          alignItems: "flex-end",
-          gap: 22,
-          pointerEvents: "none",
-          userSelect: "none",
-          color: "var(--hud-cream)",
+          opacity: controlsShown ? 1 : 0,
+          transition: `opacity ${FADE_MS}ms ease`,
         }}
       >
-        <MouseHint icon={<MouseIcon highlight="left" />} label="rotate" />
-        <MouseHint icon={<MouseIcon highlight="right" />} label="pan" />
-        <MouseHint icon={<MouseIcon highlight="scroll" />} label="zoom" />
+        {/* Reset — bottom-left, glass pill matching the hint banner. */}
+        <ResetButton
+          onReset={onReset}
+          interactive={shown && controlsShown}
+        />
+
+        {/* Mouse controls — bottom-right, icon-above-label trio. */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: HUD_PADDING,
+            right: HUD_PADDING,
+            zIndex: HUD_Z,
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 22,
+            pointerEvents: "none",
+            userSelect: "none",
+            color: "var(--hud-cream)",
+          }}
+        >
+          <MouseHint icon={<MouseIcon highlight="left" />} label="rotate" />
+          <MouseHint icon={<MouseIcon highlight="right" />} label="pan" />
+          <MouseHint icon={<MouseIcon highlight="scroll" />} label="zoom" />
+        </div>
       </div>
     </div>
   );

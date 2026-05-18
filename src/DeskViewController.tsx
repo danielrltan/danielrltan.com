@@ -7,15 +7,19 @@ import {
   useSceneReadyRef,
   useSetDeskViewActive,
 } from "./SceneState";
+import {
+  END_POS as ROOM_END_POS,
+  END_FOV as ROOM_END_FOV,
+  END_LOOK_AT as ROOM_END_LOOK,
+} from "./IntroController";
 
 const DURATION = 2.6;
 /** Faster, snappier lerp for the fullscreen dolly so the zoom reads as "into the screen". */
 const FULLSCREEN_DURATION = 0.7;
 
-// FOV ramp for the three poses. Lower FOV = more telephoto = less
-// perspective distortion. The big drop from DESK → FULLSCREEN
-// stacks with the camera's forward motion to exaggerate the dolly.
-const ROOM_FOV = 50;
+// FOV ramp — DESK / FULLSCREEN are local; the room-view FOV comes from
+// `IntroController.END_FOV` so the fromDesk lerp lands at the exact
+// same pose the intro completion + room reset use.
 const DESK_FOV = 32;
 const FULLSCREEN_FOV = 26;
 
@@ -195,7 +199,7 @@ export function DeskViewController({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code !== "Escape" || e.repeat) return;
-      if (!controls || !savedPoseRef.current) return;
+      if (!controls) return;
       if (anim.current) return;
       if (!deskViewActiveRef.current) return;
       const el = e.target;
@@ -210,16 +214,21 @@ export function DeskViewController({
       // NOTE: do NOT flip deskActive here. Keep it true through the entire
       // fromDesk lerp so glow + clicks + drags all stay gated off until the
       // camera has fully returned to the free-orbit pose (see write below).
+      //
+      // End pose is the CANONICAL room view (matches IntroController's
+      // post-intro pose), NOT the user's pre-toDesk orbit pose. So
+      // back-to-room always lands at the same framing regardless of
+      // where the user was orbiting when they clicked the monitor.
       anim.current = {
         kind: "fromDesk",
         t: 0,
         duration: DURATION,
         startCam: END_CAM.clone(),
         startTarget: END_LOOK.clone(),
-        endCam: savedPoseRef.current.cam.clone(),
-        endTarget: savedPoseRef.current.target.clone(),
+        endCam: ROOM_END_POS.clone(),
+        endTarget: ROOM_END_LOOK.clone(),
         startFov: (camera as THREE.PerspectiveCamera).fov,
-        endFov: ROOM_FOV,
+        endFov: ROOM_END_FOV,
       };
       orbit.enabled = false;
     };

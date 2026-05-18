@@ -14,15 +14,46 @@ const FLOAT_AMPLITUDE = 0.07;
 const FLOAT_FREQ = 0.8;
 const HOVER_LIFT = 0.14;
 
-const START_POS = new THREE.Vector3(25, 25, 25);
-// Camera position pushed back ~1.35× from the original (3.5, 2.5, 3.5)
-// to compensate for the tighter END_FOV — room fills the frame at the
-// same size but with a flatter, more cinematic "long lens" look.
-const END_POS = new THREE.Vector3(4.7, 3.3, 4.7);
-const START_FOV = 11;
-const END_FOV = 35;
-const START_LOOK_AT = new THREE.Vector3(0, 0.6, 0);
-const END_LOOK_AT = new THREE.Vector3(0, 0.8, 0);
+// ALL camera pose constants are exported and ARE the single source of
+// truth. `App.tsx` imports them for the initial Canvas `camera` prop,
+// the `onCreated` lookAt, the `OrbitControls` target, and the room
+// reset pose. `DeskViewController` imports the END_* values as the
+// fromDesk landing pose. Change a value here and every consumer picks
+// it up — no manual syncing across files.
+//
+// START_* = pre-click iso preview (far back, ortho-ish FOV).
+// END_*   = post-intro "canonical room view" (the pose OrbitControls
+//           takes over from). END_LOOK_AT MUST match the OrbitControls
+//           `target` prop or the camera snaps when control transfers.
+export const START_POS = new THREE.Vector3(25, 25, 25);
+// Pulled back from (4.7, 3.3, 4.7) → (6.5, 4.6, 6.5) — roughly 1.38×
+// camera distance so the whole room (shelf on the left, bed corner,
+// desk on the right, front floor edge) sits comfortably inside the
+// frame with breathing-room margin on every side.
+export const END_POS = new THREE.Vector3(6.5, 4.6, 6.5);
+export const START_FOV = 11;
+export const END_FOV = 35;
+export const START_LOOK_AT = new THREE.Vector3(0, 0.6, 0);
+export const END_LOOK_AT = new THREE.Vector3(0, 0.8, 0);
+
+/**
+ * Distance from `END_POS` to `END_LOOK_AT` — i.e. the orbit radius the
+ * camera lands on at intro completion. Auto-derived from the two
+ * vectors so it can never drift out of sync with them.
+ */
+export const END_RADIUS = END_POS.distanceTo(END_LOOK_AT);
+
+/**
+ * OrbitControls `maxDistance` — derived from `END_RADIUS` with 20%
+ * headroom so users can scroll OUT a little past the canonical view
+ * before hitting the cap.
+ *
+ * MUST be ≥ `END_RADIUS` or OrbitControls clamps the camera radius
+ * inward the instant control transfers from the intro lerp / fromDesk
+ * lerp → visible snap. Tying it to `END_RADIUS` here means changing
+ * `END_POS` above can never re-introduce that bug.
+ */
+export const ORBIT_MAX_DISTANCE = END_RADIUS * 1.2;
 const DURATION = 1.5;
 
 function easeOutCubic(t: number): number {
