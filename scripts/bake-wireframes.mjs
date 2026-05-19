@@ -101,29 +101,39 @@ function shouldSkip(name) {
 
 function main() {
   const manifest = JSON.parse(readFileSync(SRC, "utf8"));
-  const collection = manifest.collections?.["Scene Collection"];
-  if (!Array.isArray(collection)) {
-    throw new Error(
-      `Expected manifest.collections["Scene Collection"] array, got ${typeof collection}`,
-    );
+  const allCollections = manifest.collections;
+  if (!allCollections || typeof allCollections !== "object") {
+    throw new Error(`Expected manifest.collections object, got ${typeof allCollections}`);
   }
 
+  // Merge every collection (Scene Collection, Static, Clickable,
+  // Throwable, …) and dedupe by name. Blender organizes objects across
+  // multiple collections — the room's big statics (desk, dresser, floor,
+  // walls, clk_monitor_frame …) live under "Static", not under the
+  // top-level "Scene Collection" pool — so reading only one collection
+  // misses ~half of the named meshes.
+  const seen = new Set();
   const meshes = [];
-  for (const entry of collection) {
-    if (!entry?.name || !entry.world_loc || !entry.dimensions) continue;
-    if (shouldSkip(entry.name)) continue;
-    const center = blenderPosToThree(entry.world_loc).map((v) =>
-      Number(v.toFixed(4)),
-    );
-    const dims = blenderSizeToThree(entry.dimensions);
-    const half = dims.map((d) => Number((d / 2).toFixed(4)));
-    if (half.some((h) => h <= 0)) continue;
-    meshes.push({
-      name: entry.name,
-      center,
-      half,
-      phase: phaseFor(entry.name),
-    });
+  for (const entries of Object.values(allCollections)) {
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (!entry?.name || !entry.world_loc || !entry.dimensions) continue;
+      if (seen.has(entry.name)) continue;
+      if (shouldSkip(entry.name)) continue;
+      seen.add(entry.name);
+      const center = blenderPosToThree(entry.world_loc).map((v) =>
+        Number(v.toFixed(4)),
+      );
+      const dims = blenderSizeToThree(entry.dimensions);
+      const half = dims.map((d) => Number((d / 2).toFixed(4)));
+      if (half.some((h) => h <= 0)) continue;
+      meshes.push({
+        name: entry.name,
+        center,
+        half,
+        phase: phaseFor(entry.name),
+      });
+    }
   }
 
   // Stable sort: phase ascending, name alphabetical within phase.
