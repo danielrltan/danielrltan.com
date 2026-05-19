@@ -1,0 +1,3366 @@
+{
+  "scene_units": "meters",
+  "up_axis_after_export": "Y (three.js)",
+  "interactions": {
+    "naming_conventions": {
+      "clk_": "Clickable - hover tooltip, click triggers action",
+      "dr_": "Draggable - constrained drag",
+      "th_": "Throwable - dynamic rigid body, full physics",
+      "key_": "Keyboard keys - press down on keydown",
+      "light_": "Blender lights (not exported - use R3F equivalents)"
+    }
+  },
+  "collections": {
+    "Scene Collection": [
+      {
+        "name": "wallpanel",
+        "world_loc": [
+          -2.1061,
+          1.0311,
+          1.3938
+        ],
+        "dimensions": [
+          2.15,
+          0.0607,
+          2.75
+        ],
+        "vert_count": 1016,
+        "materials": [
+          "mat_fabric_black",
+          "mat_walnut"
+        ]
+      },
+      {
+        "name": "rug_main",
+        "world_loc": [
+          -0.7147,
+          -0.4632,
+          0.0351
+        ],
+        "dimensions": [
+          2.3534,
+          2.8739,
+          0.0675
+        ],
+        "vert_count": 6146,
+        "materials": [
+          "mat_rug_grey"
+        ]
+      },
+      {
+        "name": "dr_air_filter",
+        "world_loc": [
+          -1.9933,
+          -1.2002,
+          0.5236
+        ],
+        "dimensions": [
+          0.45,
+          0.1443,
+          0.7513
+        ],
+        "vert_count": 390,
+        "materials": [
+          "mat_air_filter",
+          "mat_fabric_dark"
+        ]
+      },
+      {
+        "name": "poster_porsche_2",
+        "world_loc": [
+          0.2294,
+          2.104,
+          1.9924
+        ],
+        "dimensions": [
+          0.02,
+          0.5385,
+          0.749
+        ],
+        "vert_count": 8,
+        "materials": [
+          "mat_poster_porsche_2",
+          "porsche_sides"
+        ]
+      },
+      {
+        "name": "poster_kaytranada",
+        "world_loc": [
+          0.8237,
+          2.104,
+          1.7151
+        ],
+        "dimensions": [
+          0.02,
+          0.539,
+          0.749
+        ],
+        "vert_count": 8,
+        "materials": [
+          "mat_poster_kaytranada",
+          "kaytranada_sides"
+        ]
+      },
+      {
+        "name": "th_sunset_lamp",
+        "world_loc": [
+          -1.346,
+          -2.0989,
+          2.2181
+        ],
+        "dimensions": [
+          0.1666,
+          0.1099,
+          0.2553
+        ],
+        "vert_count": 1202,
+        "materials": [
+          "mat_dark_plastic",
+          "mat_emit_orange"
+        ]
+      },
+      {
+        "name": "th_books_shelf",
+        "world_loc": [
+          -1.3958,
+          -2.1573,
+          1.7279
+        ],
+        "dimensions": [
+          0.0673,
+          0.1893,
+          0.2363
+        ],
+        "vert_count": 288,
+        "materials": [
+          "mat_book_cover_orange",
+          "mat_book_paper"
+        ]
+      },
+      {
+        "name": "webcam",
+        "world_loc": [
+          1.2065,
+          1.98,
+          1.2569
+        ],
+        "dimensions": [
+          0.0627,
+          0.1,
+          0.0642
+        ],
+        "vert_count": 164,
+        "materials": [
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "th_key_tray",
+        "world_loc": [
+          0.5046,
+          -2.1636,
+          0.9211
+        ],
+        "dimensions": [
+          0.333,
+          0.333,
+          0.0425
+        ],
+        "vert_count": 144,
+        "materials": [
+          "mat_walnut"
+        ]
+      },
+      {
+        "name": "jewelery_dish",
+        "world_loc": [
+          -1.3108,
+          -2.1085,
+          1.292
+        ],
+        "dimensions": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "vert_count": 0,
+        "materials": [
+          "mat_brushed_metal"
+        ]
+      },
+      {
+        "name": "dr_plant_stand",
+        "world_loc": [
+          -1.8128,
+          -1.6381,
+          0.1757
+        ],
+        "dimensions": [
+          0.3052,
+          0.313,
+          0.1752
+        ],
+        "vert_count": 404,
+        "materials": [
+          "mat_wood_warm"
+        ]
+      },
+      {
+        "name": "th_countach",
+        "world_loc": [
+          -1.3859,
+          -2.1107,
+          0.2279
+        ],
+        "dimensions": [
+          0.2021,
+          0.4151,
+          0.1096
+        ],
+        "vert_count": 1260,
+        "materials": [
+          "countach"
+        ]
+      },
+      {
+        "name": "mouse",
+        "world_loc": [
+          1.7209,
+          1.7404,
+          0.7627
+        ],
+        "dimensions": [
+          0.1454,
+          0.0786,
+          0.0426
+        ],
+        "vert_count": 1160,
+        "materials": [
+          "Material.011",
+          "Material.001",
+          "mat_fabric_black",
+          "Material.006",
+          "Material.007",
+          "mat_white_warm"
+        ]
+      },
+      {
+        "name": "th_speaker_l",
+        "world_loc": [
+          -1.2294,
+          -1.9741,
+          0.6793
+        ],
+        "dimensions": [
+          0.2861,
+          0.2044,
+          0.2256
+        ],
+        "vert_count": 836,
+        "materials": [
+          "mat_dark_plastic",
+          "mat_walnut"
+        ]
+      },
+      {
+        "name": "th_speaker_r",
+        "world_loc": [
+          -1.4367,
+          -1.9741,
+          0.6793
+        ],
+        "dimensions": [
+          0.2861,
+          0.2044,
+          0.2256
+        ],
+        "vert_count": 836,
+        "materials": [
+          "mat_dark_plastic",
+          "mat_walnut"
+        ]
+      },
+      {
+        "name": "th_cat_plush",
+        "world_loc": [
+          -1.0324,
+          1.3017,
+          0.8994
+        ],
+        "dimensions": [
+          0.308,
+          0.3573,
+          0.3128
+        ],
+        "vert_count": 747,
+        "materials": [
+          "material",
+          "Eyes",
+          "mat_cat_nose"
+        ]
+      },
+      {
+        "name": "dr_chair",
+        "world_loc": [
+          1.4548,
+          1.2096,
+          0.5028
+        ],
+        "dimensions": [
+          0.8076,
+          0.7755,
+          1.2263
+        ],
+        "vert_count": 2638,
+        "materials": [
+          "High_Heels_2"
+        ]
+      },
+      {
+        "name": "dr_floor_lamp",
+        "world_loc": [
+          -1.4684,
+          -1.4857,
+          1.8612
+        ],
+        "dimensions": [
+          1.2645,
+          1.1023,
+          2.3358
+        ],
+        "vert_count": 3031,
+        "materials": [
+          "mat_brushed_metal",
+          "mat_marble_black",
+          "mat_emit_orange",
+          "mat_paper"
+        ]
+      },
+      {
+        "name": "bed_blanket",
+        "world_loc": [
+          -0.2136,
+          1.3379,
+          0.7305
+        ],
+        "dimensions": [
+          1.7011,
+          1.4535,
+          0.4094
+        ],
+        "vert_count": 189,
+        "materials": [
+          "pasted__beds_001_bed_04_lambert5",
+          "pasted__beds_001_bed_04_lambert4",
+          "pasted__beds_001_bed_04_lambert6"
+        ]
+      },
+      {
+        "name": "th_pillow_l",
+        "world_loc": [
+          -1.6819,
+          0.9489,
+          0.8184
+        ],
+        "dimensions": [
+          0.6566,
+          0.4341,
+          0.2263
+        ],
+        "vert_count": 125,
+        "materials": [
+          "pasted__beds_001_bed_04_lambert4"
+        ]
+      },
+      {
+        "name": "th_pillow_2",
+        "world_loc": [
+          -1.682,
+          1.6475,
+          0.8185
+        ],
+        "dimensions": [
+          0.6566,
+          0.4341,
+          0.2263
+        ],
+        "vert_count": 125,
+        "materials": [
+          "pasted__beds_001_bed_04_lambert4"
+        ]
+      },
+      {
+        "name": "th_pillow_long",
+        "world_loc": [
+          -0.653,
+          1.9654,
+          0.9665
+        ],
+        "dimensions": [
+          1.2066,
+          0.2305,
+          0.3987
+        ],
+        "vert_count": 125,
+        "materials": [
+          "brown_pillow"
+        ]
+      },
+      {
+        "name": "th_jewelery_tray",
+        "world_loc": [
+          -1.3386,
+          -2.1172,
+          1.2619
+        ],
+        "dimensions": [
+          0.4388,
+          0.4388,
+          0.038
+        ],
+        "vert_count": 480,
+        "materials": [
+          "mat_brushed_metal"
+        ]
+      },
+      {
+        "name": "headboard",
+        "world_loc": [
+          -1.9354,
+          0.6323,
+          1.2383
+        ],
+        "dimensions": [
+          1.6136,
+          0.1536,
+          1.3528
+        ],
+        "vert_count": 1032,
+        "materials": [
+          "mat_fabric_white"
+        ]
+      },
+      {
+        "name": "th_books_shelf.001",
+        "world_loc": [
+          -1.3037,
+          -2.2347,
+          1.7543
+        ],
+        "dimensions": [
+          0.0917,
+          0.2425,
+          0.2875
+        ],
+        "vert_count": 288,
+        "materials": [
+          "mat_book_cover_orange",
+          "mat_book_cover_grey_white",
+          "mat_book_paper"
+        ]
+      },
+      {
+        "name": "th_books_shelf.002",
+        "world_loc": [
+          -1.346,
+          -2.1229,
+          2.0034
+        ],
+        "dimensions": [
+          0.0673,
+          0.2911,
+          0.3575
+        ],
+        "vert_count": 288,
+        "materials": [
+          "mat_book_cover_orange.001",
+          "mat_book_paper.001"
+        ]
+      },
+      {
+        "name": "th_books_shelf.003",
+        "world_loc": [
+          -1.374,
+          -2.0898,
+          2.0598
+        ],
+        "dimensions": [
+          0.0417,
+          0.1898,
+          0.2792
+        ],
+        "vert_count": 288,
+        "materials": [
+          "mat_book_cover_light_orange",
+          "mat_book_paper"
+        ]
+      },
+      {
+        "name": "windowsill",
+        "world_loc": [
+          -1.0039,
+          2.1378,
+          1.173
+        ],
+        "dimensions": [
+          0.3107,
+          1.7638,
+          1.2347
+        ],
+        "vert_count": 1234,
+        "materials": [
+          "mat_white_warm"
+        ]
+      },
+      {
+        "name": "curtains",
+        "world_loc": [
+          -1.0098,
+          2.0074,
+          2.2416
+        ],
+        "dimensions": [
+          0.1966,
+          2.0048,
+          1.3633
+        ],
+        "vert_count": 212,
+        "materials": [
+          "mat_metal_black",
+          "mat_curtain_dark_brown"
+        ]
+      },
+      {
+        "name": "board_tray",
+        "world_loc": [
+          1.4357,
+          2.0191,
+          1.5024
+        ],
+        "dimensions": [
+          0.1113,
+          0.348,
+          0.0399
+        ],
+        "vert_count": 448,
+        "materials": [
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "board_tray_2",
+        "world_loc": [
+          2.0036,
+          2.0206,
+          1.5179
+        ],
+        "dimensions": [
+          0.11,
+          0.3478,
+          0.0121
+        ],
+        "vert_count": 497,
+        "materials": [
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "board_tray_3",
+        "world_loc": [
+          2.0036,
+          2.0206,
+          1.7507
+        ],
+        "dimensions": [
+          0.11,
+          0.3478,
+          0.0121
+        ],
+        "vert_count": 497,
+        "materials": [
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "board_cup",
+        "world_loc": [
+          1.7377,
+          2.0191,
+          1.5024
+        ],
+        "dimensions": [
+          0.1113,
+          0.112,
+          0.1243
+        ],
+        "vert_count": 448,
+        "materials": [
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "th_keyboard_black",
+        "world_loc": [
+          1.4706,
+          1.997,
+          1.911
+        ],
+        "dimensions": [
+          0.1915,
+          0.4122,
+          0.0415
+        ],
+        "vert_count": 92073,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "keyboard_hook",
+        "world_loc": [
+          1.2951,
+          2.01,
+          1.9139
+        ],
+        "dimensions": [
+          0.2147,
+          0.3603,
+          0.0585
+        ],
+        "vert_count": 356,
+        "materials": [
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "th_coaster",
+        "world_loc": [
+          0.9048,
+          1.5782,
+          0.7614
+        ],
+        "dimensions": [
+          0.1215,
+          0.1215,
+          0.0097
+        ],
+        "vert_count": 24,
+        "materials": [
+          "mat_brushed_metal"
+        ]
+      },
+      {
+        "name": "microphone",
+        "world_loc": [
+          1.8884,
+          1.7151,
+          1.335
+        ],
+        "dimensions": [
+          0.4553,
+          0.1447,
+          0.6465
+        ],
+        "vert_count": 1604,
+        "materials": [
+          "mat_metal_black",
+          "mat_fabric_black"
+        ]
+      },
+      {
+        "name": "monitor_lightbar",
+        "world_loc": [
+          1.4506,
+          1.97,
+          1.2512
+        ],
+        "dimensions": [
+          0.0666,
+          0.0338,
+          0.3799
+        ],
+        "vert_count": 356,
+        "materials": [
+          "mat_dark_plastic",
+          "mat_lightbar_emission"
+        ]
+      },
+      {
+        "name": "th_succ_3",
+        "world_loc": [
+          1.5817,
+          2.0399,
+          0.7714
+        ],
+        "dimensions": [
+          0.0957,
+          0.0905,
+          0.1358
+        ],
+        "vert_count": 3972,
+        "materials": [
+          "mat_white_warm",
+          "brown_pillow",
+          "SuccL"
+        ]
+      },
+      {
+        "name": "th_succ_2",
+        "world_loc": [
+          1.4573,
+          2.0399,
+          0.7714
+        ],
+        "dimensions": [
+          0.1016,
+          0.1052,
+          0.0934
+        ],
+        "vert_count": 1492,
+        "materials": [
+          "mat_white_warm",
+          "brown_pillow",
+          "lambert5"
+        ]
+      },
+      {
+        "name": "th_succ_1",
+        "world_loc": [
+          1.3244,
+          2.0399,
+          0.7714
+        ],
+        "dimensions": [
+          0.0792,
+          0.0792,
+          0.1166
+        ],
+        "vert_count": 4094,
+        "materials": [
+          "mat_white_warm",
+          "brown_pillow",
+          "lambert7"
+        ]
+      },
+      {
+        "name": "mic_clamp",
+        "world_loc": [
+          1.8889,
+          2.0625,
+          0.721
+        ],
+        "dimensions": [
+          0.0925,
+          0.0982,
+          0.0265
+        ],
+        "vert_count": 168,
+        "materials": [
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "keyboard_frame",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.1915,
+          0.4122,
+          0.0308
+        ],
+        "vert_count": 4279,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f1",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1050,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f2",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1090,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f3",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1059,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f4",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1079,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f5",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1064,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f6",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1074,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f7",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1123,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f8",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1108,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f9",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1057,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f10",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1076,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f11",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1093,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_f12",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0249,
+          0.0153
+        ],
+        "vert_count": 1075,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "keyboard_knob",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0284,
+          0.0285,
+          0.0136
+        ],
+        "vert_count": 258,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_del",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1120,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_bkspc",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0261,
+          0.0491,
+          0.0156
+        ],
+        "vert_count": 740,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_equals",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1067,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_dash",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1080,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_0",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1089,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_9",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1088,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_8",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1097,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_7",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1084,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_6",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1132,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_5",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1089,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_4",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1089,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_3",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1100,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_2",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1094,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_1",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1109,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_esc",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1124,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_tilde",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 1127,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_tab",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0255,
+          0.0377,
+          0.0155
+        ],
+        "vert_count": 423,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_q",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 628,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_w",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 551,
+        "materials": [
+          "mat_keycap_white",
+          "mat_brushed_metal",
+          "mat_metal_black",
+          "mat_keycap_black",
+          "Material.017"
+        ]
+      },
+      {
+        "name": "key_ctrll",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0252,
+          0.0313,
+          0.0155
+        ],
+        "vert_count": 639,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_win",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0252,
+          0.0312,
+          0.0155
+        ],
+        "vert_count": 641,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_alt",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0252,
+          0.0313,
+          0.0154
+        ],
+        "vert_count": 619,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_space",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0318,
+          0.1509,
+          0.0183
+        ],
+        "vert_count": 343,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_fn",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0252,
+          0.0312,
+          0.0154
+        ],
+        "vert_count": 401,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_ctrlr",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0252,
+          0.0312,
+          0.0154
+        ],
+        "vert_count": 451,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_arwlft",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 584,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_arwdwn",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 604,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_arwrt",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 594,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_pgdn",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 619,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_arwup",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 587,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_shftr",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0258,
+          0.0424,
+          0.0155
+        ],
+        "vert_count": 413,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_slsh",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 781,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_ptbrktr",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 796,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_ptbrktl",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 840,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_m",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 820,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_v",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 808,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_c",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 833,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_x",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0249,
+          0.0153
+        ],
+        "vert_count": 805,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_z",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 794,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_shiftl",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0265,
+          0.0558,
+          0.0157
+        ],
+        "vert_count": 706,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_caplk",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0259,
+          0.0439,
+          0.0155
+        ],
+        "vert_count": 677,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_a",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 603,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_s",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 594,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_d",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 574,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_f",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 605,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_g",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 565,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_h",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 634,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_j",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 576,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_k",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 625,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_l",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 555,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_colon",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 590,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_quote",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 550,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_enter",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0264,
+          0.0543,
+          0.0156
+        ],
+        "vert_count": 393,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_pgup",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0249,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 572,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_end",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 576,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_bkslsh",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0254,
+          0.0361,
+          0.0155
+        ],
+        "vert_count": 387,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_sqrbrktr",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 548,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_sqbrktl",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 566,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_p",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 560,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_o",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 585,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_i",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0249,
+          0.0153
+        ],
+        "vert_count": 568,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_u",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 608,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_y",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 582,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_t",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 623,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_r",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0154
+        ],
+        "vert_count": 591,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_e",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 541,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_n",
+        "world_loc": [
+          1.2208,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 819,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      },
+      {
+        "name": "key_b",
+        "world_loc": [
+          1.2452,
+          1.6919,
+          0.765
+        ],
+        "dimensions": [
+          0.0248,
+          0.0248,
+          0.0153
+        ],
+        "vert_count": 808,
+        "materials": [
+          "mat_keycap_white"
+        ]
+      }
+    ],
+    "Static": [
+      {
+        "name": "floor",
+        "world_loc": [
+          0.076,
+          -0.0975,
+          0.0
+        ],
+        "dimensions": [
+          4.5,
+          4.5,
+          0.2
+        ],
+        "vert_count": 56,
+        "materials": [
+          "mat_floor_laminate"
+        ]
+      },
+      {
+        "name": "wall_right",
+        "world_loc": [
+          0.0778,
+          2.129,
+          1.3936
+        ],
+        "dimensions": [
+          4.6529,
+          4.6604,
+          2.9585
+        ],
+        "vert_count": 71,
+        "materials": [
+          "mat_white_warm"
+        ]
+      },
+      {
+        "name": "bed_frame_static",
+        "world_loc": [
+          -0.9609,
+          1.3249,
+          0.2
+        ],
+        "dimensions": [
+          1.6349,
+          1.9694,
+          0.4
+        ],
+        "vert_count": 152,
+        "materials": [
+          "mat_fabric_white"
+        ]
+      },
+      {
+        "name": "mattress_static",
+        "world_loc": [
+          -0.9925,
+          1.304,
+          0.55
+        ],
+        "dimensions": [
+          1.5887,
+          1.8997,
+          0.3
+        ],
+        "vert_count": 192,
+        "materials": [
+          "mat_fabric_white"
+        ]
+      },
+      {
+        "name": "dr_blanket_ladder",
+        "world_loc": [
+          0.2979,
+          1.9645,
+          0.8368
+        ],
+        "dimensions": [
+          0.05,
+          0.4301,
+          1.5555
+        ],
+        "vert_count": 1682,
+        "materials": [
+          "mat_walnut"
+        ]
+      },
+      {
+        "name": "dr_computer",
+        "world_loc": [
+          2.1082,
+          1.7676,
+          0.9332
+        ],
+        "dimensions": [
+          0.4121,
+          0.268,
+          0.384
+        ],
+        "vert_count": 8,
+        "materials": [
+          "mat_white_warm"
+        ]
+      },
+      {
+        "name": "monitor_arm",
+        "world_loc": [
+          1.0873,
+          2.0752,
+          0.9829
+        ],
+        "dimensions": [
+          0.1778,
+          0.3652,
+          0.5583
+        ],
+        "vert_count": 260,
+        "materials": [
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "clk_monitor_frame",
+        "world_loc": [
+          1.4525,
+          2.0048,
+          1.0556
+        ],
+        "dimensions": [
+          0.0268,
+          0.62,
+          0.37
+        ],
+        "vert_count": 152,
+        "materials": [
+          "mat_dark_plastic",
+          "screen"
+        ]
+      },
+      {
+        "name": "monitor_vertical",
+        "world_loc": [
+          1.0052,
+          1.896,
+          1.0828
+        ],
+        "dimensions": [
+          0.0262,
+          0.335,
+          0.6
+        ],
+        "vert_count": 144,
+        "materials": [
+          "mat_dark_plastic",
+          "screen"
+        ]
+      },
+      {
+        "name": "mousepad_static",
+        "world_loc": [
+          1.7038,
+          1.6981,
+          0.7405
+        ],
+        "dimensions": [
+          0.5,
+          0.5,
+          0.0048
+        ],
+        "vert_count": 64,
+        "materials": [
+          "mat_fabric_black"
+        ]
+      },
+      {
+        "name": "dr_nightstand",
+        "world_loc": [
+          -1.8515,
+          0.2107,
+          0.6862
+        ],
+        "dimensions": [
+          0.5314,
+          0.4492,
+          0.6251
+        ],
+        "vert_count": 728,
+        "materials": [
+          "mat_metal_black",
+          "mat_walnut",
+          "mat_fabric_black"
+        ]
+      },
+      {
+        "name": "poster_bmw",
+        "world_loc": [
+          -2.1174,
+          -1.3929,
+          1.9474
+        ],
+        "dimensions": [
+          0.4843,
+          0.0057,
+          0.6883
+        ],
+        "vert_count": 8,
+        "materials": [
+          "mat_poster_bmw",
+          "poster_bmw_side"
+        ]
+      },
+      {
+        "name": "poster_porsche",
+        "world_loc": [
+          -2.1174,
+          -1.3929,
+          1.2035
+        ],
+        "dimensions": [
+          0.4843,
+          0.0057,
+          0.5847
+        ],
+        "vert_count": 8,
+        "materials": [
+          "mat_poster_porsche"
+        ]
+      },
+      {
+        "name": "dr_shelf",
+        "world_loc": [
+          -1.3329,
+          -2.1169,
+          0.1288
+        ],
+        "dimensions": [
+          0.4511,
+          0.5481,
+          2.0739
+        ],
+        "vert_count": 1296,
+        "materials": [
+          "mat_walnut",
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "dresser",
+        "world_loc": [
+          -0.1648,
+          -2.0916,
+          0.45
+        ],
+        "dimensions": [
+          1.762,
+          0.5719,
+          0.8785
+        ],
+        "vert_count": 833,
+        "materials": [
+          "mat_offwhite",
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "th_porsche_model",
+        "world_loc": [
+          -1.3407,
+          -2.0267,
+          1.6645
+        ],
+        "dimensions": [
+          0.1582,
+          0.3695,
+          0.1089
+        ],
+        "vert_count": 6471,
+        "materials": [
+          "mat_concrete_white"
+        ]
+      },
+      {
+        "name": "dr_monstera",
+        "world_loc": [
+          -1.8012,
+          -1.6344,
+          0.5604
+        ],
+        "dimensions": [
+          0.4834,
+          0.5368,
+          0.6063
+        ],
+        "vert_count": 573,
+        "materials": [
+          "mat_offwhite",
+          "mat_walnut",
+          "Stem.001",
+          "Leaf.001"
+        ]
+      },
+      {
+        "name": "dr_drawer_1",
+        "world_loc": [
+          -0.1648,
+          -2.0916,
+          0.45
+        ],
+        "dimensions": [
+          0.811,
+          0.5254,
+          0.2179
+        ],
+        "vert_count": 455,
+        "materials": [
+          "mat_offwhite",
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "dr_drawer_3",
+        "world_loc": [
+          -0.1648,
+          -2.0916,
+          0.2128
+        ],
+        "dimensions": [
+          0.811,
+          0.5254,
+          0.2179
+        ],
+        "vert_count": 455,
+        "materials": [
+          "mat_offwhite",
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "dr_drawer_5",
+        "world_loc": [
+          -0.1648,
+          -2.0916,
+          -0.0246
+        ],
+        "dimensions": [
+          0.811,
+          0.5254,
+          0.2179
+        ],
+        "vert_count": 455,
+        "materials": [
+          "mat_offwhite",
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "dr_drawer_6",
+        "world_loc": [
+          -0.9925,
+          -2.0916,
+          -0.0246
+        ],
+        "dimensions": [
+          0.811,
+          0.5254,
+          0.2179
+        ],
+        "vert_count": 455,
+        "materials": [
+          "mat_offwhite",
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "dr_drawer_4",
+        "world_loc": [
+          -0.9925,
+          -2.0916,
+          0.2131
+        ],
+        "dimensions": [
+          0.811,
+          0.5254,
+          0.2179
+        ],
+        "vert_count": 455,
+        "materials": [
+          "mat_offwhite",
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "dr_drawer_2",
+        "world_loc": [
+          -0.9925,
+          -2.0916,
+          0.4502
+        ],
+        "dimensions": [
+          0.811,
+          0.5254,
+          0.2179
+        ],
+        "vert_count": 455,
+        "materials": [
+          "mat_offwhite",
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "desk",
+        "world_loc": [
+          2.1657,
+          1.7642,
+          0.3387
+        ],
+        "dimensions": [
+          0.7236,
+          1.7004,
+          1.2021
+        ],
+        "vert_count": 864,
+        "materials": [
+          "mat_walnut",
+          "mat_metal_black"
+        ]
+      },
+      {
+        "name": "th_wristrest",
+        "world_loc": [
+          1.2219,
+          1.5668,
+          0.7474
+        ],
+        "dimensions": [
+          0.1121,
+          0.4047,
+          0.0217
+        ],
+        "vert_count": 328,
+        "materials": [
+          "mat_marble_black"
+        ]
+      }
+    ],
+    "Clickable": [
+      {
+        "name": "clk_pegboard",
+        "world_loc": [
+          1.704,
+          2.0888,
+          1.7351
+        ],
+        "dimensions": [
+          0.0257,
+          1.1,
+          0.7
+        ],
+        "vert_count": 17049,
+        "materials": [
+          "mat_wood_warm"
+        ]
+      },
+      {
+        "name": "dr_mushroom_lamp",
+        "world_loc": [
+          0.693,
+          1.5946,
+          1.2602
+        ],
+        "dimensions": [
+          0.3281,
+          0.3281,
+          0.201
+        ],
+        "vert_count": 736,
+        "materials": [
+          "mat_mushroom_glow"
+        ]
+      },
+      {
+        "name": "dr_mirror_standing",
+        "world_loc": [
+          -1.6415,
+          -0.5249,
+          1.0113
+        ],
+        "dimensions": [
+          0.8009,
+          0.1273,
+          1.7585
+        ],
+        "vert_count": 124,
+        "materials": [
+          "mat_glass_mirror",
+          "mat_offwhite"
+        ]
+      },
+      {
+        "name": "clk_mirror_round",
+        "world_loc": [
+          -2.0974,
+          -0.5183,
+          2.1642
+        ],
+        "dimensions": [
+          0.5779,
+          0.0616,
+          0.5779
+        ],
+        "vert_count": 577,
+        "materials": [
+          "mat_glass_mirror",
+          "mat_dark_plastic"
+        ]
+      },
+      {
+        "name": "dr_orange_globe_lamp",
+        "world_loc": [
+          -1.3369,
+          -2.1194,
+          1.015
+        ],
+        "dimensions": [
+          0.3431,
+          0.3431,
+          0.2928
+        ],
+        "vert_count": 145,
+        "materials": [
+          "mat_emit_light_orange"
+        ]
+      },
+      {
+        "name": "dr_sonos_gen1",
+        "world_loc": [
+          0.6865,
+          1.9161,
+          1.1641
+        ],
+        "dimensions": [
+          0.1388,
+          0.1388,
+          0.1826
+        ],
+        "vert_count": 224,
+        "materials": [
+          "mat_metal_black",
+          "mat_dark_plastic"
+        ]
+      },
+      {
+        "name": "mushroom_bulb_1",
+        "world_loc": [
+          0.7426,
+          1.545,
+          1.262
+        ],
+        "dimensions": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "vert_count": 114,
+        "materials": [
+          "mat_mushroom_bulb"
+        ]
+      },
+      {
+        "name": "mushroom_bulb_2",
+        "world_loc": [
+          0.7426,
+          1.645,
+          1.262
+        ],
+        "dimensions": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "vert_count": 114,
+        "materials": [
+          "mat_mushroom_bulb"
+        ]
+      },
+      {
+        "name": "mushroom_bulb_3",
+        "world_loc": [
+          0.6426,
+          1.545,
+          1.262
+        ],
+        "dimensions": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "vert_count": 114,
+        "materials": [
+          "mat_mushroom_bulb"
+        ]
+      },
+      {
+        "name": "mushroom_bulb_4",
+        "world_loc": [
+          0.6426,
+          1.645,
+          1.262
+        ],
+        "dimensions": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "vert_count": 114,
+        "materials": [
+          "mat_mushroom_bulb"
+        ]
+      },
+      {
+        "name": "th_vinyl_disc",
+        "world_loc": [
+          -0.7478,
+          -2.088,
+          0.9623
+        ],
+        "dimensions": [
+          0.3194,
+          0.3194,
+          0.0063
+        ],
+        "vert_count": 120,
+        "materials": [
+          "mat_brushed_metal",
+          "mat_fabric_black",
+          "mat_dark_plastic",
+          "mat_metal_black",
+          "mat_vinyl"
+        ]
+      },
+      {
+        "name": "dr_record_player",
+        "world_loc": [
+          -0.75,
+          -2.0915,
+          0.95
+        ],
+        "dimensions": [
+          0.4,
+          0.441,
+          0.3474
+        ],
+        "vert_count": 722,
+        "materials": [
+          "mat_brushed_metal",
+          "mat_fabric_black",
+          "mat_dark_plastic",
+          "mat_metal_black",
+          "mat_glass_clear"
+        ]
+      }
+    ],
+    "Throwable": [
+      {
+        "name": "th_water_bottle_thr",
+        "world_loc": [
+          0.9066,
+          1.533,
+          0.8967
+        ],
+        "dimensions": [
+          0.1157,
+          0.1079,
+          0.3154
+        ],
+        "vert_count": 564,
+        "materials": [
+          "mat_metal_black",
+          "mat_dark_plastic"
+        ]
+      }
+    ]
+  },
+  "all_named_objects": [
+    "wallpanel",
+    "rug_main",
+    "dr_air_filter",
+    "poster_porsche_2",
+    "poster_kaytranada",
+    "th_sunset_lamp",
+    "th_books_shelf",
+    "webcam",
+    "th_key_tray",
+    "jewelery_dish",
+    "dr_plant_stand",
+    "th_countach",
+    "mouse",
+    "th_speaker_l",
+    "th_speaker_r",
+    "th_cat_plush",
+    "dr_chair",
+    "dr_floor_lamp",
+    "bed_blanket",
+    "th_pillow_l",
+    "th_pillow_2",
+    "th_pillow_long",
+    "th_jewelery_tray",
+    "headboard",
+    "th_books_shelf.001",
+    "th_books_shelf.002",
+    "th_books_shelf.003",
+    "windowsill",
+    "curtains",
+    "board_tray",
+    "board_tray_2",
+    "board_tray_3",
+    "board_cup",
+    "th_keyboard_black",
+    "keyboard_hook",
+    "th_coaster",
+    "microphone",
+    "monitor_lightbar",
+    "th_succ_3",
+    "th_succ_2",
+    "th_succ_1",
+    "mic_clamp",
+    "keyboard_frame",
+    "key_f1",
+    "key_f2",
+    "key_f3",
+    "key_f4",
+    "key_f5",
+    "key_f6",
+    "key_f7",
+    "key_f8",
+    "key_f9",
+    "key_f10",
+    "key_f11",
+    "key_f12",
+    "keyboard_knob",
+    "key_del",
+    "key_bkspc",
+    "key_equals",
+    "key_dash",
+    "key_0",
+    "key_9",
+    "key_8",
+    "key_7",
+    "key_6",
+    "key_5",
+    "key_4",
+    "key_3",
+    "key_2",
+    "key_1",
+    "key_esc",
+    "key_tilde",
+    "key_tab",
+    "key_q",
+    "key_w",
+    "key_ctrll",
+    "key_win",
+    "key_alt",
+    "key_space",
+    "key_fn",
+    "key_ctrlr",
+    "key_arwlft",
+    "key_arwdwn",
+    "key_arwrt",
+    "key_pgdn",
+    "key_arwup",
+    "key_shftr",
+    "key_slsh",
+    "key_ptbrktr",
+    "key_ptbrktl",
+    "key_m",
+    "key_v",
+    "key_c",
+    "key_x",
+    "key_z",
+    "key_shiftl",
+    "key_caplk",
+    "key_a",
+    "key_s",
+    "key_d",
+    "key_f",
+    "key_g",
+    "key_h",
+    "key_j",
+    "key_k",
+    "key_l",
+    "key_colon",
+    "key_quote",
+    "key_enter",
+    "key_pgup",
+    "key_end",
+    "key_bkslsh",
+    "key_sqrbrktr",
+    "key_sqbrktl",
+    "key_p",
+    "key_o",
+    "key_i",
+    "key_u",
+    "key_y",
+    "key_t",
+    "key_r",
+    "key_e",
+    "key_n",
+    "key_b",
+    "floor",
+    "wall_right",
+    "bed_frame_static",
+    "mattress_static",
+    "dr_blanket_ladder",
+    "dr_computer",
+    "monitor_arm",
+    "clk_monitor_frame",
+    "monitor_vertical",
+    "mousepad_static",
+    "dr_nightstand",
+    "poster_bmw",
+    "poster_porsche",
+    "dr_shelf",
+    "dresser",
+    "th_porsche_model",
+    "dr_monstera",
+    "dr_drawer_1",
+    "dr_drawer_3",
+    "dr_drawer_5",
+    "dr_drawer_6",
+    "dr_drawer_4",
+    "dr_drawer_2",
+    "desk",
+    "th_wristrest",
+    "clk_pegboard",
+    "dr_mushroom_lamp",
+    "dr_mirror_standing",
+    "clk_mirror_round",
+    "dr_orange_globe_lamp",
+    "dr_sonos_gen1",
+    "mushroom_bulb_1",
+    "mushroom_bulb_2",
+    "mushroom_bulb_3",
+    "mushroom_bulb_4",
+    "th_vinyl_disc",
+    "dr_record_player",
+    "th_water_bottle_thr"
+  ],
+  "lights_summary": [
+    {
+      "name": "light_sunset",
+      "type": "POINT",
+      "energy": 41.7,
+      "color": [
+        1.0,
+        0.513,
+        0.15
+      ],
+      "location": [
+        -1.32,
+        -2.114,
+        2.209
+      ]
+    },
+    {
+      "name": "light_orange_globe",
+      "type": "POINT",
+      "energy": 85.0,
+      "color": [
+        1.0,
+        0.298,
+        0.059
+      ],
+      "location": [
+        -1.349,
+        -2.088,
+        1.0
+      ]
+    },
+    {
+      "name": "light_mushroom",
+      "type": "POINT",
+      "energy": 5.4,
+      "color": [
+        1.0,
+        0.65,
+        0.25
+      ],
+      "location": [
+        0.693,
+        1.594,
+        1.403
+      ]
+    },
+    {
+      "name": "light_hue_mirror",
+      "type": "POINT",
+      "energy": 30.9,
+      "color": [
+        1.0,
+        0.281,
+        0.064
+      ],
+      "location": [
+        -2.065,
+        -0.522,
+        0.486
+      ]
+    },
+    {
+      "name": "light_monitor_bar",
+      "type": "AREA",
+      "energy": 14.0,
+      "color": [
+        1.0,
+        0.7,
+        0.4
+      ],
+      "location": [
+        1.458,
+        1.974,
+        1.235
+      ]
+    },
+    {
+      "name": "light_monitor_backglow_27",
+      "type": "AREA",
+      "energy": 12.0,
+      "color": [
+        1.0,
+        0.45,
+        0.2
+      ],
+      "location": [
+        1.453,
+        2.124,
+        1.06
+      ]
+    },
+    {
+      "name": "light_monitor_backglow_24",
+      "type": "AREA",
+      "energy": 8.0,
+      "color": [
+        1.0,
+        0.45,
+        0.2
+      ],
+      "location": [
+        1.467,
+        2.024,
+        1.13
+      ]
+    },
+    {
+      "name": "light_pc_rgb",
+      "type": "POINT",
+      "energy": 10.0,
+      "color": [
+        1.0,
+        0.85,
+        0.65
+      ],
+      "location": [
+        1.973,
+        1.604,
+        0.9
+      ]
+    },
+    {
+      "name": "light_ambient_fill",
+      "type": "AREA",
+      "energy": 3.0,
+      "color": [
+        1.0,
+        0.55,
+        0.2
+      ],
+      "location": [
+        2.823,
+        -2.596,
+        3.0
+      ]
+    },
+    {
+      "name": "light_window_sunset",
+      "type": "SUN",
+      "energy": 5.0,
+      "color": [
+        1.0,
+        0.28,
+        0.06
+      ],
+      "location": [
+        -0.65,
+        6.092,
+        2.209
+      ]
+    },
+    {
+      "name": "light_arc_lamp",
+      "type": "POINT",
+      "energy": 24.6,
+      "color": [
+        1.0,
+        0.45,
+        0.15
+      ],
+      "location": [
+        -1.318,
+        -1.258,
+        1.924
+      ]
+    },
+    {
+      "name": "light_pegboard_backlight",
+      "type": "AREA",
+      "energy": 60.0,
+      "color": [
+        1.0,
+        0.761,
+        0.295
+      ],
+      "location": [
+        1.71,
+        2.101,
+        1.764
+      ]
+    },
+    {
+      "name": "light_bed_sunset_flood",
+      "type": "SPOT",
+      "energy": 250.0,
+      "color": [
+        1.0,
+        0.4,
+        0.13
+      ],
+      "location": [
+        0.323,
+        1.304,
+        2.4
+      ]
+    },
+    {
+      "name": "light_corner_wash",
+      "type": "SPOT",
+      "energy": 119.4,
+      "color": [
+        1.0,
+        0.32,
+        0.1
+      ],
+      "location": [
+        -1.326,
+        -1.241,
+        2.018
+      ]
+    },
+    {
+      "name": "light_front_corner_fill",
+      "type": "SPOT",
+      "energy": 172.6,
+      "color": [
+        1.0,
+        0.45,
+        0.18
+      ],
+      "location": [
+        1.423,
+        -0.886,
+        2.5
+      ]
+    }
+  ]
+}
