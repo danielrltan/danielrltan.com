@@ -1,0 +1,211 @@
+/* Portfolio sections — shared layout + typography. */
+
+.portfolio-section {
+  min-height: 100vh;
+  padding: 96px 0;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+/* Right-column content. Sits on the right ~50% of the viewport. */
+.portfolio-col {
+  margin-left: 50vw;
+  width: 50vw;
+  padding: 0 6vw 0 2vw;
+  max-width: 720px;
+  pointer-events: auto;
+  color: var(--wrapper-ink);
+}
+
+/* Hero is the only section where content is centered over the
+   full-width room rather than column-shifted. */
+.portfolio-hero {
+  width: 100vw;
+  text-align: center;
+  pointer-events: auto;
+  color: var(--wrapper-ink);
+  padding: 0 5vw;
+}
+
+.portfolio-section h1,
+.portfolio-section h2,
+.portfolio-section h3 {
+  font-family: "Inter", system-ui, sans-serif;
+  letter-spacing: -0.025em;
+  color: var(--wrapper-ink);
+  margin: 0;
+}
+
+.portfolio-section h1 { font-size: clamp(48px, 7vw, 96px); font-weight: 700; line-height: 1.05; }
+.portfolio-section h2 { font-size: clamp(36px, 4.2vw, 64px); font-weight: 600; line-height: 1.1; margin-bottom: 24px; }
+.portfolio-section h3 { font-size: clamp(22px, 1.8vw, 28px); font-weight: 600; line-height: 1.2; }
+
+.portfolio-section p {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: clamp(16px, 1.15vw, 19px);
+  line-height: 1.6;
+  color: var(--wrapper-ink);
+  opacity: 0.85;
+  margin: 0 0 1em;
+}
+
+.portfolio-section .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #ff7842;
+  font-weight: 600;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.portfolio-section a {
+  color: #ff7842;
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+  transition: opacity 0.15s ease;
+}
+.portfolio-section a:hover { opacity: 0.7; }
+
+/* Project cards. */
+.project-card {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 48px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  pointer-events: auto;
+}
+.project-card-media {
+  aspect-ratio: 16 / 10;
+  background: linear-gradient(135deg, #f4ecdc, #e8d8c4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0, 0, 0, 0.3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.project-card-body { padding: 28px 32px 32px; }
+.project-card h3 { margin-bottom: 12px; }
+.project-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 14px;
+}
+.project-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  background: rgba(255, 120, 66, 0.1);
+  color: #b8542a;
+  border-radius: 999px;
+}
+.project-card-links {
+  display: flex;
+  gap: 18px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Experience timeline */
+.exp-item {
+  position: relative;
+  padding: 20px 0 20px 28px;
+  border-left: 2px solid rgba(255, 120, 66, 0.2);
+}
+.exp-item::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 28px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff7842;
+}
+.exp-item-when {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(26, 23, 20, 0.5);
+  margin-bottom: 6px;
+}
+.exp-item-where {
+  font-family: "Inter", system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+.exp-item-what {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 15px;
+  opacity: 0.75;
+}
+
+/* Contact section */
+.contact-email {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: clamp(32px, 3.5vw, 52px);
+  font-weight: 600;
+  color: #ff7842;
+  letter-spacing: -0.02em;
+  margin-bottom: 32px;
+  display: inline-block;
+  text-decoration: none !important;
+  border: none !important;
+}
+.contact-socials {
+  display: flex;
+  gap: 16px;
+  margin: 32px 0;
+}
+.contact-social-btn {
+  padding: 12px 20px;
+  background: var(--wrapper-ink);
+  color: var(--wrapper-bg);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  text-decoration: none !important;
+  border: none !important;
+  pointer-events: auto;
+}
+
+.scroll-hint {
+  position: absolute;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(26, 23, 20, 0.45);
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .portfolio-col {
+    margin-left: 0;
+    width: 100vw;
+    padding: 0 6vw;
+    max-width: none;
+  }
+  .portfolio-hero {
+    padding: 0 6vw;
+  }
+}

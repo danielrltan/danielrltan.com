@@ -34,7 +34,6 @@ interface Props {
 }
 
 const TINY_THRESHOLD = 0.08;
-const RB_DYNAMIC = 0;
 
 const STIFFNESS = 150;
 const DAMPING = 15;

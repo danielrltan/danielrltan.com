@@ -494,6 +494,15 @@ interface MonitorPose {
 }
 
 /**
+ * Feature flag: when false, the monitor is a pure visual prop. The
+ * room's OS entry path is the scroll-triggered corruption transition
+ * (see `CorruptionOverlay.tsx`). Flip to true to restore click-to-zoom
+ * for minigames / future use — the rest of the desk-view machinery
+ * (`DeskViewController`, `MonitorScreen`) is preserved.
+ */
+const MONITOR_CLICK_ENABLED = false;
+
+/**
  * Glow halo around the monitor — telegraphs the monitor as the
  * clickable focus surface. AABB read from `clk_monitor_frame`.
  *
@@ -529,7 +538,13 @@ function MonitorGlow({ pose }: { pose: MonitorPose | null }) {
         setHover(true);
       }}
       onPointerOut={() => setHover(false)}
+      // Click-to-zoom-into-monitor is DISABLED while the corruption
+      // transition is the active OS entry path. The handler stays
+      // here (and `DeskViewController` / `MonitorScreen` stay in the
+      // tree) so re-enabling for future minigames is a one-line
+      // flip of MONITOR_CLICK_ENABLED.
       onPointerDown={(e) => {
+        if (!MONITOR_CLICK_ENABLED) return;
         if (!sceneReady?.current) return;
         if (deskActive?.current) return;
         if (e.button !== 0) return;
@@ -641,6 +656,9 @@ export function Room({ roomGroupRef }: RoomProps) {
 
   const onDeskAreaPointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
+      // Same feature flag as the MonitorGlow handler above —
+      // disabled while the corruption transition is the OS entry path.
+      if (!MONITOR_CLICK_ENABLED) return;
       if (!sceneReadyRef?.current) return;
       if (e.button !== 0) return;
       e.stopPropagation();
