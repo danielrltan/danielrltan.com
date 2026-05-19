@@ -30,10 +30,16 @@ import {
 import { ScrollCamera } from "./ScrollCamera";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { useScrollProgress } from "./useScrollProgress";
+import { useIsMobile } from "./useIsMobile";
 
 const SHRINK_AT = 0.06;
 const SHRINK_DONE = 0.14;
 const PINNED_WIDTH_VW = 50;
+// Mobile: canvas pins to the top half of the viewport during the hero,
+// then fades out as the user scrolls into the first section so portfolio
+// content occupies the full width below.
+const MOBILE_FADE_AT = 0.04;
+const MOBILE_FADE_DONE = 0.12;
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
@@ -61,6 +67,7 @@ export default function App() {
   const [moveableHover, setMoveableHover] = useState(false);
   const [roomResetKey, setRoomResetKey] = useState(0);
   const scrollProgress = useScrollProgress();
+  const isMobile = useIsMobile();
 
   const startTransition = useCallback(() => {
     if (transitionStarted) return;
@@ -108,6 +115,12 @@ export default function App() {
     (scrollProgress - SHRINK_AT) / (SHRINK_DONE - SHRINK_AT),
   );
   const canvasWidthVw = lerp(100, PINNED_WIDTH_VW, shrinkT);
+  // Mobile: canvas does not shrink — it just fades out post-hero so
+  // sections below get the full viewport width.
+  const mobileFadeT = clamp01(
+    (scrollProgress - MOBILE_FADE_AT) / (MOBILE_FADE_DONE - MOBILE_FADE_AT),
+  );
+  const mobileCanvasOpacity = 1 - mobileFadeT;
 
   return (
     <AssemblyProvider>
@@ -132,9 +145,11 @@ export default function App() {
             position: "fixed",
             top: 0,
             left: 0,
-            width: `${canvasWidthVw}vw`,
-            height: "100vh",
+            width: isMobile ? "100vw" : `${canvasWidthVw}vw`,
+            height: isMobile ? "55vh" : "100vh",
             transition: "width 350ms cubic-bezier(0.4, 0.2, 0.2, 1)",
+            opacity: isMobile ? mobileCanvasOpacity : 1,
+            pointerEvents: isMobile && mobileCanvasOpacity < 0.05 ? "none" : "auto",
             zIndex: 0,
           }}
         >
@@ -176,7 +191,11 @@ export default function App() {
               <AssemblyWireframesSlot />
               <Suspense fallback={null}>
                 <Lighting />
+                {/* Mobile: keep the Physics provider mounted (Room's
+                    <RigidBody>s require it) but pause the sim — near-zero
+                    CPU, and drag/throw on touch is awkward anyway. */}
                 <Physics
+                  paused={isMobile}
                   gravity={[0, -9.81, 0]}
                   timeStep={1 / 60}
                   numSolverIterations={3}

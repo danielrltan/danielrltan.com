@@ -4,16 +4,19 @@ export function Hero() {
   return (
     <section className="portfolio-section">
       <div className="portfolio-hero">
-        <span className="eyebrow">Portfolio</span>
-        <h1>Daniel R.L. Tan</h1>
+        <span className="eyebrow">Portfolio · 2026</span>
+        <h1 className="hero-name">Daniel R.L. Tan</h1>
         <p
           style={{
-            fontSize: "clamp(18px, 1.4vw, 24px)",
+            fontFamily: "var(--font-mono)",
+            fontSize: "clamp(13px, 1vw, 16px)",
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
             opacity: 0.7,
-            marginTop: 16,
+            marginTop: 28,
           }}
         >
-          Software engineer. Building interactive, well-considered things.
+          Software engineer · interactive web · 3D
         </p>
       </div>
       <div className="scroll-hint">scroll ↓</div>

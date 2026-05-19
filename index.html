@@ -10,6 +10,21 @@
          favicons crisp at every DPI. -->
     <link rel="icon" type="image/svg+xml" href="/images/cat.svg" />
 
+    <!-- Font stack:
+         - Doto: pixel-dot display face. Retro-futurism vibe. Hero name
+           and select brand moments only — too loud for body type.
+         - Space Grotesk: geometric grotesque, retro-futurism friendly.
+           Headings and sub-headings.
+         - Inter: clean modern grotesque. Body copy.
+         - JetBrains Mono: tech tags, file paths, HUD labels.
+         display=swap so the page renders in a fallback while these
+         load; FOUT is acceptable for portfolio first paint. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700;900&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
 
     <title>Daniel Tan // Portfolio</title>
     <meta
@@ -95,7 +110,7 @@
     </script>
 
     <style>
-      html, body { margin: 0; height: 100%; background: #d8d4ca; }
+      html, body { margin: 0; background: #f8f6f3; }
       /* Boot screen — visible immediately on first paint, before any JS
          parses. React removes #boot-screen from the DOM once the scene is
          ready (LoadingScreen handles that in App.tsx). */

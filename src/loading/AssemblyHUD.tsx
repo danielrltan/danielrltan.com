@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { useWireframeManifest } from "./useWireframeManifest";
 import {
   type AssemblyState,
-  GLB_TOTAL_MB,
   PHASE_THRESHOLDS,
   POST_CLIMAX_HUD_FADE_MS,
 } from "./types";
@@ -96,8 +95,18 @@ export function AssemblyHUD({ state }: Props) {
             resolving{" "}
             <span style={{ color: "var(--wrapper-ink)" }}>· {resolvedName || "scene"}</span>
           </span>
-          <span>
-            {state.bytesMB.toFixed(1)} / {GLB_TOTAL_MB} MB
+          <span
+            style={{
+              fontFamily: 'var(--font-dot)',
+              color: 'var(--wrapper-ink)',
+              fontSize: '15px',
+              letterSpacing: '0.04em',
+              minWidth: '2.5ch',
+              textAlign: 'right',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {Math.floor(state.combinedPct * 100)}
           </span>
         </div>
       </div>
