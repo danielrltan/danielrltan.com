@@ -17,16 +17,16 @@ import { registerSignatureBrush } from "./paint";
  * The room overdraws the signature where they overlap; the signature
  * shows in the off-white surround around the room.
  */
-// Cat icon / lamp glow / wireframes all use #ff7842 — matching here
-// so the signature reads as part of the same warm-amber language.
-const PAINT_COLOR = "255, 120, 66";
-// Low per-stamp alpha + CSS blur on the canvas element below. The
-// blur is what gives the strokes the same soft wet-paint look as the
-// floating Blobs (which use filter: blur(60px) on radial gradients).
-// Stamping with source-over lets natural slow/fast variation come
-// through; the blur diffuses any accumulation peaks so they read as
-// painterly highlights rather than hard amber blobs.
-const STAMP_ALPHA = 0.18;
+// Glow-brush palette. Each stamp's radial gradient runs from a bright
+// butter-yellow CORE through warm golden mid-tones to a warm amber
+// OUTER ring, then fades to transparent. The CSS blur on the canvas
+// (below) diffuses the gradient stops into a soft neon halo: bright
+// yellow centerline with an orange outline, exactly like the look the
+// user pointed at.
+const CORE_YELLOW = "255, 235, 140"; // bright butter yellow #ffeb8c
+const MID_GOLD = "255, 200, 100"; // warm golden #ffc864
+const EDGE_AMBER = "255, 120, 66"; // cat-icon orange #ff7842
+const STAMP_ALPHA = 0.28;
 const BRUSH_RADIUS = 60;
 /**
  * CSS blur applied to the entire signature canvas. Smaller than the
@@ -74,15 +74,20 @@ export function SignatureCanvas() {
       brushSize / 2,
       brushSize / 2,
     );
-    // Long-ramp gradient: full alpha only at the exact centre, soft
-    // exponential-ish fade outward. Old shape had a solid core (0–60%
-    // of radius all at STAMP_ALPHA) which made destination-over render
-    // a sharp-edged disc per stamp. This shape produces a true
-    // wet-paint feathered halo.
-    grad.addColorStop(0.0, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA})`);
-    grad.addColorStop(0.25, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA * 0.7})`);
-    grad.addColorStop(0.55, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA * 0.35})`);
-    grad.addColorStop(1.0, `rgba(${PAINT_COLOR}, 0)`);
+    // Multi-stop glow gradient:
+    //   - 0.0 → 0.25: bright butter yellow core at peak alpha
+    //   - 0.25 → 0.55: transition through warm golden
+    //   - 0.55 → 0.85: warm amber outer ring (the "outline" colour)
+    //   - 0.85 → 1.0: amber fades to transparent
+    // The CSS blur on the canvas softens these stops into a continuous
+    // glow — yellow-bright centreline with an orange halo, no hard
+    // colour bands.
+    grad.addColorStop(0.0, `rgba(${CORE_YELLOW}, ${STAMP_ALPHA})`);
+    grad.addColorStop(0.25, `rgba(${CORE_YELLOW}, ${STAMP_ALPHA * 0.85})`);
+    grad.addColorStop(0.45, `rgba(${MID_GOLD}, ${STAMP_ALPHA * 0.65})`);
+    grad.addColorStop(0.7, `rgba(${EDGE_AMBER}, ${STAMP_ALPHA * 0.4})`);
+    grad.addColorStop(0.9, `rgba(${EDGE_AMBER}, ${STAMP_ALPHA * 0.15})`);
+    grad.addColorStop(1.0, `rgba(${EDGE_AMBER}, 0)`);
     bctx.fillStyle = grad;
     bctx.fillRect(0, 0, brushSize, brushSize);
 
