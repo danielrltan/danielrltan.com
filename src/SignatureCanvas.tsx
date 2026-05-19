@@ -26,12 +26,12 @@ const PAINT_COLOR = "255, 120, 66"; // #ff7842
 const STAMP_ALPHA = 0.22;
 const BRUSH_RADIUS = 60;
 /**
- * CSS blur applied to the entire signature canvas. Smaller than the
- * blob field's 60px because the signature has actual structure to
- * preserve — we want it to read as a soft wet-paint stroke, not as
- * an unreadable cloud.
+ * CSS blur applied to the entire signature canvas. Just enough to
+ * feather the stroke edges into a soft amber ribbon — not enough to
+ * dissolve the stroke shape. Going past ~8 starts pushing the
+ * signature toward an unreadable cloud.
  */
-const CANVAS_BLUR_PX = 12;
+const CANVAS_BLUR_PX = 5;
 
 export function SignatureCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
