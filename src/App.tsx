@@ -21,7 +21,8 @@ import { startAmbience } from "./audio";
 import { CorruptionOverlay } from "./CorruptionOverlay";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
-import { Aurora } from "./Aurora";
+import { GroundPlane } from "./GroundPlane";
+import { Spotlight } from "./Spotlight";
 import {
   AssemblyProvider,
   AssemblyHUDSlot,
@@ -589,10 +590,10 @@ export default function App() {
             startDeskView,
           }}
         >
-          {/* Aurora paints the canvas background (cream + warm noise +
-              mouse spotlight). Drawn first via renderOrder=-1 inside
-              the component, so the room + wireframes overdraw it. */}
-          <Aurora />
+          {/* Soft round shadow plane the room sits on. Extends past the
+              room's floor footprint so the room reads as a model on a
+              backdrop instead of floating in a cream void. */}
+          <GroundPlane />
           <AssemblyWireframesSlot />
           <Suspense fallback={null}>
             <Lighting />
@@ -722,6 +723,11 @@ export default function App() {
       </Canvas>
 
       {!deskViewActive && <MoveableCursor hot={moveableHover} />}
+
+      {/* Warm spotlight that follows the cursor with damping. Above
+          the 3D canvas, below HUD chrome. Multiplied onto the wrapper
+          so it reads as ambient light rather than a halo. */}
+      {!deskViewActive && <Spotlight />}
 
       {/* Persistent room chrome: brand, reset, mouse controls.
           Mounted whenever the scene is ready; the `visible` prop drives

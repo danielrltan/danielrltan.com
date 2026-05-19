@@ -3,12 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#330a05" />
+    <meta name="theme-color" content="#d8d4ca" />
 
     <!-- Favicon — same cat asset as the loading screen, so the browser
          tab matches the site's mascot. Modern browsers render SVG
          favicons crisp at every DPI. -->
     <link rel="icon" type="image/svg+xml" href="/images/cat.svg" />
+
 
     <title>Daniel Tan // Portfolio</title>
     <meta
@@ -94,15 +95,15 @@
     </script>
 
     <style>
-      html, body { margin: 0; height: 100%; background: #330a05; }
+      html, body { margin: 0; height: 100%; background: #d8d4ca; }
       /* Boot screen — visible immediately on first paint, before any JS
          parses. React removes #boot-screen from the DOM once the scene is
          ready (LoadingScreen handles that in App.tsx). */
       #boot-screen {
         position: fixed;
         inset: 0;
-        background: #330a05;
-        color: #ffb077;
+        background: #d8d4ca;
+        color: #5a3a1f;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -171,8 +172,8 @@
         style="
           position: fixed;
           inset: 0;
-          background: #330a05;
-          color: #ffb077;
+          background: #d8d4ca;
+          color: #5a3a1f;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -193,13 +194,20 @@
           via the links below.
         </p>
         <p style="font-size: 13px;">
-          <a href="https://www.linkedin.com/in/danielrltan" style="color: #ffb077;">LinkedIn</a>
+          <a href="https://www.linkedin.com/in/danielrltan" style="color: #5a3a1f;">LinkedIn</a>
           &nbsp;·&nbsp;
-          <a href="https://github.com/danielrltan" style="color: #ffb077;">GitHub</a>
+          <a href="https://github.com/danielrltan" style="color: #5a3a1f;">GitHub</a>
         </p>
       </div>
     </noscript>
 
     <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Umami analytics — privacy-friendly, no cookies, no PII. -->
+    <script
+      defer
+      src="https://cloud.umami.is/script.js"
+      data-website-id="cc7aecbb-7a58-4e15-84de-1932fc608d79"
+    ></script>
   </body>
 </html>

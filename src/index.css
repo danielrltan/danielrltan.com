@@ -49,8 +49,13 @@
    * (click-to-begin, MoveableCursor, RoomHUD, scroll prompt, hint
    * banner — basically everything outside the warm-lit room interior).
    * ----------------------------------------------------------------*/
-  --wrapper-bg: #f0e6d6;
-  --wrapper-ink: #5a3a1f;            /* warm walnut, AA contrast on cream */
+  /* Off-white that matches the colour the cover-dome cream gets
+   * tonemapped to (ACES at exposure 0.8 desaturates and cools the
+   * source #f0e6d6 toward a neutral putty). Using this value directly
+   * on the wrapper means the load-state bg and the post-load bg agree
+   * — no warm-shift at climax. */
+  --wrapper-bg: #d8d4ca;
+  --wrapper-ink: #5a3a1f;            /* warm walnut, AA contrast on off-white */
   --wrapper-ink-soft: rgba(90, 58, 31, 0.6);
   --wrapper-ink-faint: rgba(90, 58, 31, 0.18);
 }
