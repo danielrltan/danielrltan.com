@@ -21,7 +21,6 @@ import { startAmbience } from "./audio";
 import { CorruptionOverlay } from "./CorruptionOverlay";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
-import { Blobs } from "./Blobs";
 import { PaintTrail } from "./PaintTrail";
 import { SignatureCanvas } from "./SignatureCanvas";
 import { SignatureCapture } from "./SignatureCapture";
@@ -557,10 +556,6 @@ export default function App() {
         setMoveableHover(false);
       }}
     >
-      {/* Floating orange blob field behind everything. First wrapper
-          child so document order puts it under the signature canvas
-          and the R3F canvas. */}
-      {!deskViewActive && <Blobs />}
       {/* Signature canvas — separate canvas, no per-frame fade, so the
           replayed signature stays drawn after it finishes. Mounted
           first in document order so it sits beneath the cursor trail
