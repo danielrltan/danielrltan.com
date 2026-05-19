@@ -21,8 +21,7 @@ import { startAmbience } from "./audio";
 import { CorruptionOverlay } from "./CorruptionOverlay";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
-import { GroundPlane } from "./GroundPlane";
-import { Spotlight } from "./Spotlight";
+import { PaintTrail } from "./PaintTrail";
 import {
   AssemblyProvider,
   AssemblyHUDSlot,
@@ -543,10 +542,11 @@ export default function App() {
         setMoveableHover(false);
       }}
     >
-      {/* Brand watermark removed: the cream + Aurora background is the
-          new surround, and a single faint giant wordmark on top of it
-          fights the warm-noise field for attention. The RoomHUD's
-          top-left "Daniel Tan" mark carries the branding now. */}
+      {/* Paint-blob cursor trail. Mounted as the wrapper's first
+          painted child so document order puts it BENEATH the R3F
+          canvas: room overdraws it, but the off-white surround
+          (where the canvas is transparent) lets the paint read. */}
+      {!deskViewActive && <PaintTrail />}
       <Canvas
         camera={{
           // Initial iso preview pose — kept in sync with IntroController
@@ -590,10 +590,6 @@ export default function App() {
             startDeskView,
           }}
         >
-          {/* Soft round shadow plane the room sits on. Extends past the
-              room's floor footprint so the room reads as a model on a
-              backdrop instead of floating in a cream void. */}
-          <GroundPlane />
           <AssemblyWireframesSlot />
           <Suspense fallback={null}>
             <Lighting />
@@ -724,10 +720,6 @@ export default function App() {
 
       {!deskViewActive && <MoveableCursor hot={moveableHover} />}
 
-      {/* Warm spotlight that follows the cursor with damping. Above
-          the 3D canvas, below HUD chrome. Multiplied onto the wrapper
-          so it reads as ambient light rather than a halo. */}
-      {!deskViewActive && <Spotlight />}
 
       {/* Persistent room chrome: brand, reset, mouse controls.
           Mounted whenever the scene is ready; the `visible` prop drives
