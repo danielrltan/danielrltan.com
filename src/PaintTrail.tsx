@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { registerBrush } from "./paint";
 
 /**
  * Wet-paint cursor trail. A fullscreen 2D canvas that stamps soft
@@ -83,6 +84,10 @@ export function PaintTrail() {
       ctx.drawImage(brushCanvas, x - radius, y - radius, size, size);
     };
 
+    // Expose the brush to non-pointer consumers (SignatureReplay).
+    // Default radius matches BASE_RADIUS so callers can omit it.
+    registerBrush((x, y, radius) => stamp(x, y, radius ?? BASE_RADIUS));
+
     let lastX = 0;
     let lastY = 0;
     let lastT = 0;
@@ -145,6 +150,7 @@ export function PaintTrail() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onMove);
+      registerBrush(null);
     };
   }, []);
 

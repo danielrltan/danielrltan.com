@@ -22,6 +22,8 @@ import { CorruptionOverlay } from "./CorruptionOverlay";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
 import { PaintTrail } from "./PaintTrail";
+import { SignatureCapture } from "./SignatureCapture";
+import { SignatureReplay } from "./SignatureReplay";
 import {
   AssemblyProvider,
   AssemblyHUDSlot,
@@ -92,6 +94,17 @@ function FullscreenOverlay({
 }
 
 export default function App() {
+  // `?sign=1` short-circuits the whole app and shows the throwaway
+  // signature-capture overlay. Recorded JSON is copied / downloaded
+  // and committed as `public/signature.json` for SignatureReplay to
+  // pick up on the real site.
+  if (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("sign") === "1"
+  ) {
+    return <SignatureCapture />;
+  }
+
   const roomGroupRef = useRef<THREE.Group | null>(null);
   const sceneReadyRef = useRef(false);
   const isHoveringRef = useRef(false);
@@ -547,6 +560,10 @@ export default function App() {
           canvas: room overdraws it, but the off-white surround
           (where the canvas is transparent) lets the paint read. */}
       {!deskViewActive && <PaintTrail />}
+      {/* Signature replay — kicks off after the loading climax, draws
+          the recorded gesture through the same brush. No-op until
+          public/signature.json exists. */}
+      {!deskViewActive && <SignatureReplay trigger={sceneReady} delayMs={600} />}
       <Canvas
         camera={{
           // Initial iso preview pose — kept in sync with IntroController
