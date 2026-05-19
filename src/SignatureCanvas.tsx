@@ -17,20 +17,14 @@ import { registerSignatureBrush } from "./paint";
  * The room overdraws the signature where they overlap; the signature
  * shows in the off-white surround around the room.
  */
-// Single-color amber brush — matches the cat icon / lamp glow.
-// Per-stamp alpha is intentionally LOW so dense overlapping stamps
-// at slow-signing hesitations don't accumulate into solid saturated
-// amber slabs. SignatureReplay uses a sparser STEP_PX (24) to back
-// this up — fewer stamps per pixel, less accumulation room.
+// Exact copy of PaintTrail's cursor brush params (option A from the
+// brush-comparison brainstorm). No CSS blur, no special compositing —
+// per-frame destination-out fade below caps accumulation the same way
+// the cursor canvas does.
 const PAINT_COLOR = "255, 120, 66"; // #ff7842
-const STAMP_ALPHA = 0.09;
+const STAMP_ALPHA = 0.45;
 const BRUSH_RADIUS = 60;
-/**
- * CSS blur applied to the entire signature canvas. Moderate — 8px
- * feathers the stroke edges into soft amber ribbons while keeping
- * the letter shapes legible. Past ~12 the signature starts dissolving.
- */
-const CANVAS_BLUR_PX = 8;
+const FADE_ALPHA = 0.004;
 
 export function SignatureCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,41 +64,43 @@ export function SignatureCanvas() {
       brushSize / 2,
       brushSize / 2,
     );
-    // Simple amber radial gradient: peak alpha at the centre, gentle
-    // fade to transparent at the edge. The CSS blur on the canvas
-    // takes the gradient and softens it into the soft amber ribbon
-    // look — no colour gymnastics needed.
+    // PaintTrail's solid-bodied gradient: alpha holds at STAMP_ALPHA
+    // across the inner 60% of radius, then ramps to 0 in the outer 40%.
     grad.addColorStop(0.0, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA})`);
-    grad.addColorStop(0.35, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA * 0.75})`);
-    grad.addColorStop(0.7, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA * 0.35})`);
+    grad.addColorStop(0.6, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA})`);
     grad.addColorStop(1.0, `rgba(${PAINT_COLOR}, 0)`);
     bctx.fillStyle = grad;
     bctx.fillRect(0, 0, brushSize, brushSize);
 
-    const stamp = (
-      x: number,
-      y: number,
-      radiusOverride?: number,
-      alphaMult?: number,
-    ) => {
-      // source-over (default). The CSS blur on the canvas element
-      // takes care of softening the strokes — any per-frame
-      // accumulation at hesitation points reads as painterly density
-      // variation through the blur, not as hard amber blobs.
+    const stamp = (x: number, y: number, radiusOverride?: number) => {
+      // Reset composite to source-over before each stamp — the fade
+      // tick below sets destination-out and resets it, but interleaved
+      // RAFs may run a stamp after a fade tick within the same frame.
       ctx.globalCompositeOperation = "source-over";
       const radius = radiusOverride ?? BRUSH_RADIUS;
       const size = radius * 2;
-      if (alphaMult !== undefined && alphaMult !== 1) {
-        ctx.globalAlpha = alphaMult;
-        ctx.drawImage(brushCanvas, x - radius, y - radius, size, size);
-        ctx.globalAlpha = 1;
-      } else {
-        ctx.drawImage(brushCanvas, x - radius, y - radius, size, size);
-      }
+      ctx.drawImage(brushCanvas, x - radius, y - radius, size, size);
     };
+    // alphaMult parameter on the registered fn is intentionally ignored —
+    // the cursor brush doesn't modulate alpha per stamp and we're
+    // matching it exactly.
     registerSignatureBrush(stamp);
 
+    // Per-frame fade — identical to PaintTrail. Runs continuously: caps
+    // accumulation during replay, dissolves the signature naturally
+    // over a few seconds after replay ends.
+    let raf = 0;
+    const tick = () => {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = `rgba(0, 0, 0, ${FADE_ALPHA})`;
+      ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+      ctx.globalCompositeOperation = "source-over";
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       registerSignatureBrush(null);
     };
@@ -119,12 +115,8 @@ export function SignatureCanvas() {
         inset: 0,
         zIndex: 0,
         pointerEvents: "none",
-        // CSS blur on the whole canvas — the same trick the Blobs
-        // component uses, gives the signature the soft wet-paint
-        // quality that direct canvas stamps can't produce on their
-        // own. Keeps the painted strokes' colour / position / motion
-        // intact, just diffuses the hard edges.
-        filter: `blur(${CANVAS_BLUR_PX}px)`,
+        // No CSS blur — cursor brush doesn't have one, signature
+        // matches exactly. The per-frame fade controls the look.
       }}
     />
   );
