@@ -35,13 +35,15 @@ interface BlobConfig {
   opacity: number;
 }
 
-// Bauhaus warm palette — primary cat-icon orange, lighter peach, deeper
-// rust, plus two off-tones for variation. Kept inside the orange family
-// (no greens, no purples) so the blob field reads as one coherent warm
-// wash rather than a rainbow.
+// Bauhaus warm palette shifted yellow. Soft mustard, amber-yellow,
+// cream-yellow, warm yellow, light butter — all on the orange→yellow
+// spectrum but biased toward yellow so the blob field reads as warm
+// sunlit ambient light rather than competing with the cursor brush's
+// amber-orange. Higher base alpha than the previous orange palette
+// because yellows read softer on the off-white surround.
 const BLOBS: BlobConfig[] = [
   {
-    color: "rgba(255, 120, 66, 0.55)",
+    color: "rgba(255, 207, 110, 0.60)", // warm yellow #ffcf6e
     size: "38vw",
     top: "8%",
     left: "10%",
@@ -51,7 +53,7 @@ const BLOBS: BlobConfig[] = [
     opacity: 1,
   },
   {
-    color: "rgba(255, 176, 119, 0.6)",
+    color: "rgba(252, 226, 153, 0.65)", // cream yellow #fce299
     size: "32vw",
     top: "55%",
     left: "62%",
@@ -61,7 +63,7 @@ const BLOBS: BlobConfig[] = [
     opacity: 1,
   },
   {
-    color: "rgba(255, 140, 80, 0.45)",
+    color: "rgba(245, 199, 105, 0.55)", // amber-yellow #f5c769
     size: "44vw",
     top: "60%",
     left: "5%",
@@ -71,7 +73,7 @@ const BLOBS: BlobConfig[] = [
     opacity: 1,
   },
   {
-    color: "rgba(220, 100, 50, 0.40)",
+    color: "rgba(230, 180, 80, 0.45)", // soft mustard #e6b450
     size: "26vw",
     top: "12%",
     left: "70%",
@@ -81,14 +83,14 @@ const BLOBS: BlobConfig[] = [
     opacity: 1,
   },
   {
-    color: "rgba(255, 200, 140, 0.55)",
+    color: "rgba(255, 232, 170, 0.65)", // light butter #ffe8aa
     size: "30vw",
     top: "35%",
     left: "38%",
     animation: "blob-drift-e",
     durationSec: 46,
     delaySec: -5,
-    opacity: 0.8,
+    opacity: 0.85,
   },
 ];
 
