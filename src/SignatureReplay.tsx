@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { isBrushReady, paintAt } from "./paint";
+import { isSignatureBrushReady, paintSignatureAt } from "./paint";
 
 /**
  * Replays a captured signature through the PaintTrail brush after a
@@ -37,11 +37,11 @@ interface Props {
   delayMs?: number;
 }
 
-const TARGET_WIDTH_RATIO = 0.92; // 92% of viewport width
-const TARGET_ASPECT_LOCK = true; // preserve signature aspect ratio
-const VERTICAL_NUDGE = 0; // 0 = vertically centred; positive = down
-const REPLAY_RADIUS = 22; // brush radius for signature stamping
-const STEP_PX = 4; // interpolate between recorded moves to keep stroke continuous
+const TARGET_WIDTH_RATIO = 1.15; // GIANT — slightly past viewport edges
+const TARGET_ASPECT_LOCK = true;
+const VERTICAL_NUDGE = 0;
+const REPLAY_RADIUS = 32; // bigger brush so the giant signature has weight
+const STEP_PX = 6;
 
 export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
   useEffect(() => {
@@ -99,7 +99,7 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
 
       const startWhenReady = () => {
         if (started || cancelled) return;
-        if (!isBrushReady()) {
+        if (!isSignatureBrushReady()) {
           // PaintTrail may mount a frame after us; retry next rAF.
           raf = requestAnimationFrame(startWhenReady);
           return;
@@ -127,7 +127,7 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
             if (ev.type === "down") {
               lastX = px;
               lastY = py;
-              paintAt(px, py, REPLAY_RADIUS);
+              paintSignatureAt(px, py, REPLAY_RADIUS);
             } else if (ev.type === "move") {
               if (lastX != null && lastY != null) {
                 const dx = px - lastX;
@@ -136,10 +136,10 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
                 const steps = Math.max(1, Math.ceil(dist / STEP_PX));
                 for (let i = 1; i <= steps; i++) {
                   const t = i / steps;
-                  paintAt(lastX + dx * t, lastY + dy * t, REPLAY_RADIUS);
+                  paintSignatureAt(lastX + dx * t, lastY + dy * t, REPLAY_RADIUS);
                 }
               } else {
-                paintAt(px, py, REPLAY_RADIUS);
+                paintSignatureAt(px, py, REPLAY_RADIUS);
               }
               lastX = px;
               lastY = py;

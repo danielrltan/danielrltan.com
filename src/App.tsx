@@ -22,6 +22,7 @@ import { CorruptionOverlay } from "./CorruptionOverlay";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
 import { PaintTrail } from "./PaintTrail";
+import { SignatureCanvas } from "./SignatureCanvas";
 import { SignatureCapture } from "./SignatureCapture";
 import { SignatureReplay } from "./SignatureReplay";
 import {
@@ -555,14 +556,18 @@ export default function App() {
         setMoveableHover(false);
       }}
     >
-      {/* Paint-blob cursor trail. Mounted as the wrapper's first
-          painted child so document order puts it BENEATH the R3F
-          canvas: room overdraws it, but the off-white surround
-          (where the canvas is transparent) lets the paint read. */}
+      {/* Signature canvas — separate canvas, no per-frame fade, so the
+          replayed signature stays drawn after it finishes. Mounted
+          first in document order so it sits beneath the cursor trail
+          AND the R3F canvas. */}
+      {!deskViewActive && <SignatureCanvas />}
+      {/* Paint-blob cursor trail. Document-order after SignatureCanvas
+          so cursor strokes sit on top of the signature. Still beneath
+          the R3F canvas — the room overdraws both. */}
       {!deskViewActive && <PaintTrail />}
       {/* Signature replay — kicks off after the loading climax, draws
-          the recorded gesture through the same brush. No-op until
-          public/signature.json exists. */}
+          the recorded gesture through the signature brush onto the
+          no-fade canvas. No-op until public/signature.json exists. */}
       {!deskViewActive && <SignatureReplay trigger={sceneReady} delayMs={600} />}
       <Canvas
         camera={{
