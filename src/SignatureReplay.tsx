@@ -1,5 +1,9 @@
 import { useEffect } from "react";
-import { isSignatureBrushReady, paintSignatureAt } from "./paint";
+import {
+  isSignatureBrushReady,
+  paintSignatureAt,
+  setSignatureFade,
+} from "./paint";
 
 /**
  * Replays a captured signature through the PaintTrail brush after a
@@ -57,24 +61,19 @@ const STEP_PX = 5;
  * world px because the threshold values are tuned against the recorded
  * gesture's native scale, so this stays viewport-size independent).
  */
-// Velocity range calibrated against the recorded signature data.
-// Original gesture has typical velocities in the 0.0005–0.008 n.u./ms
-// range across its strokes; previous values (0.0002–0.0020) put
-// almost everything past VEL_MAX, leaving the entire signature drawn
-// with the "fast" alpha knock-down and rendering nearly invisible.
-const VEL_MIN = 0.0008; // slow zone — careful loops and hesitations
-const VEL_MAX = 0.0100; // fast zone — the t-crossbar sweep
-const SIZE_MULT_AT_MIN_VEL = 1.25; // fat
-const SIZE_MULT_AT_MAX_VEL = 0.55; // thin
-/**
- * Per-stamp alpha multiplier at the velocity extremes. Real pens
- * deposit less ink when sweeping fast — the tip skims rather than
- * sits. Without this, fast strokes (like the crossbar of a "t" drawn
- * with a single fast horizontal sweep) build up to the same density
- * as a slow careful loop and read as a stuck marker.
- */
-const ALPHA_MULT_AT_MIN_VEL = 1.0; // full ink at hesitations
-const ALPHA_MULT_AT_MAX_VEL = 0.45; // skim / dry-pen on fast sweeps
+// Velocity-based brush size variation — matches the cursor brush's
+// own velocity-modulated radius (slow = fat, fast = thin). Range
+// calibrated against the recorded signature's data.
+//
+// Per-stamp alpha modulation was tried earlier but pulled the brush
+// away from the cursor-trail look (cursor brush doesn't modulate
+// alpha per stamp). The bauhaus wet-paint look comes from CONSTANT
+// per-stamp alpha + a per-frame fade clamping accumulation; the fade
+// during signature replay does the same job (see SignatureCanvas).
+const VEL_MIN = 0.0008;
+const VEL_MAX = 0.0100;
+const SIZE_MULT_AT_MIN_VEL = 1.25;
+const SIZE_MULT_AT_MAX_VEL = 0.55;
 /**
  * Replay speed multiplier. The recorded gesture takes ~3.4s; at 2.2×
  * it draws in ~1.5s, fast enough to feel like an intentional flourish
@@ -157,19 +156,20 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
         let prevT = 0;
         let hasPrev = false;
 
-        // Maps event-local velocity in n.u./ms to a 0..1 fast-ness
-        // factor (clamped, linear between VEL_MIN and VEL_MAX). Both
-        // brush radius and per-stamp alpha are interpolated against
-        // this same factor so the variations move together.
-        const velocityFactor = (vel: number): number =>
-          Math.max(0, Math.min(1, (vel - VEL_MIN) / (VEL_MAX - VEL_MIN)));
-        const velocityRadius = (factor: number): number =>
-          REPLAY_RADIUS_BASE *
-          (SIZE_MULT_AT_MIN_VEL +
-            (SIZE_MULT_AT_MAX_VEL - SIZE_MULT_AT_MIN_VEL) * factor);
-        const velocityAlpha = (factor: number): number =>
-          ALPHA_MULT_AT_MIN_VEL +
-          (ALPHA_MULT_AT_MAX_VEL - ALPHA_MULT_AT_MIN_VEL) * factor;
+        // Maps event-local velocity in n.u./ms to a brush radius —
+        // clamped linear interpolation between SIZE_MULT_AT_MIN_VEL
+        // (fat) and SIZE_MULT_AT_MAX_VEL (thin).
+        const velocityRadius = (vel: number): number => {
+          const f = Math.max(
+            0,
+            Math.min(1, (vel - VEL_MIN) / (VEL_MAX - VEL_MIN)),
+          );
+          const mult =
+            SIZE_MULT_AT_MIN_VEL +
+            (SIZE_MULT_AT_MAX_VEL - SIZE_MULT_AT_MIN_VEL) * f;
+          return REPLAY_RADIUS_BASE * mult;
+        };
+        let fadeOn = false;
 
         const tick = () => {
           if (cancelled || !sig) return;
@@ -177,6 +177,10 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
           if (elapsed < 0) {
             raf = requestAnimationFrame(tick);
             return;
+          }
+          if (!fadeOn) {
+            fadeOn = true;
+            setSignatureFade(true);
           }
           while (
             nextIdx < sig.events.length &&
@@ -186,26 +190,23 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
             const px = projectX(ev.nx);
             const py = projectY(ev.ny);
 
-            // Velocity in n.u./ms from the previously-recorded event.
-            // Drives both brush size AND per-stamp alpha: slow strokes
-            // are fat + saturated (hesitating pen, lots of ink); fast
-            // strokes are thin + light (skimming pen, dry-ink look).
+            // Velocity-driven brush radius (matches cursor brush
+            // behaviour). Per-stamp alpha is left constant — the
+            // per-frame fade in SignatureCanvas takes care of the
+            // accumulation-prevention, same as the cursor canvas.
             let radius = REPLAY_RADIUS_BASE;
-            let alphaMult = 1;
             if (hasPrev && ev.type !== "down") {
               const dnx = ev.nx - prevNx;
               const dny = ev.ny - prevNy;
               const ddt = Math.max(1, ev.t - prevT);
               const vel = Math.hypot(dnx, dny) / ddt;
-              const f = velocityFactor(vel);
-              radius = velocityRadius(f);
-              alphaMult = velocityAlpha(f);
+              radius = velocityRadius(vel);
             }
 
             if (ev.type === "down") {
               lastX = px;
               lastY = py;
-              paintSignatureAt(px, py, radius, alphaMult);
+              paintSignatureAt(px, py, radius);
             } else if (ev.type === "move") {
               if (lastX != null && lastY != null) {
                 const dx = px - lastX;
@@ -214,15 +215,10 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
                 const steps = Math.max(1, Math.ceil(dist / STEP_PX));
                 for (let i = 1; i <= steps; i++) {
                   const t = i / steps;
-                  paintSignatureAt(
-                    lastX + dx * t,
-                    lastY + dy * t,
-                    radius,
-                    alphaMult,
-                  );
+                  paintSignatureAt(lastX + dx * t, lastY + dy * t, radius);
                 }
               } else {
-                paintSignatureAt(px, py, radius, alphaMult);
+                paintSignatureAt(px, py, radius);
               }
               lastX = px;
               lastY = py;
@@ -241,6 +237,11 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
           }
           if (nextIdx < sig.events.length) {
             raf = requestAnimationFrame(tick);
+          } else if (fadeOn) {
+            // Replay complete — halt the fade so the final canvas
+            // state freezes wherever it landed and stays.
+            fadeOn = false;
+            setSignatureFade(false);
           }
         };
         raf = requestAnimationFrame(tick);
@@ -252,6 +253,9 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
+      // Defensive: if unmounted mid-replay, make sure the fade flag
+      // doesn't get stuck on for a future mount.
+      setSignatureFade(false);
     };
   }, [trigger, delayMs]);
 

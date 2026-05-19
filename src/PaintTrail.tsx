@@ -16,7 +16,7 @@ import { registerBrush } from "./paint";
  *
  * Pointer-events off so 3D interaction & HUD clicks pass through.
  */
-const PAINT_COLOR = "204, 96, 36"; // saturated warm amber
+const PAINT_COLOR = "255, 120, 66"; // matches the BlinkingCat icon / lamp glow / wireframes
 // destination-out multiplies remaining alpha by (1 - source). At
 // FADE_ALPHA=0.004 that's a 0.4%/frame decay → ~95% alpha gone after
 // ~6s, ~50% gone after ~2.5s. Slow enough that the trail clearly
