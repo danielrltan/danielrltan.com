@@ -41,7 +41,11 @@ export function AssemblyHUD({ state }: Props) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "#330a05",
+        // Transparent — the wrapper div already supplies the maroon
+        // background AND the canvas (alpha:true) lives between us
+        // and the wrapper. An opaque background here would hide the
+        // wireframes rendering inside the canvas during load.
+        background: "transparent",
         color: "var(--hud-amber)",
         fontFamily: "var(--font-mono)",
         zIndex: 9999,

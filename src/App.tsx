@@ -18,10 +18,14 @@ import { SceneStateProvider } from "./SceneState";
 import { MoveableCursor } from "./MoveableCursor";
 import { DeskViewController } from "./DeskViewController";
 import { startAmbience } from "./audio";
-import { LoadingScreen } from "./LoadingScreen";
 import { CorruptionOverlay } from "./CorruptionOverlay";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
+import {
+  AssemblyProvider,
+  AssemblyHUDSlot,
+  AssemblyWireframesSlot,
+} from "./loading";
 
 // Lazy-load everything OS-related — none of it renders until the camera
 // is seated at the desk, so its code (~hundreds of kB before splitting)
@@ -513,6 +517,7 @@ export default function App() {
   }, [sceneReady, resetRoom]);
 
   return (
+    <AssemblyProvider>
     <div
       style={{
         position: "absolute",
@@ -619,6 +624,7 @@ export default function App() {
             startDeskView,
           }}
         >
+          <AssemblyWireframesSlot />
           <Suspense fallback={null}>
             <Lighting />
             <Physics
@@ -920,7 +926,7 @@ export default function App() {
         </div>
       )}
 
-      <LoadingScreen />
+      <AssemblyHUDSlot />
 
       {/* Fullscreen DesktopOS — rendered at full window dimensions so
           icons / widgets / paint canvas all reflow to use the
@@ -956,5 +962,6 @@ export default function App() {
         click to begin
       </div>
     </div>
+    </AssemblyProvider>
   );
 }
