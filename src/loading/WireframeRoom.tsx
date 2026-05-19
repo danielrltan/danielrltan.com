@@ -173,7 +173,11 @@ export function WireframeRoom({ state }: Props) {
         <sphereGeometry args={[60, 16, 12]} />
         <meshBasicMaterial
           ref={coverMatRef}
-          color="#f0e6d6"
+          /* Was #f0e6d6 (warm cream). Bumped to #f8f6f3 to match the
+           * wrapper-bg used by the rest of the site so the loading
+           * screen and the post-load hero share the exact same
+           * background colour — no perceptual snap on climax. */
+          color="#f8f6f3"
           side={THREE.BackSide}
           transparent
           opacity={1}

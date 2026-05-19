@@ -144,7 +144,13 @@ export default function App() {
   const shrinkT = clamp01(
     (scrollProgress - SHRINK_AT) / (SHRINK_DONE - SHRINK_AT),
   );
-  const canvasWidthVw = lerp(100, PINNED_WIDTH_VW, shrinkT);
+  // Right-side overlay width — grows from 0 to (100-PINNED)vw as the
+  // user scrolls, "covering" the right portion of the (always full-
+  // width) canvas with the wrapper-bg colour. Replaces the previous
+  // CSS width-resize on the canvas wrapper, which forced Three.js to
+  // recompute the renderer + camera projection every scroll frame →
+  // visible snap.
+  const overlayWidthVw = lerp(0, 100 - PINNED_WIDTH_VW, shrinkT);
   // Mobile: canvas does not shrink — it just fades out post-hero so
   // sections below get the full viewport width.
   const mobileFadeT = clamp01(
@@ -169,17 +175,41 @@ export default function App() {
           setMoveableHover(false);
         }}
       >
+        {/* Right-side overlay panel that grows from 0 to (100-PINNED)vw
+            as the user scrolls. Sits ABOVE the canvas and OPAQUE in
+            wrapper-bg colour so it visually "covers" the right portion
+            of the (always full-width) canvas. The portfolio sections
+            then render on top of this overlay. Replaces the previous
+            approach of resizing the Canvas wrapper width on scroll —
+            that forced Three.js to recompute renderer.setSize +
+            projection matrix every frame, which is the source of the
+            visible scroll snap. */}
+        {!isMobile && (
+          <div
+            aria-hidden
+            style={{
+              position: "fixed",
+              top: 0,
+              right: 0,
+              width: `${overlayWidthVw}vw`,
+              height: "100vh",
+              background: "var(--wrapper-bg)",
+              zIndex: 1,
+              pointerEvents: "none",
+            }}
+          />
+        )}
         <div
           style={{
             position: "fixed",
             top: 0,
             left: 0,
-            width: isMobile ? "100vw" : `${canvasWidthVw}vw`,
+            // Canvas wrapper is now ALWAYS full-width (or full mobile
+            // band). The right portion is visually covered by the
+            // overlay panel above. This stops Three.js from running
+            // its internal resize observer on every scroll frame.
+            width: isMobile ? "100vw" : "100vw",
             height: isMobile ? "55vh" : "100vh",
-            // No CSS transition on width — useScrollProgress already
-            // updates at rAF cadence (60Hz). A long CSS transition
-            // would fight every scroll-driven update and produce the
-            // visible "snap" / stutter on scroll.
             opacity: isMobile ? mobileCanvasOpacity : 1,
             pointerEvents: isMobile && mobileCanvasOpacity < 0.05 ? "none" : "auto",
             zIndex: 0,

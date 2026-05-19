@@ -57,20 +57,18 @@
    * - Doto: pixel-dot display face for the hero name + select brand
    *   moments. The dots ARE the design statement. Loud, distinctive,
    *   sparing use only — never body type.
-   * - Space Grotesk: geometric grotesque with retro-futurism feel.
-   *   All h2 / h3 / section headings.
-   * - Inter: clean modern grotesque for paragraphs and UI labels.
+   * - Bricolage Grotesque: variable, modern with character. Body copy
+   *   and display fallback. Not Inter (which felt default WordPress).
    * - JetBrains Mono: tech tags, file paths, HUD micro-labels. */
-  /* Offbit Dot first (real Power Type font, local files), then Doto
-   * (Google) as a close fallback while files are absent, then mono. */
-  --font-dot: "Offbit Dot", "Doto", "JetBrains Mono", monospace;
+  /* Offbit Dot first (real Power Type font, local files), then mono. */
+  --font-dot: "Offbit Dot", "JetBrains Mono", monospace;
   /* Solid Offbit variant for headings/buttons that want the retro
    * feel without the pixel-dot rendering. */
-  --font-pixel: "Offbit", "Doto", "JetBrains Mono", monospace;
+  --font-pixel: "Offbit", "JetBrains Mono", monospace;
   --font-display:
-    "Space Grotesk", "Inter", system-ui, -apple-system, sans-serif;
+    "Bricolage Grotesque", system-ui, -apple-system, sans-serif;
   --font-body:
-    "Inter", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono:
     "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo,
     Consolas, monospace;
