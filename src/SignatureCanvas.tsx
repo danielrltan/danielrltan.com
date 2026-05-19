@@ -17,16 +17,13 @@ import { registerSignatureBrush } from "./paint";
  * The room overdraws the signature where they overlap; the signature
  * shows in the off-white surround around the room.
  */
-// Glow-brush palette. Each stamp's radial gradient runs from a bright
-// butter-yellow CORE through warm golden mid-tones to a warm amber
-// OUTER ring, then fades to transparent. The CSS blur on the canvas
-// (below) diffuses the gradient stops into a soft neon halo: bright
-// yellow centerline with an orange outline, exactly like the look the
-// user pointed at.
-const CORE_YELLOW = "255, 235, 140"; // bright butter yellow #ffeb8c
-const MID_GOLD = "255, 200, 100"; // warm golden #ffc864
-const EDGE_AMBER = "255, 120, 66"; // cat-icon orange #ff7842
-const STAMP_ALPHA = 0.28;
+// Single-color amber brush — matches the cat icon / lamp glow / wireframes.
+// The soft halo look comes from the CSS blur on the canvas (below),
+// not from a multi-color gradient. Strokes read as warm amber ribbons
+// with fuzzy edges where they pass through the blur, and slow overlap
+// areas naturally accumulate to a slightly deeper amber.
+const PAINT_COLOR = "255, 120, 66"; // #ff7842
+const STAMP_ALPHA = 0.22;
 const BRUSH_RADIUS = 60;
 /**
  * CSS blur applied to the entire signature canvas. Smaller than the
@@ -74,20 +71,14 @@ export function SignatureCanvas() {
       brushSize / 2,
       brushSize / 2,
     );
-    // Multi-stop glow gradient:
-    //   - 0.0 → 0.25: bright butter yellow core at peak alpha
-    //   - 0.25 → 0.55: transition through warm golden
-    //   - 0.55 → 0.85: warm amber outer ring (the "outline" colour)
-    //   - 0.85 → 1.0: amber fades to transparent
-    // The CSS blur on the canvas softens these stops into a continuous
-    // glow — yellow-bright centreline with an orange halo, no hard
-    // colour bands.
-    grad.addColorStop(0.0, `rgba(${CORE_YELLOW}, ${STAMP_ALPHA})`);
-    grad.addColorStop(0.25, `rgba(${CORE_YELLOW}, ${STAMP_ALPHA * 0.85})`);
-    grad.addColorStop(0.45, `rgba(${MID_GOLD}, ${STAMP_ALPHA * 0.65})`);
-    grad.addColorStop(0.7, `rgba(${EDGE_AMBER}, ${STAMP_ALPHA * 0.4})`);
-    grad.addColorStop(0.9, `rgba(${EDGE_AMBER}, ${STAMP_ALPHA * 0.15})`);
-    grad.addColorStop(1.0, `rgba(${EDGE_AMBER}, 0)`);
+    // Simple amber radial gradient: peak alpha at the centre, gentle
+    // fade to transparent at the edge. The CSS blur on the canvas
+    // takes the gradient and softens it into the soft amber ribbon
+    // look — no colour gymnastics needed.
+    grad.addColorStop(0.0, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA})`);
+    grad.addColorStop(0.35, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA * 0.75})`);
+    grad.addColorStop(0.7, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA * 0.35})`);
+    grad.addColorStop(1.0, `rgba(${PAINT_COLOR}, 0)`);
     bctx.fillStyle = grad;
     bctx.fillRect(0, 0, brushSize, brushSize);
 
