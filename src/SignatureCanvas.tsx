@@ -18,8 +18,14 @@ import { registerSignatureBrush } from "./paint";
  * shows in the off-white surround around the room.
  */
 const PAINT_COLOR = "204, 96, 36";
-const STAMP_ALPHA = 0.45;
-const BRUSH_RADIUS = 36;
+// Lower per-stamp alpha than the cursor brush (cursor sits at 0.45
+// because its per-frame fade caps observed alpha at the peak of a
+// single fresh stamp). This canvas doesn't fade, so accumulating
+// overlapping stamps along a stroke would saturate to a solid amber
+// slab without this knock-down. 0.18 builds to roughly the
+// cursor-trail wet-paint look at typical stroke densities.
+const STAMP_ALPHA = 0.28;
+const BRUSH_RADIUS = 60;
 
 export function SignatureCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,10 +71,24 @@ export function SignatureCanvas() {
     bctx.fillStyle = grad;
     bctx.fillRect(0, 0, brushSize, brushSize);
 
-    const stamp = (x: number, y: number, radiusOverride?: number) => {
+    const stamp = (
+      x: number,
+      y: number,
+      radiusOverride?: number,
+      alphaMult?: number,
+    ) => {
       const radius = radiusOverride ?? BRUSH_RADIUS;
       const size = radius * 2;
-      ctx.drawImage(brushCanvas, x - radius, y - radius, size, size);
+      // globalAlpha multiplies the brush's baked alpha — velocity-fast
+      // strokes pass a sub-1 value, so the pen deposits less "ink" the
+      // faster it moves, like a real ballpoint losing contact.
+      if (alphaMult !== undefined && alphaMult !== 1) {
+        ctx.globalAlpha = alphaMult;
+        ctx.drawImage(brushCanvas, x - radius, y - radius, size, size);
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.drawImage(brushCanvas, x - radius, y - radius, size, size);
+      }
     };
     registerSignatureBrush(stamp);
 

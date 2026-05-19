@@ -12,7 +12,12 @@
 // signature inherits the cursor trail's exact look + fade without
 // having to be reimplemented.
 
-type StampFn = (x: number, y: number, radiusOverride?: number) => void;
+type StampFn = (
+  x: number,
+  y: number,
+  radiusOverride?: number,
+  alphaMult?: number,
+) => void;
 
 // Two independent brushes, two independent canvases:
 //   - Cursor brush: PaintTrail canvas. Strokes fade out each frame.
@@ -37,8 +42,9 @@ export function paintSignatureAt(
   x: number,
   y: number,
   radius?: number,
+  alphaMult?: number,
 ): void {
-  signatureBrush?.(x, y, radius);
+  signatureBrush?.(x, y, radius, alphaMult);
 }
 
 export function isBrushReady(): boolean {
