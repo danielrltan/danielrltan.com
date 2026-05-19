@@ -19,7 +19,7 @@
   display: flex;
   align-items: center;
   position: relative;
-  padding: 180px 0;
+  padding: 120px 0;
 }
 /* Alternate cream-tinted rows for vertical rhythm. Even sections
    (02, 04) get a slightly warmer band that contrasts against the
@@ -54,22 +54,21 @@
   position: relative;
 }
 
-/* Section number — MASSIVE Offbit Dot marker. Bleeds LEFT past the
-   column edge (negative margin) so it crosses the canvas / column
-   boundary, giving the page a print-editorial feel rather than a
-   safe "stacked cards on the right" layout. */
+/* Section number — large Offbit Dot marker. Stays INSIDE the column
+   so it never crashes into the room geometry during the shrink
+   transition. Earlier draft bled -8vw left with mix-blend-mode
+   multiply, but at any mid-scroll where the canvas was still wide
+   the marker landed on top of the bed / chair and read as broken
+   rather than editorial. */
 .section-marker {
   font-family: var(--font-dot);
   font-weight: 700;
-  font-size: clamp(120px, 16vw, 220px);
-  line-height: 0.78;
+  font-size: clamp(96px, 12vw, 160px);
+  line-height: 0.82;
   letter-spacing: 0.01em;
   color: var(--accent);
-  margin: 0 0 8px -8vw;
+  margin: 0 0 12px 0;
   display: block;
-  /* Mix-blend so the marker blends gracefully against the room
-     canvas behind when it bleeds left. */
-  mix-blend-mode: multiply;
   user-select: none;
   pointer-events: none;
 }

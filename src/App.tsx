@@ -31,8 +31,13 @@ import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { useScrollProgress } from "./useScrollProgress";
 import { useIsMobile } from "./useIsMobile";
 
-const SHRINK_AT = 0.06;
-const SHRINK_DONE = 0.14;
+// Canvas shrink window — tightened so the room is at 50vw BEFORE the
+// about-section content enters the viewport. Previous window (0.06 →
+// 0.14) left the canvas at ~73vw at scroll progress 0.10, which is
+// where the about marker was already rendering — the section number
+// landed on top of the bed/chair and read as broken layout.
+const SHRINK_AT = 0.015;
+const SHRINK_DONE = 0.07;
 const PINNED_WIDTH_VW = 50;
 // Mobile: canvas pins to the top half of the viewport during the hero,
 // then fades out as the user scrolls into the first section so portfolio
