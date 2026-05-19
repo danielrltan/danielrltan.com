@@ -19,7 +19,16 @@
   display: flex;
   align-items: center;
   position: relative;
-  padding: 140px 0;
+  padding: 180px 0;
+}
+/* Alternate cream-tinted rows for vertical rhythm. Even sections
+   (02, 04) get a slightly warmer band that contrasts against the
+   white cards inside. Subtle but it kills the "endless cream" feel. */
+.portfolio-section:nth-of-type(odd) {
+  background: linear-gradient(180deg,
+    transparent 0,
+    rgba(232, 112, 64, 0.025) 50%,
+    transparent 100%);
 }
 
 /* Hero is intentionally bare — no text, just space and the room
@@ -28,31 +37,41 @@
   padding: 0;
   min-height: 100vh;
 }
+.portfolio-section--hero::before { display: none; }
 
 /* Right column (the content gutter). Sits on the right half of the
-   viewport. The fixed 3D canvas occupies the left 50vw. */
+   viewport. The fixed 3D canvas occupies the left 50vw. Generous
+   right padding (10vw) and a touch of left breathing room so content
+   doesn't kiss the canvas edge. max-width caps line length for
+   readability. */
 .portfolio-col {
   margin-left: 50vw;
   width: 50vw;
-  padding: 0 6vw 0 0;
-  max-width: 760px;
+  padding: 0 10vw 0 4vw;
+  max-width: 880px;
   pointer-events: auto;
   color: var(--wrapper-ink);
   position: relative;
 }
 
-/* Section number — big Offbit Dot marker that anchors each chapter.
-   Sits to the LEFT of the content card, in the rail area. On wide
-   viewports this lives outside the card; on narrow it stacks above. */
+/* Section number — MASSIVE Offbit Dot marker. Bleeds LEFT past the
+   column edge (negative margin) so it crosses the canvas / column
+   boundary, giving the page a print-editorial feel rather than a
+   safe "stacked cards on the right" layout. */
 .section-marker {
   font-family: var(--font-dot);
   font-weight: 700;
-  font-size: clamp(56px, 7vw, 96px);
-  line-height: 0.85;
-  letter-spacing: 0.02em;
+  font-size: clamp(120px, 16vw, 220px);
+  line-height: 0.78;
+  letter-spacing: 0.01em;
   color: var(--accent);
-  margin-bottom: 28px;
+  margin: 0 0 8px -8vw;
   display: block;
+  /* Mix-blend so the marker blends gracefully against the room
+     canvas behind when it bleeds left. */
+  mix-blend-mode: multiply;
+  user-select: none;
+  pointer-events: none;
 }
 
 /* Eyebrow — small mono tag that names the section. */
@@ -91,21 +110,24 @@
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--wrapper-ink);
-  margin: 0 0 36px;
+  margin: 0 0 48px;
 }
 
 /* The card — where actual content sits. White, sharp corners, thin
-   border, generous padding. Decorative corner brackets in :before /
-   :after give it a CAD / terminal feel. */
+   border, very generous padding. Decorative corner brackets give it
+   a CAD / terminal feel. Cards extend RIGHT past their column for a
+   subtle bleed effect — content stays inside, but the card edge sits
+   confidently into the right gutter rather than tucked in. */
 .section-card {
   position: relative;
   background: #ffffff;
   border: 1px solid rgba(26, 23, 20, 0.08);
-  padding: 56px;
+  padding: 72px 64px;
+  margin-right: -4vw;
   /* Warm orange-tinted shadow rather than generic black. */
   box-shadow:
     0 1px 0 rgba(26, 23, 20, 0.04),
-    0 24px 48px -32px rgba(180, 80, 30, 0.10);
+    0 32px 64px -36px rgba(180, 80, 30, 0.12);
 }
 /* Corner brackets — top-left and bottom-right, drawn with two
    pseudo-elements as L-shapes peeking out beyond the card border.
@@ -396,10 +418,13 @@
 
 @media (max-width: 768px) {
   .portfolio-section {
-    padding: 80px 0;
+    padding: 96px 0;
   }
   .portfolio-section--hero {
     padding: 0;
+  }
+  .portfolio-section:nth-of-type(odd) {
+    background: none;
   }
   .portfolio-col {
     margin-left: 0;
@@ -411,19 +436,22 @@
   .portfolio-section--hero .portfolio-col {
     padding: 0;
   }
+  /* Marker stays huge for mobile too — sits inside column, no bleed. */
   .section-marker {
-    font-size: clamp(48px, 16vw, 76px);
-    margin-bottom: 18px;
+    font-size: clamp(96px, 28vw, 160px);
+    margin: 0 0 12px 0;
+    mix-blend-mode: normal;
   }
   .portfolio-section h2 {
     font-size: clamp(32px, 9vw, 48px);
-    margin-bottom: 24px;
+    margin-bottom: 32px;
   }
   .section-card {
-    padding: 32px 26px;
+    padding: 36px 28px;
+    margin-right: 0;
   }
   .project-card-body {
-    padding: 26px 24px;
+    padding: 28px 24px;
   }
   .project-card h3 {
     font-size: 22px;

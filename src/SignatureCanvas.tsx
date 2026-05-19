@@ -129,9 +129,10 @@ export function SignatureCanvas() {
         zIndex: 0,
         pointerEvents: "none",
         opacity,
-        // Quick transition so HMR / scroll RAF stutter doesn't visibly
-        // step the opacity, but short enough that the fade tracks scroll.
-        transition: "opacity 220ms ease-out",
+        // No transition — scroll updates at rAF cadence and a CSS
+        // transition would fight every step, producing visible
+        // stuttering. Raw opacity tracks scroll smoothly because the
+        // scroll itself is smooth.
       }}
     />
   );

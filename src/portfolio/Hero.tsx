@@ -17,11 +17,8 @@ export function Hero() {
   const opacity = 1 - t;
   return (
     <section className="portfolio-section portfolio-section--hero">
-      <div
-        className="scroll-hint"
-        style={{ opacity, transition: "opacity 200ms ease-out" }}
-      >
-        scroll ↓
+      <div className="scroll-hint" style={{ opacity }}>
+        scroll &darr;
       </div>
     </section>
   );

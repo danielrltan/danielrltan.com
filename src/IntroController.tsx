@@ -25,14 +25,16 @@ const HOVER_LIFT = 0.14;
 // END_*   = post-intro "canonical room view" (the pose OrbitControls
 //           takes over from). END_LOOK_AT MUST match the OrbitControls
 //           `target` prop or the camera snaps when control transfers.
-export const START_POS = new THREE.Vector3(25, 25, 25);
-// Pulled back from (4.7, 3.3, 4.7) → (6.5, 4.6, 6.5) — roughly 1.38×
-// camera distance so the whole room (shelf on the left, bed corner,
-// desk on the right, front floor edge) sits comfortably inside the
-// frame with breathing-room margin on every side.
-export const END_POS = new THREE.Vector3(6.5, 4.6, 6.5);
-export const START_FOV = 11;
-export const END_FOV = 35;
+export const START_POS = new THREE.Vector3(40, 40, 40);
+// More orthographic feel — pushed from (6.5, 4.6, 6.5) → (11.4, 7.4,
+// 11.4) (≈1.75× distance) to compensate for dropping FOV from 35° to
+// 20°. The wider FOV was causing visible perspective convergence on
+// the right wall (verticals weren't running parallel to the viewport
+// edge); cranking the camera back tightens the projection toward iso
+// while keeping the room framed at the same apparent size.
+export const END_POS = new THREE.Vector3(11.4, 7.4, 11.4);
+export const START_FOV = 7;
+export const END_FOV = 20;
 export const START_LOOK_AT = new THREE.Vector3(0, 0.6, 0);
 export const END_LOOK_AT = new THREE.Vector3(0, 0.8, 0);
 

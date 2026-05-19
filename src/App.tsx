@@ -171,7 +171,10 @@ export default function App() {
             left: 0,
             width: isMobile ? "100vw" : `${canvasWidthVw}vw`,
             height: isMobile ? "55vh" : "100vh",
-            transition: "width 350ms cubic-bezier(0.4, 0.2, 0.2, 1)",
+            // No CSS transition on width — useScrollProgress already
+            // updates at rAF cadence (60Hz). A long CSS transition
+            // would fight every scroll-driven update and produce the
+            // visible "snap" / stutter on scroll.
             opacity: isMobile ? mobileCanvasOpacity : 1,
             pointerEvents: isMobile && mobileCanvasOpacity < 0.05 ? "none" : "auto",
             zIndex: 0,
