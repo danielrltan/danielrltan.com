@@ -6,7 +6,6 @@ interface Project {
   tags: string[];
   liveHref?: string;
   repoHref?: string;
-  /** Optional video src; falls back to a tinted placeholder. */
   videoSrc?: string;
 }
 
@@ -36,6 +35,7 @@ export function Projects() {
   return (
     <section className="portfolio-section">
       <div className="portfolio-col">
+        <span className="section-marker">02</span>
         <span className="eyebrow">Projects</span>
         <h2>Selected work</h2>
         {PROJECTS.map((p, i) => (
@@ -67,12 +67,12 @@ export function Projects() {
               <div className="project-card-links">
                 {p.liveHref && (
                   <a href={p.liveHref} target="_blank" rel="noreferrer">
-                    Live →
+                    Live &rarr;
                   </a>
                 )}
                 {p.repoHref && (
                   <a href={p.repoHref} target="_blank" rel="noreferrer">
-                    GitHub →
+                    GitHub &rarr;
                   </a>
                 )}
               </div>
