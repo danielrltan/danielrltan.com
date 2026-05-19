@@ -1,7 +1,6 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { RotateCcw } from "lucide-react";
 import { BlinkingCat } from "./BlinkingCat";
-import { MouseIcon } from "./MouseIcon";
 
 /**
  * Persistent chrome shown over the room view: brand mark top-left,
@@ -96,41 +95,20 @@ export function RoomHUD({ onReset, visible, interactive }: Props) {
         </span>
       </div>
 
-      {/* Controls — reset + mouse hints. Wrapped in a non-positioned
-          div so the wrapper's `opacity` covers both without disturbing
-          the children's absolute positioning (which still resolves to
-          the outer HUD wrapper above). */}
+      {/* Reset — bottom-left. The mouse hints that used to sit
+          bottom-right were dropped: the page is scroll-driven now, so
+          rotate / pan / zoom no longer describe the primary interaction
+          model. Reset still applies (throwable / draggable objects). */}
       <div
         style={{
           opacity: controlsShown ? 1 : 0,
           transition: `opacity ${FADE_MS}ms ease`,
         }}
       >
-        {/* Reset — bottom-left, glass pill matching the hint banner. */}
         <ResetButton
           onReset={onReset}
           interactive={shown && controlsShown}
         />
-
-        {/* Mouse controls — bottom-right, icon-above-label trio. */}
-        <div
-          style={{
-            position: "absolute",
-            bottom: HUD_PADDING,
-            right: HUD_PADDING,
-            zIndex: HUD_Z,
-            display: "flex",
-            alignItems: "flex-end",
-            gap: 22,
-            pointerEvents: "none",
-            userSelect: "none",
-            color: "var(--hud-cream)",
-          }}
-        >
-          <MouseHint icon={<MouseIcon highlight="left" />} label="rotate" />
-          <MouseHint icon={<MouseIcon highlight="right" />} label="pan" />
-          <MouseHint icon={<MouseIcon highlight="scroll" />} label="zoom" />
-        </div>
       </div>
     </div>
   );
@@ -152,12 +130,14 @@ function ResetButton({
     alignItems: "center",
     gap: 8,
     padding: "9px 14px",
-    background: "rgba(20, 18, 16, 0.55)",
+    // Light wrapper now — pill reads as walnut-ink on translucent cream
+    // instead of cream-on-walnut. Border + hover use the orange accent.
+    background: "rgba(255, 255, 255, 0.55)",
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
-    border: "1px solid rgba(255, 176, 119, 0.22)",
+    border: "1px solid rgba(26, 23, 20, 0.12)",
     borderRadius: 999,
-    color: "var(--hud-cream)",
+    color: "var(--wrapper-ink)",
     fontFamily: "var(--font-mono)",
     fontSize: "var(--text-sm)",
     letterSpacing: "var(--tracking-wide)",
@@ -178,14 +158,14 @@ function ResetButton({
       onClick={onReset}
       style={base}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = "rgba(255, 176, 119, 0.18)";
-        e.currentTarget.style.borderColor = "rgba(255, 176, 119, 0.55)";
-        e.currentTarget.style.color = "var(--hud-amber)";
+        e.currentTarget.style.background = "rgba(232, 112, 64, 0.12)";
+        e.currentTarget.style.borderColor = "rgba(232, 112, 64, 0.55)";
+        e.currentTarget.style.color = "var(--accent)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = "rgba(20, 18, 16, 0.55)";
-        e.currentTarget.style.borderColor = "rgba(255, 176, 119, 0.22)";
-        e.currentTarget.style.color = "var(--hud-cream)";
+        e.currentTarget.style.background = "rgba(255, 255, 255, 0.55)";
+        e.currentTarget.style.borderColor = "rgba(26, 23, 20, 0.12)";
+        e.currentTarget.style.color = "var(--wrapper-ink)";
       }}
       onMouseDown={(e) => {
         e.currentTarget.style.transform = "scale(0.97)";
@@ -201,31 +181,3 @@ function ResetButton({
   );
 }
 
-function MouseHint({ icon, label }: { icon: ReactNode; label: string }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 7,
-        opacity: 0.85,
-      }}
-    >
-      {icon}
-      <span
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: "var(--text-xs)",
-          letterSpacing: "var(--tracking-wider)",
-          textTransform: "uppercase",
-          // Slight dimming on the label vs the icon so the icon reads
-          // as primary and the label as supporting tag.
-          opacity: 0.78,
-        }}
-      >
-        {label}
-      </span>
-    </div>
-  );
-}

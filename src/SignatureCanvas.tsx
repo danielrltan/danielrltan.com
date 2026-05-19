@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { registerSignatureBrush } from "./paint";
+import { useScrollProgress } from "./useScrollProgress";
 
 /**
  * Separate 2D canvas dedicated to the signature. Same brush look as
@@ -26,8 +27,20 @@ const STAMP_ALPHA = 0.45;
 const BRUSH_RADIUS = 60;
 const FADE_ALPHA = 0.004;
 
+/** Signature stays visible across the hero, then fades to 0 as the
+ *  user scrolls into the about/projects sections — by the time the
+ *  copy is in view the background should be calm and uncluttered. */
+const FADE_START = 0.02;
+const FADE_DONE = 0.12;
+
 export function SignatureCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scrollProgress = useScrollProgress();
+  const fadeT = Math.max(
+    0,
+    Math.min(1, (scrollProgress - FADE_START) / (FADE_DONE - FADE_START)),
+  );
+  const opacity = 1 - fadeT;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -115,8 +128,10 @@ export function SignatureCanvas() {
         inset: 0,
         zIndex: 0,
         pointerEvents: "none",
-        // No CSS blur — cursor brush doesn't have one, signature
-        // matches exactly. The per-frame fade controls the look.
+        opacity,
+        // Quick transition so HMR / scroll RAF stutter doesn't visibly
+        // step the opacity, but short enough that the fade tracks scroll.
+        transition: "opacity 220ms ease-out",
       }}
     />
   );

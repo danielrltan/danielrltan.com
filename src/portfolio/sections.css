@@ -21,22 +21,27 @@
   color: var(--wrapper-ink);
 }
 
-/* Hero — full viewport, room behind the text. Title sits at top,
-   subtitle just below, room visible through the centre, scroll
-   prompt at the bottom. pointer-events:none on the text so the
-   canvas behind stays clickable for the intro tilt. */
+/* Hero — full viewport, room rendered behind via the fixed canvas.
+   Text anchors to the BOTTOM-LEFT so the room reads as the foreground
+   subject without the title cutting through its silhouette. Eyebrow
+   stacks above the name, subtitle sits just under. Scroll prompt is
+   absolutely positioned at the bottom-right edge so it doesn't fight
+   the title block. pointer-events:none so the canvas behind stays
+   clickable for the intro tilt. */
 .portfolio-section:first-of-type {
   flex-direction: column;
-  justify-content: space-between;
-  align-items: stretch;
-  padding: 64px 0 80px;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 0 0 96px 6vw;
 }
 .portfolio-hero {
-  width: 100vw;
-  text-align: center;
+  text-align: left;
   pointer-events: none;
   color: var(--wrapper-ink);
-  padding: 0 5vw;
+  /* The hero block sits in the lower portion of the viewport, leaving
+     the upper 60-70vh entirely to the room. The name is the loud
+     centerpiece; the eyebrow + subtitle frame it without competing. */
+  max-width: min(900px, 88vw);
 }
 .portfolio-hero a, .portfolio-hero button {
   pointer-events: auto;
@@ -62,14 +67,26 @@
 .portfolio-section h2 { font-size: clamp(36px, 4.2vw, 64px); line-height: 1.05; margin-bottom: 24px; }
 .portfolio-section h3 { font-size: clamp(22px, 1.8vw, 28px); line-height: 1.2; }
 
-/* Hero name override — Doto pixel-dot face. Big, loud, retro. */
+/* Hero name override — Offbit Dot. Big, loud, retro. Left-aligned in
+   the bottom-anchored hero block so it reads as a title card rather
+   than a banner cutting across the room. */
 .hero-name {
   font-family: var(--font-dot) !important;
-  font-weight: 900 !important;
+  font-weight: 700 !important;
   letter-spacing: 0.04em !important;
   text-transform: uppercase;
-  line-height: 1 !important;
+  line-height: 0.9 !important;
   color: var(--wrapper-ink);
+  font-size: clamp(44px, 6.5vw, 96px) !important;
+  margin: 14px 0 18px;
+}
+.hero-subtitle {
+  font-family: var(--font-mono);
+  font-size: clamp(13px, 1vw, 16px);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin: 0;
 }
 
 .portfolio-section p {
@@ -242,9 +259,8 @@
 
 .scroll-hint {
   position: absolute;
-  bottom: 56px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 36px;
+  right: 6vw;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.24em;
@@ -268,15 +284,23 @@
   .portfolio-section h2 { font-size: clamp(28px, 8vw, 40px); }
   .portfolio-section h3 { font-size: clamp(18px, 5vw, 22px); }
   /* Hero — canvas occupies top 55vh (fixed), text sits in lower 45vh.
-     We shift hero contents down so the title clears the room above. */
+     Mobile keeps centred alignment because the room is fully above the
+     copy and the column is narrow enough that left-align would look
+     orphaned. */
   .portfolio-section:first-of-type {
     min-height: 100vh;
-    padding: 56vh 0 80px;
+    padding: 56vh 6vw 96px;
     justify-content: flex-start;
-    gap: 24px;
+    align-items: center;
+    gap: 18px;
   }
-  .portfolio-hero { padding: 0 6vw; }
-  .scroll-hint { bottom: 32px; }
+  .portfolio-hero {
+    text-align: center;
+    padding: 0;
+    max-width: 100%;
+  }
+  .hero-name { text-align: center; }
+  .scroll-hint { bottom: 28px; right: 50%; transform: translateX(50%); }
   /* Project cards lose the wide padding on phones */
   .project-card-body { padding: 22px 22px 26px; }
   .contact-socials { flex-wrap: wrap; }

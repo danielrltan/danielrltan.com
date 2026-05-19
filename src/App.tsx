@@ -259,27 +259,6 @@ export default function App() {
         />
 
         <AssemblyHUDSlot />
-
-        <div
-          style={{
-            position: "fixed",
-            bottom: 32,
-            left: "50%",
-            transform: "translateX(-50%)",
-            color: "var(--wrapper-ink)",
-            textTransform: "uppercase",
-            letterSpacing: "var(--tracking-widest)",
-            fontSize: "var(--text-base)",
-            fontFamily: "var(--font-mono)",
-            opacity: transitionStarted ? 0 : 0.85,
-            transition: "opacity 0.5s ease",
-            pointerEvents: "none",
-            userSelect: "none",
-            zIndex: 30,
-          }}
-        >
-          click to begin
-        </div>
       </div>
     </AssemblyProvider>
   );
