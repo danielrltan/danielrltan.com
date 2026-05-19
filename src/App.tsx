@@ -19,7 +19,9 @@ import { MoveableCursor } from "./MoveableCursor";
 import { DeskViewController } from "./DeskViewController";
 import { startAmbience } from "./audio";
 import { LoadingScreen } from "./LoadingScreen";
+import { CorruptionOverlay } from "./CorruptionOverlay";
 import { RoomHUD } from "./RoomHUD";
+import { track } from "./analytics";
 
 // Lazy-load everything OS-related — none of it renders until the camera
 // is seated at the desk, so its code (~hundreds of kB before splitting)
@@ -106,7 +108,10 @@ export default function App() {
     h: window.innerHeight,
   }));
   const deskViewImplRef = useRef<(() => void) | null>(null);
-  const startDeskView = useCallback(() => deskViewImplRef.current?.(), []);
+  const startDeskView = useCallback(() => {
+    track("desk_seated");
+    deskViewImplRef.current?.();
+  }, []);
   const fullscreenImplRef = useRef<{
     toFullscreen: (onArrive: () => void) => void;
     fromFullscreen: (onArrive?: () => void) => void;
@@ -134,18 +139,75 @@ export default function App() {
   useEffect(() => {
     if (!deskViewActive) setSleeping(false);
   }, [deskViewActive]);
-  // Boot sequence plays the first time the user sits at the desk per
-  // session. Subsequent re-entries skip it (the OS just fades in).
+  // Corruption → OS handoff. Bumping wipe `id` triggers the radial
+  // wipe; bumping reverse `id` triggers the full rewind. `osOpen`
+  // (the desk-view fullscreen flag) and `corruptionOsOpen` are
+  // intentionally separate so the two entry paths don't tangle.
+  const wipeIdRef = useRef(0);
+  const reverseIdRef = useRef(0);
+  const [wipeRequest, setWipeRequest] = useState<{ id: number } | null>(null);
+  const [reverseRequest, setReverseRequest] = useState<{ id: number } | null>(
+    null,
+  );
+  const [corruptionOsOpen, setCorruptionOsOpen] = useState(false);
+  // Scroll-prompt visibility — flips true on first wheel event after
+  // intro lands; reset back to false when a full reverse completes,
+  // so a returning user sees the affordance again.
+  const [hasScrolled, setHasScrolled] = useState(false);
+
+  const handleBootReady = useCallback(() => {
+    setTimeout(() => {
+      wipeIdRef.current += 1;
+      setWipeRequest({ id: wipeIdRef.current });
+    }, 300);
+  }, []);
+  const handleWipeComplete = useCallback(() => {
+    setCorruptionOsOpen(true);
+    track("os_opened");
+  }, []);
+  const startCorruptionReverse = useCallback(() => {
+    // Idempotent — once a reverse is in flight, further ESC presses
+    // or "back to room" clicks are no-ops until it completes.
+    if (reverseRequest) return;
+    reverseIdRef.current += 1;
+    setReverseRequest({ id: reverseIdRef.current });
+    track("os_closed");
+  }, [reverseRequest]);
+  // Fires when phase A (un-wipe) finishes — canvas is fully solid
+  // BOOT_BG, safe to drop the OS panel without exposing the room.
+  const handleReverseUnwipeComplete = useCallback(() => {
+    setCorruptionOsOpen(false);
+    setWipeRequest(null);
+  }, []);
+  // Full reverse complete — overlay is idle again, allow scrolling.
+  // Note: `hasScrolled` stays true — once the user has discovered the
+  // affordance, no need to nag again on return trips.
+  const handleReverseComplete = useCallback(() => {
+    setReverseRequest(null);
+  }, []);
+
+  // Boot sequence plays the first time the user reaches the OS by
+  // either entry path (seated desk view OR corruption wipe). After
+  // that the OS just fades in without the cat + bar.
   const [hasBooted, setHasBooted] = useState(false);
   useEffect(() => {
-    if (deskViewActive && !hasBooted) {
-      // We're sitting at the desk for the first time. Mark booted so
-      // future desk-view entries skip the BootSequence.
-      // (Actual boot ticking happens inside the BootSequence comp.)
+    if ((deskViewActive || corruptionOsOpen) && !hasBooted) {
       const t = setTimeout(() => setHasBooted(true), 3200);
       return () => clearTimeout(t);
     }
-  }, [deskViewActive, hasBooted]);
+  }, [deskViewActive, corruptionOsOpen, hasBooted]);
+
+  // Scroll-prompt tracker — first wheel event after intro lands hides
+  // the affordance. Re-armed by handleReverseComplete on round trip.
+  useEffect(() => {
+    if (!sceneReady || hasScrolled) return;
+    const onWheel = () => {
+      setHasScrolled(true);
+      track("corruption_started");
+    };
+    window.addEventListener("wheel", onWheel, { passive: true, once: true });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, [sceneReady, hasScrolled]);
 
   // Synthesised Escape lets the in-OS "room" button reuse the same
   // fromDesk transition the keyboard handler in DeskViewController
@@ -294,11 +356,14 @@ export default function App() {
     backToRoom,
     sleeping,
     SLEEP_FADE_MS,
+    corruptionOsOpen,
+    startCorruptionReverse,
   ]);
 
   const startTransition = useCallback(() => {
     if (transitionStarted) return;
     setTransitionStarted(true);
+    track("intro_started");
     // First user gesture — unlocks audio and starts the ambient loop.
     startAmbience(0.22);
   }, [transitionStarted]);
@@ -317,6 +382,7 @@ export default function App() {
   const completeTransition = useCallback(() => {
     sceneReadyRef.current = true;
     setSceneReady(true);
+    track("room_entered");
     const camera = cameraRef.current;
     if (camera) {
       resetPoseRef.current = {
@@ -334,6 +400,7 @@ export default function App() {
   // after the camera has stopped moving is dramatically less
   // perceptible than letting it stutter the camera glide.
   const resetRoom = useCallback(() => {
+    track("room_reset");
     setMoveableHover(false);
 
     const camera = cameraRef.current;
@@ -605,7 +672,10 @@ export default function App() {
                     ONE: THREE.TOUCH.ROTATE,
                     TWO: THREE.TOUCH.DOLLY_PAN,
                   }}
-                  enableZoom
+                  // Scroll-to-zoom is OFF — the wheel is now reserved
+                  // for the corruption transition (CorruptionOverlay).
+                  // Re-enable if you re-add traditional zoom controls.
+                  enableZoom={false}
                   zoomSpeed={1.2}
                   zoomToCursor={false}
                   enablePan
@@ -720,6 +790,133 @@ export default function App() {
           {osOpen
             ? "press esc to return to room"
             : "press f to fullscreen"}
+        </div>
+      )}
+
+      {/* Scroll-driven corruption transition. Dormant until the intro
+          lerp completes (sceneReady); after that, scrolling the wheel
+          fills the screen with warm-palette character blocks rising
+          from the bottom. Room stays fully interactive behind it
+          during phase 1. Reaches full opacity at progress = 1.0,
+          where (in a later phase) it'll snap into the danny.exe OS. */}
+      <CorruptionOverlay
+        active={sceneReady}
+        wipeRequest={wipeRequest}
+        reverseRequest={reverseRequest}
+        onBootReady={handleBootReady}
+        onWipeComplete={handleWipeComplete}
+        onReverseUnwipeComplete={handleReverseUnwipeComplete}
+        onReverseComplete={handleReverseComplete}
+      />
+
+      {/* Corruption-path OS panel — mounts as soon as `wipeRequest`
+          is set so the radial wipe has actual content to reveal
+          (BootSequence cat on first entry, DesktopOS thereafter).
+          `corruptionOsOpen` gates *interactivity* only, flipping true
+          on wipe-complete. Panel unmounts when reverse's phase A
+          completes (handleReverseUnwipeComplete clears wipeRequest). */}
+      {sceneReady && wipeRequest && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 35,
+            background: "#1a1714",
+            // Block pointer events until the wipe has fully revealed
+            // the OS, and again once a reverse is in flight — clicks
+            // shouldn't fall through onto the OS while the canvas is
+            // covering it.
+            pointerEvents:
+              corruptionOsOpen && !reverseRequest ? "auto" : "none",
+          }}
+        >
+          <Suspense fallback={null}>
+            {hasBooted ? (
+              <DesktopOS
+                width={osSize.w}
+                height={osSize.h}
+                isFullscreen={true}
+                onToggleFullscreen={() => {}}
+                onBackToRoom={startCorruptionReverse}
+              />
+            ) : (
+              <BootSequence width={osSize.w} height={osSize.h}>
+                <DesktopOS
+                  width={osSize.w}
+                  height={osSize.h}
+                  isFullscreen={true}
+                  onToggleFullscreen={() => {}}
+                  onBackToRoom={startCorruptionReverse}
+                />
+              </BootSequence>
+            )}
+          </Suspense>
+        </div>
+      )}
+
+      {/* Scroll-prompt — subtle bottom-center hint visible while the
+          user is in the room and hasn't started corrupting yet. The
+          animated mouse-wheel dot signals "there's more here" without
+          dictating that they must scroll first. */}
+      {sceneReady && !hasScrolled && !wipeRequest && !deskViewActive && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 36,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 60,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
+            color: "var(--hud-cream, #e0d8cc)",
+            opacity: 0.78,
+            pointerEvents: "none",
+            userSelect: "none",
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-sm, 12px)",
+            letterSpacing: "var(--tracking-wide, 0.08em)",
+            textTransform: "uppercase",
+          }}
+          aria-hidden
+        >
+          <style>
+            {`@keyframes scrollDotBounce {
+              0%   { transform: translateY(-7px); opacity: 0; }
+              25%  { transform: translateY(-7px); opacity: 1; }
+              70%  { transform: translateY(7px);  opacity: 1; }
+              100% { transform: translateY(7px);  opacity: 0; }
+            }`}
+          </style>
+          <svg
+            width="26"
+            height="40"
+            viewBox="0 0 26 40"
+            fill="none"
+            aria-hidden
+          >
+            <rect
+              x="2"
+              y="2"
+              width="22"
+              height="36"
+              rx="11"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx="13"
+              cy="14"
+              r="2.2"
+              fill="currentColor"
+              style={{
+                animation: "scrollDotBounce 1.8s ease-in-out infinite",
+                transformOrigin: "center",
+              }}
+            />
+          </svg>
+          <div>scroll to learn more</div>
         </div>
       )}
 
