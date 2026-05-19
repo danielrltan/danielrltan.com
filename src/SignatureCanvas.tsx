@@ -20,16 +20,21 @@ import { registerSignatureBrush } from "./paint";
 // Cat icon / lamp glow / wireframes all use #ff7842 — matching here
 // so the signature reads as part of the same warm-amber language.
 const PAINT_COLOR = "255, 120, 66";
-// Brush has a long-ramp gradient (no solid core) so that destination-
-// over compositing produces a wet-paint stroke instead of a hard
-// uniform disc: only the pixels under the FIRST stamp's centre land
-// at peak alpha; pixels under the first stamp's gradient ramp land at
-// lower alpha; subsequent stamps along the stroke extend the path
-// into untouched pixels (which get THEIR local gradient value, also
-// dropping off with radius). Result: a centreline with soft feathered
-// halo, no accumulation, no solid-disc look.
-const STAMP_ALPHA = 0.35;
+// Low per-stamp alpha + CSS blur on the canvas element below. The
+// blur is what gives the strokes the same soft wet-paint look as the
+// floating Blobs (which use filter: blur(60px) on radial gradients).
+// Stamping with source-over lets natural slow/fast variation come
+// through; the blur diffuses any accumulation peaks so they read as
+// painterly highlights rather than hard amber blobs.
+const STAMP_ALPHA = 0.18;
 const BRUSH_RADIUS = 60;
+/**
+ * CSS blur applied to the entire signature canvas. Smaller than the
+ * blob field's 60px because the signature has actual structure to
+ * preserve — we want it to read as a soft wet-paint stroke, not as
+ * an unreadable cloud.
+ */
+const CANVAS_BLUR_PX = 12;
 
 export function SignatureCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -87,14 +92,11 @@ export function SignatureCanvas() {
       radiusOverride?: number,
       alphaMult?: number,
     ) => {
-      // destination-over: paint only where the canvas is still
-      // transparent. The FIRST stamp at each pixel wins; subsequent
-      // overlapping stamps can extend the stroke into untouched
-      // territory but cannot compound atop already-painted pixels.
-      // This is the categorical fix for the "stuck dark blob" issue
-      // at slow-signing hesitations — accumulation literally can't
-      // happen because the second deposit at a pixel is a no-op.
-      ctx.globalCompositeOperation = "destination-over";
+      // source-over (default). The CSS blur on the canvas element
+      // takes care of softening the strokes — any per-frame
+      // accumulation at hesitation points reads as painterly density
+      // variation through the blur, not as hard amber blobs.
+      ctx.globalCompositeOperation = "source-over";
       const radius = radiusOverride ?? BRUSH_RADIUS;
       const size = radius * 2;
       if (alphaMult !== undefined && alphaMult !== 1) {
@@ -122,6 +124,12 @@ export function SignatureCanvas() {
         inset: 0,
         zIndex: 0,
         pointerEvents: "none",
+        // CSS blur on the whole canvas — the same trick the Blobs
+        // component uses, gives the signature the soft wet-paint
+        // quality that direct canvas stamps can't produce on their
+        // own. Keeps the painted strokes' colour / position / motion
+        // intact, just diffuses the hard edges.
+        filter: `blur(${CANVAS_BLUR_PX}px)`,
       }}
     />
   );
