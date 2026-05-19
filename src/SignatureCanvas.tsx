@@ -20,13 +20,15 @@ import { registerSignatureBrush } from "./paint";
 // Cat icon / lamp glow / wireframes all use #ff7842 — matching here
 // so the signature reads as part of the same warm-amber language.
 const PAINT_COLOR = "255, 120, 66";
-// Brush params matched to PaintTrail's cursor brush. Accumulation is
-// prevented categorically by destination-over compositing in stamp()
-// below — each canvas pixel can only be painted by the FIRST stamp
-// that covers it, so slow strokes with lots of overlapping stamps
-// can't saturate into dark blobs. No fade needed (and no fade applied)
-// — the canvas state stays exactly as drawn, forever.
-const STAMP_ALPHA = 0.45;
+// Brush has a long-ramp gradient (no solid core) so that destination-
+// over compositing produces a wet-paint stroke instead of a hard
+// uniform disc: only the pixels under the FIRST stamp's centre land
+// at peak alpha; pixels under the first stamp's gradient ramp land at
+// lower alpha; subsequent stamps along the stroke extend the path
+// into untouched pixels (which get THEIR local gradient value, also
+// dropping off with radius). Result: a centreline with soft feathered
+// halo, no accumulation, no solid-disc look.
+const STAMP_ALPHA = 0.35;
 const BRUSH_RADIUS = 60;
 
 export function SignatureCanvas() {
@@ -67,9 +69,15 @@ export function SignatureCanvas() {
       brushSize / 2,
       brushSize / 2,
     );
-    grad.addColorStop(0, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA})`);
-    grad.addColorStop(0.6, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA})`);
-    grad.addColorStop(1, `rgba(${PAINT_COLOR}, 0)`);
+    // Long-ramp gradient: full alpha only at the exact centre, soft
+    // exponential-ish fade outward. Old shape had a solid core (0–60%
+    // of radius all at STAMP_ALPHA) which made destination-over render
+    // a sharp-edged disc per stamp. This shape produces a true
+    // wet-paint feathered halo.
+    grad.addColorStop(0.0, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA})`);
+    grad.addColorStop(0.25, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA * 0.7})`);
+    grad.addColorStop(0.55, `rgba(${PAINT_COLOR}, ${STAMP_ALPHA * 0.35})`);
+    grad.addColorStop(1.0, `rgba(${PAINT_COLOR}, 0)`);
     bctx.fillStyle = grad;
     bctx.fillRect(0, 0, brushSize, brushSize);
 
