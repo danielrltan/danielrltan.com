@@ -43,7 +43,12 @@ const VERTICAL_NUDGE = 0;
 /** Horizontal shift as a fraction of viewport width. Positive = right. */
 const HORIZONTAL_NUDGE_RATIO = 0.04;
 const REPLAY_RADIUS_BASE = 60; // mean brush radius; modulated by velocity below
-const STEP_PX = 5;
+// Sparse interpolation: stamps land every 24px instead of every 5px.
+// With brush radius 60 that's ~5 stamps per pixel of stroke instead of
+// ~24 — accumulation per pixel maxes out far below saturation, so the
+// strokes stay at moderate amber alpha instead of fully saturated
+// solid-shape amber.
+const STEP_PX = 24;
 /**
  * Natural-pen size variation. Real pens deposit more ink when moving
  * slowly (the tip dwells in one spot) and less when moving fast (the

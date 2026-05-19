@@ -17,21 +17,20 @@ import { registerSignatureBrush } from "./paint";
  * The room overdraws the signature where they overlap; the signature
  * shows in the off-white surround around the room.
  */
-// Single-color amber brush — matches the cat icon / lamp glow / wireframes.
-// The soft halo look comes from the CSS blur on the canvas (below),
-// not from a multi-color gradient. Strokes read as warm amber ribbons
-// with fuzzy edges where they pass through the blur, and slow overlap
-// areas naturally accumulate to a slightly deeper amber.
+// Single-color amber brush — matches the cat icon / lamp glow.
+// Per-stamp alpha is intentionally LOW so dense overlapping stamps
+// at slow-signing hesitations don't accumulate into solid saturated
+// amber slabs. SignatureReplay uses a sparser STEP_PX (24) to back
+// this up — fewer stamps per pixel, less accumulation room.
 const PAINT_COLOR = "255, 120, 66"; // #ff7842
-const STAMP_ALPHA = 0.22;
+const STAMP_ALPHA = 0.09;
 const BRUSH_RADIUS = 60;
 /**
- * CSS blur applied to the entire signature canvas. Just enough to
- * feather the stroke edges into a soft amber ribbon — not enough to
- * dissolve the stroke shape. Going past ~8 starts pushing the
- * signature toward an unreadable cloud.
+ * CSS blur applied to the entire signature canvas. Moderate — 8px
+ * feathers the stroke edges into soft amber ribbons while keeping
+ * the letter shapes legible. Past ~12 the signature starts dissolving.
  */
-const CANVAS_BLUR_PX = 5;
+const CANVAS_BLUR_PX = 8;
 
 export function SignatureCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
