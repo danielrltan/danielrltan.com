@@ -40,7 +40,7 @@ interface SignatureJSON {
   events: { type: "down" | "move" | "up"; t: number; nx: number; ny: number }[];
 }
 
-const PAINT_COLOR = "204, 96, 36";
+const PAINT_COLOR = "255, 120, 66"; // matches BlinkingCat / lamp glow
 const STAMP_ALPHA = 0.45;
 const BASE_RADIUS = 28; // smaller capture brush so detail isn't lost at this scale
 
