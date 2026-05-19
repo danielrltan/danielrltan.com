@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { BlinkingCat } from "./BlinkingCat";
+import { startAmbience, stopAmbience } from "./audio";
 
 /**
  * Persistent chrome shown over the room view: brand mark top-left,
@@ -56,11 +57,18 @@ export function RoomHUD({ onReset, visible, interactive }: Props) {
   return (
     <div
       style={{
-        position: "absolute",
+        // Was `position: absolute; inset: 0` when the room was a
+        // single full-bleed view. The page is scroll-driven now, so the
+        // wrapper is ~6x viewport tall — absolute-positioned children
+        // would sit at the bottom of the *document*, not the viewport.
+        // Pin to the viewport so brand + reset + audio stay glued to
+        // the screen edges as the user scrolls.
+        position: "fixed",
         inset: 0,
         pointerEvents: "none",
         opacity: shown ? 1 : 0,
         transition: `opacity ${FADE_MS}ms ease`,
+        zIndex: HUD_Z,
       }}
     >
       {/* Brand mark — always visible (including iso pre-view). */}
@@ -109,6 +117,7 @@ export function RoomHUD({ onReset, visible, interactive }: Props) {
           onReset={onReset}
           interactive={shown && controlsShown}
         />
+        <AudioToggle interactive={shown && controlsShown} />
       </div>
     </div>
   );
@@ -177,6 +186,74 @@ function ResetButton({
     >
       <RotateCcw size={13} strokeWidth={2} />
       reset
+    </button>
+  );
+}
+
+/** Ambience mute toggle. Default OFF — audio never auto-plays. Browser
+ *  autoplay policy would block it anyway until a user gesture, and on
+ *  a portfolio that opens silently the user always controls the audio. */
+function AudioToggle({ interactive }: { interactive: boolean }) {
+  const [on, setOn] = useState(false);
+
+  const toggle = () => {
+    setOn((prev) => {
+      const next = !prev;
+      if (next) startAmbience(0.22);
+      else stopAmbience();
+      return next;
+    });
+  };
+
+  const base: CSSProperties = {
+    position: "absolute",
+    bottom: HUD_PADDING,
+    right: HUD_PADDING,
+    zIndex: HUD_Z,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "9px 14px",
+    background: "rgba(255, 255, 255, 0.55)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    border: "1px solid rgba(26, 23, 20, 0.12)",
+    borderRadius: 999,
+    color: "var(--wrapper-ink)",
+    fontFamily: "var(--font-mono)",
+    fontSize: "var(--text-sm)",
+    letterSpacing: "var(--tracking-wide)",
+    textTransform: "uppercase",
+    cursor: "pointer",
+    pointerEvents: interactive ? "auto" : "none",
+    transition:
+      "background 0.18s ease, border-color 0.18s ease, color 0.18s ease",
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      style={base}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "rgba(232, 112, 64, 0.12)";
+        e.currentTarget.style.borderColor = "rgba(232, 112, 64, 0.55)";
+        e.currentTarget.style.color = "var(--accent)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "rgba(255, 255, 255, 0.55)";
+        e.currentTarget.style.borderColor = "rgba(26, 23, 20, 0.12)";
+        e.currentTarget.style.color = "var(--wrapper-ink)";
+      }}
+      aria-label={on ? "Mute ambience" : "Play ambience"}
+      aria-pressed={on}
+    >
+      {on ? (
+        <Volume2 size={13} strokeWidth={2} />
+      ) : (
+        <VolumeX size={13} strokeWidth={2} />
+      )}
+      {on ? "sound on" : "sound off"}
     </button>
   );
 }

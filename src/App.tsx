@@ -16,7 +16,6 @@ import {
 } from "./IntroController";
 import { SceneStateProvider } from "./SceneState";
 import { MoveableCursor } from "./MoveableCursor";
-import { startAmbience } from "./audio";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
 import { SignatureCanvas } from "./SignatureCanvas";
@@ -64,6 +63,10 @@ export default function App() {
   const deskViewActiveRef = useRef(false);
   const [transitionStarted, setTransitionStarted] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
+  // Set once Room finishes loading (post-Suspense). Drives the signature
+  // replay independently of the intro tilt — the signature should play
+  // automatically when the room appears, not wait for a user gesture.
+  const [roomLoaded, setRoomLoaded] = useState(false);
   const [moveableHover, setMoveableHover] = useState(false);
   const [roomResetKey, setRoomResetKey] = useState(0);
   const scrollProgress = useScrollProgress();
@@ -73,7 +76,8 @@ export default function App() {
     if (transitionStarted) return;
     setTransitionStarted(true);
     track("intro_started");
-    startAmbience(0.22);
+    // Audio no longer auto-starts here — it's gated behind the
+    // explicit mute toggle in RoomHUD which defaults to OFF.
   }, [transitionStarted]);
 
   const completeTransition = useCallback(() => {
@@ -87,6 +91,27 @@ export default function App() {
     setMoveableHover(false);
     setRoomResetKey((k) => k + 1);
   }, []);
+
+  /* First scroll / wheel / touch input triggers the intro tilt. No
+   * more "click to begin" gate — the natural impulse on a portfolio
+   * page is to scroll, so we use that as the start signal. */
+  useEffect(() => {
+    if (transitionStarted) return;
+    const fire = () => {
+      if (!transitionStarted) startTransition();
+    };
+    const opts = { once: true, passive: true } as const;
+    window.addEventListener("wheel", fire, opts);
+    window.addEventListener("touchstart", fire, opts);
+    window.addEventListener("scroll", fire, opts);
+    window.addEventListener("keydown", fire, opts);
+    return () => {
+      window.removeEventListener("wheel", fire);
+      window.removeEventListener("touchstart", fire);
+      window.removeEventListener("scroll", fire);
+      window.removeEventListener("keydown", fire);
+    };
+  }, [transitionStarted, startTransition]);
 
   useEffect(() => {
     if (!sceneReady) return;
@@ -131,7 +156,6 @@ export default function App() {
           background: "var(--wrapper-bg)",
           cursor: "none",
         }}
-        onClick={startTransition}
         onPointerEnter={() => {
           isHoveringRef.current = true;
         }}
@@ -154,7 +178,9 @@ export default function App() {
           }}
         >
           <SignatureCanvas />
-          <SignatureReplay trigger={sceneReady} delayMs={600} />
+          {/* Signature plays as soon as the room mesh streams in — no
+              longer waits for the intro tilt / scroll. */}
+          <SignatureReplay trigger={roomLoaded} delayMs={400} />
           <Canvas
             camera={{
               position: [START_POS.x, START_POS.y, START_POS.z],
@@ -190,6 +216,7 @@ export default function App() {
             >
               <AssemblyWireframesSlot />
               <Suspense fallback={null}>
+                <RoomLoadedSignal onLoaded={() => setRoomLoaded(true)} />
                 <Lighting />
                 {/* Mobile: keep the Physics provider mounted (Room's
                     <RigidBody>s require it) but pause the sim — near-zero
@@ -262,4 +289,15 @@ export default function App() {
       </div>
     </AssemblyProvider>
   );
+}
+
+/** Renders nothing; just calls onLoaded once it mounts. Because it's a
+ *  child of <Suspense> alongside <Room>, it only mounts after the GLB
+ *  has streamed in and Room's useGLTF has resolved — which is what we
+ *  want for "the room is on screen now, play the signature." */
+function RoomLoadedSignal({ onLoaded }: { onLoaded: () => void }) {
+  useEffect(() => {
+    onLoaded();
+  }, [onLoaded]);
+  return null;
 }
