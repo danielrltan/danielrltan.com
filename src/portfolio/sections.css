@@ -418,12 +418,17 @@
   margin: 0;
 }
 .hero-wordmark {
-  font-family: var(--font-display);
-  font-size: clamp(26px, 2.4vw, 36px);
-  font-weight: 400;
-  letter-spacing: -0.04em;
+  /* Offbit (solid) to stay in the Power Type family — Space Grotesk
+     looked generic against the pixel face used everywhere else. */
+  font-family: var(--font-pixel);
+  font-size: clamp(28px, 2.6vw, 40px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
   color: var(--wrapper-ink);
-  line-height: 1;
+  /* Generous line-height keeps descenders from clipping on the
+     pixel face which has slightly extended baselines. */
+  line-height: 1.05;
 }
 
 .scroll-hint {

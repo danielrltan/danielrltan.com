@@ -32,17 +32,21 @@ interface ScrollStop {
 // canvas shrinks to the left ~50%, the room recenters by virtue of the
 // camera staying put while the canvas viewport changes — the camera's
 // view is still the same room, just rendered in a smaller area.
+// Stop positions scaled ≈1.79× from the pre-iso-crank values so they
+// match the new END_FOV 20° projection. Targets are world look-at
+// points so they don't change with FOV; only the camera offsets do.
 const STOPS: ScrollStop[] = [
-  // 0% — Hero. Iso preview pose (post-intro).
-  { at: 0.0, position: [6.5, 4.6, 6.5], target: [0, 0.8, 0] },
-  // 18% — About. Closer to the bed area (left side of room).
-  { at: 0.22, position: [4.5, 3.0, 5.5], target: [-0.5, 0.8, -0.6] },
+  // 0% — Hero. Matches END_POS / END_LOOK_AT from IntroController so
+  // there's no snap when ScrollCamera takes over from the intro tilt.
+  { at: 0.0, position: [11.4, 7.4, 11.4], target: [0, 0.8, 0] },
+  // 22% — About. Closer to the bed area (left side of room).
+  { at: 0.22, position: [8.45, 4.74, 10.32], target: [-0.5, 0.8, -0.6] },
   // 50% — Projects. Looking at the desk/monitor.
-  { at: 0.5, position: [5.2, 2.6, 3.8], target: [1.2, 1.0, -1.3] },
+  { at: 0.5, position: [8.36, 3.86, 7.83], target: [1.2, 1.0, -1.3] },
   // 72% — Experience. Looking at the shelf/bookcase (back-left).
-  { at: 0.72, position: [3.5, 3.8, 4.8], target: [-1.2, 1.2, 1.0] },
+  { at: 0.72, position: [7.21, 5.85, 7.80], target: [-1.2, 1.2, 1.0] },
   // 92% — Contact. Pulled back to a wide view.
-  { at: 0.92, position: [7.5, 5.0, 7.5], target: [0, 0.8, 0] },
+  { at: 0.92, position: [13.43, 8.32, 13.43], target: [0, 0.8, 0] },
 ];
 
 interface Props {
