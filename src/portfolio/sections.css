@@ -397,8 +397,34 @@
 }
 
 /* ---------------------------------------------------------------- */
-/* Hero scroll hint */
+/* Hero — bottom-left identity block + scroll hint */
 /* ---------------------------------------------------------------- */
+
+/* "Portfolio · 2026" + "Daniel Tan" stacked bottom-left. Sits above
+   the reset/audio pills (which live at bottom-left HUD_PADDING ≈22px).
+   Fades on scroll via the inline opacity from Hero.tsx. */
+.hero-mark {
+  position: absolute;
+  left: 6vw;
+  bottom: 88px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 20;
+}
+.hero-mark .eyebrow {
+  margin: 0;
+}
+.hero-wordmark {
+  font-family: var(--font-display);
+  font-size: clamp(26px, 2.4vw, 36px);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  color: var(--wrapper-ink);
+  line-height: 1;
+}
 
 .scroll-hint {
   position: absolute;

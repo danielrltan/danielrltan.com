@@ -71,7 +71,9 @@ export function RoomHUD({ onReset, visible, interactive }: Props) {
         zIndex: HUD_Z,
       }}
     >
-      {/* Brand mark — always visible (including iso pre-view). */}
+      {/* Brand cat icon — always visible top-left. The "Daniel Tan"
+          wordmark moved to a hero-only bottom-left card so it lives
+          alongside the room rather than as persistent chrome. */}
       <div
         style={{
           position: "absolute",
@@ -79,28 +81,12 @@ export function RoomHUD({ onReset, visible, interactive }: Props) {
           left: HUD_PADDING,
           display: "flex",
           alignItems: "center",
-          gap: 12,
           zIndex: HUD_Z,
           pointerEvents: "none",
           userSelect: "none",
         }}
       >
         <BlinkingCat size={30} />
-        <span
-          style={{
-            // Walnut on cream now that the wrapper is light. The cat
-            // mark (BlinkingCat) is still amber — the colour split here
-            // is intentional: mark = signature accent, wordmark =
-            // legible identity.
-            color: "var(--wrapper-ink)",
-            fontFamily: "var(--font-display)",
-            fontSize: 24,
-            fontWeight: 400,
-            letterSpacing: "-0.06em",
-          }}
-        >
-          Daniel Tan
-        </span>
       </div>
 
       {/* Reset — bottom-left. The mouse hints that used to sit
@@ -205,10 +191,13 @@ function AudioToggle({ interactive }: { interactive: boolean }) {
     });
   };
 
+  /* Sits to the right of the reset pill, both on the LEFT side of the
+   * viewport. Was originally bottom-right but it visually crowded the
+   * section-marker bleed area on the right gutter. */
   const base: CSSProperties = {
     position: "absolute",
     bottom: HUD_PADDING,
-    right: HUD_PADDING,
+    left: HUD_PADDING + 94 + 10, // reset pill width (≈94) + 10px gap
     zIndex: HUD_Z,
     display: "inline-flex",
     alignItems: "center",

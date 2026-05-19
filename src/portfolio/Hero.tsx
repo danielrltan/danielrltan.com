@@ -17,6 +17,13 @@ export function Hero() {
   const opacity = 1 - t;
   return (
     <section className="portfolio-section portfolio-section--hero">
+      {/* Bottom-left identity block — only on hero. Tied to the same
+       *  fade opacity as the scroll-hint so it dissolves the instant
+       *  the user scrolls into the first section. */}
+      <div className="hero-mark" style={{ opacity }}>
+        <span className="eyebrow">Portfolio &middot; 2026</span>
+        <span className="hero-wordmark">Daniel Tan</span>
+      </div>
       <div className="scroll-hint" style={{ opacity }}>
         scroll &darr;
       </div>
