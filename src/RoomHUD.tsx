@@ -81,9 +81,11 @@ export function RoomHUD({ onReset, visible, interactive }: Props) {
         <BlinkingCat size={30} />
         <span
           style={{
-            // Matched to the cat fill so the lockup reads as one
-            // unified element rather than two competing accents.
-            color: "var(--hud-amber)",
+            // Walnut on cream now that the wrapper is light. The cat
+            // mark (BlinkingCat) is still amber — the colour split here
+            // is intentional: mark = signature accent, wordmark =
+            // legible identity.
+            color: "var(--wrapper-ink)",
             fontFamily: "var(--font-display)",
             fontSize: 24,
             fontWeight: 400,

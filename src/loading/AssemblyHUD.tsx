@@ -41,12 +41,11 @@ export function AssemblyHUD({ state }: Props) {
       style={{
         position: "fixed",
         inset: 0,
-        // Transparent — the wrapper div already supplies the maroon
-        // background AND the canvas (alpha:true) lives between us
-        // and the wrapper. An opaque background here would hide the
-        // wireframes rendering inside the canvas during load.
+        // Transparent — the cover dome inside the Canvas paints cream;
+        // the HUD sits on top with walnut ink so it reads against the
+        // cream during load and against the Aurora afterward.
         background: "transparent",
-        color: "var(--hud-amber)",
+        color: "var(--wrapper-ink)",
         fontFamily: "var(--font-mono)",
         zIndex: 9999,
         pointerEvents: fading ? "none" : "auto",
@@ -70,7 +69,7 @@ export function AssemblyHUD({ state }: Props) {
         <div
           style={{
             height: 1,
-            background: "rgba(255, 120, 66, 0.18)",
+            background: "var(--wrapper-ink-faint)",
             overflow: "hidden",
           }}
         >
@@ -78,7 +77,7 @@ export function AssemblyHUD({ state }: Props) {
             style={{
               height: "100%",
               width: `${state.combinedPct * 100}%`,
-              background: "var(--hud-amber)",
+              background: "var(--wrapper-ink)",
               transition: "width 120ms linear",
             }}
           />
@@ -90,12 +89,12 @@ export function AssemblyHUD({ state }: Props) {
             fontSize: "var(--text-xs)",
             letterSpacing: "var(--tracking-wide)",
             textTransform: "uppercase",
-            color: "rgba(255, 176, 119, 0.85)",
+            color: "var(--wrapper-ink-soft)",
           }}
         >
           <span>
             resolving{" "}
-            <span style={{ color: "var(--hud-amber)" }}>· {resolvedName || "scene"}</span>
+            <span style={{ color: "var(--wrapper-ink)" }}>· {resolvedName || "scene"}</span>
           </span>
           <span>
             {state.bytesMB.toFixed(1)} / {GLB_TOTAL_MB} MB

@@ -164,15 +164,16 @@ export function WireframeRoom({ state }: Props) {
     <group ref={groupRef}>
       {/* Cover dome — a back-side sphere that engulfs the camera. While
           its opacity is 1, the inside surface paints the camera's whole
-          field of view maroon, hiding the loaded room behind it. The
-          wireframes render after (higher renderOrder + depthTest off)
-          so they sit on top of the cover. Both fade in lockstep during
-          the climax. */}
+          field of view cream, hiding the loaded room AND the Aurora
+          behind it. Wireframes render after (higher renderOrder +
+          depthTest off) so they sit on top of the cover. Both the
+          cover and the wireframes fade in lockstep during the climax,
+          at which point the Aurora becomes visible. */}
       <mesh renderOrder={500} frustumCulled={false}>
         <sphereGeometry args={[60, 16, 12]} />
         <meshBasicMaterial
           ref={coverMatRef}
-          color="#330a05"
+          color="#f0e6d6"
           side={THREE.BackSide}
           transparent
           opacity={1}

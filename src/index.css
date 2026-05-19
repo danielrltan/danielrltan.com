@@ -41,6 +41,18 @@
   --hud-amber: #ffb077;
   --hud-amber-soft: rgba(255, 176, 119, 0.2);
   --hud-cream: #f0e0d0;
+
+  /* ------------------------------------------------------------------
+   * Wrapper palette (post-redesign)
+   * Cream surround + dark walnut for legible labels against it. Used
+   * by anything that sits on top of the cream wrapper / aurora bg
+   * (click-to-begin, MoveableCursor, RoomHUD, scroll prompt, hint
+   * banner — basically everything outside the warm-lit room interior).
+   * ----------------------------------------------------------------*/
+  --wrapper-bg: #f0e6d6;
+  --wrapper-ink: #5a3a1f;            /* warm walnut, AA contrast on cream */
+  --wrapper-ink-soft: rgba(90, 58, 31, 0.6);
+  --wrapper-ink-faint: rgba(90, 58, 31, 0.18);
 }
 
 * {

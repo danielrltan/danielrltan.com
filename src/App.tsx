@@ -21,6 +21,7 @@ import { startAmbience } from "./audio";
 import { CorruptionOverlay } from "./CorruptionOverlay";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
+import { Aurora } from "./Aurora";
 import {
   AssemblyProvider,
   AssemblyHUDSlot,
@@ -522,10 +523,11 @@ export default function App() {
       style={{
         position: "absolute",
         inset: 0,
-        // Background color now lives on the wrapper (not the Canvas's
-        // scene.background) so the giant "Daniel Tan" text below can
-        // show through wherever the 3D scene is transparent.
-        background: "#330a05",
+        // Cream surround. The Aurora shader inside the Canvas paints
+        // its own warm noise background; this wrapper color is only
+        // visible if the canvas fails to mount, or under transparent
+        // overlay edges.
+        background: "var(--wrapper-bg)",
         // Two zones: in the room, hide the system cursor and let our
         // custom ring/dot do the work. At the desk, the OS uses the
         // native cursor — our custom one is unmounted below.
@@ -540,47 +542,10 @@ export default function App() {
         setMoveableHover(false);
       }}
     >
-      {/* Brand watermark — a giant "Daniel Tan" sits behind the canvas
-          and bleeds off the viewport edges. Subtle warm amber tint at
-          very low alpha so it reads as a watermark rather than copy.
-          `pointerEvents: none` so 3D interactions pass through. */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          pointerEvents: "none",
-          userSelect: "none",
-          overflow: "hidden",
-        }}
-        aria-hidden
-      >
-        <span
-          style={{
-            fontFamily: "var(--font-display)",
-            // Tuned to keep the full wordmark on-screen at typical
-            // desktop widths (~95% viewport at 1440px) with mild
-            // bleed-off on ultra-wide; previous value (25vw / 380px
-            // cap) was overflowing well past both edges.
-            fontSize: "clamp(94px, 25vw, 410px)",
-            fontWeight: 800,
-            letterSpacing: "-0.08em",
-            color: "rgba(255, 176, 119, 0.06)",
-            whiteSpace: "nowrap",
-            lineHeight: 1,
-            // Optical centering: "Daniel" (6 chars) sits left of the
-            // geometric mid-point while " Tan" (4 chars incl. space)
-            // sits right, so when the room silhouette crops both
-            // halves the visible mass on the right reads heavier.
-            // Small leftward nudge counteracts the perception.
-            transform: "translateX(-1.2%)",
-          }}
-        >
-          Daniel Tan
-        </span>
-      </div>
+      {/* Brand watermark removed: the cream + Aurora background is the
+          new surround, and a single faint giant wordmark on top of it
+          fights the warm-noise field for attention. The RoomHUD's
+          top-left "Daniel Tan" mark carries the branding now. */}
       <Canvas
         camera={{
           // Initial iso preview pose — kept in sync with IntroController
@@ -624,6 +589,10 @@ export default function App() {
             startDeskView,
           }}
         >
+          {/* Aurora paints the canvas background (cream + warm noise +
+              mouse spotlight). Drawn first via renderOrder=-1 inside
+              the component, so the room + wireframes overdraw it. */}
+          <Aurora />
           <AssemblyWireframesSlot />
           <Suspense fallback={null}>
             <Lighting />
@@ -947,13 +916,15 @@ export default function App() {
           bottom: 28,
           left: "50%",
           transform: "translateX(-50%)",
-          color: "var(--hud-amber)",
-          textShadow: "0 0 12px var(--hud-amber-soft)",
+          // Walnut on cream now that the wrapper is light. Glow text-
+          // shadow removed — that read on the dark backdrop; on cream
+          // it just smudges.
+          color: "var(--wrapper-ink)",
           textTransform: "uppercase",
           letterSpacing: "var(--tracking-widest)",
           fontSize: "var(--text-base)",
           fontFamily: "var(--font-mono)",
-          opacity: transitionStarted ? 0 : 0.7,
+          opacity: transitionStarted ? 0 : 0.85,
           transition: "opacity 0.5s ease",
           pointerEvents: "none",
           userSelect: "none",
