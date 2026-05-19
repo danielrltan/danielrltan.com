@@ -94,6 +94,13 @@ export function WireframeRoom({ state }: Props) {
   stateRef.current = state;
   const climaxStartedAtRef = useRef<number | null>(null);
 
+  const reducedMotion = useMemo(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
+    [],
+  );
+
   useFrame(() => {
     const s = stateRef.current;
     if (entries.length === 0) return;
@@ -115,8 +122,14 @@ export function WireframeRoom({ state }: Props) {
     for (const e of entries) {
       const { mesh, material } = e;
       // Pre-climax: pop-in driven by combinedPct.
+      // Reduced motion: single linear wave starting at 30% — no per-mesh
+      // stagger, no ease-out-back overshoot.
       let local = 0; // 0 = invisible, 1 = fully present
-      if (s.combinedPct >= e.phaseEnd) local = 1;
+      if (reducedMotion) {
+        if (s.combinedPct >= 0.3) {
+          local = Math.min(1, (s.combinedPct - 0.3) / 0.3);
+        }
+      } else if (s.combinedPct >= e.phaseEnd) local = 1;
       else if (s.combinedPct > e.phaseStart) {
         const t = (s.combinedPct - e.phaseStart) / (e.phaseEnd - e.phaseStart);
         local = easeOutBack(t);
