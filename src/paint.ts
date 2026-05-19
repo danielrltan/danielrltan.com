@@ -53,17 +53,3 @@ export function isBrushReady(): boolean {
 export function isSignatureBrushReady(): boolean {
   return signatureBrush != null;
 }
-
-// Signature canvas fade gate. SignatureReplay turns it ON while
-// drawing so each stamp's accumulated alpha gets clamped the same
-// way the cursor trail's per-frame fade clamps cursor strokes
-// (matches the bauhaus wet-paint look). The moment replay ends, the
-// flag flips OFF and the finished signature freezes at its current
-// state and stays.
-let signatureFadeActive = false;
-export function setSignatureFade(active: boolean): void {
-  signatureFadeActive = active;
-}
-export function isSignatureFadeActive(): boolean {
-  return signatureFadeActive;
-}

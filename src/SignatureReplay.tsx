@@ -1,9 +1,5 @@
 import { useEffect } from "react";
-import {
-  isSignatureBrushReady,
-  paintSignatureAt,
-  setSignatureFade,
-} from "./paint";
+import { isSignatureBrushReady, paintSignatureAt } from "./paint";
 
 /**
  * Replays a captured signature through the PaintTrail brush after a
@@ -169,7 +165,6 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
             (SIZE_MULT_AT_MAX_VEL - SIZE_MULT_AT_MIN_VEL) * f;
           return REPLAY_RADIUS_BASE * mult;
         };
-        let fadeOn = false;
 
         const tick = () => {
           if (cancelled || !sig) return;
@@ -177,10 +172,6 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
           if (elapsed < 0) {
             raf = requestAnimationFrame(tick);
             return;
-          }
-          if (!fadeOn) {
-            fadeOn = true;
-            setSignatureFade(true);
           }
           while (
             nextIdx < sig.events.length &&
@@ -237,11 +228,6 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
           }
           if (nextIdx < sig.events.length) {
             raf = requestAnimationFrame(tick);
-          } else if (fadeOn) {
-            // Replay complete — halt the fade so the final canvas
-            // state freezes wherever it landed and stays.
-            fadeOn = false;
-            setSignatureFade(false);
           }
         };
         raf = requestAnimationFrame(tick);
@@ -253,9 +239,6 @@ export function SignatureReplay({ trigger, delayMs = 0 }: Props) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
-      // Defensive: if unmounted mid-replay, make sure the fade flag
-      // doesn't get stuck on for a future mount.
-      setSignatureFade(false);
     };
   }, [trigger, delayMs]);
 

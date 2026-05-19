@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { isSignatureFadeActive, registerSignatureBrush } from "./paint";
+import { registerSignatureBrush } from "./paint";
 
 /**
  * Separate 2D canvas dedicated to the signature. Same brush look as
@@ -18,17 +18,16 @@ import { isSignatureFadeActive, registerSignatureBrush } from "./paint";
  * shows in the off-white surround around the room.
  */
 // Cat icon / lamp glow / wireframes all use #ff7842 — matching here
-// so the signature reads as part of the same warm-amber language and
-// doesn't drift toward brown.
+// so the signature reads as part of the same warm-amber language.
 const PAINT_COLOR = "255, 120, 66";
-// Same brush params as PaintTrail's cursor brush. Accumulation
-// during replay is controlled by a per-frame destination-out fade
-// gated on isSignatureFadeActive() — SignatureReplay flips it ON
-// while drawing and OFF the instant replay ends, so the finished
-// signature freezes wherever it landed (and stays forever).
+// Brush params matched to PaintTrail's cursor brush. Accumulation is
+// prevented categorically by destination-over compositing in stamp()
+// below — each canvas pixel can only be painted by the FIRST stamp
+// that covers it, so slow strokes with lots of overlapping stamps
+// can't saturate into dark blobs. No fade needed (and no fade applied)
+// — the canvas state stays exactly as drawn, forever.
 const STAMP_ALPHA = 0.45;
 const BRUSH_RADIUS = 60;
-const FADE_ALPHA = 0.004; // matches PaintTrail's cursor-trail fade rate
 
 export function SignatureCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -80,11 +79,14 @@ export function SignatureCanvas() {
       radiusOverride?: number,
       alphaMult?: number,
     ) => {
-      // The fade RAF below sets composite to destination-out and
-      // resets it, but multiple RAFs can interleave per frame — set
-      // composite to source-over here too so a stamp() call that
-      // happens between fade frames is guaranteed to DRAW (not erase).
-      ctx.globalCompositeOperation = "source-over";
+      // destination-over: paint only where the canvas is still
+      // transparent. The FIRST stamp at each pixel wins; subsequent
+      // overlapping stamps can extend the stroke into untouched
+      // territory but cannot compound atop already-painted pixels.
+      // This is the categorical fix for the "stuck dark blob" issue
+      // at slow-signing hesitations — accumulation literally can't
+      // happen because the second deposit at a pixel is a no-op.
+      ctx.globalCompositeOperation = "destination-over";
       const radius = radiusOverride ?? BRUSH_RADIUS;
       const size = radius * 2;
       if (alphaMult !== undefined && alphaMult !== 1) {
@@ -97,28 +99,7 @@ export function SignatureCanvas() {
     };
     registerSignatureBrush(stamp);
 
-    // Per-frame fade. Gated by isSignatureFadeActive() — SignatureReplay
-    // turns this ON for the duration of the replay so the accumulating
-    // overlapping stamps along each stroke get clamped exactly the same
-    // way the cursor trail's per-frame fade clamps cursor strokes. The
-    // resulting visible alpha at peak matches a fresh cursor stamp,
-    // which is the bauhaus wet-paint look. Replay flips the flag OFF
-    // when it finishes; the canvas freezes there and stays.
-    let raf = 0;
-    const tick = () => {
-      if (isSignatureFadeActive()) {
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.fillStyle = `rgba(0, 0, 0, ${FADE_ALPHA})`;
-        ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
-        // Reset for any stamp() that runs later this frame.
-        ctx.globalCompositeOperation = "source-over";
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-
     return () => {
-      cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       registerSignatureBrush(null);
     };
