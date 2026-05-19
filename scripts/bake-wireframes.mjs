@@ -1,25 +1,35 @@
 // scripts/bake-wireframes.mjs
 //
-// Reads the Blender scene manifest, converts each entry into a
-// three.js-coordinates wireframe descriptor, classifies it into one of
-// 5 spatial assembly phases by name, and writes public/wireframes.json.
+// Reads public/room.glb directly (NOT the Blender scene manifest —
+// that file stores Blender pivot positions, which aren't always the
+// AABB centers of the resulting meshes, so wireframes computed from it
+// drift by up to half a mesh's dimension). Walks the glTF node tree,
+// composes world transforms, and unions each mesh primitive's POSITION
+// accessor bounding-box (which the glTF schema bundles for free as
+// accessor.min / accessor.max) into a world-space AABB.
 //
-// Runs at `predev` and `prebuild`. Output is committed to git so dev
-// servers don't need to re-bake on every clone.
+// Output: public/wireframes.json with per-mesh {name, center, half,
+// phase}. Already in three.js Y-up coordinates (the GLB was exported
+// that way), so no axis conversion is needed.
+//
+// Runs at `predev` and `prebuild`. The committed JSON file is the
+// source of truth at runtime — no GLB parsing happens in the browser.
+//
+// Implementation note: uses three.js's Matrix4 / Vector3 / Quaternion /
+// Box3 as math primitives. Those modules don't touch the DOM and work
+// in pure Node ESM, so this stays a zero-new-dependency script.
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Box3, Matrix4, Quaternion, Vector3 } from "three";
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../..");
-const SRC = resolve(REPO_ROOT, "data/scene_manifest.json");
+const SRC = resolve(REPO_ROOT, "public/room.glb");
 const DST = resolve(REPO_ROOT, "public/wireframes.json");
 
-// Phase 1: floor + walls + room shell
-// Phase 2: large furniture (bed, desk, shelf, dresser, lamp poles)
-// Phase 3: electronics + on-desk hardware (monitor, keyboard, PC)
-// Phase 4: interactive / mid-size props (clk_*, dr_*, th_*)
-// Phase 5: decor + detail (posters, vinyl, mushroom bulbs, plushies)
+// ----- Phase classification -------------------------------------------------
+
 const PHASE_RULES = [
   {
     phase: 1,
@@ -39,10 +49,16 @@ const PHASE_RULES = [
       n === "dresser" ||
       n === "headboard" ||
       n === "bed_blanket" ||
+      n === "mattress_static" ||
+      n === "bed_frame_static" ||
       n.startsWith("bed_") ||
       n.startsWith("desk_") ||
       n.startsWith("dresser_") ||
       n === "floor_lamp" ||
+      n === "dr_floor_lamp" ||
+      n === "dr_nightstand" ||
+      n === "dr_shelf" ||
+      n === "dr_chair" ||
       n === "chair",
   },
   {
@@ -52,6 +68,7 @@ const PHASE_RULES = [
       n.startsWith("keyboard_") ||
       n.startsWith("pc_") ||
       n.startsWith("clk_monitor") ||
+      n === "dr_computer" ||
       n === "screen" ||
       n === "mousepad_static",
   },
@@ -60,10 +77,9 @@ const PHASE_RULES = [
     test: (n) =>
       n.startsWith("clk_") ||
       n.startsWith("dr_") ||
-      n.startsWith("th_") ||
       n.startsWith("board_"),
   },
-  { phase: 5, test: () => true }, // catch-all (posters, vinyl, decor)
+  { phase: 5, test: () => true },
 ];
 
 function phaseFor(name) {
@@ -71,79 +87,151 @@ function phaseFor(name) {
   return 5;
 }
 
-// Blender (Z-up, right-handed) → three.js (Y-up, right-handed):
-//   blender (x, y, z) → three (x, z, -y)
-// Sizes (dimensions) are positive in all axes; they swap the same way:
-//   blender (dx, dy, dz) → three (dx, dz, dy)
-function blenderPosToThree([x, y, z]) {
-  return [x, z, -y];
-}
-function blenderSizeToThree([dx, dy, dz]) {
-  return [dx, dz, dy];
-}
-
-// Names we never want as wireframes. These are NOT in the loaded scene
-// from Blender's perspective (key_*), or are scaffolding-only objects
-// (sun_target), or render as a single tiny box that adds clutter.
+// Skip lists. Drawer slabs are nested inside the dresser visually and
+// individually they read as a cluttered stack of tiny rectangles; the
+// dresser wireframe already represents them. Bulbs are tiny dots
+// that read as noise. Individual keyboard keys are part of the
+// keyboard frame already.
 const SKIP_EXACT = new Set([
   "sun_target",
   "mushroom_bulb_1",
   "mushroom_bulb_2",
   "mushroom_bulb_3",
   "mushroom_bulb_4",
+  "th_books_shelf.001",
+  "th_books_shelf.002",
+  "th_books_shelf.003",
+  "th_succ_1",
+  "th_succ_2",
+  "th_succ_3",
 ]);
-const SKIP_PREFIXES = ["key_", "light_"];
+const SKIP_PREFIXES = ["key_", "light_", "dr_drawer_"];
 
 function shouldSkip(name) {
+  if (!name) return true;
   if (SKIP_EXACT.has(name)) return true;
   return SKIP_PREFIXES.some((p) => name.startsWith(p));
 }
 
-function main() {
-  const manifest = JSON.parse(readFileSync(SRC, "utf8"));
-  const allCollections = manifest.collections;
-  if (!allCollections || typeof allCollections !== "object") {
-    throw new Error(`Expected manifest.collections object, got ${typeof allCollections}`);
-  }
+// ----- GLB reader (header + JSON chunk only — we don't need the binary) -----
 
-  // Merge every collection (Scene Collection, Static, Clickable,
-  // Throwable, …) and dedupe by name. Blender organizes objects across
-  // multiple collections — the room's big statics (desk, dresser, floor,
-  // walls, clk_monitor_frame …) live under "Static", not under the
-  // top-level "Scene Collection" pool — so reading only one collection
-  // misses ~half of the named meshes.
-  const seen = new Set();
-  const meshes = [];
-  for (const entries of Object.values(allCollections)) {
-    if (!Array.isArray(entries)) continue;
-    for (const entry of entries) {
-      if (!entry?.name || !entry.world_loc || !entry.dimensions) continue;
-      if (seen.has(entry.name)) continue;
-      if (shouldSkip(entry.name)) continue;
-      seen.add(entry.name);
-      const center = blenderPosToThree(entry.world_loc).map((v) =>
-        Number(v.toFixed(4)),
-      );
-      const dims = blenderSizeToThree(entry.dimensions);
-      const half = dims.map((d) => Number((d / 2).toFixed(4)));
-      if (half.some((h) => h <= 0)) continue;
-      meshes.push({
-        name: entry.name,
-        center,
-        half,
-        phase: phaseFor(entry.name),
-      });
+const GLTF_MAGIC = 0x46546c67; // "glTF"
+const JSON_CHUNK_TYPE = 0x4e4f534a; // "JSON"
+
+function readGLBJson(path) {
+  const buf = readFileSync(path);
+  if (buf.length < 20) throw new Error(`GLB too short: ${path}`);
+  if (buf.readUInt32LE(0) !== GLTF_MAGIC) {
+    throw new Error(`Not a GLB file (bad magic): ${path}`);
+  }
+  const jsonLength = buf.readUInt32LE(12);
+  if (buf.readUInt32LE(16) !== JSON_CHUNK_TYPE) {
+    throw new Error("First chunk is not a JSON chunk");
+  }
+  return JSON.parse(buf.subarray(20, 20 + jsonLength).toString("utf8"));
+}
+
+// ----- Node walk + AABB union -----------------------------------------------
+
+function nodeLocalMatrix(node) {
+  const m = new Matrix4();
+  if (node.matrix) {
+    m.fromArray(node.matrix);
+    return m;
+  }
+  const t = new Vector3().fromArray(node.translation ?? [0, 0, 0]);
+  const r = new Quaternion().fromArray(node.rotation ?? [0, 0, 0, 1]);
+  const s = new Vector3().fromArray(node.scale ?? [1, 1, 1]);
+  return m.compose(t, r, s);
+}
+
+/**
+ * Returns the world-space AABB of `node` and all its descendants.
+ * Uses each mesh primitive's POSITION accessor.min/max as the local
+ * AABB and applies the accumulated world transform via Box3.applyMatrix4
+ * (which correctly handles rotated/scaled boxes by transforming the 8
+ * corners and refitting to an axis-aligned box).
+ */
+function nodeWorldAABB(node, parentMat, gltf) {
+  const local = nodeLocalMatrix(node);
+  const world = new Matrix4().multiplyMatrices(parentMat, local);
+  const result = new Box3();
+  result.makeEmpty();
+
+  if (node.mesh !== undefined) {
+    const mesh = gltf.meshes?.[node.mesh];
+    if (mesh && Array.isArray(mesh.primitives)) {
+      for (const prim of mesh.primitives) {
+        const posIdx = prim?.attributes?.POSITION;
+        if (posIdx === undefined) continue;
+        const acc = gltf.accessors?.[posIdx];
+        if (!acc?.min || !acc?.max) continue;
+        const localBox = new Box3(
+          new Vector3().fromArray(acc.min),
+          new Vector3().fromArray(acc.max),
+        );
+        localBox.applyMatrix4(world);
+        result.union(localBox);
+      }
     }
   }
 
-  // Stable sort: phase ascending, name alphabetical within phase.
-  // Determinism keeps the committed JSON diff-minimal across re-runs.
+  if (Array.isArray(node.children)) {
+    for (const childIdx of node.children) {
+      const child = gltf.nodes?.[childIdx];
+      if (!child) continue;
+      const childBox = nodeWorldAABB(child, world, gltf);
+      if (!childBox.isEmpty()) result.union(childBox);
+    }
+  }
+
+  return result;
+}
+
+// ----- Main ----------------------------------------------------------------
+
+function round(v) {
+  return Number(v.toFixed(4));
+}
+
+function main() {
+  const gltf = readGLBJson(SRC);
+  const scene = gltf.scenes?.[gltf.scene ?? 0];
+  if (!scene || !Array.isArray(scene.nodes)) {
+    throw new Error("GLB has no default scene with nodes");
+  }
+
+  const identity = new Matrix4();
+  const meshes = [];
+
+  // Only top-level named nodes contribute a wireframe entry. Children
+  // are folded into their parent's AABB (so e.g. the desk's legs are
+  // part of the "desk" wireframe rather than each leg getting its own).
+  // This keeps the wave choreography reading at the right granularity.
+  for (const rootIdx of scene.nodes) {
+    const node = gltf.nodes?.[rootIdx];
+    if (!node || shouldSkip(node.name)) continue;
+    const aabb = nodeWorldAABB(node, identity, gltf);
+    if (aabb.isEmpty()) continue;
+    const center = new Vector3();
+    const size = new Vector3();
+    aabb.getCenter(center);
+    aabb.getSize(size);
+    if (size.x <= 0 || size.y <= 0 || size.z <= 0) continue;
+    meshes.push({
+      name: node.name,
+      center: [round(center.x), round(center.y), round(center.z)],
+      half: [round(size.x / 2), round(size.y / 2), round(size.z / 2)],
+      phase: phaseFor(node.name),
+    });
+  }
+
   meshes.sort((a, b) => a.phase - b.phase || a.name.localeCompare(b.name));
 
   const out = {
-    version: 1,
+    version: 2,
     generatedAt: new Date().toISOString(),
-    sourceSha: manifest.export_hash ?? null,
+    source: "public/room.glb",
     meshes,
   };
 

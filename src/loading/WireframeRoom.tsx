@@ -53,9 +53,15 @@ export function WireframeRoom({ state }: Props) {
         color: WIREFRAME_COLOR,
         transparent: true,
         opacity: 0,
+        // depthTest off so wireframes always draw on top of the
+        // loaded room regardless of geometry — they're a UI overlay
+        // anchored in world space, not geometry that needs to occlude
+        // or be occluded.
+        depthTest: false,
         depthWrite: false,
       });
       const mesh = new THREE.LineSegments(UNIT_EDGES, material);
+      mesh.renderOrder = 999;
       mesh.position.set(m.center[0], m.center[1], m.center[2]);
       // EdgesGeometry was built on a (2,2,2) cube; scaling by half gives
       // the desired AABB extents directly. scale 0 at start.
@@ -101,9 +107,11 @@ export function WireframeRoom({ state }: Props) {
     [],
   );
 
+  const coverMatRef = useRef<THREE.MeshBasicMaterial>(null);
+
   useFrame(() => {
     const s = stateRef.current;
-    if (entries.length === 0) return;
+    if (entries.length === 0 && !coverMatRef.current) return;
 
     // Track when the climax began so we can drive a local fade timer.
     if (s.climaxReady && climaxStartedAtRef.current == null) {
@@ -118,6 +126,14 @@ export function WireframeRoom({ state }: Props) {
           )
         : 0;
     const climaxOut = 1 - easeInCubic(climaxT); // 1 → 0
+
+    // Cover plane: opaque maroon until climax, fades to transparent
+    // alongside the wireframes. Hides the (already-loaded) real room
+    // behind the assembly so the visual story is "wireframes are doing
+    // the work" instead of "wireframes overlay an already-finished room."
+    if (coverMatRef.current) {
+      coverMatRef.current.opacity = climaxOut;
+    }
 
     for (const e of entries) {
       const { mesh, material } = e;
@@ -144,7 +160,28 @@ export function WireframeRoom({ state }: Props) {
     }
   });
 
-  return <group ref={groupRef} />;
+  return (
+    <group ref={groupRef}>
+      {/* Cover dome — a back-side sphere that engulfs the camera. While
+          its opacity is 1, the inside surface paints the camera's whole
+          field of view maroon, hiding the loaded room behind it. The
+          wireframes render after (higher renderOrder + depthTest off)
+          so they sit on top of the cover. Both fade in lockstep during
+          the climax. */}
+      <mesh renderOrder={500} frustumCulled={false}>
+        <sphereGeometry args={[60, 16, 12]} />
+        <meshBasicMaterial
+          ref={coverMatRef}
+          color="#330a05"
+          side={THREE.BackSide}
+          transparent
+          opacity={1}
+          depthWrite={false}
+          depthTest={false}
+        />
+      </mesh>
+    </group>
+  );
 }
 
 function easeOutBack(t: number): number {

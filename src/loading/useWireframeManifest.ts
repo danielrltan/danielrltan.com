@@ -11,7 +11,12 @@ let cached: Promise<WireframeManifest | null> | null = null;
 
 function fetchManifest(): Promise<WireframeManifest | null> {
   if (cached) return cached;
-  cached = fetch("/wireframes.json", { cache: "force-cache" })
+  // Default cache semantics: lets the browser revalidate per its normal
+  // policy. force-cache made dev iteration painful — even after rebaking
+  // wireframes.json, the browser served a stale cached copy and skipped
+  // the network request entirely. Standard `fetch()` with no cache
+  // option respects Cache-Control headers Vite/the CDN sends.
+  cached = fetch("/wireframes.json")
     .then((r) => (r.ok ? (r.json() as Promise<WireframeManifest>) : null))
     .catch(() => null);
   return cached;
