@@ -30,6 +30,8 @@ import { ScrollCamera } from "./ScrollCamera";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { useScrollProgress } from "./useScrollProgress";
 import { useIsMobile } from "./useIsMobile";
+import { StatusBar } from "./StatusBar";
+import { ScrollRail } from "./ScrollRail";
 
 // Canvas shrink window — tightened so the room is at 50vw BEFORE the
 // about-section content enters the viewport. Previous window (0.06 →
@@ -324,6 +326,14 @@ export default function App() {
         />
 
         <AssemblyHUDSlot />
+
+        {/* TE-spec-sheet flourishes — only after the room loads. */}
+        {sceneReady && !isMobile && (
+          <>
+            <StatusBar />
+            <ScrollRail />
+          </>
+        )}
       </div>
     </AssemblyProvider>
   );

@@ -134,19 +134,28 @@
    bleeds down the right edge like the heat-coloured panel finish. */
 .section-card {
   position: relative;
-  background: #ffffff;
+  background-color: #ffffff;
   border: 1px solid rgba(26, 23, 20, 0.08);
   padding: 72px 64px;
   margin-right: -4vw;
   box-shadow:
     0 1px 0 rgba(26, 23, 20, 0.04),
     0 32px 64px -36px rgba(180, 80, 30, 0.12);
-  /* Faint orange gradient sliding in from the right edge. */
-  background-image: linear-gradient(
-    to right,
-    transparent 70%,
-    rgba(232, 112, 64, 0.045) 100%
-  );
+  /* Faint dot grid (technical-paper feel) + faint orange gradient
+     bleeding in from the right edge (heat-finish panel). */
+  background-image:
+    radial-gradient(
+      circle at center,
+      rgba(26, 23, 20, 0.06) 1px,
+      transparent 1.3px
+    ),
+    linear-gradient(
+      to right,
+      transparent 70%,
+      rgba(232, 112, 64, 0.055) 100%
+    );
+  background-size: 22px 22px, auto;
+  background-position: 0 0, 0 0;
 }
 /* Crosshair "+" — top-right corner. Two thin lines crossed. */
 .section-card::after {
