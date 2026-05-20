@@ -154,12 +154,15 @@ export function GroundPlane() {
     // driven by uExpansion, not opacity.
     mat.uniforms.uOpacity.value = 1;
 
-    // Radial expansion: starts the moment climaxDone fires (wireframe
-    // assembly is done AND the cover dome has finished fading out).
-    // ease-out cubic over ~900ms gives the "dropping ontop of the
-    // plane" feel — rapid initial reveal, soft settle.
+    // Radial expansion: starts at climaxReady (the moment the orange
+    // cover dome STARTS fading out), runs concurrently with the dome
+    // fade. The rice grains radiate outward through the dissolving
+    // orange — reads as the final beat of the orange-print loading
+    // animation rather than something that happens afterwards.
+    // ease-out cubic over ~900ms — by the time the dome is fully
+    // gone the rice has just settled.
     const EXPANSION_DURATION_MS = 900;
-    if (assembly.climaxDone) {
+    if (assembly.climaxReady) {
       if (expansionStartedRef.current == null) {
         expansionStartedRef.current = performance.now();
       }
