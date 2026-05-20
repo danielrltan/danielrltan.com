@@ -250,18 +250,9 @@ html.loading-active .moveable-cursor {
   display: none;
 }
 
-/* Loading state — hide all chrome until the room is actually
-   visible. The orange-print loading screen has its own HUD; the
-   site chrome would sit on top of it at terrible contrast (dark ink
-   on orange) and read as a bug. */
-html.loading-active .hero-mark,
-html.loading-active .scroll-hint,
-html.loading-active .room-hud-brand,
-html.loading-active .room-hud-pill {
-  opacity: 0 !important;
-  pointer-events: none !important;
-  transition: opacity 240ms ease;
-}
+/* Loading-active chrome-hide rules removed — the fade in / out on
+   load completion read as buggy. Chrome shows during loading; will
+   revisit contrast if it becomes an issue. */
 
 /* Custom pointer after the intro — see MoveableCursor.tsx */
 .moveable-cursor {

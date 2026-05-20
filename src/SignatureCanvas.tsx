@@ -28,21 +28,27 @@ const STAMP_ALPHA = 0.45;
 const BRUSH_RADIUS = 60;
 const FADE_ALPHA = 0.004;
 
-/** Signature stays visible across the hero, then fades to 0 as the
- *  user scrolls into the about/projects sections — by the time the
- *  copy is in view the background should be calm and uncluttered. */
-const FADE_START = 0.02;
-const FADE_DONE = 0.12;
+/** Signature now lives in the FOOTER. It's a position-fixed canvas
+ *  (the brush replay paints in viewport coords), so it would render
+ *  across the WHOLE viewport if visible at the wrong scroll position
+ *  — including bleeding back over the hero when the user scrolls up.
+ *  Opacity is gated to the bottom of the page so the canvas only
+ *  shows when the footer is actually on screen. */
+const FOOTER_FADE_START = 0.92;
+const FOOTER_FADE_DONE = 0.98;
 
 export function SignatureCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollProgress = useScrollProgress();
   const isMobile = useIsMobile();
-  const fadeT = Math.max(
+  const opacity = Math.max(
     0,
-    Math.min(1, (scrollProgress - FADE_START) / (FADE_DONE - FADE_START)),
+    Math.min(
+      1,
+      (scrollProgress - FOOTER_FADE_START) /
+        (FOOTER_FADE_DONE - FOOTER_FADE_START),
+    ),
   );
-  const opacity = 1 - fadeT;
 
   useEffect(() => {
     const canvas = canvasRef.current;

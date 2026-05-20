@@ -16,6 +16,8 @@ import {
 } from "./IntroController";
 import { SceneStateProvider } from "./SceneState";
 import { GroundPlane } from "./GroundPlane";
+import { RiceDotsBg } from "./RiceDotsBg";
+import { CursorDots } from "./CursorDots";
 import { MoveableCursor } from "./MoveableCursor";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
@@ -188,13 +190,10 @@ export default function App() {
     window.scrollTo(0, 0);
   }, []);
 
-  // Toggle a loading-active class on <html> so CSS can hide chrome
-  // (hero mark, brand cat, scroll hint, cursor) until the room is
-  // actually visible. Without this they sit on top of the orange
-  // loading screen at low contrast.
-  useEffect(() => {
-    document.documentElement.classList.toggle("loading-active", !roomLoaded);
-  }, [roomLoaded]);
+  // (Removed loading-active class toggling — the fade-in / fade-out
+  // on the chrome elements read as buggy. Chrome is allowed to render
+  // during the orange loading screen now; revisit if contrast becomes
+  // a problem.)
 
   return (
     <AssemblyProvider>
@@ -222,31 +221,10 @@ export default function App() {
             that forced Three.js to recompute renderer.setSize +
             projection matrix every frame, which is the source of the
             visible scroll snap. */}
-        {/* Rice-dot background pattern — hero only, fades to 0 between
-            scroll progress 0.00 and 0.05. Sits behind the canvas + the
-            overlay panel so it tints the whole hero band. */}
-        {roomLoaded && (
-          <div
-            aria-hidden
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 0,
-              pointerEvents: "none",
-              opacity: clamp01(1 - scrollProgress / 0.05),
-              backgroundImage:
-                "radial-gradient(rgba(21, 23, 26, 0.32) 1.2px, transparent 1.7px)",
-              backgroundSize: "16px 16px",
-              backgroundPosition: "center",
-              /* Soft radial vignette so the dots fade out at the
-                 viewport edges instead of cutting off hard. */
-              maskImage:
-                "radial-gradient(ellipse at center, #000 50%, transparent 90%)",
-              WebkitMaskImage:
-                "radial-gradient(ellipse at center, #000 50%, transparent 90%)",
-            }}
-          />
-        )}
+        {/* Hero rice-dot background with cursor-dissolve effect — see
+            RiceDotsBg.tsx. Canvas-based so the dissolve can be a
+            blobby fluid wobble rather than a hard CSS mask circle. */}
+        {roomLoaded && !isMobile && <RiceDotsBg />}
 
         {!isMobile && (
           <div
@@ -385,8 +363,12 @@ export default function App() {
               </Suspense>
             </SceneStateProvider>
           </Canvas>
-          <MoveableCursor hot={moveableHover} />
         </div>
+
+        {/* Global custom cursor — composed of dots, inverts via
+            mix-blend-mode: difference against any background, with a
+            single orange center anchor. Replaces MoveableCursor. */}
+        {roomLoaded && !isMobile && <CursorDots />}
 
         <PortfolioSections />
 

@@ -89,10 +89,27 @@ export function StatusBar({ onReset }: Props) {
         userSelect: "none",
       }}
     >
-      <span style={{ color: "var(--accent)", fontVariantNumeric: "tabular-nums" }}>
-        {active.number}
+      {/* Fixed-width slot for the section badge so the pill width stays
+          constant as the label changes ("HERO" → "PROJECTS"). Avoids
+          the bar visibly resizing on every section transition. */}
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 10,
+          minWidth: 110,
+        }}
+      >
+        <span
+          style={{
+            color: "var(--accent)",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {active.number}
+        </span>
+        <span>{active.label}</span>
       </span>
-      <span>{active.label}</span>
       <span style={{ opacity: 0.25 }}>·</span>
       <span style={{ fontVariantNumeric: "tabular-nums", opacity: 0.85 }}>
         {formatClock(now)}
