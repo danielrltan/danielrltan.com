@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { Volume2, VolumeX } from "lucide-react";
 import { useScrollProgress } from "./useScrollProgress";
+import { useAudioToggle } from "./useAudioToggle";
 
 /**
  * Top-right status badge. TE / spec-sheet flavour: a small pill with
@@ -42,6 +44,7 @@ function formatClock(d: Date): string {
 export function StatusBar() {
   const progress = useScrollProgress();
   const [now, setNow] = useState(() => new Date());
+  const audio = useAudioToggle();
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -58,7 +61,6 @@ export function StatusBar() {
 
   return (
     <div
-      aria-hidden
       style={{
         position: "fixed",
         top: 18,
@@ -67,7 +69,7 @@ export function StatusBar() {
         display: "inline-flex",
         alignItems: "center",
         gap: 14,
-        padding: "8px 14px",
+        padding: "6px 6px 6px 14px",
         background: "rgba(255, 255, 255, 0.72)",
         backdropFilter: "blur(10px)",
         WebkitBackdropFilter: "blur(10px)",
@@ -79,24 +81,9 @@ export function StatusBar() {
         textTransform: "uppercase",
         color: "var(--wrapper-ink)",
         fontWeight: 600,
-        pointerEvents: "none",
         userSelect: "none",
       }}
     >
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <span
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: 50,
-            background: "var(--accent)",
-            boxShadow: "0 0 0 3px rgba(232, 112, 64, 0.18)",
-            animation: "status-rec-pulse 1.6s ease-in-out infinite",
-          }}
-        />
-        REC
-      </span>
-      <span style={{ opacity: 0.25 }}>·</span>
       <span style={{ color: "var(--accent)", fontVariantNumeric: "tabular-nums" }}>
         {active.number}
       </span>
@@ -109,6 +96,35 @@ export function StatusBar() {
       <span style={{ fontVariantNumeric: "tabular-nums", opacity: 0.65 }}>
         {String(progressPct).padStart(3, "0")}%
       </span>
+      <button
+        type="button"
+        onClick={audio.toggle}
+        aria-label={audio.on ? "Mute ambience" : "Play ambience"}
+        aria-pressed={audio.on}
+        style={{
+          marginLeft: 2,
+          width: 28,
+          height: 28,
+          borderRadius: 999,
+          border: "1px solid rgba(26, 23, 20, 0.12)",
+          background: audio.on
+            ? "rgba(232, 112, 64, 0.14)"
+            : "rgba(26, 23, 20, 0.04)",
+          color: audio.on ? "var(--accent)" : "var(--wrapper-ink)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          padding: 0,
+          transition: "background 0.18s ease, color 0.18s ease",
+        }}
+      >
+        {audio.on ? (
+          <Volume2 size={13} strokeWidth={2} />
+        ) : (
+          <VolumeX size={13} strokeWidth={2} />
+        )}
+      </button>
     </div>
   );
 }

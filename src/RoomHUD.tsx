@@ -1,7 +1,8 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { BlinkingCat } from "./BlinkingCat";
-import { startAmbience, stopAmbience } from "./audio";
+import { useAudioToggle } from "./useAudioToggle";
+import { useIsMobile } from "./useIsMobile";
 
 /**
  * Persistent chrome shown over the room view: brand mark top-left,
@@ -103,7 +104,10 @@ export function RoomHUD({ onReset, visible, interactive }: Props) {
           onReset={onReset}
           interactive={shown && controlsShown}
         />
-        <AudioToggle interactive={shown && controlsShown} />
+        {/* Audio toggle lives in the StatusBar (top-right) on desktop;
+            the pill only renders here on mobile where StatusBar is
+            hidden. Same shared state via useAudioToggle. */}
+        <MobileAudioToggle interactive={shown && controlsShown} />
       </div>
     </div>
   );
@@ -179,21 +183,15 @@ function ResetButton({
 /** Ambience mute toggle. Default OFF — audio never auto-plays. Browser
  *  autoplay policy would block it anyway until a user gesture, and on
  *  a portfolio that opens silently the user always controls the audio. */
-function AudioToggle({ interactive }: { interactive: boolean }) {
-  const [on, setOn] = useState(false);
+/** Audio pill — only renders on MOBILE. On desktop the audio toggle
+ *  lives in the StatusBar (top-right) as a compact icon. Shared state
+ *  via useAudioToggle so they're never out of sync. */
+function MobileAudioToggle({ interactive }: { interactive: boolean }) {
+  const isMobile = useIsMobile();
+  const { on, toggle } = useAudioToggle();
 
-  const toggle = () => {
-    setOn((prev) => {
-      const next = !prev;
-      if (next) startAmbience(0.22);
-      else stopAmbience();
-      return next;
-    });
-  };
+  if (!isMobile) return null;
 
-  /* Sits to the right of the reset pill, both on the LEFT side of the
-   * viewport. Was originally bottom-right but it visually crowded the
-   * section-marker bleed area on the right gutter. */
   const base: CSSProperties = {
     position: "absolute",
     bottom: HUD_PADDING,
@@ -224,16 +222,6 @@ function AudioToggle({ interactive }: { interactive: boolean }) {
       type="button"
       onClick={toggle}
       style={base}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = "rgba(232, 112, 64, 0.12)";
-        e.currentTarget.style.borderColor = "rgba(232, 112, 64, 0.55)";
-        e.currentTarget.style.color = "var(--accent)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "rgba(255, 255, 255, 0.55)";
-        e.currentTarget.style.borderColor = "rgba(26, 23, 20, 0.12)";
-        e.currentTarget.style.color = "var(--wrapper-ink)";
-      }}
       aria-label={on ? "Mute ambience" : "Play ambience"}
       aria-pressed={on}
     >

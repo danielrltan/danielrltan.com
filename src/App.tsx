@@ -153,12 +153,25 @@ export default function App() {
   // recompute the renderer + camera projection every scroll frame →
   // visible snap.
   const overlayWidthVw = lerp(0, 100 - PINNED_WIDTH_VW, shrinkT);
+  // Content opacity — sections (everything below hero) only fade in
+  // during the FINAL portion of the shrink window. Otherwise the
+  // section marker / heading appear over the room geometry during the
+  // transition and the overlap reads as broken.
+  const contentOpacity = clamp01((shrinkT - 0.7) / 0.3);
   // Mobile: canvas does not shrink — it just fades out post-hero so
   // sections below get the full viewport width.
   const mobileFadeT = clamp01(
     (scrollProgress - MOBILE_FADE_AT) / (MOBILE_FADE_DONE - MOBILE_FADE_AT),
   );
   const mobileCanvasOpacity = 1 - mobileFadeT;
+
+  // Publish content opacity as a CSS variable on the document root so
+  // every non-hero section's .portfolio-col can read it without
+  // prop-drilling.
+  useEffect(() => {
+    const value = isMobile ? "1" : String(contentOpacity);
+    document.documentElement.style.setProperty("--content-opacity", value);
+  }, [contentOpacity, isMobile]);
 
   return (
     <AssemblyProvider>
@@ -198,6 +211,18 @@ export default function App() {
               background: "var(--wrapper-bg)",
               zIndex: 1,
               pointerEvents: "none",
+              /* Soft cast-shadow projecting LEFT onto the canvas plus
+                 a 1px walnut hairline at the boundary. Reads as a
+                 physical card laid over the room instead of a CSS
+                 paint cut. */
+              boxShadow:
+                "-1px 0 0 rgba(26, 23, 20, 0.10), -36px 0 64px -28px rgba(26, 23, 20, 0.30)",
+              /* Soft inner left edge — a 24px-wide gradient bleed of
+                 cream so the boundary doesn't read as a guillotine
+                 cut on the canvas side either. */
+              backgroundImage:
+                "linear-gradient(to right, rgba(248, 246, 243, 0) 0%, var(--wrapper-bg) 36px)",
+              backgroundRepeat: "no-repeat",
             }}
           />
         )}

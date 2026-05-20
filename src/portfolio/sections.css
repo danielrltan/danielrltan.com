@@ -43,7 +43,11 @@
    viewport. The fixed 3D canvas occupies the left 50vw. Generous
    right padding (10vw) and a touch of left breathing room so content
    doesn't kiss the canvas edge. max-width caps line length for
-   readability. */
+   readability. Opacity is driven by --content-opacity (set from
+   App.tsx based on the canvas-shrink progress) so the section
+   content only fades in AFTER the right overlay finishes covering
+   the canvas — otherwise the marker / heading would overlap the
+   room geometry during the shrink. */
 .portfolio-col {
   margin-left: 50vw;
   width: 50vw;
@@ -52,6 +56,11 @@
   pointer-events: auto;
   color: var(--wrapper-ink);
   position: relative;
+  opacity: var(--content-opacity, 1);
+}
+/* Hero never participates in the shrink gate — it's the room. */
+.portfolio-section--hero .portfolio-col {
+  opacity: 1;
 }
 
 /* Section number — Teenage-Engineering-style "03." marker. Solid

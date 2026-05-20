@@ -211,6 +211,20 @@ html, body { min-height: 100%; }
 html { overflow-x: hidden; overflow-y: auto; }
 body { overflow-x: hidden; }
 
+/* Hide the native scrollbar. The custom ScrollRail on the right
+   edge is the only scroll indicator — the OS scrollbar duplicates
+   it and breaks the editorial feel. */
+html {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE / old Edge */
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;                /* WebKit (Chrome / Safari / new Edge) */
+  width: 0;
+  height: 0;
+}
+
 canvas {
   display: block;
   touch-action: none;
