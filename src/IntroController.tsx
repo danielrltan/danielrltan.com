@@ -10,11 +10,9 @@ interface Props {
   onComplete: () => void;
 }
 
-// Float + cursor parallax disabled — the room sits flat on the new
-// product-photo ground plane instead of bobbing in space.
-const FLOAT_AMPLITUDE = 0;
-const FLOAT_FREQ = 0;
-const HOVER_LIFT = 0;
+// Float / cursor-parallax / hover-lift were removed when the
+// aesthetic shifted to product-photo (room on a plane). The constants
+// that drove them went with the code that used them.
 
 // ALL camera pose constants are exported and ARE the single source of
 // truth. `App.tsx` imports them for the initial Canvas `camera` prop,
@@ -92,7 +90,7 @@ export function IntroController({
     }
   }, [transitionStarted, roomGroupRef]);
 
-  useFrame((state, dt) => {
+  useFrame((_state, dt) => {
     const group = roomGroupRef.current;
     const camera = cameraRef.current;
     if (!group || !camera) return;
