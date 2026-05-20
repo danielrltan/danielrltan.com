@@ -195,15 +195,10 @@ export default function App() {
     window.scrollTo(0, 0);
   }, []);
 
-  // Toggle a loading-active class on <html> so CSS can:
-  //   - swap chrome text colours to white (high contrast on orange)
-  //   - hide the scroll hint (the loading screen isn't a scroll page)
-  // Instant changes only — no opacity transitions that look like
-  // fade-in/out flicker. Earlier draft used opacity transitions and
-  // those read as buggy on load completion.
-  useEffect(() => {
-    document.documentElement.classList.toggle("loading-active", !roomLoaded);
-  }, [roomLoaded]);
+  // (loading-active class is managed by AssemblyController based on
+  //  climaxDone — the proper source of truth. App-level toggle removed
+  //  to stop the two effects from fighting and causing chrome
+  //  contrast flicker.)
 
   return (
     <AssemblyProvider>

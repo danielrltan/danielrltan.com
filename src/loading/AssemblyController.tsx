@@ -22,11 +22,17 @@ function useAssembly(): AssemblyState {
 export function AssemblyProvider({ children }: { children: React.ReactNode }) {
   const state = useAssemblyProgress();
 
-  // Hide the custom MoveableCursor while the HUD is opaque — same
-  // mechanism the old LoadingScreen used. Lifted the moment the climax
-  // fade kicks in so the cursor reappears in sync with the room.
+  // Toggle a loading-active class on <html> that lets CSS hide the
+  // custom cursor, hide the hero scroll hint, and swap chrome text
+  // to white (so it reads against the orange cover dome).
+  //
+  // Trigger: climaxDone (cover dome opacity reaches 0 and the
+  // wireframes have unmounted) — NOT climaxReady, which fires the
+  // moment the fade starts. Switching too early causes the
+  // wordmark / eyebrow colour to flip back to walnut while the
+  // orange backdrop is still visible.
   useEffect(() => {
-    if (state.climaxReady) {
+    if (state.climaxDone) {
       document.documentElement.classList.remove("loading-active");
     } else {
       document.documentElement.classList.add("loading-active");
@@ -34,7 +40,7 @@ export function AssemblyProvider({ children }: { children: React.ReactNode }) {
     return () => {
       document.documentElement.classList.remove("loading-active");
     };
-  }, [state.climaxReady]);
+  }, [state.climaxDone]);
 
   // Remove the static #boot-screen the moment React mounts (same as
   // old LoadingScreen behavior).

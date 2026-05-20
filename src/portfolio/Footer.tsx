@@ -142,7 +142,7 @@ export function Footer() {
         {/* Bottom: copyright + sign-off */}
         <div className="footer-bottom">
           <span className="footer-copy">&copy; Daniel Tan {year}</span>
-          <span className="footer-mark">Made with intent.</span>
+          <span className="footer-mark">Made with intent and the orange crab.</span>
         </div>
       </div>
     </footer>
