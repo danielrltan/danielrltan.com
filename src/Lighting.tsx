@@ -179,11 +179,23 @@ export function Lighting() {
 
       {/* 13. Ambient directional — soft wash from front-right, bumped
               from 0.08 to lift the front face of the room where the
-              point lights don't reach. */}
+              point lights don't reach. Also the shadow caster — wide
+              orthographic frustum + 2048 shadow map → soft shadows
+              from the room geometry. */}
       <directionalLight
         color="#ffcc99"
         intensity={0.18}
         position={[2.823, 3.0, 2.596]}
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-bias={-0.001}
+        shadow-camera-left={-8}
+        shadow-camera-right={8}
+        shadow-camera-top={8}
+        shadow-camera-bottom={-8}
+        shadow-camera-near={0.5}
+        shadow-camera-far={20}
       />
 
       {/* 14. Window sunset — faint sun angle, bumped slightly so the

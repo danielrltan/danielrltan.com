@@ -293,7 +293,14 @@ export default function App() {
                 gl as unknown as { useLegacyLights?: boolean }
               ).useLegacyLights = false;
               gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-              gl.shadowMap.enabled = false;
+              // Real shadow maps enabled — Lighting.tsx's directional
+              // light casts onto the room (per-mesh castShadow set in
+              // Room.tsx). drei ContactShadows still provides the soft
+              // contact halo under the room. ShaderMaterial planes
+              // don't natively receiveShadow, so the plane stays clean
+              // (procedural dots).
+              gl.shadowMap.enabled = true;
+              gl.shadowMap.type = THREE.PCFSoftShadowMap;
               cameraRef.current = camera as THREE.PerspectiveCamera;
               camera.lookAt(START_LOOK_AT);
             }}

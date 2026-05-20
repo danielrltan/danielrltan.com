@@ -696,6 +696,18 @@ export function Room({ roomGroupRef }: RoomProps) {
       const cloned = scene.clone(true);
       cloned.updateMatrixWorld(true);
 
+      // Real shadows: propagate castShadow + receiveShadow to every
+      // mesh inside the GLB. The top-level group's flags don't apply
+      // to children automatically — three.js needs the per-mesh
+      // settings. Without this, the shadow-casting DirectionalLight
+      // in Lighting.tsx has nothing to cast.
+      cloned.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+
       // Snapshot monitor world AABB before processNode reparents
       // anything. Once statics are extracted from the cloned tree this
       // lookup would return null — and even if it didn't, the bodyPos

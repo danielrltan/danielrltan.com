@@ -48,6 +48,7 @@ const VERTEX = /* glsl */ `
 
 const FRAGMENT = /* glsl */ `
   uniform float uOpacity;
+  uniform float uExpansion;
   uniform vec2 uMouseUV;
   uniform float uGridCount;
   uniform float uDotRadius;
@@ -64,16 +65,19 @@ const FRAGMENT = /* glsl */ `
     // grid step; centering subtracts 0.5 so distance is from the
     // cell midpoint.
     vec2 cell = fract(vUv * uGridCount) - 0.5;
-    // smoothstep over a one-pixel band gives crisp but not jaggy.
-    // dpdx/dpdy aren't great on a flat plane in 3D, so we use a tiny
-    // fixed feather instead.
     float dotMask = 1.0 - smoothstep(uDotRadius - 0.02, uDotRadius + 0.02, length(cell));
 
-    // Radial fade from plane center.
+    // Radial fade from plane center (vignette).
     float r = distance(vUv, vec2(0.5));
-    // r ∈ [0, 0.707] (corner). Normalise relative to FADE_OUTER so the
-    // gradient covers the configured falloff range.
     float fade = 1.0 - smoothstep(uFadeInner, uFadeOuter, r);
+
+    // Radial EXPANSION — only show dots whose distance from center
+    // is within the current expansion frontier. uExpansion ramps
+    // from 0 (no dots) → 1 (all dots up to FADE_OUTER visible) over
+    // the post-climax animation. Small smoothstep band at the
+    // frontier so it feels like a soft wavefront, not a hard ring.
+    float frontier = uExpansion * uFadeOuter;
+    float reveal = 1.0 - smoothstep(frontier, frontier + 0.025, r);
 
     // Cursor dissolve — removes dots in a blob around mouseUV.
     float md = distance(vUv, uMouseUV);
@@ -83,10 +87,9 @@ const FRAGMENT = /* glsl */ `
       md
     );
 
-    // Combine: dot presence × radial fade × inverse dissolve.
-    float a = dotMask * fade * (1.0 - dissolve) * 0.32;
+    // Combine: dot presence × radial fade × radial reveal × inverse dissolve.
+    float a = dotMask * fade * reveal * (1.0 - dissolve) * 0.32;
 
-    // Final colour: bg, with the dot colour mixed in by alpha 'a'.
     vec3 color = mix(uBg, uDot, a);
     gl_FragColor = vec4(color, uOpacity);
   }
@@ -101,6 +104,7 @@ export function GroundPlane() {
   const uniforms = useMemo(
     () => ({
       uOpacity: { value: 0 },
+      uExpansion: { value: 0 },
       uMouseUV: { value: new THREE.Vector2(-1, -1) },
       uGridCount: { value: GRID_COUNT },
       uDotRadius: { value: DOT_RADIUS },
@@ -113,6 +117,11 @@ export function GroundPlane() {
     }),
     [],
   );
+
+  // Start the radial expansion animation only AFTER the wireframe
+  // climax has fully completed. We track this with a ref so the
+  // useFrame loop knows when to begin ramping uExpansion.
+  const expansionStartedRef = useRef<number | null>(null);
 
   const mousePx = useRef({ x: -10000, y: -10000 });
   useEffect(() => {
@@ -141,11 +150,30 @@ export function GroundPlane() {
     const mesh = meshRef.current;
     if (!mat || !mesh) return;
 
-    // Opacity fades in synchronously with the cover-dome fade-out.
-    const target = assembly.climaxReady ? 1 : 0;
-    const rate = 1 - Math.exp(-dt * 4.5);
-    const cur = mat.uniforms.uOpacity.value as number;
-    mat.uniforms.uOpacity.value = cur + (target - cur) * rate;
+    // Material is fully opaque once it's on screen — the reveal is
+    // driven by uExpansion, not opacity.
+    mat.uniforms.uOpacity.value = 1;
+
+    // Radial expansion: starts the moment climaxDone fires (wireframe
+    // assembly is done AND the cover dome has finished fading out).
+    // ease-out cubic over ~900ms gives the "dropping ontop of the
+    // plane" feel — rapid initial reveal, soft settle.
+    const EXPANSION_DURATION_MS = 900;
+    if (assembly.climaxDone) {
+      if (expansionStartedRef.current == null) {
+        expansionStartedRef.current = performance.now();
+      }
+      const t = Math.min(
+        1,
+        (performance.now() - expansionStartedRef.current) /
+          EXPANSION_DURATION_MS,
+      );
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      mat.uniforms.uExpansion.value = eased;
+    } else {
+      mat.uniforms.uExpansion.value = 0;
+    }
 
     // Raycast mouse → world point on plane → UV.
     if (mousePx.current.x < -1000) {
