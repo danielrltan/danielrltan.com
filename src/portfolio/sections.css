@@ -51,7 +51,14 @@
 .portfolio-col {
   margin-left: 50vw;
   width: 50vw;
-  padding: 0 10vw 0 4vw;
+  /* Balanced left/right padding so the card has breathing room from
+     both the canvas divider AND the right-edge scroll rail. Earlier
+     `0 5vw 0 8vw` combined with the card's `margin-right: -4vw` made
+     the card's right edge sit at ~99vw, crashing into the ScrollRail
+     (right: 28px). Now: 8vw on both sides, card margin-right zeroed
+     below — card right edge lands at 92vw, leaving the rail a clean
+     ~8vw gutter. */
+  padding: 0 8vw;
   max-width: 880px;
   pointer-events: auto;
   color: var(--wrapper-ink);
@@ -81,9 +88,18 @@
   user-select: none;
   pointer-events: none;
 }
+/* Arrow accent after the section number — was a `.` rendered in
+   the dotted font, which produced a 4-dot starburst that read as a
+   stray decorative glyph. A simple arrow in the sans face is more
+   purposeful — it gestures the eye down into the section card. */
 .section-marker::after {
-  content: ".";
+  content: "↓";
   color: var(--accent);
+  font-family: var(--font-body, system-ui);
+  font-size: 0.32em;
+  font-weight: 500;
+  align-self: center;
+  transform: translateY(-0.15em);
 }
 .section-index {
   font-family: var(--font-mono);
@@ -146,7 +162,10 @@
   background-color: #ffffff;
   border: 1px solid rgba(26, 23, 20, 0.08);
   padding: 72px 64px;
-  margin-right: -4vw;
+  /* Was -4vw — pushed the card past the column's right padding so it
+     overlapped the ScrollRail. Card now sits inside the column's
+     gutter, balanced with the left side. */
+  margin-right: 0;
   box-shadow:
     0 1px 0 rgba(26, 23, 20, 0.04),
     0 32px 64px -36px rgba(180, 80, 30, 0.12);

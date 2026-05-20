@@ -34,19 +34,32 @@ const DOT_RADIUS = 0.055;
 const FADE_INNER = 0.05;
 const FADE_OUTER = 0.22;
 // Cursor dissolve — smaller hole.
-const DISSOLVE_RADIUS = 0.04;
+const DISSOLVE_RADIUS = 0.02;
 const DISSOLVE_FEATHER = 0.02;
 const DISSOLVE_LERP_RATE = 9.0;
 
+// Custom ShaderMaterial: three.js only auto-injects the logdepthbuf
+// chunks into its built-in materials, so to keep this plane in the
+// same depth space as the rest of the scene (now using
+// `logarithmicDepthBuffer: true`) we have to opt-in manually. The
+// `<common>` include brings in `isPerspectiveMatrix`, which the
+// vertex chunk needs.
 const VERTEX = /* glsl */ `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+
   varying vec2 vUv;
   void main() {
     vUv = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    #include <logdepthbuf_vertex>
   }
 `;
 
 const FRAGMENT = /* glsl */ `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+
   uniform float uOpacity;
   uniform float uExpansion;
   uniform vec2 uMouseUV;
@@ -61,6 +74,7 @@ const FRAGMENT = /* glsl */ `
   varying vec2 vUv;
 
   void main() {
+    #include <logdepthbuf_fragment>
     // Procedural dot pattern. fract() builds a 0..1 cell at every
     // grid step; centering subtracts 0.5 so distance is from the
     // cell midpoint.
@@ -87,8 +101,11 @@ const FRAGMENT = /* glsl */ `
       md
     );
 
-    // Combine: dot presence × radial fade × radial reveal × inverse dissolve.
-    float a = dotMask * fade * reveal * (1.0 - dissolve) * 0.32;
+    // Combine: dot presence × radial fade × radial reveal × inverse
+    // dissolve. Alpha multiplier kept low (0.14) so the perceived
+    // plane tone reads as a light paper-cream — higher values push
+    // the mix toward uDot and the surface starts reading as muddy.
+    float a = dotMask * fade * reveal * (1.0 - dissolve) * 0.25;
 
     vec3 color = mix(uBg, uDot, a);
     gl_FragColor = vec4(color, uOpacity);
@@ -112,8 +129,13 @@ export function GroundPlane() {
       uFadeOuter: { value: FADE_OUTER },
       uDissolveRadius: { value: DISSOLVE_RADIUS },
       uDissolveFeather: { value: DISSOLVE_FEATHER },
-      uBg: { value: new THREE.Color("#ecedef") },
-      uDot: { value: new THREE.Color("#15171a") },
+      // uBg lifted slightly above --wrapper-bg so the plane reads as
+      // a brighter, paper-toned surface that the room sits on. uDot
+      // is a warm walnut rather than a cool near-black — alpha-mixed
+      // against the bright bg it produces a paper-cream tone instead
+      // of muddy slate.
+      uBg: { value: new THREE.Color("#0") },
+      uDot: { value: new THREE.Color("#000000") },
     }),
     [],
   );
@@ -161,7 +183,7 @@ export function GroundPlane() {
     // animation rather than something that happens afterwards.
     // ease-out cubic over ~900ms — by the time the dome is fully
     // gone the rice has just settled.
-    const EXPANSION_DURATION_MS = 900;
+    const EXPANSION_DURATION_MS = 7000;
     if (assembly.climaxReady) {
       if (expansionStartedRef.current == null) {
         expansionStartedRef.current = performance.now();

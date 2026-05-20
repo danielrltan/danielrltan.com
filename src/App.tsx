@@ -105,7 +105,11 @@ export default function App() {
 
   /* First scroll / wheel / touch input triggers the intro tilt. No
    * more "click to begin" gate — the natural impulse on a portfolio
-   * page is to scroll, so we use that as the start signal. */
+   * page is to scroll, so we use that as the start signal. Keydown
+   * was previously also a trigger (so any key press could "enter"
+   * the page); removed because it was firing on incidental key
+   * presses (DevTools shortcuts, browser hotkeys) before the user
+   * had actually decided to engage. */
   useEffect(() => {
     if (transitionStarted) return;
     const fire = () => {
@@ -115,12 +119,10 @@ export default function App() {
     window.addEventListener("wheel", fire, opts);
     window.addEventListener("touchstart", fire, opts);
     window.addEventListener("scroll", fire, opts);
-    window.addEventListener("keydown", fire, opts);
     return () => {
       window.removeEventListener("wheel", fire);
       window.removeEventListener("touchstart", fire);
       window.removeEventListener("scroll", fire);
-      window.removeEventListener("keydown", fire);
     };
   }, [transitionStarted, startTransition]);
 
@@ -278,29 +280,61 @@ export default function App() {
             camera={{
               position: [START_POS.x, START_POS.y, START_POS.z],
               fov: START_FOV,
-              near: 0.1,
-              far: 200,
+              // Near widened 0.1 → 1 (no scene geometry sits inside
+              // distance 1 from camera — minDistance is 1.2 on orbit
+              // controls). Far must cover the loading-screen cover
+              // dome (sphereGeometry radius 60 centred at origin):
+              // from START_POS at distance ~95, the back face of the
+              // dome lands at ~155. Far = 180 leaves headroom. Depth
+              // precision is fine despite the wide range because
+              // `logarithmicDepthBuffer: true` is set on the renderer.
+              near: 1,
+              far: 180,
             }}
+            // High-DPR screens already supersample — MSAA on top is
+            // redundant cost. Pin DPR to 1.25 on mobile (cuts fragment
+            // shader work nearly in half on 3× phones) and disable AA
+            // when DPR is high enough that the extra sampling buys
+            // nothing visually.
+            dpr={isMobile ? [1, 1.25] : [1, 1.5]}
             gl={{
-              antialias: true,
+              antialias: (typeof window !== "undefined"
+                ? window.devicePixelRatio < 1.5
+                : true),
               alpha: true,
               toneMapping: THREE.ACESFilmicToneMapping,
-              toneMappingExposure: 0.8,
+              // Exposure lifted 0.8 → 1.0 so the scene reads brighter
+              // and less moody — combined with the cooler/brighter
+              // light colours in Lighting.tsx, removes the sunset
+              // cast that made the room feel like dusk.
+              toneMappingExposure: 1.0,
+              powerPreference: "high-performance",
+              // Z-fighting fix: with the iso camera composing many
+              // nearly-coplanar surfaces (mirror against wall, cat on
+              // bed, ContactShadow above plane), the standard 24-bit
+              // depth buffer doesn't have enough precision spread over
+              // the scene depth range. Logarithmic depth gives ~64-bit
+              // equivalent precision distribution. GroundPlane.tsx's
+              // custom ShaderMaterial includes the matching
+              // logdepthbuf chunks so its sort order stays consistent.
+              logarithmicDepthBuffer: true,
             }}
             onCreated={({ gl, camera }) => {
               gl.outputColorSpace = THREE.SRGBColorSpace;
               (
                 gl as unknown as { useLegacyLights?: boolean }
               ).useLegacyLights = false;
-              gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
               // Real shadow maps enabled — Lighting.tsx's directional
               // light casts onto the room (per-mesh castShadow set in
               // Room.tsx). drei ContactShadows still provides the soft
               // contact halo under the room. ShaderMaterial planes
               // don't natively receiveShadow, so the plane stays clean
-              // (procedural dots).
+              // (procedural dots). PCFShadowMap (not PCFSoft) — the
+              // soft variant takes 9 samples per fragment for the
+              // penumbra; we trade that for cheaper hard-edged PCF
+              // since shadow blur is already provided by ContactShadows.
               gl.shadowMap.enabled = true;
-              gl.shadowMap.type = THREE.PCFSoftShadowMap;
+              gl.shadowMap.type = THREE.PCFShadowMap;
               cameraRef.current = camera as THREE.PerspectiveCamera;
               camera.lookAt(START_LOOK_AT);
             }}
@@ -330,6 +364,7 @@ export default function App() {
                   scale={16}
                   blur={3.0}
                   far={3.5}
+                  resolution={256}
                   color="#0a0c10"
                 />
                 {/* Mobile: keep the Physics provider mounted (Room's

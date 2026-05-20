@@ -1,0 +1,104 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - main:
+      - generic:
+        - generic [ref=e8]:
+          - generic [ref=e9]: Portfolio · 2026
+          - heading "Daniel R.L. Tan" [level=1] [ref=e10]
+          - paragraph [ref=e11]: Software engineer · interactive web · 3D
+        - generic: scroll ↓
+      - generic [ref=e12]:
+        - generic [ref=e13]: About
+        - heading "Who I am" [level=2] [ref=e14]
+        - paragraph [ref=e15]: I’m a software engineer who builds full-stack web applications and interactive 3D experiences. I care about details that most people don’t notice — the easing curve on a hover, the inertia of a drag, the latency between a click and a frame.
+        - paragraph [ref=e16]: The room you’re looking at is a hand-modelled likeness of where I work. The keyboard types when you type. The mouse follows your cursor. Yank the PC tower; throw the cat. It’s a website that’s also a toy.
+        - paragraph [ref=e17]: I work in React, TypeScript, three.js / R3F, Rapier physics, shaders, and a steady rotation of backend stacks depending on what a project actually needs.
+      - generic [ref=e18]:
+        - generic [ref=e19]: Projects
+        - heading "Selected work" [level=2] [ref=e20]
+        - article [ref=e21]:
+          - generic [ref=e23]: Interactive 3D Portfolio
+          - generic [ref=e24]:
+            - heading "Interactive 3D Portfolio" [level=3] [ref=e25]
+            - paragraph [ref=e26]: This site. Hand-modelled isometric bedroom in Blender, brought to life with React Three Fiber + Rapier physics. Real keyboard typing, mouse cursor following, throwable objects, scroll-driven camera, signature replay.
+            - generic [ref=e27]:
+              - generic [ref=e28]: React
+              - generic [ref=e29]: TypeScript
+              - generic [ref=e30]: R3F
+              - generic [ref=e31]: Rapier
+              - generic [ref=e32]: GLSL
+            - link "GitHub →" [ref=e34] [cursor=pointer]:
+              - /url: https://github.com/danielrltan/portfolioweb
+        - article [ref=e35]:
+          - generic [ref=e37]: Project Two
+          - generic [ref=e38]:
+            - heading "Project Two" [level=3] [ref=e39]
+            - paragraph [ref=e40]: Placeholder for a second showcase project. Replace with whatever you want recruiters to see first.
+            - generic [ref=e41]:
+              - generic [ref=e42]: TypeScript
+              - generic [ref=e43]: Next.js
+              - generic [ref=e44]: Postgres
+        - article [ref=e45]:
+          - generic [ref=e47]: Project Three
+          - generic [ref=e48]:
+            - heading "Project Three" [level=3] [ref=e49]
+            - paragraph [ref=e50]: Placeholder. Tell the story of a problem you solved, the constraints you worked under, and the choice you'd make differently next time.
+            - generic [ref=e51]:
+              - generic [ref=e52]: Python
+              - generic [ref=e53]: FastAPI
+              - generic [ref=e54]: React
+      - generic [ref=e55]:
+        - generic [ref=e56]: Experience
+        - heading "Timeline" [level=2] [ref=e57]
+        - generic [ref=e58]:
+          - generic [ref=e59]: 2024 — present
+          - generic [ref=e60]: Independent / freelance
+          - generic [ref=e61]: Building interactive web experiences and shipping side projects.
+        - generic [ref=e62]:
+          - generic [ref=e63]: Education
+          - generic [ref=e64]: University name placeholder
+          - generic [ref=e65]: B.Sc. Computer Science · graduation year placeholder.
+        - link "Download Resume ↓" [ref=e67] [cursor=pointer]:
+          - /url: /resume/Daniel_Tan_Resume.pdf
+      - generic [ref=e68]:
+        - generic [ref=e69]: Contact
+        - heading "Let’s talk" [level=2] [ref=e70]
+        - link "hello@danielrltan.com" [ref=e71] [cursor=pointer]:
+          - /url: mailto:hello@danielrltan.com
+        - generic [ref=e72]:
+          - link "GitHub" [ref=e73] [cursor=pointer]:
+            - /url: https://github.com/danielrltan
+          - link "LinkedIn" [ref=e74] [cursor=pointer]:
+            - /url: https://www.linkedin.com/in/danielrltan
+        - paragraph [ref=e75]: The fastest way to reach me is email. I read everything; I reply to most things.
+        - button "Back to top ↑" [ref=e77] [cursor=pointer]
+    - generic:
+      - generic:
+        - generic: Daniel Tan
+      - generic:
+        - button "Reset room":
+          - img
+          - text: reset
+        - generic:
+          - generic:
+            - img
+            - generic: rotate
+          - generic:
+            - img
+            - generic: pan
+          - generic:
+            - img
+            - generic: zoom
+    - generic: click to begin
+  - main [ref=e86]:
+    - heading "Daniel R.L. Tan — Software Engineer Portfolio" [level=1] [ref=e87]
+    - paragraph [ref=e88]: Welcome to the personal portfolio of Daniel R.L. Tan, a software engineer and web developer. This site presents Daniel's resume, software projects, contact information, and professional background through an interactive 3D bedroom built with React, TypeScript, and three.js.
+    - paragraph [ref=e89]: "Sections available inside the interactive desktop: About, Resume, Projects, GitHub activity, and Contact. For recruiters and hiring managers, the resume window contains the full work history and the contact window includes a direct email link."
+    - paragraph [ref=e90]:
+      - text: Connect with Daniel on
+      - link "LinkedIn" [ref=e91] [cursor=pointer]:
+        - /url: https://www.linkedin.com/in/danielrltan
+      - text: or
+      - link "GitHub" [ref=e92] [cursor=pointer]:
+        - /url: https://github.com/danielrltan
+      - text: .

@@ -1,0 +1,34 @@
+[
+  {
+    "i": 0,
+    "width": 1920,
+    "height": 991,
+    "engine": null,
+    "zIndex": "0",
+    "hasPaint": "center=0,0,0,0"
+  },
+  {
+    "i": 1,
+    "width": 1920,
+    "height": 991,
+    "engine": null,
+    "zIndex": "0",
+    "hasPaint": "center=0,0,0,0"
+  },
+  {
+    "i": 2,
+    "width": 1920,
+    "height": 991,
+    "engine": "three.js r170",
+    "zIndex": "",
+    "hasPaint": "webgl"
+  },
+  {
+    "i": 3,
+    "width": 1920,
+    "height": 991,
+    "engine": null,
+    "zIndex": "40",
+    "hasPaint": "center=0,0,0,0"
+  }
+]

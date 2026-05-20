@@ -1,0 +1,524 @@
+<style>
+  /* ---- override frame for full-bleed dark canvas ---- */
+  body { background: #0c0a09 !important; color: #f0e4d4 !important; }
+  #claude-content { padding: 2rem 2.5rem !important; max-width: 1280px; margin: 0 auto; }
+  .header { background: #110d0b !important; border-bottom: 1px solid #2a201b !important; }
+  .header h1 { color: #d4b896 !important; }
+  .indicator-bar { background: #110d0b !important; border-top: 1px solid #2a201b !important; }
+  .indicator-bar span { color: #c4a880 !important; }
+
+  h2 { font-family: 'Inter', system-ui, sans-serif; font-weight: 700; letter-spacing: -0.02em; color: #f5e6d3; }
+  .subtitle { color: #a89478 !important; font-size: 0.95rem; }
+
+  /* ---- card grid: 2x2 ---- */
+  .preview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-top: 1.5rem;
+  }
+  @media (max-width: 900px) { .preview-grid { grid-template-columns: 1fr; } }
+
+  .preview-card {
+    background: #16110e;
+    border: 1px solid #2a201b;
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    display: flex;
+    flex-direction: column;
+  }
+  .preview-card:hover { border-color: #ff7842; transform: translateY(-3px); box-shadow: 0 10px 30px rgba(255, 120, 66, 0.12); }
+  .preview-card.selected { border-color: #ff7842; box-shadow: 0 0 0 1px #ff7842 inset, 0 10px 30px rgba(255, 120, 66, 0.25); }
+
+  .preview-stage {
+    aspect-ratio: 16/10;
+    background: #0c0a09;
+    position: relative;
+    overflow: hidden;
+    font-family: 'JetBrains Mono', 'Menlo', monospace;
+  }
+
+  .preview-body {
+    padding: 1rem 1.1rem 1.15rem;
+    border-top: 1px solid #2a201b;
+  }
+  .preview-body .tag {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #ff7842;
+    background: rgba(255, 120, 66, 0.08);
+    padding: 0.18rem 0.5rem;
+    border-radius: 4px;
+    margin-bottom: 0.55rem;
+  }
+  .preview-body h3 {
+    color: #f5e6d3;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 1.05rem;
+    margin-bottom: 0.3rem;
+    letter-spacing: -0.01em;
+  }
+  .preview-body p { color: #a89478; font-size: 0.85rem; line-height: 1.5; margin: 0; }
+  .preview-body .recommend {
+    display: inline-block;
+    font-size: 0.7rem;
+    color: #ffb37a;
+    margin-left: 0.5rem;
+    font-weight: 500;
+  }
+
+  /* =================================================================== */
+  /*  Direction 1: SELF-ASSEMBLY                                         */
+  /* =================================================================== */
+  .stage-assembly {
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(255, 120, 66, 0.06), transparent 60%),
+      #0c0a09;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .iso-room {
+    position: relative;
+    width: 280px;
+    height: 180px;
+    transform: rotateX(58deg) rotateZ(-45deg);
+    transform-style: preserve-3d;
+    transform-origin: center;
+  }
+  .iso-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255, 120, 66, 0.18) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 120, 66, 0.18) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  .iso-box {
+    position: absolute;
+    border: 1.5px solid #ff7842;
+    background: rgba(255, 120, 66, 0.05);
+    box-shadow: 0 0 12px rgba(255, 120, 66, 0.35), inset 0 0 8px rgba(255, 120, 66, 0.18);
+    opacity: 0;
+    transform: scale(0.7);
+    transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .iso-box.lit { opacity: 1; transform: scale(1); }
+  .iso-box.lit::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 120, 66, 0.08);
+    animation: scanFill 1.4s ease-in;
+  }
+  @keyframes scanFill {
+    0% { background: rgba(255, 120, 66, 0); }
+    100% { background: rgba(255, 120, 66, 0.18); }
+  }
+
+  .assembly-readout {
+    position: absolute;
+    left: 1rem; right: 1rem; bottom: 0.9rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #ffb37a;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .assembly-bar {
+    position: absolute;
+    left: 1rem; right: 1rem; bottom: 2.1rem;
+    height: 2px;
+    background: rgba(255, 120, 66, 0.15);
+  }
+  .assembly-bar > div { height: 100%; background: #ff7842; box-shadow: 0 0 6px #ff7842; width: 0%; transition: width 0.3s ease; }
+
+  /* =================================================================== */
+  /*  Direction 2: CRT SCANLINE MATERIALIZE                              */
+  /* =================================================================== */
+  .stage-crt {
+    background: #0a0805;
+    position: relative;
+  }
+  .stage-crt::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(255, 120, 66, 0.05) 0 1px,
+      transparent 1px 3px
+    );
+    pointer-events: none;
+    z-index: 4;
+  }
+  .stage-crt::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.7) 100%);
+    pointer-events: none;
+    z-index: 5;
+  }
+  .crt-image {
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(to bottom, rgba(255,120,66,0.05) 0%, transparent 50%, rgba(40,18,8,0.4) 100%),
+      radial-gradient(ellipse 60% 40% at 50% 55%, rgba(255,120,66,0.35) 0%, rgba(255,120,66,0.12) 40%, transparent 70%),
+      radial-gradient(ellipse 12% 22% at 32% 50%, rgba(255,180,100,0.5), transparent 70%),
+      radial-gradient(ellipse 10% 18% at 68% 48%, rgba(255,180,100,0.5), transparent 70%),
+      #1a0d06;
+    clip-path: inset(100% 0 0 0);
+    animation: crtReveal 4s ease-in-out infinite;
+    z-index: 1;
+  }
+  @keyframes crtReveal {
+    0%   { clip-path: inset(100% 0 0 0); }
+    70%  { clip-path: inset(0 0 0 0); }
+    78%  { filter: brightness(2.2) saturate(0.6); }
+    82%  { filter: brightness(1) saturate(1); }
+    95%  { clip-path: inset(0 0 0 0); opacity: 1; }
+    100% { clip-path: inset(0 0 100% 0); opacity: 0.5; }
+  }
+  .crt-scanline {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(to bottom, transparent, #ffb37a, transparent);
+    box-shadow: 0 0 12px #ff7842, 0 0 24px rgba(255, 120, 66, 0.5);
+    z-index: 3;
+    top: 0;
+    animation: crtSweep 4s ease-in-out infinite;
+  }
+  @keyframes crtSweep {
+    0%   { top: 0%; opacity: 1; }
+    70%  { top: 100%; opacity: 1; }
+    75%  { opacity: 0; }
+    100% { opacity: 0; }
+  }
+  .crt-noise {
+    position: absolute; inset: 0;
+    opacity: 0.06;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    z-index: 2;
+    animation: crtNoiseShift 0.18s steps(3) infinite;
+  }
+  @keyframes crtNoiseShift {
+    0% { transform: translate(0,0); } 33% { transform: translate(-3px,2px); } 66% { transform: translate(2px,-2px); } 100% { transform: translate(0,0); }
+  }
+  .crt-readout {
+    position: absolute;
+    left: 1rem; bottom: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    color: #ffb37a;
+    text-transform: uppercase;
+    z-index: 6;
+    text-shadow: 0 0 4px rgba(255, 120, 66, 0.6);
+  }
+
+  /* =================================================================== */
+  /*  Direction 3: ASCII PORTRAIT                                        */
+  /* =================================================================== */
+  .stage-ascii {
+    background: #0c0a09;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .ascii-canvas {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 9px;
+    line-height: 9px;
+    color: #ff7842;
+    text-shadow: 0 0 3px rgba(255, 120, 66, 0.5);
+    white-space: pre;
+    letter-spacing: 0;
+    user-select: none;
+  }
+  .ascii-readout {
+    position: absolute;
+    left: 1rem; right: 1rem; bottom: 0.8rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    color: #ffb37a;
+    text-transform: uppercase;
+  }
+
+  /* =================================================================== */
+  /*  Direction 4: DIAGNOSTIC POST                                       */
+  /* =================================================================== */
+  .stage-post {
+    background: #0a0805;
+    padding: 0.9rem 1.1rem;
+    overflow: hidden;
+  }
+  .post-line {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.66rem;
+    line-height: 1.55;
+    color: #d4a070;
+    white-space: pre;
+    opacity: 0;
+    animation: postAppear 0.18s ease forwards;
+  }
+  .post-line.dim { color: #8a6038; }
+  .post-line.ok { color: #ff9c5c; }
+  .post-line.bar { color: #ffb37a; }
+  .post-line .arrow { color: #ff7842; }
+  @keyframes postAppear { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+  .post-cursor {
+    display: inline-block;
+    width: 6px;
+    height: 0.7rem;
+    background: #ff7842;
+    margin-left: 2px;
+    vertical-align: middle;
+    animation: postBlink 0.8s steps(2) infinite;
+  }
+  @keyframes postBlink { 0% { opacity: 1; } 50% { opacity: 0; } }
+
+  .why-real {
+    margin-top: 2rem;
+    padding: 1.1rem 1.3rem;
+    background: rgba(255, 120, 66, 0.04);
+    border-left: 3px solid #ff7842;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.88rem;
+    color: #d4a070;
+    line-height: 1.6;
+  }
+  .why-real strong { color: #ffb37a; }
+  .why-real code { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #ff7842; background: rgba(255,120,66,0.08); padding: 0.1rem 0.4rem; border-radius: 3px; }
+</style>
+
+<h2>Loading screen direction</h2>
+<p class="subtitle">Each preview is live and looping. Click one to vote — you'll respond in the terminal regardless.</p>
+
+<div class="preview-grid">
+
+  <!-- ====================== DIRECTION 1 ====================== -->
+  <div class="preview-card" data-choice="assembly" onclick="toggleSelect(this)">
+    <div class="preview-stage stage-assembly">
+      <div class="iso-room">
+        <div class="iso-grid"></div>
+        <!-- 14 boxes representing room furniture, positioned in iso space -->
+        <div class="iso-box" data-i="0"  style="left:8%;  top:10%; width:32%; height:8%;"></div>   <!-- back wall -->
+        <div class="iso-box" data-i="1"  style="left:8%;  top:10%; width:8%;  height:80%;"></div>  <!-- left wall -->
+        <div class="iso-box" data-i="2"  style="left:18%; top:24%; width:24%; height:18%;"></div>  <!-- bed -->
+        <div class="iso-box" data-i="3"  style="left:48%; top:18%; width:16%; height:14%;"></div>  <!-- shelf -->
+        <div class="iso-box" data-i="4"  style="left:68%; top:14%; width:18%; height:22%;"></div>  <!-- desk -->
+        <div class="iso-box" data-i="5"  style="left:71%; top:8%;  width:12%; height:8%;"></div>   <!-- monitor -->
+        <div class="iso-box" data-i="6"  style="left:32%; top:54%; width:14%; height:14%;"></div>  <!-- dresser -->
+        <div class="iso-box" data-i="7"  style="left:54%; top:50%; width:8%;  height:8%;"></div>   <!-- chair -->
+        <div class="iso-box" data-i="8"  style="left:20%; top:70%; width:10%; height:6%;"></div>   <!-- rug -->
+        <div class="iso-box" data-i="9"  style="left:48%; top:38%; width:6%;  height:6%;"></div>   <!-- lamp -->
+        <div class="iso-box" data-i="10" style="left:62%; top:64%; width:6%;  height:6%;"></div>   <!-- plush -->
+        <div class="iso-box" data-i="11" style="left:74%; top:38%; width:8%;  height:4%;"></div>   <!-- keyboard -->
+        <div class="iso-box" data-i="12" style="left:28%; top:38%; width:5%;  height:4%;"></div>   <!-- pillow -->
+        <div class="iso-box" data-i="13" style="left:42%; top:14%; width:5%;  height:5%;"></div>   <!-- mirror -->
+      </div>
+      <div class="assembly-bar"><div data-bar="assembly"></div></div>
+      <div class="assembly-readout">
+        <span>streaming room.glb</span>
+        <span><span data-counter="assembly-bytes">0.0</span> / 27.4 MB</span>
+      </div>
+    </div>
+    <div class="preview-body">
+      <span class="tag">A · Self-assembly</span><span class="recommend">recommended</span>
+      <h3>The room builds itself in front of you</h3>
+      <p>Empty floor + amber wireframe grid. As real bytes stream in, mesh AABBs from <code>scene_manifest.json</code> snap into place in waves. When the GLB finishes, wireframes morph into the textured scene and the intro camera lerp begins.</p>
+    </div>
+  </div>
+
+  <!-- ====================== DIRECTION 2 ====================== -->
+  <div class="preview-card" data-choice="crt" onclick="toggleSelect(this)">
+    <div class="preview-stage stage-crt">
+      <div class="crt-image"></div>
+      <div class="crt-scanline"></div>
+      <div class="crt-noise"></div>
+      <div class="crt-readout"><span data-counter="crt-bytes">0.0</span> / 27.4 MiB · signal acquiring</div>
+    </div>
+    <div class="preview-body">
+      <span class="tag">B · CRT scanline</span>
+      <h3>Signal coming in, line by line</h3>
+      <p>Black CRT void. The iso view of the room appears scanline-by-scanline from top to bottom, driven by actual byte progress. Phosphor glow, vignette, subtle noise. When complete, the scanlines flicker once and the real scene takes over.</p>
+    </div>
+  </div>
+
+  <!-- ====================== DIRECTION 3 ====================== -->
+  <div class="preview-card" data-choice="ascii" onclick="toggleSelect(this)">
+    <div class="preview-stage stage-ascii">
+      <pre class="ascii-canvas" id="ascii-canvas"></pre>
+      <div class="ascii-readout">
+        <span>decoding scene</span>
+        <span><span data-counter="ascii-pct">0</span>%</span>
+      </div>
+    </div>
+    <div class="preview-body">
+      <span class="tag">C · ASCII portrait</span>
+      <h3>The room emerges from typed noise</h3>
+      <p>A monospace pre-block. Characters intensify from sparse dots to dense gradient blocks following real load progress, slowly resolving into a recognizable iso silhouette of the room. The cat is the last thing to resolve, blinks, then dissolves into 3D.</p>
+    </div>
+  </div>
+
+  <!-- ====================== DIRECTION 4 ====================== -->
+  <div class="preview-card" data-choice="post" onclick="toggleSelect(this)">
+    <div class="preview-stage stage-post" id="post-stage"></div>
+    <div class="preview-body">
+      <span class="tag">D · Diagnostic POST</span>
+      <h3>Receipt-printer boot diagnostic</h3>
+      <p>Live monospace stream of real mesh names, byte sizes, texture dimensions parsed from the GLB. Progress bars made of ASCII chars. Counters for bytes, meshes, materials, shaders. Reads like a tech demo but every number is real loading state.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="why-real">
+  <strong>What makes each one show "real" progress:</strong> all four are wired to (a) GLB <code>onProgress</code> bytes (the long pole — ~27 MB) and (b) per-mesh resolution as <code>GLTFLoader</code> walks the tree. The differences are entirely aesthetic — feasibility is roughly equal across all four.
+</div>
+
+<script>
+  /* ============== ANIMATION DRIVER ============== */
+  function clamp(x, a, b) { return Math.min(b, Math.max(a, x)); }
+
+  /* ----- Direction 1: self-assembly loop ----- */
+  (function () {
+    const boxes = document.querySelectorAll('.iso-box');
+    const bar = document.querySelector('[data-bar="assembly"]');
+    const counter = document.querySelector('[data-counter="assembly-bytes"]');
+    let t = 0;
+    function tick() {
+      t = (t + 1) % 280; // ~5.6s cycle at 50ms
+      const phase = t / 280; // 0 -> 1
+      // Boxes light up in sequence
+      boxes.forEach((b, i) => {
+        const thresh = (i + 1) / (boxes.length + 2);
+        b.classList.toggle('lit', phase > thresh && phase < 0.95);
+      });
+      bar.style.width = (phase * 100) + '%';
+      counter.textContent = (phase * 27.4).toFixed(1);
+      if (phase > 0.95) {
+        boxes.forEach(b => b.classList.remove('lit'));
+        bar.style.width = '0%';
+      }
+    }
+    setInterval(tick, 50);
+  })();
+
+  /* ----- Direction 2: CRT byte counter ----- */
+  (function () {
+    const counter = document.querySelector('[data-counter="crt-bytes"]');
+    let t = 0;
+    setInterval(() => {
+      t = (t + 1) % 80; // matches 4s @ 50ms
+      const phase = clamp(t / 56, 0, 1); // tracks the clip-path reveal (70% of cycle)
+      counter.textContent = (phase * 27.4).toFixed(1);
+    }, 50);
+  })();
+
+  /* ----- Direction 3: ASCII decoder ----- */
+  (function () {
+    const canvas = document.getElementById('ascii-canvas');
+    const pct = document.querySelector('[data-counter="ascii-pct"]');
+    const W = 38, H = 18;
+    // Target mask: hand-tuned iso silhouette of a room with cat in middle
+    const mask = [
+      "                                      ",
+      "          ........................    ",
+      "        ..::::::::::::::::::::::::..  ",
+      "       .::::::::::::::::::::::::::::. ",
+      "      .::::##::::::::::::::::::::::: .",
+      "      ::::####:::::::::::::::::::::: :",
+      "      ::::####::::::::::::::::::::::::",
+      "      :::::::::::::####:::::::::::::::",
+      "      :::::::::::::####:::::::::::::: ",
+      "       ::::::::::::::::::::::::::::: .",
+      "       ::::::::::::::::::::::::::::: .",
+      "        :::::::::::::::::::::::::::.  ",
+      "        ::::::::::::::::::::::::::::  ",
+      "         ::::::::::::::::::::::::::   ",
+      "          :::::::::::::::::::::::.    ",
+      "           ......................     ",
+      "                                      ",
+      "                                      ",
+    ];
+    const palette = " .:-=+*#%@";
+    function render(progress) {
+      // For each cell: target intensity from mask (0..1), noise floor that
+      // decays with progress. Output character = closest palette index.
+      let out = '';
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const m = mask[y][x] || ' ';
+          let target = 0;
+          if (m === '#') target = 0.95;
+          else if (m === ':') target = 0.55;
+          else if (m === '.') target = 0.28;
+          else target = 0;
+          const noise = (Math.random() - 0.5) * (1 - progress) * 0.9;
+          const v = clamp(target * progress + Math.max(0, noise), 0, 0.999);
+          out += palette[Math.floor(v * palette.length)];
+        }
+        out += '\n';
+      }
+      canvas.textContent = out;
+    }
+    let t = 0;
+    function tick() {
+      t = (t + 1) % 200;
+      const phase = clamp(t / 160, 0, 1);
+      render(phase);
+      pct.textContent = Math.floor(phase * 100);
+    }
+    setInterval(tick, 60);
+  })();
+
+  /* ----- Direction 4: POST line stream ----- */
+  (function () {
+    const stage = document.getElementById('post-stage');
+    const LINES = [
+      { c: 'dim',   t: '> daniel.os v0.1 / boot' },
+      { c: 'dim',   t: '> probing scene_manifest.json' },
+      { c: 'ok',    t: '  ok · 162 meshes registered' },
+      { c: 'dim',   t: '> streaming room.glb' },
+      { c: '',      t: '  [bed_frame]      328 KiB' },
+      { c: '',      t: '  [desk]           412 KiB' },
+      { c: '',      t: '  [keyboard]      1.8 MiB' },
+      { c: '',      t: '  [mushroom_lamp]   88 KiB' },
+      { c: 'bar',   t: '  ▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░  62%' },
+      { c: 'dim',   t: '> compiling shaders 47 / 73' },
+      { c: 'ok',    t: '  ok · 16.4 ms stable' },
+      { c: 'bar',   t: '  ready ▶' },
+    ];
+    let idx = 0;
+    function emit() {
+      if (idx === 0) stage.innerHTML = '';
+      const spec = LINES[idx];
+      const el = document.createElement('div');
+      el.className = 'post-line ' + (spec.c || '');
+      // arrow color trick: replace leading ">" with span
+      const txt = spec.t.replace(/^>/, '<span class="arrow">›</span>');
+      el.innerHTML = txt;
+      stage.appendChild(el);
+      // Keep last ~10 lines visible
+      while (stage.children.length > 10) stage.removeChild(stage.firstChild);
+      idx = (idx + 1) % LINES.length;
+      setTimeout(emit, idx === 0 ? 800 : (180 + Math.random() * 140));
+    }
+    emit();
+  })();
+</script>

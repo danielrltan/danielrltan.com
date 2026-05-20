@@ -1,0 +1,321 @@
+<style>
+  body { background: #d8d4ca !important; color: #5a3a1f !important; padding: 0 !important; margin: 0 !important; }
+  #claude-content { padding: 1.5rem !important; max-width: none !important; }
+  .header { background: #e8e2d4 !important; border-bottom: 1px solid #c8c2b4 !important; }
+  .header h1 { color: #5a3a1f !important; }
+
+  h2 { font-family: 'Inter', system-ui, sans-serif; font-size: 1.4rem; color: #5a3a1f; margin: 0 0 0.5rem; }
+  p.intro { color: #8a7060; margin: 0 0 1.5rem; font-size: 0.95rem; max-width: 60ch; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+
+  .demo {
+    background: #ece6da;
+    border: 1px solid #d4cdbf;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .demo-title {
+    padding: 0.7rem 1rem 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #ff7842;
+    font-weight: 600;
+  }
+  .demo-sub {
+    padding: 0.2rem 1rem 0.7rem;
+    font-size: 0.78rem;
+    color: #8a7060;
+    line-height: 1.45;
+    min-height: 3.2em;
+  }
+  .canvas-wrap {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: #d8d4ca;
+    overflow: hidden;
+  }
+  .canvas-wrap canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .demo-foot {
+    padding: 0.55rem 1rem;
+    font-size: 0.72rem;
+    color: #6a543a;
+    font-family: 'JetBrains Mono', monospace;
+    background: #e2dccd;
+    border-top: 1px solid #d4cdbf;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .controls {
+    display: flex;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+  }
+  .controls button {
+    background: #5a3a1f;
+    color: #ece6da;
+    border: 0;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .controls button:hover { background: #ff7842; color: #161311; }
+
+  .vote {
+    margin-top: 1.5rem;
+  }
+  .vote .options {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+  }
+  @media (max-width: 1100px) { .vote .options { grid-template-columns: 1fr; } }
+</style>
+
+<h2>Brush comparison: pick which one is right</h2>
+<p class="intro">
+  Move your cursor inside each box. Each demo uses a different brush mechanic — same amber color (#ff7842), same brush radius, same cream background, same stamp gradient. Only the alpha / fade / blur behavior differs.
+</p>
+
+<div class="controls">
+  <button onclick="document.querySelectorAll('canvas').forEach(c => { c.getContext('2d').clearRect(0,0,c.width,c.height); })">Clear all</button>
+</div>
+
+<div class="grid">
+
+  <!-- A: pure cursor brush with fade -->
+  <div class="demo">
+    <div class="demo-title">A · cursor brush (fade)</div>
+    <div class="demo-sub">Exactly what PaintTrail does now. Source-over stamps, fade 0.4% per frame. Hold cursor still to see what saturation looks like at hesitation.</div>
+    <div class="canvas-wrap"><canvas id="cv-a"></canvas></div>
+    <div class="demo-foot"><span>alpha 0.45</span><span>fade ON</span></div>
+  </div>
+
+  <!-- B: signature today -->
+  <div class="demo">
+    <div class="demo-title">B · signature today</div>
+    <div class="demo-sub">Source-over stamps with CSS blur(8px), low alpha (0.09), sparse step. No fade. What's currently behind the room.</div>
+    <div class="canvas-wrap"><canvas id="cv-b"></canvas></div>
+    <div class="demo-foot"><span>alpha 0.09 + blur</span><span>fade OFF</span></div>
+  </div>
+
+  <!-- C: cursor mechanic, freeze after -->
+  <div class="demo">
+    <div class="demo-title">C · cursor mechanic frozen</div>
+    <div class="demo-sub">Same as A — but click "freeze" below to halt the fade where it is. Whatever's on canvas stays. This is what I'd ship if you confirm.</div>
+    <div class="canvas-wrap"><canvas id="cv-c"></canvas></div>
+    <div class="demo-foot"><button onclick="window.toggleFreezeC()" id="freeze-c" style="background:#ff7842;color:#161311;border:0;padding:3px 10px;border-radius:999px;font-family:'JetBrains Mono',monospace;font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;font-weight:600;">Freeze</button><span id="freeze-c-state">fade ON</span></div>
+  </div>
+
+</div>
+
+<div class="vote">
+  <h2 style="font-size:1.1rem;">Which one matches what you want?</h2>
+  <div class="options">
+    <div class="option" data-choice="a" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>Demo A — cursor live, never freeze</h3>
+        <p>Signature draws but never stops fading. Eventually disappears.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="c" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>Demo C — cursor mechanic, freeze after replay</h3>
+        <p>Looks like cursor while drawing, freezes at that look.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="none" onclick="toggleSelect(this)">
+      <div class="letter">!</div>
+      <div class="content">
+        <h3>None of these</h3>
+        <p>The thing I want isn't on this page. I'll describe in chat.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ============ shared brush ============
+  function makeBrush(dpr) {
+    const COLOR = "255, 120, 66";
+    const ALPHA = 0.45;
+    const RADIUS = 36;
+    const size = RADIUS * 2 * dpr;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const x = c.getContext('2d');
+    const g = x.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    g.addColorStop(0.0, `rgba(${COLOR}, ${ALPHA})`);
+    g.addColorStop(0.6, `rgba(${COLOR}, ${ALPHA})`);
+    g.addColorStop(1.0, `rgba(${COLOR}, 0)`);
+    x.fillStyle = g;
+    x.fillRect(0, 0, size, size);
+    return { brush: c, RADIUS };
+  }
+  function makeBrushSoft(dpr, alpha) {
+    const COLOR = "255, 120, 66";
+    const RADIUS = 36;
+    const size = RADIUS * 2 * dpr;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const x = c.getContext('2d');
+    const g = x.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    g.addColorStop(0.0, `rgba(${COLOR}, ${alpha})`);
+    g.addColorStop(0.35, `rgba(${COLOR}, ${alpha * 0.75})`);
+    g.addColorStop(0.7, `rgba(${COLOR}, ${alpha * 0.35})`);
+    g.addColorStop(1.0, `rgba(${COLOR}, 0)`);
+    x.fillStyle = g;
+    x.fillRect(0, 0, size, size);
+    return { brush: c, RADIUS };
+  }
+
+  function setupCanvas(id) {
+    const cvs = document.getElementById(id);
+    const wrap = cvs.parentElement;
+    const rect = wrap.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cvs.width = rect.width * dpr;
+    cvs.height = rect.height * dpr;
+    const ctx = cvs.getContext('2d');
+    ctx.scale(dpr, dpr);
+    return { cvs, ctx, dpr, w: rect.width, h: rect.height };
+  }
+
+  function attachPointer(cvs, onMove) {
+    let last = null;
+    cvs.addEventListener('pointermove', (e) => {
+      const r = cvs.getBoundingClientRect();
+      const x = (e.clientX - r.left);
+      const y = (e.clientY - r.top);
+      if (last) onMove(last.x, last.y, x, y);
+      last = { x, y };
+    });
+    cvs.addEventListener('pointerleave', () => { last = null; });
+  }
+
+  // ============ Demo A: cursor brush with fade (PaintTrail exact) ============
+  (function () {
+    const { cvs, ctx, dpr, w, h } = setupCanvas('cv-a');
+    const { brush, RADIUS } = makeBrush(dpr);
+    const STEP_PX = 10;
+    const FADE = 0.004;
+
+    function stamp(x, y, r) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(brush, x - r, y - r, r * 2, r * 2);
+    }
+
+    attachPointer(cvs, (x0, y0, x1, y1) => {
+      const dx = x1 - x0, dy = y1 - y0;
+      const dist = Math.hypot(dx, dy);
+      const vel = dist; // rough proxy
+      const sizeMult = Math.max(0.55, 1.4 - vel * 0.04);
+      const r = RADIUS * sizeMult;
+      const steps = Math.max(1, Math.ceil(dist / STEP_PX));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        stamp(x0 + dx * t, y0 + dy * t, r);
+      }
+    });
+
+    function tick() {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = `rgba(0,0,0,${FADE})`;
+      ctx.fillRect(0, 0, w, h);
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  })();
+
+  // ============ Demo B: signature today ============
+  (function () {
+    const { cvs, ctx, dpr, w, h } = setupCanvas('cv-b');
+    const { brush, RADIUS } = makeBrushSoft(dpr, 0.09);
+    const STEP_PX = 24;
+
+    cvs.style.filter = 'blur(8px)';
+
+    function stamp(x, y, r) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(brush, x - r, y - r, r * 2, r * 2);
+    }
+
+    attachPointer(cvs, (x0, y0, x1, y1) => {
+      const dx = x1 - x0, dy = y1 - y0;
+      const dist = Math.hypot(dx, dy);
+      const vel = dist;
+      const sizeMult = Math.max(0.55, 1.4 - vel * 0.04);
+      const r = RADIUS * sizeMult;
+      const steps = Math.max(1, Math.ceil(dist / STEP_PX));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        stamp(x0 + dx * t, y0 + dy * t, r);
+      }
+    });
+  })();
+
+  // ============ Demo C: cursor mechanic, freezeable ============
+  (function () {
+    const { cvs, ctx, dpr, w, h } = setupCanvas('cv-c');
+    const { brush, RADIUS } = makeBrush(dpr);
+    const STEP_PX = 10;
+    const FADE = 0.004;
+    let frozen = false;
+
+    function stamp(x, y, r) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(brush, x - r, y - r, r * 2, r * 2);
+    }
+
+    attachPointer(cvs, (x0, y0, x1, y1) => {
+      const dx = x1 - x0, dy = y1 - y0;
+      const dist = Math.hypot(dx, dy);
+      const vel = dist;
+      const sizeMult = Math.max(0.55, 1.4 - vel * 0.04);
+      const r = RADIUS * sizeMult;
+      const steps = Math.max(1, Math.ceil(dist / STEP_PX));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        stamp(x0 + dx * t, y0 + dy * t, r);
+      }
+    });
+
+    function tick() {
+      if (!frozen) {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillStyle = `rgba(0,0,0,${FADE})`;
+        ctx.fillRect(0, 0, w, h);
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    window.toggleFreezeC = () => {
+      frozen = !frozen;
+      document.getElementById('freeze-c-state').textContent = frozen ? 'FROZEN' : 'fade ON';
+      document.getElementById('freeze-c').textContent = frozen ? 'Unfreeze' : 'Freeze';
+    };
+  })();
+</script>

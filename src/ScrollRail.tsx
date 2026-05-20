@@ -7,7 +7,12 @@ import { useScrollProgress } from "./useScrollProgress";
  * without a heavy navigation chrome.
  */
 
-const TICK_POSITIONS = [0.0, 0.13, 0.26, 0.40, 0.55, 0.70, 0.83, 0.95];
+// Synced to StatusBar.tsx SECTIONS thresholds so a tick lights up at
+// the exact scroll position the section badge swaps labels. Previously
+// these were a uniform 0.13-step distribution that drifted from the
+// badge — the rail tick would activate noticeably before/after the
+// badge said the section had changed.
+const TICK_POSITIONS = [0.0, 0.10, 0.22, 0.36, 0.52, 0.66, 0.80, 0.92];
 
 export function ScrollRail() {
   const progress = useScrollProgress();
@@ -16,7 +21,12 @@ export function ScrollRail() {
       aria-hidden
       style={{
         position: "fixed",
-        right: 14,
+        // Inset enough from the viewport right edge that the % label
+        // (positioned LEFT of the rail) and the tick dashes (extending
+        // a few px past the rail on both sides) all sit cleanly inside
+        // the page gutter. Was 14, which let the label clip against
+        // the viewport edge.
+        right: 28,
         top: "18%",
         bottom: "18%",
         width: 1,
@@ -36,7 +46,7 @@ export function ScrollRail() {
           background: "var(--accent)",
         }}
       />
-      {/* Section ticks — small horizontal dashes off the rail. */}
+      {/* Section ticks — small horizontal dashes centred on the rail. */}
       {TICK_POSITIONS.map((t, i) => (
         <span
           key={i}
@@ -54,12 +64,15 @@ export function ScrollRail() {
           }}
         />
       ))}
-      {/* Live percent label at the head of the travelling bar. */}
+      {/* Live percent label at the head of the travelling bar.
+          Anchored to the LEFT of the rail (right: 12) so it doesn't
+          push past the viewport edge — previous `left: 10` had it
+          fighting the page border with the rail's own inset. */}
       <span
         style={{
           position: "absolute",
           top: `${Math.max(0, Math.min(1, progress)) * 100}%`,
-          left: 10,
+          right: 12,
           transform: "translateY(-50%)",
           fontFamily: "var(--font-mono)",
           fontSize: 9.5,
@@ -68,6 +81,7 @@ export function ScrollRail() {
           fontVariantNumeric: "tabular-nums",
           background: "rgba(248, 246, 243, 0.85)",
           padding: "2px 6px",
+          whiteSpace: "nowrap",
         }}
       >
         {String(Math.round(progress * 100)).padStart(2, "0")}

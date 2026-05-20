@@ -346,3 +346,32 @@ html.loading-active .scroll-rail {
   transform: scale(1);
   opacity: 1;
 }
+
+/* ---------------------------------------------------------------- */
+/* Glass HUD buttons — shared reactivity for the floating pill /
+/* icon-only buttons (StatusBar reset + mute, JumpToTop, etc.).
+/* Inline styles in those components were missing :hover / :active,
+/* which read as a dead UI even though the click worked. This adds
+/* a subtle lift on hover + press scale.
+/* ---------------------------------------------------------------- */
+.hud-btn {
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.18s ease;
+}
+.hud-btn:hover {
+  background: rgba(232, 112, 64, 0.12) !important;
+  border-color: rgba(232, 112, 64, 0.55) !important;
+  color: var(--accent) !important;
+  box-shadow: 0 4px 14px -8px rgba(232, 112, 64, 0.55);
+}
+.hud-btn:active {
+  transform: scale(0.94);
+}
+.hud-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

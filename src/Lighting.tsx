@@ -57,153 +57,87 @@ function SpotWithTarget({
 
 const PI = Math.PI;
 
+/**
+ * Consolidated lighting — 5 lights total (down from 14). Each fixture
+ * represents a merged cluster of the original setup so the overall
+ * sunset-cozy composition stays close while the per-frame light cost
+ * drops dramatically.
+ *
+ *  1. Ambient fill          — global warm wash (was light 0)
+ *  2. Sun directional       — shadow caster + global sun (lights 13/14 merged)
+ *  3. Lamp cluster point    — left-side lamps merged (lights 1/2/3/4)
+ *  4. Desk + pegboard rect  — desk/monitor/PC area merged (lights 6/7/8/9)
+ *  5. Bed + corner flood    — bed flood + front corner fill + mushroom (lights 5/10/12)
+ */
 export function Lighting() {
   return (
     <>
-      {/* 0. Ambient fill — lifts the corners + shadowed walls out of
-              pure black. CLAUDE.md spec called for one but the scene
-              had been running without it, which is why outside-the-pool
-              regions read as crushed maroon. Kept warm so it doesn't
-              cool down the cozy sunset palette. */}
-      <ambientLight color="#ffd4b0" intensity={0.28} />
+      {/* 1. Ambient — bright, almost-white base with the faintest
+              warm tint. Retro-futurism wants a clean canvas (think
+              TE / Braun product photography), not a moody amber
+              wash. The chromatic warmth comes from the saturated
+              practicals below, not from soaking every surface in
+              cream. */}
+      <ambientLight color="#fff4ec" intensity={0.72} />
 
-      {/* 1. Arc floor lamp — main key light */}
-      <pointLight
-        color="#ffb077"
-        intensity={3}
-        distance={5}
-        decay={2}
-        position={[-1.318, 1.924, 1.258]}
-      />
-
-      {/* 2. Mirror hue light — warm glow behind round mirror */}
-      <pointLight
-        color="#ff9060"
-        intensity={.75}
-        distance={7}
-        decay={2}
-        position={[-2.065, 0.486, 0.522]}
-      />
-
-      {/* 3. Orange globe lamp — on dresser */}
-      <pointLight
-        color="#ff9955"
-        intensity={2}
-        distance={4}
-        decay={2}
-        position={[-1.349, 1.0, 2.088]}
-      />
-
-      {/* 4. Sunset lamp — upper shelf */}
-      <pointLight
-        color="#ffaa66"
-        intensity={1}
-        distance={4}
-        decay={2}
-        position={[-1.32, 2.209, 2.114]}
-      />
-
-      {/* 5. Mushroom lamp — nightstand beside bed */}
-      <pointLight
-        color="#ffd4a0"
-        intensity={1.2}
-        distance={3}
-        decay={2}
-        position={[0.693, 1.403, -1.594]}
-      />
-
-      {/* 6. PC RGB glow — desk area */}
-      <pointLight
-        color="#fff0dd"
-        intensity={.5}
-        distance={2.5}
-        decay={2}
-        position={[1.973, 0.9, -1.604]}
-      />
-
-      {/* 7. Monitor bar light */}
-      <rectAreaLight
-        color="#ffd4aa"
-        intensity={3.0}
-        width={0.4}
-        height={0.05}
-        position={[1.458, 1.235, -1.974]}
-        rotation={[0, PI, 0]}
-      />
-
-      {/* 8. Pegboard backlight */}
-      <rectAreaLight
-        color="#ffdda0"
-        intensity={5.0}
-        width={1.1}
-        height={0.7}
-        position={[1.71, 1.764, -2.101]}
-        rotation={[0, PI, 0]}
-      />
-
-      {/* 9. Monitor backglow — merged 9a + 9b (intensity summed,
-              positioned at the centroid). Each extra light is a full
-              geometry pass in the renderer. */}
-      <rectAreaLight
-        color="#ffbb88"
-        intensity={3.5}
-        width={0.3}
-        height={0.3}
-        position={[1.460, 1.095, -2.074]}
-        rotation={[0, PI, 0]}
-      />
-
-      {/* 10. Bed sunset flood — warm wash over bed from above-front */}
-      <SpotWithTarget
-        color="#ffaa77"
-        intensity={4}
-        distance={6}
-        angle={PI * 0.48}
-        penumbra={0.3}
-        decay={2}
-        position={[0.323, 2.4, -1.304]}
-        target={[-0.993, 0.55, -1.304]}
-      />
-
-      {/* 12. Front corner fill */}
-      <SpotWithTarget
-        color="#ffaa80"
-        intensity={3.0}
-        distance={6}
-        angle={PI * 0.52}
-        penumbra={0.4}
-        decay={2}
-        position={[1.423, 2.5, 0.886]}
-        target={[1.423, 0, 0.886]}
-      />
-
-      {/* 13. Ambient directional — soft wash from front-right, bumped
-              from 0.08 to lift the front face of the room where the
-              point lights don't reach. Also the shadow caster — wide
-              orthographic frustum + 2048 shadow map → soft shadows
-              from the room geometry. */}
+      {/* 2. Sun directional — neutral daylight key + shadow caster.
+              Pulled toward bright cool-white so the lit faces read
+              as crisp product-shot lighting rather than golden
+              hour. The practicals carry the warmth. */}
       <directionalLight
-        color="#ffcc99"
-        intensity={0.18}
+        color="#fff8ec"
+        intensity={1.0}
         position={[2.823, 3.0, 2.596]}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
         shadow-bias={-0.001}
-        shadow-camera-left={-8}
-        shadow-camera-right={8}
-        shadow-camera-top={8}
-        shadow-camera-bottom={-8}
+        shadow-camera-left={-3.2}
+        shadow-camera-right={3.2}
+        shadow-camera-top={3.2}
+        shadow-camera-bottom={-3.2}
         shadow-camera-near={0.5}
-        shadow-camera-far={20}
+        shadow-camera-far={12}
       />
 
-      {/* 14. Window sunset — faint sun angle, bumped slightly so the
-              left wall and floor pick up a hair more rim. */}
-      <directionalLight
-        color="#ff9966"
-        intensity={0.24}
-        position={[-0.65, 2.209, 6.092]}
+      {/* 3. Lamp cluster — saturated tungsten. Now that the ambient
+              base is clean white, the lamp pool can punch with real
+              chroma instead of fighting an already-warm room. Reads
+              as a vivid practical light spill on the floor / mirror
+              / shelf, not as ambient mood. */}
+      <pointLight
+        color="#ff8a3c"
+        intensity={6}
+        distance={6.5}
+        decay={2}
+        position={[-1.4, 1.4, 1.25]}
+      />
+
+      {/* 4. Desk + pegboard + monitor — saturated peach back-wall
+              bounce. The colour intensity here is what gives the
+              back of the desk its retro-futurism warm-glow rim
+              without polluting the whole room. */}
+      <rectAreaLight
+        color="#ffa055"
+        intensity={10}
+        width={1.5}
+        height={1.0}
+        position={[1.58, 1.4, -2.05]}
+        rotation={[0, PI, 0]}
+      />
+
+      {/* 5. Bed flood + corner fill + mushroom — saturated warm spot
+              so the bed/blanket area carries a punchy amber accent
+              against the cool base. Saturated colour, clean tone. */}
+      <SpotWithTarget
+        color="#ff9a5a"
+        intensity={5.5}
+        distance={9}
+        angle={PI * 0.5}
+        penumbra={0.45}
+        decay={2}
+        position={[0.6, 2.6, -0.5]}
+        target={[-0.2, 0.5, -1.3]}
       />
     </>
   );

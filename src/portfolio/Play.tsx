@@ -28,8 +28,7 @@ export function Play() {
         <h2>Off the clock.</h2>
         <div className="section-card">
           <p>
-            Stuff I do that has nothing to do with code &mdash; or at
-            least, didn&rsquo;t start there. Mostly long-term obsessions.
+            Stuff I do
           </p>
           <div className="section-rule" />
           <div className="play-grid">

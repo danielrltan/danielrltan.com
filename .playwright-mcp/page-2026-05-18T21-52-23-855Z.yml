@@ -1,0 +1,182 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic:
+      - generic: Daniel Tan
+    - generic [ref=e4]:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - img
+    - generic:
+      - generic:
+        - generic: Daniel Tan
+      - generic:
+        - button "Reset room" [ref=e17] [cursor=pointer]:
+          - img [ref=e18]
+          - text: reset
+        - generic:
+          - generic:
+            - img
+            - generic: rotate
+          - generic:
+            - img
+            - generic: pan
+          - generic:
+            - img
+            - generic: zoom
+    - generic [ref=e36]:
+      - generic [ref=e38] [cursor=pointer]:
+        - generic [ref=e39]: "1:"
+        - generic [ref=e40]: splash.txt
+        - button "Close splash.txt" [ref=e41]: ×
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - generic [ref=e47]: "1"
+          - generic [ref=e48]: "2"
+          - generic [ref=e49]: "3"
+          - generic [ref=e50]: "4"
+          - generic [ref=e51]: "5"
+          - generic [ref=e52]: "6"
+          - generic [ref=e53]: "7"
+          - generic [ref=e54]: "8"
+          - generic [ref=e55]: "9"
+          - generic [ref=e56]: "10"
+          - generic [ref=e57]: "11"
+          - generic [ref=e58]: "12"
+          - generic [ref=e59]: "13"
+          - generic [ref=e60]: "14"
+          - generic [ref=e61]: "15"
+          - generic [ref=e62]: "16"
+          - generic [ref=e63]: "17"
+          - generic [ref=e64]: "18"
+          - generic [ref=e65]: "19"
+          - generic [ref=e66]: "20"
+          - generic [ref=e67]: "21"
+          - generic [ref=e68]: "22"
+          - generic [ref=e69]: "23"
+          - generic [ref=e70]: "24"
+          - generic [ref=e71]: "25"
+          - generic [ref=e72]: "26"
+          - generic [ref=e73]: "27"
+          - generic [ref=e74]: "28"
+          - generic [ref=e75]: "29"
+          - generic [ref=e76]: "30"
+          - generic [ref=e77]: "31"
+          - generic [ref=e78]: "32"
+          - generic [ref=e79]: "33"
+          - generic [ref=e80]: "34"
+          - generic [ref=e81]: "35"
+          - generic [ref=e82]: "36"
+          - generic [ref=e83]: "37"
+          - generic [ref=e84]: "38"
+          - generic [ref=e85]: "39"
+          - generic [ref=e86]: "40"
+          - generic [ref=e87]: "41"
+          - generic [ref=e88]: "42"
+          - generic [ref=e89]: "43"
+          - generic [ref=e90]: "44"
+          - generic [ref=e91]: "45"
+          - generic [ref=e92]: "46"
+          - generic [ref=e93]: "47"
+          - generic [ref=e94]: "48"
+          - generic [ref=e95]: "49"
+          - generic [ref=e96]: "50"
+          - generic [ref=e97]: "51"
+          - generic [ref=e98]: "52"
+          - generic [ref=e99]: "53"
+          - generic [ref=e100]: "54"
+          - generic [ref=e101]: "55"
+          - generic [ref=e102]: "56"
+          - generic [ref=e103]: "57"
+          - generic [ref=e104]: "58"
+          - generic [ref=e105]: "59"
+          - generic [ref=e106]: "60"
+          - generic [ref=e107]: "61"
+          - generic [ref=e108]: "62"
+          - generic [ref=e109]: "63"
+          - generic [ref=e110]: "64"
+          - generic [ref=e111]: "65"
+          - generic [ref=e112]: "66"
+          - generic [ref=e113]: "67"
+          - generic [ref=e114]: "68"
+          - generic [ref=e115]: "69"
+          - generic [ref=e116]: "70"
+          - generic [ref=e117]: "71"
+          - generic [ref=e118]: "72"
+          - generic [ref=e119]: "73"
+          - generic [ref=e120]: "74"
+          - generic [ref=e121]: "75"
+          - generic [ref=e122]: "76"
+          - generic [ref=e123]: "77"
+          - generic [ref=e124]: "78"
+          - generic [ref=e125]: "79"
+          - generic [ref=e126]: "80"
+        - generic [ref=e128]:
+          - generic [ref=e129]: /\___/\ ( o o ) ( > ) \ =w= / ) ( / \ ( _ ) \__/ \__/
+          - generic [ref=e130]: DANNY
+          - generic [ref=e131]: cs · toronto · 2027
+          - generic [ref=e132]:
+            - generic [ref=e133]:
+              - generic [ref=e134]: "["
+              - generic [ref=e135]: a
+              - generic [ref=e136]: "]"
+              - generic [ref=e137]: about
+            - generic [ref=e138]: :e about
+            - generic [ref=e139]:
+              - generic [ref=e140]: "["
+              - generic [ref=e141]: p
+              - generic [ref=e142]: "]"
+              - generic [ref=e143]: projects
+            - generic [ref=e144]: :e projects
+            - generic [ref=e145]:
+              - generic [ref=e146]: "["
+              - generic [ref=e147]: s
+              - generic [ref=e148]: "]"
+              - generic [ref=e149]: skills
+            - generic [ref=e150]: :e skills
+            - generic [ref=e151]:
+              - generic [ref=e152]: "["
+              - generic [ref=e153]: r
+              - generic [ref=e154]: "]"
+              - generic [ref=e155]: resume
+            - generic [ref=e156]: :e resume
+            - generic [ref=e157]:
+              - generic [ref=e158]: "["
+              - generic [ref=e159]: c
+              - generic [ref=e160]: "]"
+              - generic [ref=e161]: contact
+            - generic [ref=e162]: :e contact
+            - generic [ref=e163]:
+              - generic [ref=e164]: "["
+              - generic [ref=e165]: g
+              - generic [ref=e166]: "]"
+              - generic [ref=e167]: play
+            - generic [ref=e168]: :e play
+          - generic [ref=e169]: :help for keybindings · :q to return to the room
+          - generic [ref=e170]: DANNY.EXE v0.2.0 · colorscheme danny-warm
+      - generic [ref=e171]:
+        - generic [ref=e172]: NORMAL
+        - generic [ref=e175]:
+          - generic [ref=e176]: portfolio/
+          - generic [ref=e177]: splash.txt
+          - generic [ref=e178]: "[+]"
+        - generic [ref=e184]: txt
+        - generic [ref=e185]: utf-8
+        - generic [ref=e186]: LF
+        - generic [ref=e188]: danny-warm
+        - generic [ref=e191]: 1:1 Top
+      - generic [ref=e193]: "press : for commands · numbers 1–8 switch buffer · Esc back to room"
+    - generic: click to begin
+  - main [ref=e10]:
+    - heading "Daniel R.L. Tan — Software Engineer Portfolio" [level=1] [ref=e11]
+    - paragraph [ref=e12]: Welcome to the personal portfolio of Daniel R.L. Tan, a software engineer and web developer. This site presents Daniel's resume, software projects, contact information, and professional background through an interactive 3D bedroom built with React, TypeScript, and three.js.
+    - paragraph [ref=e13]: "Sections available inside the interactive desktop: About, Resume, Projects, GitHub activity, and Contact. For recruiters and hiring managers, the resume window contains the full work history and the contact window includes a direct email link."
+    - paragraph [ref=e14]:
+      - text: Connect with Daniel on
+      - link "LinkedIn" [ref=e15] [cursor=pointer]:
+        - /url: https://www.linkedin.com/in/danielrltan
+      - text: or
+      - link "GitHub" [ref=e16] [cursor=pointer]:
+        - /url: https://github.com/danielrltan
+      - text: .

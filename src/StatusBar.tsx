@@ -120,6 +120,7 @@ export function StatusBar({ onReset }: Props) {
       </span>
       <button
         type="button"
+        className="hud-btn"
         onClick={onReset}
         aria-label="Reset room"
         style={iconButtonStyle(false)}
@@ -128,6 +129,7 @@ export function StatusBar({ onReset }: Props) {
       </button>
       <button
         type="button"
+        className="hud-btn"
         onClick={audio.toggle}
         aria-label={audio.on ? "Mute ambience" : "Play ambience"}
         aria-pressed={audio.on}

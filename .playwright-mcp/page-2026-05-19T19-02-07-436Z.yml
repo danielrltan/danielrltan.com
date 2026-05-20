@@ -1,0 +1,37 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic:
+      - generic:
+        - generic: Daniel Tan
+      - generic:
+        - button "Reset room":
+          - img
+          - text: reset
+        - generic:
+          - generic:
+            - img
+            - generic: rotate
+          - generic:
+            - img
+            - generic: pan
+          - generic:
+            - img
+            - generic: zoom
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - text: resolving
+        - generic [ref=e13]: · windowsill
+      - generic [ref=e14]: 4.6 / 27.4 MB
+    - generic: click to begin
+  - main [ref=e15]:
+    - heading "Daniel R.L. Tan — Software Engineer Portfolio" [level=1] [ref=e16]
+    - paragraph [ref=e17]: Welcome to the personal portfolio of Daniel R.L. Tan, a software engineer and web developer. This site presents Daniel's resume, software projects, contact information, and professional background through an interactive 3D bedroom built with React, TypeScript, and three.js.
+    - paragraph [ref=e18]: "Sections available inside the interactive desktop: About, Resume, Projects, GitHub activity, and Contact. For recruiters and hiring managers, the resume window contains the full work history and the contact window includes a direct email link."
+    - paragraph [ref=e19]:
+      - text: Connect with Daniel on
+      - link "LinkedIn" [ref=e20] [cursor=pointer]:
+        - /url: https://www.linkedin.com/in/danielrltan
+      - text: or
+      - link "GitHub" [ref=e21] [cursor=pointer]:
+        - /url: https://github.com/danielrltan
+      - text: .

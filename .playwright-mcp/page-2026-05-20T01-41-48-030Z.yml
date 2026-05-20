@@ -1,0 +1,296 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - main:
+      - generic:
+        - generic:
+          - generic: Portfolio · 2026
+          - generic: Daniel Tan
+      - generic [ref=e8]:
+        - generic: 01 .
+        - generic [ref=e9]: 01 / 07 · About
+        - heading "About me." [level=2] [ref=e10]
+        - generic [ref=e11]:
+          - paragraph [ref=e12]: I’m a software engineer who builds full-stack web applications and interactive 3D experiences. I care about details that most people don’t notice — the easing curve on a hover, the inertia of a drag, the latency between a click and a frame.
+          - paragraph [ref=e13]: The room you’re looking at is a hand-modelled likeness of where I work. The keyboard types when you type. The mouse follows your cursor. Yank the PC tower; throw the cat. It’s a website that’s also a toy.
+          - paragraph [ref=e15]: "I split my time between client work and personal projects. The goal: build things I’d want to use, and ship them."
+      - generic [ref=e16]:
+        - generic: 02 .
+        - generic [ref=e17]: 02 / 07 · Skills
+        - heading "Stack." [level=2] [ref=e18]
+        - generic [ref=e19]:
+          - generic [ref=e20]:
+            - generic [ref=e21]:
+              - generic [ref=e22]: Languages
+              - generic [ref=e23]:
+                - generic [ref=e24]: Python
+                - generic [ref=e25]: C++
+                - generic [ref=e26]: TypeScript
+                - generic [ref=e27]: Bash
+                - generic [ref=e28]: SQL
+            - generic [ref=e29]:
+              - generic [ref=e30]: ML / Data
+              - generic [ref=e31]:
+                - generic [ref=e32]: Machine Learning
+                - generic [ref=e33]: Semantic Search
+                - generic [ref=e34]: Multimodal Models
+                - generic [ref=e35]: Representation Learning
+                - generic [ref=e36]: Data Annotation
+                - generic [ref=e37]: Model Evaluation
+            - generic [ref=e38]:
+              - generic [ref=e39]: Frameworks
+              - generic [ref=e40]:
+                - generic [ref=e41]: FastAPI
+                - generic [ref=e42]: PyTorch
+                - generic [ref=e43]: TensorFlow
+                - generic [ref=e44]: NumPy
+                - generic [ref=e45]: Pandas
+                - generic [ref=e46]: React
+                - generic [ref=e47]: Three.js / R3F
+            - generic [ref=e48]:
+              - generic [ref=e49]: Tooling
+              - generic [ref=e50]:
+                - generic [ref=e51]: Git
+                - generic [ref=e52]: Docker
+                - generic [ref=e53]: MongoDB
+                - generic [ref=e54]: Postgres
+                - generic [ref=e55]: Vercel
+                - generic [ref=e56]: Railway
+          - paragraph [ref=e58]: Comfortable picking up whatever a project needs. Recently heavy on ML-backed product work, multimodal video models, and real-time 3D on the web.
+      - generic [ref=e59]:
+        - generic: 03 .
+        - generic [ref=e60]: 03 / 07 · Projects
+        - heading "Selected work." [level=2] [ref=e61]
+        - article [ref=e62]:
+          - generic [ref=e64]: Cognetech
+          - generic [ref=e65]:
+            - heading "Cognetech" [level=3] [ref=e66]
+            - generic [ref=e67]: Jan 2026 · Python, FastAPI, Multimodal Models
+            - paragraph [ref=e68]: AI-powered video indexing + semantic search tool for clinical footage. Auto-generates timestamped behavioural annotations, cutting psychologists' manual review from hours/days to seconds. Production-minded Python/FastAPI backend integrating TwelveLabs video understanding models with NO patient data storage. End-to-end product (React + Three.js frontend, deployed on Vercel/Railway) translating model outputs into clinician-friendly "behavioural fingerprints."
+            - generic [ref=e69]:
+              - generic [ref=e70]: Python
+              - generic [ref=e71]: FastAPI
+              - generic [ref=e72]: Semantic Search
+              - generic [ref=e73]: Multimodal
+              - generic [ref=e74]: React
+              - generic [ref=e75]: Three.js
+        - article [ref=e76]:
+          - generic [ref=e78]: Revamp — Hack The 6ix Finalist
+          - generic [ref=e79]:
+            - heading "Revamp — Hack The 6ix Finalist" [level=3] [ref=e80]
+            - generic [ref=e81]: Jul 2025 · C++, Python, React.js, QNX, Raspberry Pi
+            - paragraph [ref=e82]: Plug-and-play universal BMS for second-life EV modules on a QNX (RTOS) Raspberry Pi edge node. Normalised mixed-OEM telemetry and exposed a centralised fleet dashboard for real-time monitoring. Cloud analytics pipeline (FastAPI + MongoDB Atlas) with Gemini-powered SoH estimation and anomaly explanation. Physics-based battery simulator with PyBaMM streaming packed binary over TCP for 3 EV packs (≈20,736 cells).
+            - generic [ref=e83]:
+              - generic [ref=e84]: C++
+              - generic [ref=e85]: Python
+              - generic [ref=e86]: React
+              - generic [ref=e87]: QNX
+              - generic [ref=e88]: Raspberry Pi
+              - generic [ref=e89]: MongoDB
+              - generic [ref=e90]: Gemini
+        - article [ref=e91]:
+          - generic [ref=e93]: Interactive 3D Portfolio
+          - generic [ref=e94]:
+            - heading "Interactive 3D Portfolio" [level=3] [ref=e95]
+            - generic [ref=e96]: 2026 · React, R3F, Rapier
+            - paragraph [ref=e97]: This site. Hand-modelled isometric bedroom in Blender, brought to life with React Three Fiber + Rapier physics. Real keyboard typing, mouse cursor following, throwable objects, scroll-driven camera, signature replay.
+            - generic [ref=e98]:
+              - generic [ref=e99]: React
+              - generic [ref=e100]: TypeScript
+              - generic [ref=e101]: R3F
+              - generic [ref=e102]: Rapier
+              - generic [ref=e103]: GLSL
+            - link "GitHub →" [ref=e105] [cursor=pointer]:
+              - /url: https://github.com/danielrltan/portfolioweb
+      - generic [ref=e106]:
+        - generic: 04 .
+        - generic [ref=e107]: 04 / 07 · Work
+        - heading "Where I’ve been." [level=2] [ref=e108]
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - generic [ref=e111]: May 2025 — Nov 2025
+            - generic [ref=e112]: Windscribe
+            - generic [ref=e113]: Software Developer Intern · Toronto, ON
+            - list [ref=e114]:
+              - listitem [ref=e115]: Engineered a ticket automation extension that resolved 30% of support load autonomously, cutting response times by 50% and improving SLA compliance at scale for 89M users.
+              - listitem [ref=e116]: Built and deployed an internal Slackbot "Demerzel" with thread-based context management, TOML-configured endpoints, Prometheus metrics, and Notion-integrated memory prompts — built from 650+ articles of internal docs.
+              - listitem [ref=e117]: Integrated OpenAI API for ticket automation, reducing manual triage time from 90 to 20 seconds per average ticket.
+          - generic [ref=e118]:
+            - generic [ref=e119]: Jan 2025 — May 2025
+            - generic [ref=e120]: Nodes
+            - generic [ref=e121]: Software Developer Intern · London, ON
+            - list [ref=e122]:
+              - listitem [ref=e123]: Implemented Gmail OAuth for user authentication, replacing MFA entry with a secure flow that contributed to a launch driving 600+ users in the first week.
+              - listitem [ref=e124]: Automated hiring email verification with a Firebase script cross-referencing 250+ applicant emails against the user DB — 33 minutes of manual work down to 5 seconds.
+          - generic [ref=e125]:
+            - generic [ref=e126]: Expected 2027
+            - generic [ref=e127]: University of Western Ontario
+            - generic [ref=e128]: B.Sc. Computer Science · London, ON
+            - list [ref=e129]:
+              - listitem [ref=e130]: GPA 3.9/4.0. Western Scholarship of Distinction, National Merit Scholarship, Chris Binns-Smith Memorial Scholarship.
+              - listitem [ref=e131]: Director of Flagship — Western AI Club. VP of Design — Western Founders Network. Director of Outreach — Tech for Social Impact. Developer — Western Developer's Society.
+          - link "Download Resume ↓" [ref=e133] [cursor=pointer]:
+            - /url: /resume/Daniel_Tan_Resume.pdf
+      - generic [ref=e134]:
+        - generic: 05 .
+        - generic [ref=e135]: 05 / 07 · Play
+        - heading "Off the clock." [level=2] [ref=e136]
+        - generic [ref=e137]:
+          - paragraph [ref=e138]: Stuff I do that has nothing to do with code — or at least, didn’t start there. Mostly long-term obsessions.
+          - generic [ref=e140]:
+            - generic [ref=e141]:
+              - heading "Taekwondo" [level=3] [ref=e142]
+              - paragraph [ref=e143]: Black Belt 2nd Dan
+            - heading "Kickboxing" [level=3] [ref=e145]
+            - generic [ref=e146]:
+              - heading "Piano" [level=3] [ref=e147]
+              - paragraph [ref=e148]: 12+ years · RCM Level 9
+            - heading "Computers & Workstation Setups" [level=3] [ref=e150]
+            - heading "Fashion" [level=3] [ref=e152]
+            - generic [ref=e153]:
+              - heading "Mechanical Keyboards" [level=3] [ref=e154]
+              - paragraph [ref=e155]: "& speed typing"
+            - heading "Graphic Design" [level=3] [ref=e157]
+            - heading "Cars & Driving" [level=3] [ref=e159]
+            - heading "Skiing" [level=3] [ref=e161]
+            - heading "Crocheting" [level=3] [ref=e163]
+            - heading "Travelling" [level=3] [ref=e165]
+      - generic [ref=e166]:
+        - generic: 06 .
+        - generic [ref=e167]: 06 / 07 · Other
+        - heading "Bits and pieces." [level=2] [ref=e168]
+        - generic [ref=e170]:
+          - generic [ref=e171]:
+            - generic [ref=e172]: Hackathon
+            - heading "Hack The 6ix — Finalist" [level=3] [ref=e173]
+            - paragraph [ref=e174]: Top finalist out of 400+ participants for the Revamp battery-management project.
+          - generic [ref=e175]:
+            - generic [ref=e176]: Competition
+            - heading "IBM watsonx Orchestrate Challenge — Top 50" [level=3] [ref=e177]
+            - paragraph [ref=e178]: Top 50 of 2000+ global participants in IBM's agentic-AI build challenge.
+          - generic [ref=e179]:
+            - generic [ref=e180]: Competition
+            - heading "WFN Odyssey Cup — First Place" [level=3] [ref=e181]
+            - paragraph [ref=e182]: $500 prize at the Western Founders Network's annual venture competition.
+          - generic [ref=e183]:
+            - generic [ref=e184]: Competition
+            - heading "TD Innovation Sprint — Finalist" [level=3] [ref=e185]
+          - generic [ref=e186]:
+            - generic [ref=e187]: Competition
+            - heading "2024 TRREB Contest — 2nd Place" [level=3] [ref=e188]
+            - paragraph [ref=e189]: $2,500 award at the Toronto Regional Real Estate Board student competition.
+          - generic [ref=e190]:
+            - generic [ref=e191]: Grant
+            - heading "Ontario Summer Company Grant" [level=3] [ref=e192]
+            - paragraph [ref=e193]: $3,000 grant for a small business operated through Ontario's 2023 summer program.
+          - generic [ref=e194]:
+            - generic [ref=e195]: Leadership
+            - heading "Director of Flagship — Western AI Club" [level=3] [ref=e196]
+          - generic [ref=e197]:
+            - generic [ref=e198]: Leadership
+            - heading "VP of Design — Western Founders Network" [level=3] [ref=e199]
+          - generic [ref=e200]:
+            - generic [ref=e201]: Leadership
+            - heading "Director of Outreach — Tech for Social Impact" [level=3] [ref=e202]
+          - generic [ref=e203]:
+            - generic [ref=e204]: Leadership
+            - heading "Developer — Western Developer's Society" [level=3] [ref=e205]
+      - generic [ref=e206]:
+        - generic: 07 .
+        - generic [ref=e207]: 07 / 07 · Contact
+        - heading "Let’s talk." [level=2] [ref=e208]
+        - generic [ref=e209]:
+          - link "hello@danielrltan.com" [ref=e210] [cursor=pointer]:
+            - /url: mailto:hello@danielrltan.com
+          - paragraph [ref=e211]: The fastest way to reach me is email. I read everything; I reply to most things.
+          - generic [ref=e213]:
+            - link "GitHub →" [ref=e214] [cursor=pointer]:
+              - /url: https://github.com/danielrltan
+            - link "LinkedIn →" [ref=e215] [cursor=pointer]:
+              - /url: https://www.linkedin.com/in/danielrltan
+            - link "Resume ↓" [ref=e216] [cursor=pointer]:
+              - /url: /resume/Daniel_Tan_Resume.pdf
+        - button "Back to top ↑" [ref=e218] [cursor=pointer]
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic: Index
+              - navigation:
+                - button "00 Top":
+                  - generic: "00"
+                  - generic: Top
+                - button "01 About":
+                  - generic: "01"
+                  - generic: About
+                - button "02 Skills":
+                  - generic: "02"
+                  - generic: Skills
+                - button "03 Projects":
+                  - generic: "03"
+                  - generic: Projects
+                - button "04 Work":
+                  - generic: "04"
+                  - generic: Work
+                - button "05 Play":
+                  - generic: "05"
+                  - generic: Play
+                - button "06 Other":
+                  - generic: "06"
+                  - generic: Other
+                - button "07 Contact":
+                  - generic: "07"
+                  - generic: Contact
+            - generic:
+              - generic: Elsewhere
+              - navigation:
+                - link "→ GitHub":
+                  - /url: https://github.com/danielrltan
+                  - generic: →
+                  - generic: GitHub
+                - link "→ LinkedIn":
+                  - /url: https://www.linkedin.com/in/danielrltan
+                  - generic: →
+                  - generic: LinkedIn
+                - link "→ Email":
+                  - /url: mailto:hello@danielrltan.com
+                  - generic: →
+                  - generic: Email
+                - link "↓ Resume":
+                  - /url: /resume/Daniel_Tan_Resume.pdf
+                  - generic: ↓
+                  - generic: Resume
+            - generic:
+              - generic: Colophon
+              - generic:
+                - generic:
+                  - generic: Stack
+                  - generic: React · TypeScript · Three.js · Rapier
+                - generic:
+                  - generic: Type
+                  - generic: Offbit · Geist · JetBrains Mono
+                - generic:
+                  - generic: Build
+                  - generic: v0.1 · 2026
+                - generic:
+                  - generic: Location
+                  - generic: Toronto / London, ON
+          - generic:
+            - generic: © Daniel Tan 2026
+            - generic: Made with intent.
+    - generic [ref=e223]:
+      - generic [ref=e224]:
+        - text: resolving
+        - generic [ref=e225]: · windowsill
+      - generic [ref=e226]: "6"
+  - main [ref=e227]:
+    - heading "Daniel R.L. Tan — Software Engineer Portfolio" [level=1] [ref=e228]
+    - paragraph [ref=e229]: Welcome to the personal portfolio of Daniel R.L. Tan, a software engineer and web developer. This site presents Daniel's resume, software projects, contact information, and professional background through an interactive 3D bedroom built with React, TypeScript, and three.js.
+    - paragraph [ref=e230]: "Sections available inside the interactive desktop: About, Resume, Projects, GitHub activity, and Contact. For recruiters and hiring managers, the resume window contains the full work history and the contact window includes a direct email link."
+    - paragraph [ref=e231]:
+      - text: Connect with Daniel on
+      - link "LinkedIn" [ref=e232] [cursor=pointer]:
+        - /url: https://www.linkedin.com/in/danielrltan
+      - text: or
+      - link "GitHub" [ref=e233] [cursor=pointer]:
+        - /url: https://github.com/danielrltan
+      - text: .

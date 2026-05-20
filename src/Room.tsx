@@ -319,7 +319,30 @@ function disposeOldMaterial(
   }
 }
 
+/**
+ * Lazily allocated, scene-wide shared replacement for mushroom bulbs.
+ * One material instance covers every `mushroom_bulb_*` mesh, so the
+ * renderer can batch them in the same draw call group instead of
+ * uploading four near-identical material UBOs. Built on first use so
+ * we don't pay for it on pages that never load the room.
+ */
+let SHARED_MUSHROOM_MATERIAL: THREE.MeshStandardMaterial | null = null;
+function getMushroomMaterial() {
+  if (SHARED_MUSHROOM_MATERIAL) return SHARED_MUSHROOM_MATERIAL;
+  SHARED_MUSHROOM_MATERIAL = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(1.0, 0.85, 0.5),
+    transparent: true,
+    opacity: 0.35,
+    roughness: 0.05,
+    metalness: 0.1,
+    emissive: new THREE.Color(1.0, 0.6, 0.2),
+    emissiveIntensity: 0.4,
+  });
+  return SHARED_MUSHROOM_MATERIAL;
+}
+
 function replaceMushroomBulbs(root: THREE.Object3D) {
+  const shared = getMushroomMaterial();
   root.traverse((obj) => {
     if (!(obj as THREE.Mesh).isMesh) return;
     if (!obj.name.startsWith("mushroom_bulb")) return;
@@ -327,16 +350,9 @@ function replaceMushroomBulbs(root: THREE.Object3D) {
     const old = mesh.material;
     // Was MeshPhysicalMaterial w/ transmission — each transmission material
     // costs a full extra scene render pass. Standard + transparent fakes the
-    // same look at a fraction of the cost.
-    mesh.material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(1.0, 0.85, 0.5),
-      transparent: true,
-      opacity: 0.35,
-      roughness: 0.05,
-      metalness: 0.1,
-      emissive: new THREE.Color(1.0, 0.6, 0.2),
-      emissiveIntensity: 0.4,
-    });
+    // same look at a fraction of the cost. Shared instance keeps the bulb
+    // count from spawning N identical materials.
+    mesh.material = shared;
     disposeOldMaterial(old);
   });
 }
@@ -368,7 +384,22 @@ function replaceMirrorMaterial(root: THREE.Object3D) {
   });
 }
 
+let SHARED_CLEAR_GLASS_MATERIAL: THREE.MeshStandardMaterial | null = null;
+function getClearGlassMaterial() {
+  if (SHARED_CLEAR_GLASS_MATERIAL) return SHARED_CLEAR_GLASS_MATERIAL;
+  SHARED_CLEAR_GLASS_MATERIAL = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(0.95, 0.95, 0.95),
+    transparent: true,
+    opacity: 0.2,
+    roughness: 0.05,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+  });
+  return SHARED_CLEAR_GLASS_MATERIAL;
+}
+
 function replaceClearGlass(root: THREE.Object3D) {
+  const shared = getClearGlassMaterial();
   root.traverse((obj) => {
     if (!(obj as THREE.Mesh).isMesh) return;
     const mesh = obj as THREE.Mesh;
@@ -380,14 +411,9 @@ function replaceClearGlass(root: THREE.Object3D) {
       changed = true;
       replaced.push(m);
       // Same swap as mushroom bulbs — drop the transmission render pass.
-      return new THREE.MeshStandardMaterial({
-        color: new THREE.Color(0.95, 0.95, 0.95),
-        transparent: true,
-        opacity: 0.2,
-        roughness: 0.05,
-        metalness: 0.0,
-        side: THREE.DoubleSide,
-      });
+      // Shared single instance so every clear-glass mesh shares one
+      // material UBO / shader program.
+      return shared;
     });
     if (changed) {
       mesh.material = newMats.length === 1 ? newMats[0]! : (newMats as THREE.Material[]);
@@ -696,16 +722,28 @@ export function Room({ roomGroupRef }: RoomProps) {
       const cloned = scene.clone(true);
       cloned.updateMatrixWorld(true);
 
-      // Real shadows: propagate castShadow + receiveShadow to every
-      // mesh inside the GLB. The top-level group's flags don't apply
-      // to children automatically — three.js needs the per-mesh
-      // settings. Without this, the shadow-casting DirectionalLight
-      // in Lighting.tsx has nothing to cast.
+      // Real shadows: propagate receiveShadow to every mesh inside the
+      // GLB — receiving is essentially free (just sampling the shadow
+      // map in the existing fragment shader).
+      //
+      // castShadow is GATED: each caster adds a full geometry pass to
+      // the depth render of the directional light. Skip casters that
+      // contribute no useful silhouette:
+      //   - key_* (~70 sub-mm keycaps, occluded by keyboard_frame)
+      //   - mushroom_bulb_* (transparent — alpha doesn't shadow cleanly)
+      //   - vinyl_disc (flat, inside record_player housing)
+      // Everything structural / large enough to read as shadow keeps
+      // castShadow on.
+      const NO_CAST_PREFIXES = ["key_", "mushroom_bulb"];
+      const NO_CAST_NAMES = new Set<string>(["vinyl_disc"]);
       cloned.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
+        const mesh = child as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.receiveShadow = true;
+        const noCast =
+          NO_CAST_NAMES.has(child.name) ||
+          NO_CAST_PREFIXES.some((p) => child.name.startsWith(p));
+        mesh.castShadow = !noCast;
       });
 
       // Snapshot monitor world AABB before processNode reparents

@@ -35,9 +35,26 @@ export function MoveableCursor({ hot }: Props) {
     let curX = 0;
     let curY = 0;
     let frame = 0;
+    // Hide the cursor until we have a real pointer position. Without
+    // this the element sits at the viewport's (0, 0) origin (top-left
+    // corner) on mount, since the transform isn't set until the first
+    // pointermove. On reload-without-moving that "ghost" cursor in
+    // the corner is the first thing the user sees.
+    let revealed = false;
+    rootEl.style.opacity = "0";
 
     const onMove = (e: PointerEvent) => {
       rootEl.style.transform = `translate3d(${e.clientX}px,${e.clientY}px,0) translate(-50%,-50%)`;
+      if (!revealed) {
+        revealed = true;
+        rootEl.style.opacity = "1";
+        // Seed lastX/Y from this first event so the parallax dx/dy
+        // doesn't compute against (0, 0) on the next move and yank
+        // the dot across the screen.
+        lastX = e.clientX;
+        lastY = e.clientY;
+        return;
+      }
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
       lastX = e.clientX;
