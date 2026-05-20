@@ -57,8 +57,10 @@
    * - Doto: pixel-dot display face for the hero name + select brand
    *   moments. The dots ARE the design statement. Loud, distinctive,
    *   sparing use only — never body type.
-   * - Bricolage Grotesque: variable, modern with character. Body copy
-   *   and display fallback. Not Inter (which felt default WordPress).
+   * - Geist (Vercel): industrial-modern grotesque, clean and refined.
+   *   Headings + body. Distinctive without being loud — pairs well
+   *   with the Offbit display face and the Teenage-Engineering-style
+   *   spec-sheet labels.
    * - JetBrains Mono: tech tags, file paths, HUD micro-labels. */
   /* Offbit Dot first (real Power Type font, local files), then mono. */
   --font-dot: "Offbit Dot", "JetBrains Mono", monospace;
@@ -66,9 +68,9 @@
    * feel without the pixel-dot rendering. */
   --font-pixel: "Offbit", "JetBrains Mono", monospace;
   --font-display:
-    "Bricolage Grotesque", system-ui, -apple-system, sans-serif;
+    "Geist", system-ui, -apple-system, sans-serif;
   --font-body:
-    "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+    "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono:
     "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo,
     Consolas, monospace;

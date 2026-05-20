@@ -59,7 +59,7 @@
    trailing period reinforces the spec-sheet aesthetic. Sits inside
    the column with a tiny mono index label tucked alongside. */
 .section-marker {
-  font-family: var(--font-pixel);
+  font-family: var(--font-dot);
   font-weight: 700;
   font-size: clamp(96px, 11vw, 148px);
   line-height: 0.82;
@@ -305,7 +305,7 @@
   padding: 36px 40px 36px;
 }
 .project-card h3 {
-  font-family: var(--font-pixel);
+  font-family: var(--font-dot);
   font-weight: 700;
   font-size: 26px;
   letter-spacing: 0.02em;
@@ -396,7 +396,7 @@
   background: #fbf8f4;
 }
 .play-item-title {
-  font-family: var(--font-pixel);
+  font-family: var(--font-dot);
   font-weight: 700;
   font-size: 18px;
   letter-spacing: 0.02em;
@@ -442,7 +442,7 @@
   margin-bottom: 8px;
 }
 .other-entry-title {
-  font-family: var(--font-pixel);
+  font-family: var(--font-dot);
   font-weight: 700;
   font-size: 20px;
   letter-spacing: 0.02em;
@@ -507,7 +507,7 @@
   font-weight: 500;
 }
 .exp-item-where {
-  font-family: var(--font-pixel);
+  font-family: var(--font-dot);
   font-weight: 700;
   font-size: 20px;
   letter-spacing: 0.02em;
@@ -552,7 +552,7 @@
 
 .contact-email {
   display: inline-block;
-  font-family: var(--font-pixel);
+  font-family: var(--font-dot);
   font-weight: 700;
   font-size: clamp(28px, 3.4vw, 46px);
   color: var(--accent);
@@ -598,7 +598,7 @@
 .hero-wordmark {
   /* Offbit (solid) to stay in the Power Type family — Space Grotesk
      looked generic against the pixel face used everywhere else. */
-  font-family: var(--font-pixel);
+  font-family: var(--font-dot);
   font-size: clamp(28px, 2.6vw, 40px);
   font-weight: 700;
   letter-spacing: 0.02em;
