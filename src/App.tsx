@@ -18,7 +18,6 @@ import { SceneStateProvider } from "./SceneState";
 import { GroundPlane } from "./GroundPlane";
 import { RiceDotsBg } from "./RiceDotsBg";
 import { MoveableCursor } from "./MoveableCursor";
-import { RicePebbles } from "./RicePebbles";
 import { JumpToTop } from "./JumpToTop";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
@@ -314,19 +313,18 @@ export default function App() {
                 <RoomLoadedSignal onLoaded={() => setRoomLoaded(true)} />
                 <Lighting />
                 <GroundPlane />
-                <RicePebbles />
-                {/* Soft baked contact shadow rendered by drei into a
-                    one-off framebuffer — no shadow maps / casting
-                    lights required. Sits just below the ground plane
-                    so the room reads as "on a surface" rather than
-                    floating. */}
+                {/* Contact shadow ABOVE the plane (y > plane.y) so it
+                    renders on the plane surface. Stronger opacity +
+                    bigger spread because at iso projection / FOV 15°
+                    the camera is far enough that a subtle shadow
+                    disappears entirely. */}
                 <ContactShadows
-                  position={[0, -0.07, 0]}
-                  opacity={0.4}
-                  scale={12}
-                  blur={2.5}
-                  far={2}
-                  color="#1a1714"
+                  position={[0, 0.005, 0]}
+                  opacity={0.85}
+                  scale={16}
+                  blur={3.0}
+                  far={3.5}
+                  color="#0a0c10"
                 />
                 {/* Mobile: keep the Physics provider mounted (Room's
                     <RigidBody>s require it) but pause the sim — near-zero

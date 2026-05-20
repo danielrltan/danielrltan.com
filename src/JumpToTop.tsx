@@ -19,7 +19,7 @@ export function JumpToTop() {
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
       style={{
         position: "fixed",
-        left: 22,
+        right: 22,
         bottom: 22,
         zIndex: 35,
         display: "inline-flex",
