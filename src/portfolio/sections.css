@@ -113,16 +113,16 @@
   margin-right: 18px;
 }
 
-/* Section heading — Bricolage Grotesque mixed-case with trailing
-   period ("About me."). Refined editorial feel, lets the Offbit
-   number marker carry the loud industrial statement and the heading
-   read as clean type. */
+/* Section heading — Geist mixed-case with trailing period
+   ("About me."). Tight letter-spacing for the premium / industrial
+   typeset feel. Lets the Offbit number marker carry the loud
+   statement; the heading reads as refined sans. */
 .portfolio-section h2 {
   font-family: var(--font-display);
   font-weight: 500;
   font-size: clamp(40px, 4.6vw, 68px);
   line-height: 1.02;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.045em;
   color: var(--wrapper-ink);
   margin: 0 0 48px;
 }
@@ -205,12 +205,14 @@
   background-position: center;
 }
 
-/* Body type — Inter, comfortable line-height. */
+/* Body type — Geist, comfortable line-height. Slightly tightened
+   tracking for the premium spec-sheet feel. */
 .portfolio-section p,
 .section-card p {
   font-family: var(--font-body);
   font-size: 17px;
-  line-height: 1.7;
+  line-height: 1.65;
+  letter-spacing: -0.01em;
   color: var(--wrapper-ink);
   opacity: 0.88;
   margin: 0 0 1.1em;
@@ -626,8 +628,11 @@
 /* ---------------------------------------------------------------- */
 
 @media (max-width: 768px) {
+  /* All sections drop the 50/50 split — content takes the full width.
+     The fixed canvas pins to the top 55vh as a hero band, then fades
+     out for the content below. Sections stack normally. */
   .portfolio-section {
-    padding: 96px 0;
+    padding: 80px 0;
   }
   .portfolio-section--hero {
     padding: 0;
@@ -638,35 +643,84 @@
   .portfolio-col {
     margin-left: 0;
     width: 100vw;
-    padding: 56vh 6vw 0;
+    /* The about (first content) section needs to clear the hero
+       canvas band at the top. Subsequent sections start where they
+       naturally do. */
+    padding: 0 6vw;
     max-width: none;
+  }
+  /* The first content section after Hero needs top-padding equal to
+     the canvas band so it doesn't slide under the room. */
+  .portfolio-section--hero + .portfolio-section .portfolio-col {
+    padding-top: 56vh;
   }
   /* Hero on mobile is purely the canvas at top — content starts after. */
   .portfolio-section--hero .portfolio-col {
     padding: 0;
   }
-  /* Marker stays huge for mobile too — sits inside column, no bleed. */
+  /* Section markers shrink — full-width column means we have less
+     horizontal room. Still pixel-dot dramatic. */
   .section-marker {
-    font-size: clamp(96px, 28vw, 160px);
-    margin: 0 0 12px 0;
-    mix-blend-mode: normal;
+    font-size: clamp(88px, 26vw, 140px);
+    margin: 0 0 4px 0;
+  }
+  .section-index {
+    margin-bottom: 14px;
+    font-size: 10.5px;
+    letter-spacing: 0.2em;
   }
   .portfolio-section h2 {
     font-size: clamp(32px, 9vw, 48px);
+    letter-spacing: -0.04em;
     margin-bottom: 32px;
   }
   .section-card {
-    padding: 36px 28px;
+    padding: 32px 24px;
     margin-right: 0;
   }
+  /* Card corner decorations scale down on mobile so they don't
+     dominate the smaller card. */
+  .section-card::after {
+    top: 14px;
+    right: 14px;
+    width: 11px;
+    height: 11px;
+  }
+  .section-card::before {
+    top: 17px;
+    left: 17px;
+    width: 6px;
+    height: 6px;
+  }
+  /* Skills, Play grids collapse to single column on mobile. */
+  .skill-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .play-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .play-item {
+    padding: 20px;
+  }
+  /* Project cards lose wide padding. */
   .project-card-body {
-    padding: 28px 24px;
+    padding: 26px 22px;
   }
   .project-card h3 {
     font-size: 22px;
   }
+  /* Contact buttons stack. */
+  .contact-grid {
+    flex-direction: column;
+  }
   .contact-socials {
     flex-direction: column;
+  }
+  .contact-email {
+    font-size: clamp(22px, 7vw, 32px);
+    word-break: break-all;
   }
   .scroll-hint {
     bottom: 28px;

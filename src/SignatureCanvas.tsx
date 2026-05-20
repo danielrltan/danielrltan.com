@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { registerSignatureBrush } from "./paint";
 import { useScrollProgress } from "./useScrollProgress";
+import { useIsMobile } from "./useIsMobile";
 
 /**
  * Separate 2D canvas dedicated to the signature. Same brush look as
@@ -36,6 +37,7 @@ const FADE_DONE = 0.12;
 export function SignatureCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollProgress = useScrollProgress();
+  const isMobile = useIsMobile();
   const fadeT = Math.max(
     0,
     Math.min(1, (scrollProgress - FADE_START) / (FADE_DONE - FADE_START)),
@@ -49,9 +51,18 @@ export function SignatureCanvas() {
     if (!ctx) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Mobile signature is confined to the same 55vh canvas band the
+    // room renders into. Without this, the signature paints onto the
+    // full viewport height (including the content area below the
+    // canvas band) and the giant yellow scrawl shows up behind the
+    // about / projects / contact text.
+    const mobileBreakpoint = 768;
     const resize = () => {
       const w = window.innerWidth;
-      const h = window.innerHeight;
+      const h =
+        w <= mobileBreakpoint
+          ? Math.round(window.innerHeight * 0.55)
+          : window.innerHeight;
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       canvas.style.width = `${w}px`;
@@ -125,10 +136,17 @@ export function SignatureCanvas() {
       aria-hidden
       style={{
         position: "fixed",
-        inset: 0,
+        top: 0,
+        left: 0,
+        width: "100vw",
+        // Match the canvas band on mobile so the signature doesn't
+        // bleed into the content area below the 3D room. On desktop
+        // the room covers the full viewport so this is just 100vh.
+        height: isMobile ? "55vh" : "100vh",
         zIndex: 0,
         pointerEvents: "none",
         opacity,
+        overflow: "hidden",
         // No transition — scroll updates at rAF cadence and a CSS
         // transition would fight every step, producing visible
         // stuttering. Raw opacity tracks scroll smoothly because the
