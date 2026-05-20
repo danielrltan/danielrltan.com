@@ -15,6 +15,7 @@ import {
   ORBIT_MAX_DISTANCE,
 } from "./IntroController";
 import { SceneStateProvider } from "./SceneState";
+import { GroundPlane } from "./GroundPlane";
 import { MoveableCursor } from "./MoveableCursor";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
@@ -175,6 +176,26 @@ export default function App() {
     document.documentElement.style.setProperty("--content-opacity", value);
   }, [contentOpacity, isMobile]);
 
+  // Force the page to start at the top on every load. Otherwise a
+  // reload while scrolled into a section shows the orange loading
+  // screen on top of mid-page content — looks broken because the
+  // wireframes appear over the about / projects card. Disable the
+  // browser's automatic scroll restoration and slam to 0 on mount.
+  useEffect(() => {
+    if ("scrollRestoration" in history) {
+      history.scrollRestoration = "manual";
+    }
+    window.scrollTo(0, 0);
+  }, []);
+
+  // Toggle a loading-active class on <html> so CSS can hide chrome
+  // (hero mark, brand cat, scroll hint, cursor) until the room is
+  // actually visible. Without this they sit on top of the orange
+  // loading screen at low contrast.
+  useEffect(() => {
+    document.documentElement.classList.toggle("loading-active", !roomLoaded);
+  }, [roomLoaded]);
+
   return (
     <AssemblyProvider>
       <div
@@ -201,6 +222,32 @@ export default function App() {
             that forced Three.js to recompute renderer.setSize +
             projection matrix every frame, which is the source of the
             visible scroll snap. */}
+        {/* Rice-dot background pattern — hero only, fades to 0 between
+            scroll progress 0.00 and 0.05. Sits behind the canvas + the
+            overlay panel so it tints the whole hero band. */}
+        {roomLoaded && (
+          <div
+            aria-hidden
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 0,
+              pointerEvents: "none",
+              opacity: clamp01(1 - scrollProgress / 0.05),
+              backgroundImage:
+                "radial-gradient(rgba(21, 23, 26, 0.32) 1.2px, transparent 1.7px)",
+              backgroundSize: "16px 16px",
+              backgroundPosition: "center",
+              /* Soft radial vignette so the dots fade out at the
+                 viewport edges instead of cutting off hard. */
+              maskImage:
+                "radial-gradient(ellipse at center, #000 50%, transparent 90%)",
+              WebkitMaskImage:
+                "radial-gradient(ellipse at center, #000 50%, transparent 90%)",
+            }}
+          />
+        )}
+
         {!isMobile && (
           <div
             aria-hidden
@@ -281,6 +328,7 @@ export default function App() {
               <Suspense fallback={null}>
                 <RoomLoadedSignal onLoaded={() => setRoomLoaded(true)} />
                 <Lighting />
+                <GroundPlane />
                 {/* Mobile: keep the Physics provider mounted (Room's
                     <RigidBody>s require it) but pause the sim — near-zero
                     CPU, and drag/throw on touch is awkward anyway. */}
@@ -353,7 +401,7 @@ export default function App() {
         {/* TE-spec-sheet flourishes — only after the room loads. */}
         {sceneReady && !isMobile && (
           <>
-            <StatusBar />
+            <StatusBar onReset={resetRoom} />
             <ScrollRail />
           </>
         )}

@@ -94,32 +94,33 @@ export function RoomHUD({ onReset, visible, interactive }: Props) {
           bottom-right were dropped: the page is scroll-driven now, so
           rotate / pan / zoom no longer describe the primary interaction
           model. Reset still applies (throwable / draggable objects). */}
+      {/* Reset + audio pills only render on MOBILE. On desktop both
+          live in the StatusBar (top-right icon buttons). */}
       <div
         style={{
           opacity: controlsShown ? 1 : 0,
           transition: `opacity ${FADE_MS}ms ease`,
         }}
       >
-        <ResetButton
+        <MobileResetButton
           onReset={onReset}
           interactive={shown && controlsShown}
         />
-        {/* Audio toggle lives in the StatusBar (top-right) on desktop;
-            the pill only renders here on mobile where StatusBar is
-            hidden. Same shared state via useAudioToggle. */}
         <MobileAudioToggle interactive={shown && controlsShown} />
       </div>
     </div>
   );
 }
 
-function ResetButton({
+function MobileResetButton({
   onReset,
   interactive,
 }: {
   onReset: () => void;
   interactive: boolean;
 }) {
+  const isMobile = useIsMobile();
+  if (!isMobile) return null;
   const base: CSSProperties = {
     position: "absolute",
     bottom: HUD_PADDING,

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
-import { Volume2, VolumeX } from "lucide-react";
+import { RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { useScrollProgress } from "./useScrollProgress";
 import { useAudioToggle } from "./useAudioToggle";
+
+interface Props {
+  /** Reset the room (snap throwables / draggables back to starting pose). */
+  onReset: () => void;
+}
 
 /**
  * Top-right status badge. TE / spec-sheet flavour: a small pill with
@@ -41,7 +46,7 @@ function formatClock(d: Date): string {
   return `${hh}:${mm}:${ss}`;
 }
 
-export function StatusBar() {
+export function StatusBar({ onReset }: Props) {
   const progress = useScrollProgress();
   const [now, setNow] = useState(() => new Date());
   const audio = useAudioToggle();
@@ -98,26 +103,18 @@ export function StatusBar() {
       </span>
       <button
         type="button"
+        onClick={onReset}
+        aria-label="Reset room"
+        style={iconButtonStyle(false)}
+      >
+        <RotateCcw size={13} strokeWidth={2} />
+      </button>
+      <button
+        type="button"
         onClick={audio.toggle}
         aria-label={audio.on ? "Mute ambience" : "Play ambience"}
         aria-pressed={audio.on}
-        style={{
-          marginLeft: 2,
-          width: 28,
-          height: 28,
-          borderRadius: 999,
-          border: "1px solid rgba(26, 23, 20, 0.12)",
-          background: audio.on
-            ? "rgba(232, 112, 64, 0.14)"
-            : "rgba(26, 23, 20, 0.04)",
-          color: audio.on ? "var(--accent)" : "var(--wrapper-ink)",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          padding: 0,
-          transition: "background 0.18s ease, color 0.18s ease",
-        }}
+        style={iconButtonStyle(audio.on)}
       >
         {audio.on ? (
           <Volume2 size={13} strokeWidth={2} />
@@ -127,4 +124,26 @@ export function StatusBar() {
       </button>
     </div>
   );
+}
+
+/** Shared icon-button style for the StatusBar pill — round, 28×28,
+ *  walnut-on-translucent-white, orange tint when "active". */
+function iconButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    marginLeft: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    border: "1px solid rgba(26, 23, 20, 0.12)",
+    background: active
+      ? "rgba(232, 112, 64, 0.14)"
+      : "rgba(26, 23, 20, 0.04)",
+    color: active ? "var(--accent)" : "var(--wrapper-ink)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    padding: 0,
+    transition: "background 0.18s ease, color 0.18s ease",
+  };
 }

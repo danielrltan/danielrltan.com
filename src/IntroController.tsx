@@ -10,9 +10,11 @@ interface Props {
   onComplete: () => void;
 }
 
-const FLOAT_AMPLITUDE = 0.07;
-const FLOAT_FREQ = 0.8;
-const HOVER_LIFT = 0.14;
+// Float + cursor parallax disabled — the room sits flat on the new
+// product-photo ground plane instead of bobbing in space.
+const FLOAT_AMPLITUDE = 0;
+const FLOAT_FREQ = 0;
+const HOVER_LIFT = 0;
 
 // ALL camera pose constants are exported and ARE the single source of
 // truth. `App.tsx` imports them for the initial Canvas `camera` prop,
@@ -96,29 +98,12 @@ export function IntroController({
     if (!group || !camera) return;
 
     if (phase.current === "pre") {
-      const elapsed = state.clock.elapsedTime;
-      const floatY = Math.sin(elapsed * FLOAT_FREQ) * FLOAT_AMPLITUDE;
-
-      // Simple centred hitbox in normalized screen coords. Raycast
-      // against the room mesh worked in theory but the room is a
-      // collection of dozens of sub-meshes — the per-frame hit /
-      // miss flickered when the cursor grazed silhouette edges,
-      // making the lift spasm. A static square is rock-solid.
-      const HITBOX_HALF = 0.65; // ±0.65 of normalized viewport (1.7× the old 0.38)
-      const inHitbox =
-        Math.abs(state.pointer.x) < HITBOX_HALF &&
-        Math.abs(state.pointer.y) < HITBOX_HALF;
-      const hoverLift = inHitbox ? HOVER_LIFT : 0;
-
-      // pointer.x: -1 (left) to +1 (right)
-      // pointer.y: -1 (bottom) to +1 (top)
-      // Cursor RIGHT  → room turns right (negative Y).
-      // Cursor UP     → room tilts back  (negative X).
-      group.rotation.y += (state.pointer.x * 0.10 - group.rotation.y) * 0.08;
-      group.rotation.x += (-state.pointer.y * 0.07 - group.rotation.x) * 0.08;
-      group.rotation.z = 0;
-
-      group.position.y += (floatY + hoverLift - group.position.y) * 0.1;
+      // Room sits perfectly still on the ground plane. The previous
+      // float + cursor-parallax + hover-lift were removed when the
+      // aesthetic shifted to product-photo (room on a plane, not
+      // floating in space).
+      group.rotation.set(0, 0, 0);
+      group.position.set(0, 0, 0);
       return;
     }
 
