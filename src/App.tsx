@@ -18,7 +18,6 @@ import { SceneStateProvider } from "./SceneState";
 import { GroundPlane } from "./GroundPlane";
 import { RiceDotsBg } from "./RiceDotsBg";
 import { MoveableCursor } from "./MoveableCursor";
-import { MoveableCursor } from "./MoveableCursor";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
 import { SignatureCapture } from "./SignatureCapture";
