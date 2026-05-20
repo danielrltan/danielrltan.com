@@ -107,14 +107,17 @@
    * (click-to-begin, MoveableCursor, RoomHUD, scroll prompt, hint
    * banner — basically everything outside the warm-lit room interior).
    * ----------------------------------------------------------------*/
-  /* Portfolio palette — white with orange accents (retro-futurism
-   * spec). Body text is near-black warm; bg is a very light warm
-   * white. Orange accent is a touch deeper than #ff7842 — works
-   * better as a link/tag colour where saturation needs restraint. */
-  --wrapper-bg: #f8f6f3;
-  --wrapper-ink: #1a1714;            /* warm near-black */
-  --wrapper-ink-soft: rgba(26, 23, 20, 0.6);
-  --wrapper-ink-faint: rgba(26, 23, 20, 0.12);
+  /* Portfolio palette — cool industrial light-grey with orange
+   * accents. Shifted from warm cream (#f8f6f3) → cool grey
+   * (#ecedef) to match the product-photography aesthetic of the
+   * reference (clean white-grey backdrop with baked shadows + soft
+   * gradients). Ink slightly cooler to match. Orange accent stays. */
+  --wrapper-bg: #ecedef;
+  --wrapper-bg-soft: #f4f5f7;        /* near-white, top of gradient */
+  --wrapper-bg-deep: #d9dbdf;        /* slightly darker, bottom of gradient */
+  --wrapper-ink: #15171a;            /* cool near-black */
+  --wrapper-ink-soft: rgba(21, 23, 26, 0.6);
+  --wrapper-ink-faint: rgba(21, 23, 26, 0.12);
   --accent: #e87040;                  /* orange accent (links, tags, highlights) */
   --accent-soft: rgba(232, 112, 64, 0.12);
 }
@@ -181,7 +184,16 @@ body,
   margin: 0;
   padding: 0;
   width: 100%;
-  background: var(--wrapper-bg);
+  /* Subtle vertical gradient — softer near the hero, slightly cooler
+     near the bottom. Echoes baked product-photography lighting. */
+  background:
+    linear-gradient(
+      180deg,
+      var(--wrapper-bg-soft) 0%,
+      var(--wrapper-bg) 35%,
+      var(--wrapper-bg-deep) 100%
+    );
+  background-attachment: fixed;
   font-family: var(--font-body);
   color: var(--wrapper-ink);
 }

@@ -4,27 +4,53 @@ interface OtherEntry {
   label: string;
   title: string;
   blurb?: string;
-  href?: string;
 }
 
 const ENTRIES: OtherEntry[] = [
   {
-    label: "Writing",
-    title: "On building toys",
-    blurb:
-      "Why the web is the best place to ship interactive ideas, and how to keep them weird.",
+    label: "Hackathon",
+    title: "Hack The 6ix — Finalist",
+    blurb: "Top finalist out of 400+ participants for the Revamp battery-management project.",
   },
   {
-    label: "Talk",
-    title: "R3F: the good, the bad, the boilerplate",
-    blurb:
-      "A lightning talk at a local meetup on what actually works in production.",
+    label: "Competition",
+    title: "IBM watsonx Orchestrate Challenge — Top 50",
+    blurb: "Top 50 of 2000+ global participants in IBM's agentic-AI build challenge.",
   },
   {
-    label: "Open source",
-    title: "Bits I&rsquo;ve contributed to",
-    blurb:
-      "Small PRs against three.js, drei, and a handful of indie libraries.",
+    label: "Competition",
+    title: "WFN Odyssey Cup — First Place",
+    blurb: "$500 prize at the Western Founders Network's annual venture competition.",
+  },
+  {
+    label: "Competition",
+    title: "TD Innovation Sprint — Finalist",
+  },
+  {
+    label: "Competition",
+    title: "2024 TRREB Contest — 2nd Place",
+    blurb: "$2,500 award at the Toronto Regional Real Estate Board student competition.",
+  },
+  {
+    label: "Grant",
+    title: "Ontario Summer Company Grant",
+    blurb: "$3,000 grant for a small business operated through Ontario's 2023 summer program.",
+  },
+  {
+    label: "Leadership",
+    title: "Director of Flagship — Western AI Club",
+  },
+  {
+    label: "Leadership",
+    title: "VP of Design — Western Founders Network",
+  },
+  {
+    label: "Leadership",
+    title: "Director of Outreach — Tech for Social Impact",
+  },
+  {
+    label: "Leadership",
+    title: "Developer — Western Developer's Society",
   },
 ];
 
@@ -42,11 +68,6 @@ export function Other() {
                 <div className="other-entry-label">{e.label}</div>
                 <h3 className="other-entry-title">{e.title}</h3>
                 {e.blurb && <p className="other-entry-blurb">{e.blurb}</p>}
-                {e.href && (
-                  <a href={e.href} target="_blank" rel="noreferrer">
-                    Read &rarr;
-                  </a>
-                )}
               </div>
             ))}
           </div>

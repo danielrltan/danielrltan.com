@@ -13,7 +13,9 @@ import {
 const UNIT_BOX = new THREE.BoxGeometry(2, 2, 2);
 const UNIT_EDGES = new THREE.EdgesGeometry(UNIT_BOX);
 
-const WIREFRAME_COLOR = new THREE.Color("#ff7842");
+// White wireframes on the orange cover dome — "orange-print" rather
+// than classic cyan-blueprint. High contrast spec-sheet feel.
+const WIREFRAME_COLOR = new THREE.Color("#ffffff");
 
 /**
  * Deterministic 0..1 hash from a string. Used to randomize per-mesh
@@ -173,11 +175,11 @@ export function WireframeRoom({ state }: Props) {
         <sphereGeometry args={[60, 16, 12]} />
         <meshBasicMaterial
           ref={coverMatRef}
-          /* Was #f0e6d6 (warm cream). Bumped to #f8f6f3 to match the
-           * wrapper-bg used by the rest of the site so the loading
-           * screen and the post-load hero share the exact same
-           * background colour — no perceptual snap on climax. */
-          color="#f8f6f3"
+          /* "Orange-print" loading screen — the cover dome paints the
+           * whole frame in the brand orange while the wireframes
+           * (white) resolve over it. Crossfades to the wrapper-bg
+           * cool grey when the climax fires. */
+          color="#e87040"
           side={THREE.BackSide}
           transparent
           opacity={1}

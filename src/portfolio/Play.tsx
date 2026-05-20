@@ -2,26 +2,21 @@ import "./sections.css";
 
 interface PlayItem {
   title: string;
-  blurb: string;
-  href?: string;
+  meta?: string;
 }
 
 const ITEMS: PlayItem[] = [
-  {
-    title: "Shader sketches",
-    blurb:
-      "Daily GLSL experiments — noise fields, raymarched shapes, signed-distance functions. Mostly throwaway, occasionally surprising.",
-  },
-  {
-    title: "Furniture in Blender",
-    blurb:
-      "I model my own room in Blender every few months as a poly-budget exercise. Hard-surface practice, basically.",
-  },
-  {
-    title: "Mechanical keyboards",
-    blurb:
-      "Soldered. Sanded. Lubed. The keyboard in the scene is the one I actually type on right now.",
-  },
+  { title: "Taekwondo", meta: "Black Belt 2nd Dan" },
+  { title: "Kickboxing" },
+  { title: "Piano", meta: "12+ years · RCM Level 9" },
+  { title: "Computers & Workstation Setups" },
+  { title: "Fashion" },
+  { title: "Mechanical Keyboards", meta: "& speed typing" },
+  { title: "Graphic Design" },
+  { title: "Cars & Driving" },
+  { title: "Skiing" },
+  { title: "Crocheting" },
+  { title: "Travelling" },
 ];
 
 export function Play() {
@@ -33,20 +28,15 @@ export function Play() {
         <h2>Off the clock.</h2>
         <div className="section-card">
           <p>
-            Stuff I do for fun. Not commercial work, not portfolio-grade
-            &mdash; just sketches and obsessions.
+            Stuff I do that has nothing to do with code &mdash; or at
+            least, didn&rsquo;t start there. Mostly long-term obsessions.
           </p>
           <div className="section-rule" />
           <div className="play-grid">
             {ITEMS.map((it) => (
               <div key={it.title} className="play-item">
                 <h3 className="play-item-title">{it.title}</h3>
-                <p className="play-item-blurb">{it.blurb}</p>
-                {it.href && (
-                  <a href={it.href} target="_blank" rel="noreferrer">
-                    See it &rarr;
-                  </a>
-                )}
+                {it.meta && <p className="play-item-blurb">{it.meta}</p>}
               </div>
             ))}
           </div>

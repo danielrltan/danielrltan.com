@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#d8d4ca" />
+    <meta name="theme-color" content="#e87040" />
 
     <!-- Favicon — same cat asset as the loading screen, so the browser
          tab matches the site's mascot. Modern browsers render SVG
@@ -110,15 +110,15 @@
     </script>
 
     <style>
-      html, body { margin: 0; background: #f8f6f3; }
+      html, body { margin: 0; background: #e87040; }
       /* Boot screen — visible immediately on first paint, before any JS
-         parses. React removes #boot-screen from the DOM once the scene is
-         ready (LoadingScreen handles that in App.tsx). */
+         parses. Orange "blueprint" background; React removes the
+         #boot-screen from the DOM once the scene is ready. */
       #boot-screen {
         position: fixed;
         inset: 0;
-        background: #d8d4ca;
-        color: #5a3a1f;
+        background: #e87040;
+        color: #ffffff;
         display: flex;
         align-items: center;
         justify-content: center;

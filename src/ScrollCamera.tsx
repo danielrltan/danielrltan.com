@@ -39,7 +39,7 @@ interface ScrollStop {
 const STOPS: ScrollStop[] = [
   // Hero — matches END_POS / END_LOOK_AT from IntroController so
   // there's no snap when ScrollCamera takes over from the intro tilt.
-  { at: 0.0, position: [16.30, 10.24, 16.30], target: [0, 0.8, 0] },
+  { at: 0.0, position: [15.2, 9.6, 15.2], target: [0, 0.8, 0] },
   // About — closer to the bed (cozy / personal corner).
   { at: 0.13, position: [12.30, 6.43, 15.02], target: [-0.5, 0.8, -0.6] },
   // Skills — pulled back, framing the whole stack.

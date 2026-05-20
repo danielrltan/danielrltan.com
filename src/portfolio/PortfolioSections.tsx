@@ -6,14 +6,16 @@ import { Work } from "./Work";
 import { Play } from "./Play";
 import { Other } from "./Other";
 import { Contact } from "./Contact";
+import { Footer } from "./Footer";
 
 /**
- * Vertical stack of scroll-driven content sections. Each section's
- * column is on the right ~50% of the viewport so the fixed 3D room
- * on the left stays visible. Hero is the only exception — empty,
- * room takes the whole viewport.
+ * Vertical stack of scroll-driven content sections + footer.
+ * Each section's column is on the right ~50% of the viewport so the
+ * fixed 3D room on the left stays visible. Hero is the only exception
+ * — empty, room takes the whole viewport.
  *
- * Order: Hero → About → Skills → Projects → Work → Play → Other → Contact.
+ * Order: Hero → About → Skills → Projects → Work → Play → Other →
+ * Contact → Footer.
  */
 export function PortfolioSections() {
   return (
@@ -35,6 +37,7 @@ export function PortfolioSections() {
       <Play />
       <Other />
       <Contact />
+      <Footer />
     </main>
   );
 }

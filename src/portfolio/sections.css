@@ -331,8 +331,17 @@
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--wrapper-ink);
-  margin: 0 0 14px;
+  margin: 0 0 8px;
   line-height: 1.05;
+}
+.project-card-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--wrapper-ink-soft);
+  font-weight: 500;
+  margin: 0 0 16px;
 }
 .project-card-tags {
   display: flex;
@@ -529,11 +538,38 @@
 .exp-item-where {
   font-family: var(--font-dot);
   font-weight: 700;
-  font-size: 20px;
+  font-size: 22px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--wrapper-ink);
+}
+.exp-item-role {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--wrapper-ink-soft);
+  font-weight: 500;
+  margin-bottom: 14px;
+}
+.exp-item-bullets {
+  font-family: var(--font-body);
+  font-size: 15.5px;
+  line-height: 1.6;
+  opacity: 0.82;
+  margin: 0;
+  padding-left: 18px;
+  list-style: square;
+}
+.exp-item-bullets li {
+  margin-bottom: 8px;
+}
+.exp-item-bullets li:last-child {
+  margin-bottom: 0;
+}
+.exp-item-bullets li::marker {
+  color: var(--accent);
 }
 .exp-item-what {
   font-family: var(--font-body);

@@ -26,13 +26,14 @@ const HOVER_LIFT = 0.14;
 //           takes over from). END_LOOK_AT MUST match the OrbitControls
 //           `target` prop or the camera snaps when control transfers.
 export const START_POS = new THREE.Vector3(55, 55, 55);
-// Iso crank, round two. FOV 20° → 14°, camera offsets scaled ≈1.43×
-// further from look-at so the room still frames at the same apparent
-// size. Wall verticals now run effectively parallel to the viewport
-// edge — proper isometric feel rather than soft perspective.
-export const END_POS = new THREE.Vector3(16.3, 10.24, 16.3);
+// Iso projection. FOV 15° at the canonical (END) pose — wall
+// verticals run effectively parallel to the viewport edge, proper
+// isometric feel rather than soft perspective. Camera offsets scaled
+// to keep the room framed at the same apparent size as the previous
+// 14° + (16.3, 10.24, 16.3) tuning.
+export const END_POS = new THREE.Vector3(15.2, 9.6, 15.2);
 export const START_FOV = 5;
-export const END_FOV = 14;
+export const END_FOV = 15;
 export const START_LOOK_AT = new THREE.Vector3(0, 0.6, 0);
 export const END_LOOK_AT = new THREE.Vector3(0, 0.8, 0);
 

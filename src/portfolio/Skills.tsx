@@ -7,20 +7,35 @@ interface SkillGroup {
 
 const GROUPS: SkillGroup[] = [
   {
-    label: "Frontend",
-    items: ["React", "TypeScript", "Vite", "Tailwind", "Framer Motion", "GSAP"],
+    label: "Languages",
+    items: ["Python", "C++", "TypeScript", "Bash", "SQL"],
   },
   {
-    label: "3D / Graphics",
-    items: ["three.js", "React Three Fiber", "Rapier", "GLSL", "Blender"],
+    label: "ML / Data",
+    items: [
+      "Machine Learning",
+      "Semantic Search",
+      "Multimodal Models",
+      "Representation Learning",
+      "Data Annotation",
+      "Model Evaluation",
+    ],
   },
   {
-    label: "Backend",
-    items: ["Node", "Express", "FastAPI", "Postgres", "Redis", "Prisma"],
+    label: "Frameworks",
+    items: [
+      "FastAPI",
+      "PyTorch",
+      "TensorFlow",
+      "NumPy",
+      "Pandas",
+      "React",
+      "Three.js / R3F",
+    ],
   },
   {
     label: "Tooling",
-    items: ["Git", "Vitest", "Playwright", "Docker", "GitHub Actions"],
+    items: ["Git", "Docker", "MongoDB", "Postgres", "Vercel", "Railway"],
   },
 ];
 
@@ -48,8 +63,9 @@ export function Skills() {
           </div>
           <div className="section-rule" />
           <p>
-            Comfortable picking up whatever a project needs. Recently:
-            shader-heavy 3D, scroll-driven UX, real-time physics.
+            Comfortable picking up whatever a project needs. Recently
+            heavy on ML-backed product work, multimodal video models,
+            and real-time 3D on the web.
           </p>
         </div>
       </div>

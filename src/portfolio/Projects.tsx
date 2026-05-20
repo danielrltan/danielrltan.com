@@ -7,27 +7,31 @@ interface Project {
   liveHref?: string;
   repoHref?: string;
   videoSrc?: string;
+  meta?: string;
 }
 
 const PROJECTS: Project[] = [
   {
+    title: "Cognetech",
+    meta: "Jan 2026 · Python, FastAPI, Multimodal Models",
+    blurb:
+      "AI-powered video indexing + semantic search tool for clinical footage. Auto-generates timestamped behavioural annotations, cutting psychologists' manual review from hours/days to seconds. Production-minded Python/FastAPI backend integrating TwelveLabs video understanding models with NO patient data storage. End-to-end product (React + Three.js frontend, deployed on Vercel/Railway) translating model outputs into clinician-friendly \"behavioural fingerprints.\"",
+    tags: ["Python", "FastAPI", "Semantic Search", "Multimodal", "React", "Three.js"],
+  },
+  {
+    title: "Revamp — Hack The 6ix Finalist",
+    meta: "Jul 2025 · C++, Python, React.js, QNX, Raspberry Pi",
+    blurb:
+      "Plug-and-play universal BMS for second-life EV modules on a QNX (RTOS) Raspberry Pi edge node. Normalised mixed-OEM telemetry and exposed a centralised fleet dashboard for real-time monitoring. Cloud analytics pipeline (FastAPI + MongoDB Atlas) with Gemini-powered SoH estimation and anomaly explanation. Physics-based battery simulator with PyBaMM streaming packed binary over TCP for 3 EV packs (≈20,736 cells).",
+    tags: ["C++", "Python", "React", "QNX", "Raspberry Pi", "MongoDB", "Gemini"],
+  },
+  {
     title: "Interactive 3D Portfolio",
+    meta: "2026 · React, R3F, Rapier",
     blurb:
       "This site. Hand-modelled isometric bedroom in Blender, brought to life with React Three Fiber + Rapier physics. Real keyboard typing, mouse cursor following, throwable objects, scroll-driven camera, signature replay.",
     tags: ["React", "TypeScript", "R3F", "Rapier", "GLSL"],
     repoHref: "https://github.com/danielrltan/portfolioweb",
-  },
-  {
-    title: "Project Two",
-    blurb:
-      "Placeholder for a second showcase project. Replace with whatever you want recruiters to see first.",
-    tags: ["TypeScript", "Next.js", "Postgres"],
-  },
-  {
-    title: "Project Three",
-    blurb:
-      "Placeholder. Tell the story of a problem you solved, the constraints you worked under, and the choice you'd make differently next time.",
-    tags: ["Python", "FastAPI", "React"],
   },
 ];
 
@@ -56,6 +60,7 @@ export function Projects() {
             </div>
             <div className="project-card-body">
               <h3>{p.title}</h3>
+              {p.meta && <div className="project-card-meta">{p.meta}</div>}
               <p>{p.blurb}</p>
               <div className="project-card-tags">
                 {p.tags.map((t) => (

@@ -18,9 +18,11 @@ import { SceneStateProvider } from "./SceneState";
 import { MoveableCursor } from "./MoveableCursor";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
-import { SignatureCanvas } from "./SignatureCanvas";
 import { SignatureCapture } from "./SignatureCapture";
-import { SignatureReplay } from "./SignatureReplay";
+// Signature canvas + replay now live in the Footer (see
+// src/portfolio/Footer.tsx). The hero scene is on a clean white-grey
+// plane — the signature acts as a sign-off in the footer instead of
+// a hero-band texture.
 import {
   AssemblyProvider,
   AssemblyHUDSlot,
@@ -242,10 +244,6 @@ export default function App() {
             zIndex: 0,
           }}
         >
-          <SignatureCanvas />
-          {/* Signature plays as soon as the room mesh streams in — no
-              longer waits for the intro tilt / scroll. */}
-          <SignatureReplay trigger={roomLoaded} delayMs={400} />
           <Canvas
             camera={{
               position: [START_POS.x, START_POS.y, START_POS.z],

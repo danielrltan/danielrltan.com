@@ -40,11 +40,10 @@ export function AssemblyHUD({ state }: Props) {
       style={{
         position: "fixed",
         inset: 0,
-        // Transparent — the cover dome inside the Canvas paints cream;
-        // the HUD sits on top with walnut ink so it reads against the
-        // cream during load and against the Aurora afterward.
+        // Orange-print loading: cover dome paints frame orange, HUD is
+        // white-on-orange for high-contrast spec-sheet legibility.
         background: "transparent",
-        color: "var(--wrapper-ink)",
+        color: "#ffffff",
         fontFamily: "var(--font-mono)",
         zIndex: 9999,
         pointerEvents: fading ? "none" : "auto",
@@ -68,7 +67,7 @@ export function AssemblyHUD({ state }: Props) {
         <div
           style={{
             height: 1,
-            background: "var(--wrapper-ink-faint)",
+            background: "rgba(255, 255, 255, 0.32)",
             overflow: "hidden",
           }}
         >
@@ -76,7 +75,7 @@ export function AssemblyHUD({ state }: Props) {
             style={{
               height: "100%",
               width: `${state.combinedPct * 100}%`,
-              background: "var(--wrapper-ink)",
+              background: "#ffffff",
               transition: "width 120ms linear",
             }}
           />
@@ -88,17 +87,17 @@ export function AssemblyHUD({ state }: Props) {
             fontSize: "var(--text-xs)",
             letterSpacing: "var(--tracking-wide)",
             textTransform: "uppercase",
-            color: "var(--wrapper-ink-soft)",
+            color: "rgba(255, 255, 255, 0.78)",
           }}
         >
           <span>
             resolving{" "}
-            <span style={{ color: "var(--wrapper-ink)" }}>· {resolvedName || "scene"}</span>
+            <span style={{ color: "#ffffff" }}>· {resolvedName || "scene"}</span>
           </span>
           <span
             style={{
               fontFamily: 'var(--font-dot)',
-              color: 'var(--wrapper-ink)',
+              color: '#ffffff',
               fontSize: '15px',
               letterSpacing: '0.04em',
               minWidth: '2.5ch',
