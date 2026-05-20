@@ -255,15 +255,12 @@ html.loading-active .moveable-cursor {
    (the loading screen is not scrollable). All changes are instant,
    no opacity transitions, so there's no fade-in/out flicker when
    the room finishes loading and the rules drop. */
-html.loading-active .hero-wordmark {
-  color: #ffffff !important;
-}
-html.loading-active .hero-mark .eyebrow {
-  color: rgba(255, 255, 255, 0.85) !important;
-}
-html.loading-active .hero-mark .eyebrow::before {
-  background: #ffffff !important;
-  box-shadow: 7px 0 0 #ffffff, 14px 0 0 #ffffff !important;
+/* Hero mark + brand cat hidden entirely during loading — the
+   "PORTFOLIO 2026 · DANIEL TAN" block and the cat icon aren't part
+   of the orange-print moment, they only appear after the climax. */
+html.loading-active .hero-mark,
+html.loading-active .blinking-cat {
+  display: none !important;
 }
 html.loading-active .scroll-hint {
   display: none !important;

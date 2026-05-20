@@ -1,106 +1,192 @@
-import { useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useEffect, useMemo, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useAssembly } from "./loading/AssemblyController";
 
 /**
- * Ground plane the room sits on. Baked rice-dot grid with a radial
- * alpha falloff: dots are full-opacity right under the room and fade
- * smoothly to transparent at the plane edges — like a soft spotlight
- * focusing attention on the centerpiece.
+ * Ground plane the room sits on. Procedural rice-dot grid rendered
+ * directly in the fragment shader (no baked texture) so the dots are
+ * pixel-sharp at every camera distance — a texture-based version
+ * always reads as blurry because GPU mipmapping smooths sub-pixel
+ * dots into ovals.
  *
- * Sits at y=0, room floor level. The drei ContactShadows in App.tsx
- * lives slightly above (y=+0.005) so its soft dark blob renders ON
- * the dot grid rather than being occluded by the plane.
+ * Features:
+ * - Radial alpha falloff from plane center → outer (vignette feel,
+ *   dense under the room, fades out at visible plane edges).
+ * - Cursor dissolve: lightens dots toward bg in a soft blob around
+ *   the mouse position. Raycast each frame to get UV.
+ * - Climax fade-in: material opacity lerps 0 → 1 in sync with the
+ *   orange-print cover dome's fade-out.
+ *
+ * y=0 (floor level). ContactShadows at y=+0.005 lands on top.
  */
 
 const PLANE_SIZE = 60;
-// One big texture covering the full plane (NO tiling) so the radial
-// fade has a single, plane-wide center.
-const TEX_SIZE = 4096;
-// Tight, tiny dots — looks like fine grain rice rather than coarse
-// polka dots. Radius 0.7px, spacing 12px → ≈ 170 dots across the
-// plane width.
-const DOT_SPACING_PX = 12;
-const DOT_RADIUS_PX = 0.7;
-// Inner radius where alpha = 1, outer radius where alpha = 0.
-// Expressed as a fraction of TEX_SIZE/2 (i.e., max distance to edge).
-const FADE_INNER = 0.18;
-const FADE_OUTER = 0.6;
+// Procedural grid scale — denser grid for finer, more "rice"-like
+// appearance. 300 dots over 60 units → 5 dots/unit.
+const GRID_COUNT = 300;
+// Dot radius as a fraction of one grid cell (cells go 0..1, dot
+// centered in cell). Smaller dots — feel like grains, not pebbles.
+const DOT_RADIUS = 0.055;
+// Radial fade from plane center — tightened: smaller dense center,
+// faster falloff so dots feel concentrated under the room rather
+// than uniformly across the plane.
+const FADE_INNER = 0.05;
+const FADE_OUTER = 0.22;
+// Cursor dissolve — smaller hole.
+const DISSOLVE_RADIUS = 0.04;
+const DISSOLVE_FEATHER = 0.02;
+const DISSOLVE_LERP_RATE = 9.0;
 
-function makeDotTexture(): THREE.Texture {
-  const canvas = document.createElement("canvas");
-  canvas.width = TEX_SIZE;
-  canvas.height = TEX_SIZE;
-  const ctx = canvas.getContext("2d")!;
-
-  // Base — wrapper-bg cool grey.
-  ctx.fillStyle = "#ecedef";
-  ctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
-
-  const cx = TEX_SIZE / 2;
-  const cy = TEX_SIZE / 2;
-  const halfDiag = TEX_SIZE / 2; // distance from center to edge midpoint
-  ctx.fillStyle = "#15171a";
-
-  const cols = Math.ceil(TEX_SIZE / DOT_SPACING_PX);
-  for (let r = 0; r <= cols; r++) {
-    for (let c = 0; c <= cols; c++) {
-      const x = c * DOT_SPACING_PX;
-      const y = r * DOT_SPACING_PX;
-      const dx = x - cx;
-      const dy = y - cy;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      const t = (d / halfDiag - FADE_INNER) / (FADE_OUTER - FADE_INNER);
-      const alpha = Math.max(0, Math.min(1, 1 - t));
-      if (alpha <= 0.01) continue;
-      // Ease-out so the falloff feels natural rather than linear.
-      const a = Math.pow(alpha, 1.4) * 0.7;
-      ctx.globalAlpha = a;
-      ctx.beginPath();
-      ctx.arc(x, y, DOT_RADIUS_PX, 0, Math.PI * 2);
-      ctx.fill();
-    }
+const VERTEX = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
-  ctx.globalAlpha = 1;
+`;
 
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  // No tiling — one texture spans the whole plane so the radial
-  // gradient has a single center.
-  tex.wrapS = THREE.ClampToEdgeWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.anisotropy = 8;
-  tex.needsUpdate = true;
-  return tex;
-}
+const FRAGMENT = /* glsl */ `
+  uniform float uOpacity;
+  uniform vec2 uMouseUV;
+  uniform float uGridCount;
+  uniform float uDotRadius;
+  uniform float uFadeInner;
+  uniform float uFadeOuter;
+  uniform float uDissolveRadius;
+  uniform float uDissolveFeather;
+  uniform vec3 uBg;
+  uniform vec3 uDot;
+  varying vec2 vUv;
+
+  void main() {
+    // Procedural dot pattern. fract() builds a 0..1 cell at every
+    // grid step; centering subtracts 0.5 so distance is from the
+    // cell midpoint.
+    vec2 cell = fract(vUv * uGridCount) - 0.5;
+    // smoothstep over a one-pixel band gives crisp but not jaggy.
+    // dpdx/dpdy aren't great on a flat plane in 3D, so we use a tiny
+    // fixed feather instead.
+    float dotMask = 1.0 - smoothstep(uDotRadius - 0.02, uDotRadius + 0.02, length(cell));
+
+    // Radial fade from plane center.
+    float r = distance(vUv, vec2(0.5));
+    // r ∈ [0, 0.707] (corner). Normalise relative to FADE_OUTER so the
+    // gradient covers the configured falloff range.
+    float fade = 1.0 - smoothstep(uFadeInner, uFadeOuter, r);
+
+    // Cursor dissolve — removes dots in a blob around mouseUV.
+    float md = distance(vUv, uMouseUV);
+    float dissolve = 1.0 - smoothstep(
+      uDissolveRadius - uDissolveFeather,
+      uDissolveRadius + uDissolveFeather,
+      md
+    );
+
+    // Combine: dot presence × radial fade × inverse dissolve.
+    float a = dotMask * fade * (1.0 - dissolve) * 0.32;
+
+    // Final colour: bg, with the dot colour mixed in by alpha 'a'.
+    vec3 color = mix(uBg, uDot, a);
+    gl_FragColor = vec4(color, uOpacity);
+  }
+`;
 
 export function GroundPlane() {
-  const texture = useMemo(() => makeDotTexture(), []);
-  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  const matRef = useRef<THREE.ShaderMaterial>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
   const assembly = useAssembly();
+  const { camera, size } = useThree();
 
-  // Fade the plane in synchronously with the orange-print cover dome
-  // fading out — feels like the dots "render" into existence as the
-  // orange drains away. Opacity lerps from 0 → 1 once climaxReady
-  // fires (rAF cadence via useFrame, fixed-rate damping).
+  const uniforms = useMemo(
+    () => ({
+      uOpacity: { value: 0 },
+      uMouseUV: { value: new THREE.Vector2(-1, -1) },
+      uGridCount: { value: GRID_COUNT },
+      uDotRadius: { value: DOT_RADIUS },
+      uFadeInner: { value: FADE_INNER },
+      uFadeOuter: { value: FADE_OUTER },
+      uDissolveRadius: { value: DISSOLVE_RADIUS },
+      uDissolveFeather: { value: DISSOLVE_FEATHER },
+      uBg: { value: new THREE.Color("#ecedef") },
+      uDot: { value: new THREE.Color("#15171a") },
+    }),
+    [],
+  );
+
+  const mousePx = useRef({ x: -10000, y: -10000 });
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      mousePx.current.x = e.clientX;
+      mousePx.current.y = e.clientY;
+    };
+    const onLeave = () => {
+      mousePx.current.x = -10000;
+      mousePx.current.y = -10000;
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerleave", onLeave);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerleave", onLeave);
+    };
+  }, []);
+
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const tmpNdc = useMemo(() => new THREE.Vector2(), []);
+  const targetUV = useMemo(() => new THREE.Vector2(-1, -1), []);
+
   useFrame((_, dt) => {
     const mat = matRef.current;
-    if (!mat) return;
+    const mesh = meshRef.current;
+    if (!mat || !mesh) return;
+
+    // Opacity fades in synchronously with the cover-dome fade-out.
     const target = assembly.climaxReady ? 1 : 0;
     const rate = 1 - Math.exp(-dt * 4.5);
-    mat.opacity += (target - mat.opacity) * rate;
+    const cur = mat.uniforms.uOpacity.value as number;
+    mat.uniforms.uOpacity.value = cur + (target - cur) * rate;
+
+    // Raycast mouse → world point on plane → UV.
+    if (mousePx.current.x < -1000) {
+      targetUV.set(-1, -1);
+    } else {
+      tmpNdc.set(
+        (mousePx.current.x / size.width) * 2 - 1,
+        -(mousePx.current.y / size.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(tmpNdc, camera);
+      const hits = raycaster.intersectObject(mesh, false);
+      if (hits.length > 0) {
+        const p = hits[0]!.point;
+        targetUV.set(
+          (p.x + PLANE_SIZE / 2) / PLANE_SIZE,
+          1 - (p.z + PLANE_SIZE / 2) / PLANE_SIZE,
+        );
+      } else {
+        targetUV.set(-1, -1);
+      }
+    }
+
+    // Damped lerp toward the target UV — sharp cursor motion still
+    // results in a flowing dissolve trail rather than a teleporting
+    // hole. Fixed-rate per-frame damping (memory: scroll/cursor
+    // animations must be fixed-rate, never raw scroll-bound).
+    const uv = mat.uniforms.uMouseUV.value as THREE.Vector2;
+    const lerpRate = 1 - Math.exp(-dt * DISSOLVE_LERP_RATE);
+    uv.x += (targetUV.x - uv.x) * lerpRate;
+    uv.y += (targetUV.y - uv.y) * lerpRate;
   });
 
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+    <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
       <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />
-      <meshBasicMaterial
+      <shaderMaterial
         ref={matRef}
-        map={texture}
-        toneMapped={false}
+        uniforms={uniforms}
+        vertexShader={VERTEX}
+        fragmentShader={FRAGMENT}
         transparent
-        opacity={0}
       />
     </mesh>
   );

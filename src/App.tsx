@@ -16,7 +16,6 @@ import {
 } from "./IntroController";
 import { SceneStateProvider } from "./SceneState";
 import { GroundPlane } from "./GroundPlane";
-import { RiceDotsBg } from "./RiceDotsBg";
 import { MoveableCursor } from "./MoveableCursor";
 import { JumpToTop } from "./JumpToTop";
 import { RoomHUD } from "./RoomHUD";
@@ -227,10 +226,10 @@ export default function App() {
             that forced Three.js to recompute renderer.setSize +
             projection matrix every frame, which is the source of the
             visible scroll snap. */}
-        {/* Hero rice-dot background with cursor-dissolve effect — see
-            RiceDotsBg.tsx. Canvas-based so the dissolve can be a
-            blobby fluid wobble rather than a hard CSS mask circle. */}
-        {roomLoaded && !isMobile && <RiceDotsBg />}
+        {/* (Old 2D RiceDotsBg removed — rice dots now live on the
+            3D GroundPlane with the cursor dissolve baked into the
+            shader. Having both layered together caused the "old rice
+            fading in occasionally" visual bug.) */}
 
         {!isMobile && (
           <div
