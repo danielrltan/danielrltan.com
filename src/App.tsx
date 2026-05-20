@@ -45,17 +45,65 @@ import { ScrollRail } from "./ScrollRail";
 const SHRINK_AT = 0.015;
 const SHRINK_DONE = 0.07;
 const PINNED_WIDTH_VW = 50;
-// Mobile: canvas pins to the top half of the viewport during the hero,
-// then fades out as the user scrolls into the first section so portfolio
-// content occupies the full width below.
-const MOBILE_FADE_AT = 0.04;
-const MOBILE_FADE_DONE = 0.12;
+// Mobile: canvas takes the FULL viewport during hero (was 55vh — felt
+// like a tiny preview thumbnail rather than a hero scene). Fade is
+// driven by raw scroll-pixels relative to the viewport height so the
+// canvas dissolves as the user scrolls past the first screen and About
+// enters the frame. Pre-2026-05: tied to total scrollProgress, which
+// broke when total page height changed.
+const MOBILE_FADE_START_VH = 0.55; // start fading at 55% of viewport scrolled
+const MOBILE_FADE_END_VH = 1.0;    // fully gone once past one viewport
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
+}
+
+/**
+ * Mobile hero fade — returns 0 while the user is in the hero
+ * viewport, ramps to 1 as they scroll past the first screen.
+ *
+ * Computed from `window.scrollY / window.innerHeight` (not the
+ * normalised `scrollProgress`) because the page total height changes
+ * as sections grow/shrink — a percentage-of-page fade would shift
+ * around. Anchoring to the viewport height means "one screen scrolled
+ * = canvas fully gone", which is the intent.
+ *
+ * No-ops when isMobile is false so desktop pays nothing.
+ */
+function useMobileHeroFade(isMobile: boolean): number {
+  const [t, setT] = useState(0);
+  useEffect(() => {
+    if (!isMobile) {
+      setT(0);
+      return;
+    }
+    let raf = 0;
+    const update = () => {
+      const vh = window.innerHeight || 1;
+      const ratio = window.scrollY / vh;
+      const next = clamp01(
+        (ratio - MOBILE_FADE_START_VH) /
+          (MOBILE_FADE_END_VH - MOBILE_FADE_START_VH),
+      );
+      setT(next);
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, [isMobile]);
+  return t;
 }
 
 export default function App() {
@@ -170,11 +218,12 @@ export default function App() {
   const contentOpacity = clamp01(
     (scrollProgress - SHRINK_DONE) / CONTENT_FADE_LENGTH,
   );
-  // Mobile: canvas does not shrink — it just fades out post-hero so
-  // sections below get the full viewport width.
-  const mobileFadeT = clamp01(
-    (scrollProgress - MOBILE_FADE_AT) / (MOBILE_FADE_DONE - MOBILE_FADE_AT),
-  );
+  // Mobile: canvas occupies the full viewport during hero and fades
+  // out as the user scrolls past the first screen. Computed from raw
+  // window.scrollY / innerHeight rather than scrollProgress so the
+  // fade is locked to "one screen scrolled", not a percentage of total
+  // page (which changes as sections grow/shrink).
+  const mobileFadeT = useMobileHeroFade(isMobile);
   const mobileCanvasOpacity = 1 - mobileFadeT;
 
   // Publish content opacity as a CSS variable on the document root so
@@ -269,8 +318,12 @@ export default function App() {
             // band). The right portion is visually covered by the
             // overlay panel above. This stops Three.js from running
             // its internal resize observer on every scroll frame.
-            width: isMobile ? "100vw" : "100vw",
-            height: isMobile ? "55vh" : "100vh",
+            width: "100vw",
+            // Mobile hero: full-viewport canvas (was 55vh, which made
+            // the room read as a tiny preview). Combined with the
+            // scroll-pixel-based fade in useMobileHeroFade, the room
+            // dissolves cleanly as the user scrolls into About.
+            height: "100vh",
             opacity: isMobile ? mobileCanvasOpacity : 1,
             pointerEvents: isMobile && mobileCanvasOpacity < 0.05 ? "none" : "auto",
             zIndex: 0,

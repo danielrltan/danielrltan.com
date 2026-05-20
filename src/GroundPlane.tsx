@@ -133,9 +133,12 @@ export function GroundPlane() {
       // a brighter, paper-toned surface that the room sits on. uDot
       // is a warm walnut rather than a cool near-black — alpha-mixed
       // against the bright bg it produces a paper-cream tone instead
-      // of muddy slate.
-      uBg: { value: new THREE.Color("#0") },
-      uDot: { value: new THREE.Color("#000000") },
+      // of muddy slate. Earlier draft had uBg = "#0" which Three.js
+      // rejects as invalid hex (logs a warning each render and falls
+      // back to black) — the plane then went solid dark once
+      // uOpacity ramped up. Spelled out fully now to keep it stable.
+      uBg: { value: new THREE.Color("#f4f3f0") },
+      uDot: { value: new THREE.Color("#3d342a") },
     }),
     [],
   );

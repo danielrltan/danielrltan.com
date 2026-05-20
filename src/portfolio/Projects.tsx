@@ -7,6 +7,9 @@ interface Project {
   liveHref?: string;
   repoHref?: string;
   videoSrc?: string;
+  /** Static thumbnail image (ripped from devpost). Falls back to the
+   *  centred-title placeholder when neither image nor video is set. */
+  image?: string;
   meta?: string;
 }
 
@@ -17,6 +20,8 @@ const PROJECTS: Project[] = [
     blurb:
       "AI-powered video indexing + semantic search tool for clinical footage. Auto-generates timestamped behavioural annotations, cutting psychologists' manual review from hours/days to seconds. Production-minded Python/FastAPI backend integrating TwelveLabs video understanding models with NO patient data storage. End-to-end product (React + Three.js frontend, deployed on Vercel/Railway) translating model outputs into clinician-friendly \"behavioural fingerprints.\"",
     tags: ["Python", "FastAPI", "Semantic Search", "Multimodal", "React", "Three.js"],
+    image: "/images/projects/cognetech.jpg",
+    liveHref: "https://devpost.com/software/cognetech",
   },
   {
     title: "Revamp — Hack The 6ix Finalist",
@@ -24,6 +29,8 @@ const PROJECTS: Project[] = [
     blurb:
       "Plug-and-play universal BMS for second-life EV modules on a QNX (RTOS) Raspberry Pi edge node. Normalised mixed-OEM telemetry and exposed a centralised fleet dashboard for real-time monitoring. Cloud analytics pipeline (FastAPI + MongoDB Atlas) with Gemini-powered SoH estimation and anomaly explanation. Physics-based battery simulator with PyBaMM streaming packed binary over TCP for 3 EV packs (≈20,736 cells).",
     tags: ["C++", "Python", "React", "QNX", "Raspberry Pi", "MongoDB", "Gemini"],
+    image: "/images/projects/reamp.png",
+    liveHref: "https://devpost.com/software/reamp",
   },
   {
     title: "Interactive 3D Portfolio",
@@ -52,6 +59,13 @@ export function Projects() {
                   muted
                   loop
                   playsInline
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : p.image ? (
+                <img
+                  src={p.image}
+                  alt={p.title}
+                  loading="lazy"
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
               ) : (

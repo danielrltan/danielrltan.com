@@ -722,10 +722,12 @@
     padding: 0 6vw;
     max-width: none;
   }
-  /* The first content section after Hero needs top-padding equal to
-     the canvas band so it doesn't slide under the room. */
+  /* Hero is now a full-100vh canvas band on mobile (was 55vh), and
+     the canvas fades out as the user scrolls past the first screen.
+     So the first content section only needs a modest top padding to
+     soften the transition — Hero itself provides the spacer. */
   .portfolio-section--hero + .portfolio-section .portfolio-col {
-    padding-top: 56vh;
+    padding-top: 14vh;
   }
   /* Hero on mobile is purely the canvas at top — content starts after. */
   .portfolio-section--hero .portfolio-col {
@@ -792,8 +794,13 @@
     flex-direction: column;
   }
   .contact-email {
-    font-size: clamp(22px, 7vw, 32px);
-    word-break: break-all;
+    font-size: clamp(18px, 5.5vw, 28px);
+    /* `word-break: break-all` was splitting tokens mid-word (".COM"
+       landing on its own line). `overflow-wrap: anywhere` only breaks
+       when there's literally no other option, keeping the email
+       readable even on narrow viewports. */
+    overflow-wrap: anywhere;
+    word-break: normal;
   }
   .scroll-hint {
     bottom: 28px;
