@@ -21,9 +21,13 @@ export function GroundPlane() {
       receiveShadow
     >
       <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />
-      {/* ShadowMaterial: receives + draws the shadow at the given
-          opacity, fully transparent elsewhere. */}
-      <shadowMaterial color={0x141a20} opacity={0.42} transparent />
+      {/* The actual shadow is rendered by <ContactShadows> in App.tsx
+          (drei bakes it into a framebuffer — no shadow maps needed).
+          This plane just provides a visible cool-grey surface for
+          the contact shadow to land on; without it the canvas is
+          transparent and ContactShadows would paint onto whatever
+          page bg shows through, which doesn't read as "on a plane". */}
+      <meshBasicMaterial color="#ecedef" toneMapped={false} />
     </mesh>
   );
 }

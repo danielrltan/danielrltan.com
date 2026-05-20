@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { SignatureCanvas } from "../SignatureCanvas";
-import { SignatureReplay } from "../SignatureReplay";
+import { useRef } from "react";
+import { FooterSignature } from "./FooterSignature";
 import "./footer.css";
 
 interface Link {
@@ -67,33 +66,9 @@ function jumpTo(selector: string) {
 export function Footer() {
   const year = new Date().getFullYear();
   const footerRef = useRef<HTMLElement>(null);
-  // The signature replays once when the footer scrolls into view.
-  const [signatureTrigger, setSignatureTrigger] = useState(false);
-
-  useEffect(() => {
-    const el = footerRef.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) {
-            setSignatureTrigger(true);
-            obs.disconnect();
-            break;
-          }
-        }
-      },
-      { threshold: 0.25 },
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
 
   return (
     <footer className="portfolio-footer" ref={footerRef}>
-      <SignatureCanvas />
-      <SignatureReplay trigger={signatureTrigger} delayMs={500} />
-
       <div className="footer-inner">
         {/* Top: nav + elsewhere */}
         <div className="footer-grid">
@@ -159,7 +134,12 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Bottom: copyright + signature note */}
+        {/* Signature — scaled to footer width, painted once when the
+            footer scrolls into view. Independent canvas; doesn't
+            bleed across the rest of the viewport. */}
+        <FooterSignature height={140} />
+
+        {/* Bottom: copyright + sign-off */}
         <div className="footer-bottom">
           <span className="footer-copy">&copy; Daniel Tan {year}</span>
           <span className="footer-mark">Made with intent.</span>

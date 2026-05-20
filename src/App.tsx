@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { OrbitControls, ContactShadows } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { Physics } from "@react-three/rapier";
 import * as THREE from "three";
@@ -17,7 +17,7 @@ import {
 import { SceneStateProvider } from "./SceneState";
 import { GroundPlane } from "./GroundPlane";
 import { RiceDotsBg } from "./RiceDotsBg";
-import { CursorDots } from "./CursorDots";
+import { MoveableCursor } from "./MoveableCursor";
 import { MoveableCursor } from "./MoveableCursor";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
@@ -318,6 +318,19 @@ export default function App() {
                 <RoomLoadedSignal onLoaded={() => setRoomLoaded(true)} />
                 <Lighting />
                 <GroundPlane />
+                {/* Soft baked contact shadow rendered by drei into a
+                    one-off framebuffer — no shadow maps / casting
+                    lights required. Sits just below the ground plane
+                    so the room reads as "on a surface" rather than
+                    floating. */}
+                <ContactShadows
+                  position={[0, -0.07, 0]}
+                  opacity={0.4}
+                  scale={12}
+                  blur={2.5}
+                  far={2}
+                  color="#1a1714"
+                />
                 {/* Mobile: keep the Physics provider mounted (Room's
                     <RigidBody>s require it) but pause the sim — near-zero
                     CPU, and drag/throw on touch is awkward anyway. */}
@@ -376,10 +389,8 @@ export default function App() {
           </Canvas>
         </div>
 
-        {/* Global custom cursor — composed of dots, inverts via
-            mix-blend-mode: difference against any background, with a
-            single orange center anchor. Replaces MoveableCursor. */}
-        {roomLoaded && !isMobile && <CursorDots />}
+        {/* Orange ring + dot cursor with parallax trail. */}
+        {roomLoaded && !isMobile && <MoveableCursor hot={moveableHover} />}
 
         <PortfolioSections />
 
