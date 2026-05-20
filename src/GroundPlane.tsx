@@ -1,5 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { useAssembly } from "./loading/AssemblyController";
 
 /**
  * Ground plane the room sits on. Baked rice-dot grid with a radial
@@ -15,13 +17,16 @@ import * as THREE from "three";
 const PLANE_SIZE = 60;
 // One big texture covering the full plane (NO tiling) so the radial
 // fade has a single, plane-wide center.
-const TEX_SIZE = 2048;
-const DOT_SPACING_PX = 26;
-const DOT_RADIUS_PX = 2.2;
+const TEX_SIZE = 4096;
+// Tight, tiny dots — looks like fine grain rice rather than coarse
+// polka dots. Radius 0.7px, spacing 12px → ≈ 170 dots across the
+// plane width.
+const DOT_SPACING_PX = 12;
+const DOT_RADIUS_PX = 0.7;
 // Inner radius where alpha = 1, outer radius where alpha = 0.
 // Expressed as a fraction of TEX_SIZE/2 (i.e., max distance to edge).
 const FADE_INNER = 0.18;
-const FADE_OUTER = 0.78;
+const FADE_OUTER = 0.6;
 
 function makeDotTexture(): THREE.Texture {
   const canvas = document.createElement("canvas");
@@ -72,10 +77,31 @@ function makeDotTexture(): THREE.Texture {
 
 export function GroundPlane() {
   const texture = useMemo(() => makeDotTexture(), []);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  const assembly = useAssembly();
+
+  // Fade the plane in synchronously with the orange-print cover dome
+  // fading out — feels like the dots "render" into existence as the
+  // orange drains away. Opacity lerps from 0 → 1 once climaxReady
+  // fires (rAF cadence via useFrame, fixed-rate damping).
+  useFrame((_, dt) => {
+    const mat = matRef.current;
+    if (!mat) return;
+    const target = assembly.climaxReady ? 1 : 0;
+    const rate = 1 - Math.exp(-dt * 4.5);
+    mat.opacity += (target - mat.opacity) * rate;
+  });
+
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
       <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />
-      <meshBasicMaterial map={texture} toneMapped={false} />
+      <meshBasicMaterial
+        ref={matRef}
+        map={texture}
+        toneMapped={false}
+        transparent
+        opacity={0}
+      />
     </mesh>
   );
 }

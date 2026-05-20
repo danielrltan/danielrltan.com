@@ -7,7 +7,7 @@ import type { AssemblyState } from "./types";
 
 const AssemblyCtx = createContext<AssemblyState | null>(null);
 
-function useAssembly(): AssemblyState {
+export function useAssembly(): AssemblyState {
   const v = useContext(AssemblyCtx);
   if (!v) throw new Error("AssemblyContext missing — wrap with <AssemblyProvider>");
   return v;
