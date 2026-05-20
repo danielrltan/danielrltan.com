@@ -159,10 +159,16 @@ export default function App() {
   // visible snap.
   const overlayWidthVw = lerp(0, 100 - PINNED_WIDTH_VW, shrinkT);
   // Content opacity — sections (everything below hero) only fade in
-  // during the FINAL portion of the shrink window. Otherwise the
-  // section marker / heading appear over the room geometry during the
-  // transition and the overlap reads as broken.
-  const contentOpacity = clamp01((shrinkT - 0.7) / 0.3);
+  // AFTER the overlay panel has fully covered the right half. Earlier
+  // tuning started the fade at shrinkT 0.7 (overlay only ~70% wide),
+  // which let the section marker + heading appear over the still-
+  // visible room geometry. Now we wait for the shrink to complete
+  // (shrinkT === 1, i.e. scrollProgress >= SHRINK_DONE), then fade
+  // content in over the next ~3.5% of scroll.
+  const CONTENT_FADE_LENGTH = 0.035;
+  const contentOpacity = clamp01(
+    (scrollProgress - SHRINK_DONE) / CONTENT_FADE_LENGTH,
+  );
   // Mobile: canvas does not shrink — it just fades out post-hero so
   // sections below get the full viewport width.
   const mobileFadeT = clamp01(
@@ -190,10 +196,15 @@ export default function App() {
     window.scrollTo(0, 0);
   }, []);
 
-  // (Removed loading-active class toggling — the fade-in / fade-out
-  // on the chrome elements read as buggy. Chrome is allowed to render
-  // during the orange loading screen now; revisit if contrast becomes
-  // a problem.)
+  // Toggle a loading-active class on <html> so CSS can:
+  //   - swap chrome text colours to white (high contrast on orange)
+  //   - hide the scroll hint (the loading screen isn't a scroll page)
+  // Instant changes only — no opacity transitions that look like
+  // fade-in/out flicker. Earlier draft used opacity transitions and
+  // those read as buggy on load completion.
+  useEffect(() => {
+    document.documentElement.classList.toggle("loading-active", !roomLoaded);
+  }, [roomLoaded]);
 
   return (
     <AssemblyProvider>

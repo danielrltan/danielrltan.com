@@ -99,6 +99,7 @@ export function BlinkingCat({ size }: Props) {
 
   return (
     <div
+      className="blinking-cat"
       style={{
         position: "relative",
         width: size,

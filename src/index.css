@@ -250,9 +250,35 @@ html.loading-active .moveable-cursor {
   display: none;
 }
 
-/* Loading-active chrome-hide rules removed — the fade in / out on
-   load completion read as buggy. Chrome shows during loading; will
-   revisit contrast if it becomes an issue. */
+/* Loading state — swap chrome text + brand cat to WHITE for legible
+   contrast on the orange-print backdrop, and hide the scroll hint
+   (the loading screen is not scrollable). All changes are instant,
+   no opacity transitions, so there's no fade-in/out flicker when
+   the room finishes loading and the rules drop. */
+html.loading-active .hero-wordmark {
+  color: #ffffff !important;
+}
+html.loading-active .hero-mark .eyebrow {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+html.loading-active .hero-mark .eyebrow::before {
+  background: #ffffff !important;
+  box-shadow: 7px 0 0 #ffffff, 14px 0 0 #ffffff !important;
+}
+html.loading-active .scroll-hint {
+  display: none !important;
+}
+/* Status bar + scroll rail are hidden behind sceneReady gate already,
+   but make sure no stragglers slip onto the orange screen. */
+html.loading-active .status-bar,
+html.loading-active .scroll-rail {
+  display: none !important;
+}
+/* (Previously inverted the brand cat to white during loading.
+   Removed — the filter transition flashed/flickered on every blink
+   tick because the cat is two stacked <img> elements whose opacity
+   is toggled rapidly. Letting the cat stay orange on orange is
+   the lesser evil.) */
 
 /* Custom pointer after the intro — see MoveableCursor.tsx */
 .moveable-cursor {
