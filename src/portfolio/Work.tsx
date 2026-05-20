@@ -19,13 +19,13 @@ const STINTS: Stint[] = [
   },
 ];
 
-export function Experience() {
+export function Work() {
   return (
     <section className="portfolio-section">
       <div className="portfolio-col">
-        <span className="section-marker">03</span>
-        <span className="eyebrow">Experience</span>
-        <h2>Timeline</h2>
+        <span className="section-marker">04</span>
+        <span className="section-index">04 / 07 &middot; Work</span>
+        <h2>Where I&rsquo;ve been.</h2>
         <div className="section-card">
           {STINTS.map((s, i) => (
             <div key={i} className="exp-item">

@@ -5,8 +5,8 @@ export function About() {
     <section className="portfolio-section">
       <div className="portfolio-col">
         <span className="section-marker">01</span>
-        <span className="eyebrow">About</span>
-        <h2>Who I am</h2>
+        <span className="section-index">01 / 07 &middot; About</span>
+        <h2>About me.</h2>
         <div className="section-card">
           <p>
             I&rsquo;m a software engineer who builds full-stack web
@@ -23,9 +23,8 @@ export function About() {
           </p>
           <div className="section-rule" />
           <p>
-            I work in React, TypeScript, three.js / R3F, Rapier physics,
-            shaders, and a steady rotation of backend stacks depending on
-            what a project actually needs.
+            I split my time between client work and personal projects.
+            The goal: build things I&rsquo;d want to use, and ship them.
           </p>
         </div>
       </div>

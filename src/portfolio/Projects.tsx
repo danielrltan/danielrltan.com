@@ -35,9 +35,9 @@ export function Projects() {
   return (
     <section className="portfolio-section">
       <div className="portfolio-col">
-        <span className="section-marker">02</span>
-        <span className="eyebrow">Projects</span>
-        <h2>Selected work</h2>
+        <span className="section-marker">03</span>
+        <span className="section-index">03 / 07 &middot; Projects</span>
+        <h2>Selected work.</h2>
         {PROJECTS.map((p, i) => (
           <article key={i} className="project-card">
             <div className="project-card-media">

@@ -1,14 +1,19 @@
 import { Hero } from "./Hero";
 import { About } from "./About";
+import { Skills } from "./Skills";
 import { Projects } from "./Projects";
-import { Experience } from "./Experience";
+import { Work } from "./Work";
+import { Play } from "./Play";
+import { Other } from "./Other";
 import { Contact } from "./Contact";
 
 /**
  * Vertical stack of scroll-driven content sections. Each section's
  * column is on the right ~50% of the viewport so the fixed 3D room
- * on the left stays visible. The hero section is the only exception:
- * its content sits centered over the (full-width) room.
+ * on the left stays visible. Hero is the only exception — empty,
+ * room takes the whole viewport.
+ *
+ * Order: Hero → About → Skills → Projects → Work → Play → Other → Contact.
  */
 export function PortfolioSections() {
   return (
@@ -24,8 +29,11 @@ export function PortfolioSections() {
     >
       <Hero />
       <About />
+      <Skills />
       <Projects />
-      <Experience />
+      <Work />
+      <Play />
+      <Other />
       <Contact />
     </main>
   );
