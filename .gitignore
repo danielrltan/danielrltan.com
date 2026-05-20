@@ -32,3 +32,16 @@ pnpm-debug.log*
 
 # Local AI tool state / personal config
 .claude
+
+# Playwright MCP scratch (page-*.yml snapshots, console-*.log) — these
+# are generated each time playwright drives the page during dev /
+# debugging and should never be committed.
+.playwright-mcp/
+
+# Ad-hoc screenshots taken at the repo root. Legitimate site assets
+# (icons, posters, exported renders) live under public/ and are NOT
+# ignored. This pattern only catches PNG/JPG dropped at the top level.
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
