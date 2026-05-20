@@ -134,16 +134,16 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Signature — scaled to footer width, painted once when the
-            footer scrolls into view. Independent canvas; doesn't
-            bleed across the rest of the viewport. */}
-        <FooterSignature height={140} />
-
         {/* Bottom: copyright + sign-off */}
         <div className="footer-bottom">
           <span className="footer-copy">&copy; Daniel Tan {year}</span>
           <span className="footer-mark">Made with intent and the orange crab.</span>
         </div>
+
+        {/* Signature — sits at the VERY bottom of the page, full
+            width, painted on scroll-into-view. Sized 20% smaller than
+            the previous 140px placement: 112px tall. */}
+        <FooterSignature height={112} />
       </div>
     </footer>
   );

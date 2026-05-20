@@ -18,6 +18,8 @@ import { SceneStateProvider } from "./SceneState";
 import { GroundPlane } from "./GroundPlane";
 import { RiceDotsBg } from "./RiceDotsBg";
 import { MoveableCursor } from "./MoveableCursor";
+import { RicePebbles } from "./RicePebbles";
+import { JumpToTop } from "./JumpToTop";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
 import { SignatureCapture } from "./SignatureCapture";
@@ -312,6 +314,7 @@ export default function App() {
                 <RoomLoadedSignal onLoaded={() => setRoomLoaded(true)} />
                 <Lighting />
                 <GroundPlane />
+                <RicePebbles />
                 {/* Soft baked contact shadow rendered by drei into a
                     one-off framebuffer — no shadow maps / casting
                     lights required. Sits just below the ground plane
@@ -401,6 +404,7 @@ export default function App() {
           <>
             <StatusBar onReset={resetRoom} />
             <ScrollRail />
+            <JumpToTop />
           </>
         )}
       </div>
