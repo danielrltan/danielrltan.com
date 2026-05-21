@@ -238,14 +238,13 @@ html.loading-active .app-wrapper {
   background: #e87040;
 }
 
-/* Scroll-snap: proximity snap on the html scroller, only triggered
-   by sections that explicitly opt in via `scroll-snap-align`. The
-   keypad section is the only opt-in today — when the user scrolls
-   into its vicinity, the page eases-snaps to its top so the drop-in
-   animation gets watched rather than blown past. proximity (not
-   mandatory) keeps the rest of the page feeling normal — only
-   nearby snaps engage. */
-html { scroll-snap-type: y proximity; }
+/* (Removed: html { scroll-snap-type: y proximity } and the keypad's
+   scroll-snap-align rule. They paired together to give the keypad
+   an OS-level snap, but the keypad now uses GSAP ScrollTrigger pin
+   for the dwell — see src/portfolio/Keypad.tsx. Native snap fights
+   ScrollTrigger's `scrub: true` because the snap-stop forces a
+   non-monotonic scroll position that ScrollTrigger interprets as
+   a reversal mid-pin.) */
 
 /* Hide the native scrollbar. The custom ScrollRail on the right
    edge is the only scroll indicator — the OS scrollbar duplicates
@@ -272,6 +271,37 @@ canvas {
    toggles this class on the root element. */
 html.loading-active .moveable-cursor {
   display: none;
+}
+
+/* Lock the page completely during loading so the user can't scroll,
+   touch-pan, pinch-zoom, or otherwise interact with anything behind
+   the loading screen. The AssemblyHUD already blocks pointer events
+   via `pointer-events: auto` on a full-viewport overlay, but window-
+   level wheel/touchstart/scroll listeners bypass DOM hit-testing
+   entirely — those events still fire and would start the intro
+   tilt + page scroll while the wireframes were still painting.
+   `overflow: hidden` on the html scroller kills the scroll axis;
+   `touch-action: none` on body suppresses native pan/pinch gestures.
+   The window-level listeners in App.tsx ALSO check `loading-active`
+   and bail before firing startTransition, belt-and-braces. */
+html.loading-active,
+html.loading-active body {
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+/* The right-side overlay panel that paints over the canvas during the
+   scroll-driven 100vw→50vw transition has no business appearing during
+   the orange-print loading sequence. If any non-zero scrollProgress
+   leaks through (browser-restored scroll position before our manual
+   reset effect runs, or any other path), the overlay would slice the
+   loading screen into "orange on the left, wrapper-grey on the right"
+   — exactly the visual bug the user reported. Hiding it outright while
+   loading-active is on is simpler than trying to gate scrollProgress
+   to zero across every possible entry path. */
+html.loading-active .canvas-overlay-panel {
+  display: none !important;
 }
 
 /* Loading state — hero brand mark, blinking cat, and scroll hint

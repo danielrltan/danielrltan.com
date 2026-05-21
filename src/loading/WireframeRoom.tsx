@@ -1,6 +1,6 @@
 // src/loading/WireframeRoom.tsx
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useWireframeManifest } from "./useWireframeManifest";
 import {
@@ -45,6 +45,8 @@ interface Props {
 export function WireframeRoom({ state }: Props) {
   const manifest = useWireframeManifest();
   const groupRef = useRef<THREE.Group>(null);
+  const coverRef = useRef<THREE.Mesh>(null);
+  const { camera } = useThree();
 
   // Build line entries once when the manifest arrives.
   const entries = useMemo<LineEntry[]>(() => {
@@ -136,6 +138,19 @@ export function WireframeRoom({ state }: Props) {
     if (coverMatRef.current) {
       coverMatRef.current.opacity = climaxOut;
     }
+    // Pin the cover sphere to the camera so the camera is ALWAYS inside
+    // it. With the sphere fixed at the origin (radius 60), the pre-intro
+    // camera at START_POS (55,55,55) sits at distance ~95 from origin —
+    // OUTSIDE the dome. BackSide-only material means the dome is then
+    // invisible to the camera, and once the Room finishes streaming via
+    // Suspense the user sees the loaded room behind the wireframes
+    // instead of an orange "the wireframes are building it" backdrop.
+    // Translating the sphere to track the camera each frame makes "the
+    // camera is inside the dome" an invariant regardless of where the
+    // camera is parked.
+    if (coverRef.current) {
+      coverRef.current.position.copy(camera.position);
+    }
 
     for (const e of entries) {
       const { mesh, material } = e;
@@ -171,8 +186,14 @@ export function WireframeRoom({ state }: Props) {
           depthTest off) so they sit on top of the cover. Both the
           cover and the wireframes fade in lockstep during the climax,
           at which point the Aurora becomes visible. */}
-      <mesh renderOrder={500} frustumCulled={false}>
-        <sphereGeometry args={[60, 16, 12]} />
+      <mesh ref={coverRef} renderOrder={500} frustumCulled={false}>
+        {/* Radius dropped 60 → 20 because the sphere is now pinned to
+            the camera each frame (see useFrame above). A small sphere
+            wrapping the camera covers the screen just as completely as
+            a huge sphere centred at the world origin — and stays well
+            inside the camera's far plane (180) so no part of it ever
+            gets frustum-clipped. */}
+        <sphereGeometry args={[20, 16, 12]} />
         <meshBasicMaterial
           ref={coverMatRef}
           /* "Orange-print" loading screen — the cover dome paints the

@@ -1,0 +1,171 @@
+/* Work section — scroll-animated timeline. Cards translate + fade
+   in from the right as they enter viewport. A vertical "rail" line
+   runs down the left edge of the column with dots anchoring each
+   card. The current role gets accent-orange treatment.
+
+   Implementation: each card has class `.tl-card` and toggles
+   `.is-in-view` when an IntersectionObserver fires; CSS handles the
+   transition (transform + opacity + filter). Stagger is provided per
+   card via inline transition-delay from TSX. */
+
+.tl-rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  /* Vertical rail line on the left, walnut at low alpha. */
+  padding-left: 28px;
+  margin-top: 32px;
+}
+
+.tl-rail::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 8px;
+  bottom: 56px;
+  width: 1px;
+  background: rgba(26, 23, 20, 0.18);
+}
+
+.tl-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(26, 23, 20, 0.08);
+  border-radius: 12px;
+  padding: 22px 24px 20px;
+  /* Reveal animation initial state — translated right + faded out. */
+  opacity: 0;
+  transform: translate3d(24px, 8px, 0);
+  filter: blur(2px);
+  transition:
+    opacity 480ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 580ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    filter 480ms ease;
+  will-change: opacity, transform, filter;
+}
+.tl-card.is-in-view {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  filter: blur(0);
+}
+
+/* Dot on the rail aligned with each card's top. */
+.tl-card-dot {
+  position: absolute;
+  left: -28px;
+  top: 24px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(26, 23, 20, 0.20);
+  border: 2px solid var(--wrapper-bg, #f8f6f3);
+  box-shadow: 0 0 0 1px rgba(26, 23, 20, 0.10);
+}
+.tl-card--current .tl-card-dot {
+  background: var(--accent, #e87040);
+  box-shadow: 0 0 0 4px rgba(232, 112, 64, 0.18);
+}
+.tl-card--current {
+  border-color: rgba(232, 112, 64, 0.35);
+  background: rgba(255, 245, 238, 0.75);
+}
+
+.tl-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(26, 23, 20, 0.55);
+  margin-bottom: 6px;
+}
+.tl-card-tag {
+  display: inline-block;
+  background: var(--accent, #e87040);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+}
+
+.tl-card-where {
+  font-family: var(--font-display, "Space Grotesk", sans-serif);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--wrapper-ink, #1a1714);
+  margin: 0 0 4px;
+}
+
+.tl-card-role {
+  font-family: var(--font-body, "Inter", sans-serif);
+  font-size: 13px;
+  color: rgba(26, 23, 20, 0.65);
+  margin-bottom: 14px;
+}
+
+.tl-card-bullets {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tl-card-bullets li {
+  position: relative;
+  padding-left: 18px;
+  font-family: var(--font-body, "Inter", sans-serif);
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(26, 23, 20, 0.85);
+}
+.tl-card-bullets li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.65em;
+  width: 6px;
+  height: 1px;
+  background: var(--accent, #e87040);
+}
+
+.tl-resume-btn {
+  margin-top: 20px;
+  align-self: flex-start;
+  display: inline-block;
+  padding: 12px 22px;
+  background: var(--accent, #e87040);
+  color: white;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-radius: 999px;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+  box-shadow: 0 2px 0 rgba(26, 23, 20, 0.15), 0 8px 20px -8px rgba(232, 112, 64, 0.55);
+}
+.tl-resume-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 0 rgba(26, 23, 20, 0.15), 0 12px 28px -10px rgba(232, 112, 64, 0.65);
+}
+
+@media (max-width: 768px) {
+  .tl-card {
+    padding: 18px 18px 16px;
+  }
+  .tl-card-where {
+    font-size: 19px;
+  }
+  .tl-card-bullets li {
+    font-size: 13px;
+  }
+}

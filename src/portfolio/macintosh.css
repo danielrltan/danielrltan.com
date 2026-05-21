@@ -1,0 +1,222 @@
+/* Macintosh section — pinned full-viewport stage on the left, section
+   marker + heading on the right column. Detail card slides in from
+   the right when a project tile is clicked. */
+
+.portfolio-mac {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.mac-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 60%;
+  height: 100%;
+  pointer-events: auto;
+}
+
+.mac-col {
+  position: relative;
+  z-index: 2;
+  margin-left: auto;
+  max-width: 40%;
+  padding-right: 6vw;
+}
+
+.mac-blurb {
+  font-family: var(--font-body, "Inter", sans-serif);
+  font-size: 14px;
+  color: rgba(26, 23, 20, 0.65);
+  line-height: 1.55;
+  max-width: 380px;
+  margin-top: 18px;
+}
+
+/* HTML overlay on the CRT screen (rendered inside drei <Html />). */
+.mac-desktop {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: #e8e2d6;
+}
+
+.mac-desktop-bar {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #e87040;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(232, 112, 64, 0.35);
+  padding-bottom: 10px;
+}
+
+.mac-desktop-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  flex: 1;
+}
+
+.mac-tile {
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 18px 20px 20px;
+  text-align: left;
+  cursor: pointer;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  font: inherit;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+  overflow: hidden;
+}
+.mac-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px -10px rgba(255, 120, 66, 0.4);
+}
+
+.mac-tile-meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.mac-tile-title {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+/* Project detail card — slides in from the right when a tile is
+   clicked. Higher z-index than the section content. */
+.mac-detail {
+  position: fixed;
+  top: 5vh;
+  right: 4vw;
+  width: min(420px, 90vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(26, 23, 20, 0.10);
+  border-radius: 14px;
+  padding: 24px 26px 26px;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.4);
+  z-index: 60;
+  animation: mac-detail-in 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes mac-detail-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.mac-detail-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: 0;
+  font-size: 26px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: rgba(26, 23, 20, 0.6);
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+.mac-detail-close:hover {
+  background: rgba(26, 23, 20, 0.08);
+}
+
+.mac-detail-meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent, #e87040);
+  margin-bottom: 8px;
+}
+
+.mac-detail-title {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
+}
+
+.mac-detail-blurb {
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(26, 23, 20, 0.85);
+  margin: 0 0 16px;
+}
+
+.mac-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.mac-detail-tag {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid rgba(26, 23, 20, 0.18);
+  border-radius: 999px;
+  color: rgba(26, 23, 20, 0.7);
+}
+
+.mac-detail-links {
+  display: flex;
+  gap: 16px;
+}
+.mac-detail-links a {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent, #e87040);
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+  padding-bottom: 2px;
+}
+
+@media (max-width: 768px) {
+  .mac-stage {
+    width: 100%;
+  }
+  .mac-col {
+    position: absolute;
+    bottom: 5vh;
+    right: 5vw;
+    left: 5vw;
+    max-width: none;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(8px);
+    padding: 14px;
+    border-radius: 12px;
+  }
+}

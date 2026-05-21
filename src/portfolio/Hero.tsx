@@ -1,10 +1,17 @@
 import "./sections.css";
 import { useScrollProgress } from "../useScrollProgress";
 
-/** Hero is now just the room. The brand mark in RoomHUD (top-left)
- *  carries the identity — duplicating it with a giant title was loud
- *  and redundant. Only a small scroll hint lives here, and it fades
- *  out the moment the user actually starts scrolling. */
+/**
+ * Hero section is now JUST a section-sized spacer. The visible hero
+ * content — the 3D extruded signature — is rendered at App level
+ * (via <HeroSignature/>) as a position-fixed overlay so it can
+ * persist across the loading sequence cleanly. This component is
+ * only responsible for taking up one viewport of vertical space and
+ * showing a small scroll hint that fades out as the user scrolls.
+ *
+ * The old `Daniel Tan` wordmark + Portfolio eyebrow block was removed
+ * — the signature itself IS the wordmark now.
+ */
 const FADE_START = 0.003;
 const FADE_DONE = 0.03;
 
@@ -17,13 +24,6 @@ export function Hero() {
   const opacity = 1 - t;
   return (
     <section className="portfolio-section portfolio-section--hero">
-      {/* Bottom-left identity block — only on hero. Tied to the same
-       *  fade opacity as the scroll-hint so it dissolves the instant
-       *  the user scrolls into the first section. */}
-      <div className="hero-mark" style={{ opacity }}>
-        <span className="eyebrow">Portfolio &middot; 2026</span>
-        <span className="hero-wordmark">Daniel Tan</span>
-      </div>
       <div className="scroll-hint" style={{ opacity }}>
         scroll &darr;
       </div>

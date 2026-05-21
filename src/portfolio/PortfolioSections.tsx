@@ -1,9 +1,8 @@
 import { Hero } from "./Hero";
 import { About } from "./About";
-import { Skills } from "./Skills";
-import { Projects } from "./Projects";
+import { Macintosh } from "./Macintosh";
 import { Work } from "./Work";
-import { Play } from "./Play";
+import { Photos } from "./Photos";
 import { Other } from "./Other";
 import { SectionTransition } from "./SectionTransition";
 import { Keypad } from "./Keypad";
@@ -32,10 +31,9 @@ export function PortfolioSections() {
     >
       <Hero />
       <About />
-      <Skills />
-      <Projects />
+      <Macintosh />
       <Work />
-      <Play />
+      <Photos />
       <Other />
       <SectionTransition />
       <Keypad />

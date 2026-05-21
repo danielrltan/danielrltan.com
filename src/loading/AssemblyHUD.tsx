@@ -46,7 +46,17 @@ export function AssemblyHUD({ state }: Props) {
         color: "#ffffff",
         fontFamily: "var(--font-mono)",
         zIndex: 9999,
-        pointerEvents: fading ? "none" : "auto",
+        // Keep blocking pointer events through the ENTIRE climax fade,
+        // not just until climaxReady. The HUD is still painted (opacity
+        // fading 1→0) for CLIMAX_DURATION_MS + POST_CLIMAX_HUD_FADE_MS
+        // after climaxReady fires; during that window the Room behind
+        // is already mounted with active click handlers, so dropping
+        // pointer-events early lets a tap "fall through" the fading
+        // wireframes and hit a Room object the user can't even see yet.
+        // climaxDone fires after the fade is done AND unmounts this HUD
+        // (`if (state.climaxDone) return null` in AssemblyController),
+        // so keeping "auto" until then is safe.
+        pointerEvents: state.climaxDone ? "none" : "auto",
         opacity: fading ? 0 : 1,
         transition: `opacity ${POST_CLIMAX_HUD_FADE_MS}ms ease`,
         cursor: "none",

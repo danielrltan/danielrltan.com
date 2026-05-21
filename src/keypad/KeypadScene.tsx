@@ -54,9 +54,23 @@ const AUTOROTATE_SPEED = (Math.PI * 2) / 40;
 // half-height at the lookAt distance so the model is genuinely
 // off-screen at progress=0, not just clipped.
 const DROP_HEIGHT = 6;
-// Fixed-rate damping for the drop lerp. Higher = snappier follow of
-// scroll; lower = more "glide". 9 feels responsive without jitter.
-const DROP_LERP_RATE = 9;
+// Total time the drop-in animation takes, in milliseconds. The drop
+// is driven by elapsed time since Keypad.tsx's onEnter ScrollTrigger
+// stamped `dropStartTimeRef` — NOT by scroll progress — so the pace
+// is identical regardless of how fast the user scrolls into the
+// section.
+//
+// 700ms targets the "slightly faster than scroll rate" feel: at a
+// typical user scroll rate of ~1500px/s, the 800px entry distance
+// from "section first appears" to "section's top hits viewport top"
+// takes ~500ms. A 700ms drop runs a hair slower than that — so the
+// keypad is mid-landing as the user scrolls past where it should be
+// and finishes landing just as the pin engages. Reads as
+// "animated drop in sync with my scroll" rather than "I scroll,
+// then it animates" or "I scroll, then it slowly plays out."
+// easeOutCubic still applies inside this 700ms so the landing feels
+// soft despite the shorter duration.
+const DROP_DURATION_MS = 700;
 
 interface CursorState {
   // 0..1 across the canvas (top-left origin to match HTML conventions).
@@ -67,12 +81,15 @@ interface CursorState {
 }
 
 interface KeypadSceneProps {
-  // Updated by Keypad.tsx on scroll. 0 = section just entering
-  // viewport, 1 = section top reached viewport top.
-  sectionProgressRef: React.MutableRefObject<number>;
+  // Stamped by Keypad.tsx's onEnter ScrollTrigger the moment the
+  // section first enters viewport. `null` = hasn't entered yet
+  // (model sits above frame, invisible). KeypadScene reads this and
+  // computes drop progress purely from elapsed time, decoupling the
+  // animation from scroll speed.
+  dropStartTimeRef: React.MutableRefObject<number | null>;
 }
 
-export function KeypadScene({ sectionProgressRef }: KeypadSceneProps) {
+export function KeypadScene({ dropStartTimeRef }: KeypadSceneProps) {
   const isMobile = useIsMobile();
   // Cursor target shared with RiceBlob (uniform driver) and with the
   // SceneContents component (parallax driver).
@@ -149,7 +166,7 @@ export function KeypadScene({ sectionProgressRef }: KeypadSceneProps) {
         <SceneContents
           cursorRef={cursorRef}
           isMobile={isMobile}
-          sectionProgressRef={sectionProgressRef}
+          dropStartTimeRef={dropStartTimeRef}
           tuneStateRef={tuneStateRef}
           transformMode={transformMode}
         />
@@ -248,13 +265,13 @@ function TuneHud({
 function SceneContents({
   cursorRef,
   isMobile,
-  sectionProgressRef,
+  dropStartTimeRef,
   tuneStateRef,
   transformMode,
 }: {
   cursorRef: React.MutableRefObject<CursorState>;
   isMobile: boolean;
-  sectionProgressRef: React.MutableRefObject<number>;
+  dropStartTimeRef: React.MutableRefObject<number | null>;
   tuneStateRef: React.MutableRefObject<TuneState>;
   transformMode: TuneTransformMode;
 }) {
@@ -319,38 +336,45 @@ function SceneContents({
     }
 
     // Drop-in: model falls from DROP_HEIGHT above the frame to 0
-    // (resting). Active scroll range is [DROP_START..DROP_END]
-    // (sectionProgress) so the user spends some scroll WAITING
-    // for the drop, then watches the drop, then spends some
-    // scroll just looking at the keypad at rest — feels more
-    // deliberate than a 0→1 drop completing the moment the
-    // section enters view. easeOutCubic on the active range gives
-    // a soft landing.
-    const DROP_START = 0.25;
-    const DROP_END = 0.9;
-    const p = sectionProgressRef.current;
-    const local = Math.max(0, Math.min(1, (p - DROP_START) / (DROP_END - DROP_START)));
+    // (resting) over a FIXED DURATION, regardless of scroll speed.
+    // This is the "guided story" pacing — the user can't speed up or
+    // slow down the drop by scrolling faster or slower, so the
+    // landing always feels deliberate.
+    //
+    // Driven by `dropStartTimeRef`, set by Keypad.tsx's onEnter
+    // ScrollTrigger the moment the section first crosses into the
+    // viewport. While null (section hasn't been entered), the model
+    // sits at DROP_HEIGHT (above frame, invisible). easeOutCubic on
+    // the local 0..1 timeline gives a soft, weighty landing.
+    const startTime = dropStartTimeRef.current;
+    let local: number;
+    if (startTime == null) {
+      local = 0;
+    } else {
+      const elapsed = performance.now() - startTime;
+      local = Math.max(0, Math.min(1, elapsed / DROP_DURATION_MS));
+    }
     const eased = 1 - Math.pow(1 - local, 3);
-    const targetDropY = (1 - eased) * DROP_HEIGHT;
-    const dk = 1 - Math.exp(-dt * DROP_LERP_RATE);
-    dropY.current += (targetDropY - dropY.current) * dk;
-    g.position.y = dropY.current;
+    g.position.y = (1 - eased) * DROP_HEIGHT;
+    // We still update dropY for any external consumers expecting it,
+    // but the animation is no longer lerped — local already maps
+    // directly to a position via easeOutCubic, and any per-frame
+    // smoothing would just slow the fixed-rate animation back down.
+    dropY.current = g.position.y;
 
-    // Auto-spin the dial during the drop-in. Fire ONCE when the
-    // drop reaches ~30% of its course; DIAL_DAMP in KeypadModel
-    // decays the spin over ~1-2 seconds, so by the time the drop
-    // completes the knob is near rest — looks like the device
-    // gave a quick rotational shake on impact.
+    // Auto-spin the dial mid-drop. Fires ONCE at local >= 0.3 (~480ms
+    // into the 1600ms drop) so the dial is mid-rotation when the
+    // keypad lands. KeypadModel's DIAL_DAMP decays it naturally over
+    // the remaining ~1.1s, settling just as the model finishes
+    // landing — "the device gave a quick shake on impact."
     if (!hasAutoSpunRef.current && local >= 0.3 && kickDialRef.current) {
       hasAutoSpunRef.current = true;
-      // ~12 rad/s ≈ 1.9 revs/sec; tuned so the spin is visible
-      // throughout the back half of the drop and decays just as
-      // the keypad lands.
       kickDialRef.current(12);
     }
-    // Reset latch if user scrolls all the way back above the section
-    // (lets the spin replay on re-entry).
-    if (p <= 0 && hasAutoSpunRef.current) {
+    // Reset latch when the user scrolls fully back above the section
+    // (Keypad.tsx clears dropStartTimeRef in onLeaveBack), so a
+    // re-entry replays the drop + dial spin fresh.
+    if (startTime == null && hasAutoSpunRef.current) {
       hasAutoSpunRef.current = false;
     }
 

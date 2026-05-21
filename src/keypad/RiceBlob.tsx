@@ -7,7 +7,20 @@ import * as THREE from "three";
 // direction so the plane is perpendicular to view and reads as a
 // flat backdrop. Each frame we re-position + re-scale to track the
 // camera (handles off-axis camera angles + canvas resize).
-const PLANE_DISTANCE_BEHIND_TARGET = 4;
+//
+// 4 → 12: at the old 4-unit distance, the keypad's fitted bounding
+// sphere radius (~1.77 world units) left only ~2.2 units of clearance
+// behind the model — close enough that the rice-dot plane read as
+// "stuck to" the keypad rather than a backdrop, and parts of the
+// model's outer geometry (the protruding side buttons + dial)
+// approached the plane closely enough that the user reported it as
+// looking like the keypad was clipping through. 12 puts a clear
+// depth gap between the model and the backdrop. The plane auto-
+// rescales to fill the camera frustum at its new distance (see
+// useFrame below) so the rice-dot density on screen is unchanged,
+// and 12 + camera distance ~6.7 = 18.7 from camera, well within the
+// 50-unit far plane.
+const PLANE_DISTANCE_BEHIND_TARGET = 12;
 
 /**
  * Backdrop for the keypad section — a large plane behind the model,
@@ -24,6 +37,14 @@ const PLANE_DISTANCE_BEHIND_TARGET = 4;
 
 const BG_COLOR = "#f3f3f3";
 const RICE_COLOR = "#C4C4C4";
+// Brand orange. Painted in the SAME shader as the rice (not a separate
+// transparent plane) so it composites correctly behind the keypad —
+// three.js puts transparent objects after all opaque ones regardless
+// of renderOrder, so a separate transparent glow layer ended up
+// drawing OVER the keypad keys. Living in this shader, the glow is
+// part of the opaque backdrop pass and the keypad's depth-tested
+// materials cover it as expected.
+const GLOW_COLOR = "#FFA700";
 
 // Larger, more legible rice grains. Fewer cells (so each cell is
 // bigger) + larger fill fraction (so each dot fills more of its
@@ -38,8 +59,16 @@ const DOT_RADIUS = 0.13;
 const BLOB_RADIUS = 0.156;
 const BLOB_FEATHER = 0.096;
 
-// rAF damping rate for cursor follow.
-const CURSOR_LERP_RATE = 11.0;
+// rAF damping rate for cursor follow. Was 11.0 (~91ms time constant)
+// which left a perceptible "rice still catching up" lag after the
+// cursor stopped — the blob centroid sat noticeably behind the orange
+// ring on quick flicks. Bumped to 35 (~29ms time constant) so the blob
+// is visually pinned to the cursor while still being lerped (the
+// project's "never bind a uniform directly to a per-event value" rule
+// still applies). At 35, two-three frames after a pointer event the
+// blob is >95% of the way to the new cursor position — fast enough
+// that the lag is below human perceptual threshold for static targets.
+const CURSOR_LERP_RATE = 35.0;
 
 const VERTEX = /* glsl */ `
   varying vec2 vUv;
@@ -60,6 +89,7 @@ const FRAGMENT = /* glsl */ `
   uniform float uDotRadius;
   uniform vec3 uBg;
   uniform vec3 uRice;
+  uniform vec3 uGlow;
   uniform float uActive;
 
   float hash21(vec2 p) {
@@ -119,7 +149,46 @@ const FRAGMENT = /* glsl */ `
     // the rice color in mix(). 1.1 floor keeps the centers of dots
     // fully solid (mix.t == 1 hits pure rice color).
     float a = clamp(dotMask * blob * drift * 1.1, 0.0, 1.0);
-    vec3 col = mix(uBg, uRice, a);
+
+    // ----- Orange fluid glow -----
+    // Three large overlapping blobs anchored near canvas center, each
+    // drifting around its rest position via slow noise. Motion is
+    // intentionally just-barely-perceptible — at t-rate 0.03 the
+    // centers shift ~50px over a 10s observation. Stare and you can
+    // see it; glance and it reads as static.
+    float gt = uTime * 0.03;
+    vec2 g1 = vec2(0.42, 0.52) + 0.04 * vec2(
+      noise2(vec2(gt, 0.0)) - 0.5,
+      noise2(vec2(0.0, gt)) - 0.5
+    );
+    vec2 g2 = vec2(0.58, 0.48) + 0.04 * vec2(
+      noise2(vec2(gt + 17.0, 0.0)) - 0.5,
+      noise2(vec2(0.0, gt + 17.0)) - 0.5
+    );
+    vec2 g3 = vec2(0.50, 0.55) + 0.04 * vec2(
+      noise2(vec2(gt + 31.0, 0.0)) - 0.5,
+      noise2(vec2(0.0, gt + 31.0)) - 0.5
+    );
+    // pow(1 - d/r, 1.5) gives a smooth shoulder without a hard edge.
+    // Big radii in aspect-corrected UV so the blobs overlap heavily —
+    // the "fluid" feel comes from the union of three sources, not from
+    // any single one being visible as a discrete circle.
+    float gi1 = pow(max(0.0, 1.0 - length((uv - g1) * uAspect) / 0.45), 1.5);
+    float gi2 = pow(max(0.0, 1.0 - length((uv - g2) * uAspect) / 0.42), 1.5);
+    float gi3 = pow(max(0.0, 1.0 - length((uv - g3) * uAspect) / 0.50), 1.5);
+    float glow = max(max(gi1, gi2), gi3);
+    // Imperceptible "breathing" of the overall intensity. Couples the
+    // three blobs into a single field that gently swells/recedes.
+    glow *= 0.92 + 0.08 * noise2(vec2(gt * 0.7 + 5.0, 0.0));
+    // Cap so the glow tints the bg without ever fully overwriting it
+    // — even at peak intensity the section still reads as light grey
+    // with an orange wash, not pure orange.
+    glow = clamp(glow * 0.45, 0.0, 0.45);
+
+    // Composite: orange tint first, then rice grains on top of the
+    // tinted bg (so dots remain crisp gray over the orange field).
+    vec3 tintedBg = mix(uBg, uGlow, glow);
+    vec3 col = mix(tintedBg, uRice, a);
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -151,6 +220,7 @@ export function RiceBlob({ cursorRef }: Props) {
       uDotRadius: { value: DOT_RADIUS },
       uBg: { value: new THREE.Color(BG_COLOR) },
       uRice: { value: new THREE.Color(RICE_COLOR) },
+      uGlow: { value: new THREE.Color(GLOW_COLOR) },
       uActive: { value: 0 },
     }),
     [],

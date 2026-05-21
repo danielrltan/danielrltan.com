@@ -1,9 +1,23 @@
-// src/loading/AssemblyController.tsx
 import { createContext, useContext, useEffect } from "react";
-import { AssemblyHUD } from "./AssemblyHUD";
 import { useAssemblyProgress } from "./useAssemblyProgress";
-import { WireframeRoom } from "./WireframeRoom";
 import type { AssemblyState } from "./types";
+
+/**
+ * Loading state context. Used to be the orchestrator for the wireframe
+ * orange-print loading sequence (cover dome + assembled lines + HUD).
+ * That visual is replaced by the 3D hero signature — see
+ * `src/hero/HeroSignature.tsx`.
+ *
+ * What's left here:
+ *   - `useAssemblyProgress` still tracks bytes / timeline / stable
+ *     frames so other components can know when the page is "ready."
+ *   - The provider toggles `html.loading-active` from `climaxDone`,
+ *     same as before — CSS rules still gate the wrapper bg color,
+ *     the cursor, hero chrome, body scroll, and Lenis.
+ *   - `AssemblyWireframesSlot` and `AssemblyHUDSlot` are kept as
+ *     no-ops so existing call sites don't error. We can clean them up
+ *     once the hero refactor is fully landed.
+ */
 
 const AssemblyCtx = createContext<AssemblyState | null>(null);
 
@@ -13,24 +27,13 @@ export function useAssembly(): AssemblyState {
   return v;
 }
 
-/**
- * Wraps the app with a single source of truth for assembly state.
- * `AssemblyHUDSlot` and `AssemblyWireframesSlot` consume from it.
- *
- * Place this around BOTH the Canvas and the HUD overlay in App.
- */
 export function AssemblyProvider({ children }: { children: React.ReactNode }) {
   const state = useAssemblyProgress();
 
-  // Toggle a loading-active class on <html> that lets CSS hide the
-  // custom cursor, hide the hero scroll hint, and swap chrome text
-  // to white (so it reads against the orange cover dome).
-  //
-  // Trigger: climaxDone (cover dome opacity reaches 0 and the
-  // wireframes have unmounted) — NOT climaxReady, which fires the
-  // moment the fade starts. Switching too early causes the
-  // wordmark / eyebrow colour to flip back to walnut while the
-  // orange backdrop is still visible.
+  // Toggle `html.loading-active` from climaxDone. CSS uses this to
+  // paint the wrapper orange, hide the custom cursor, lock body
+  // scroll, and pause Lenis while the hero signature is still
+  // drawing on the orange backdrop.
   useEffect(() => {
     if (state.climaxDone) {
       document.documentElement.classList.remove("loading-active");
@@ -42,8 +45,7 @@ export function AssemblyProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state.climaxDone]);
 
-  // Remove the static #boot-screen the moment React mounts (same as
-  // old LoadingScreen behavior).
+  // Remove the static #boot-screen the moment React mounts.
   useEffect(() => {
     const bs = document.getElementById("boot-screen");
     if (bs && bs.parentNode) bs.parentNode.removeChild(bs);
@@ -53,22 +55,19 @@ export function AssemblyProvider({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * R3F-side slot — mounts inside the Canvas, as a sibling of the
- * `<Suspense fallback={null}>` that gates the real room. Renders
- * nothing once the climax has fully completed.
+ * No-op slot kept for back-compat with the existing App.tsx call site.
+ * The wireframe assembly visual was removed when the hero signature
+ * took over loading. Remove this and its consumer in a follow-up.
  */
 export function AssemblyWireframesSlot() {
-  const state = useAssembly();
-  if (state.climaxDone) return null;
-  return <WireframeRoom state={state} />;
+  return null;
 }
 
 /**
- * DOM-side slot — mounts outside the Canvas. Renders nothing once
- * the climax fade has completed.
+ * No-op slot kept for back-compat with the existing App.tsx call site.
+ * The progress HUD overlay was removed when the hero signature took
+ * over loading. Remove this and its consumer in a follow-up.
  */
 export function AssemblyHUDSlot() {
-  const state = useAssembly();
-  if (state.climaxDone) return null;
-  return <AssemblyHUD state={state} />;
+  return null;
 }

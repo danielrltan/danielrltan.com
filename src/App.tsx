@@ -30,6 +30,7 @@ import {
   AssemblyHUDSlot,
   AssemblyWireframesSlot,
 } from "./loading";
+import { HeroSignature } from "./hero/HeroSignature";
 import { ScrollCamera } from "./ScrollCamera";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { useScrollProgress } from "./useScrollProgress";
@@ -59,6 +60,94 @@ function lerp(a: number, b: number, t: number) {
 }
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
+}
+
+/**
+ * Hero (3D signature) fade — returns 1 while the user is at the top
+ * of the page and ramps to 0 as they scroll past the first viewport.
+ * The signature lives in `position: fixed` so this is the only way
+ * to "leave it behind" as the user scrolls into About.
+ *
+ * scrollY-based for the same reason as `useMobileHeroFade`: page
+ * height changes shouldn't shift these breakpoints.
+ */
+const HERO_FADE_START_VH = 0.45;
+const HERO_FADE_END_VH = 0.9;
+function useHeroFade(): number {
+  const [t, setT] = useState(1);
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      const vh = window.innerHeight || 1;
+      const ratio = window.scrollY / vh;
+      const fade = clamp01(
+        (ratio - HERO_FADE_START_VH) /
+          (HERO_FADE_END_VH - HERO_FADE_START_VH),
+      );
+      setT(1 - fade);
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+  return t;
+}
+
+/**
+ * Room canvas fade — visible only during the About section.
+ *   < 0.9vh scrolled : hidden  (Hero)
+ *   0.9 .. 1.3vh     : fading in
+ *   1.3 .. 2.4vh     : visible (About)
+ *   2.4 .. 3.0vh     : fading out
+ *   > 3.0vh          : hidden  (all subsequent sections)
+ *
+ * Anchored to viewport units, not scrollProgress, so growing other
+ * sections' content doesn't shift the About window.
+ */
+const ROOM_FADE_IN_START_VH = 0.9;
+const ROOM_FADE_IN_END_VH = 1.3;
+const ROOM_FADE_OUT_START_VH = 2.4;
+const ROOM_FADE_OUT_END_VH = 3.0;
+function useRoomFade(): number {
+  const [t, setT] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      const vh = window.innerHeight || 1;
+      const ratio = window.scrollY / vh;
+      const fadeIn = clamp01(
+        (ratio - ROOM_FADE_IN_START_VH) /
+          (ROOM_FADE_IN_END_VH - ROOM_FADE_IN_START_VH),
+      );
+      const fadeOut = clamp01(
+        (ratio - ROOM_FADE_OUT_START_VH) /
+          (ROOM_FADE_OUT_END_VH - ROOM_FADE_OUT_START_VH),
+      );
+      setT(fadeIn * (1 - fadeOut));
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+  return t;
 }
 
 /**
@@ -174,13 +263,28 @@ export default function App() {
    * was previously also a trigger (so any key press could "enter"
    * the page); removed because it was firing on incidental key
    * presses (DevTools shortcuts, browser hotkeys) before the user
-   * had actually decided to engage. */
+   * had actually decided to engage.
+   *
+   * Gated on `html.loading-active`: while the wireframe assembly is
+   * still painting, ANY of these events would kick off the intro
+   * tilt — moving the camera into the room behind the wireframes
+   * before the user can see the loaded scene. That made the loading
+   * screen feel "clickable" (scroll/touch/wheel all started the
+   * intro). Once `loading-active` is removed (climaxDone fires),
+   * the first input fires the intro normally.
+   *
+   * We drop `{ once: true }` here so the listener survives an
+   * event that arrives during loading — otherwise the first stray
+   * wheel/scroll during loading consumes the registration and the
+   * user's real scroll once loading completes does nothing. */
   useEffect(() => {
     if (transitionStarted) return;
     const fire = () => {
-      if (!transitionStarted) startTransition();
+      if (transitionStarted) return;
+      if (document.documentElement.classList.contains("loading-active")) return;
+      startTransition();
     };
-    const opts = { once: true, passive: true } as const;
+    const opts = { passive: true } as const;
     window.addEventListener("wheel", fire, opts);
     window.addEventListener("touchstart", fire, opts);
     window.addEventListener("scroll", fire, opts);
@@ -243,6 +347,21 @@ export default function App() {
   const mobileFadeT = useMobileHeroFade(isMobile);
   const mobileCanvasOpacity = 1 - mobileFadeT;
 
+  // Room/Hero scroll choreography under the new curiosity-cabinet
+  // design (see docs/superpowers/specs/2026-05-21-portfolio-redesign-
+  // design.md):
+  //   - Hero (3D signature) is visible at viewport top (scrollProgress
+  //     0..HERO_END), then fades out as the user scrolls.
+  //   - Room is HIDDEN during Hero, fades in over the About section,
+  //     and fades back out when the user scrolls past About.
+  // Thresholds are scrollY-based (in viewport units) rather than
+  // scrollProgress-based so they survive page-height changes from
+  // section content growing/shrinking. ROOM_VISIBLE_START is "Hero
+  // ends" and ROOM_VISIBLE_END is "About ends." Tuned empirically;
+  // bump if either section gets taller.
+  const heroOpacity = useHeroFade();
+  const roomOpacity = useRoomFade();
+
   // Publish content opacity as a CSS variable on the document root so
   // every non-hero section's .portfolio-col can read it without
   // prop-drilling.
@@ -251,17 +370,11 @@ export default function App() {
     document.documentElement.style.setProperty("--content-opacity", value);
   }, [contentOpacity, isMobile]);
 
-  // Force the page to start at the top on every load. Otherwise a
-  // reload while scrolled into a section shows the orange loading
-  // screen on top of mid-page content — looks broken because the
-  // wireframes appear over the about / projects card. Disable the
-  // browser's automatic scroll restoration and slam to 0 on mount.
-  useEffect(() => {
-    if ("scrollRestoration" in history) {
-      history.scrollRestoration = "manual";
-    }
-    window.scrollTo(0, 0);
-  }, []);
+  // (Page scroll-to-top on load is now handled SYNCHRONOUSLY in
+  //  src/main.tsx, before React mounts. Running it in a useEffect
+  //  here was too late — the browser had already restored scroll
+  //  by the time the effect fired, and useScrollProgress + Lenis
+  //  had latched onto that non-zero starting position.)
 
   // (loading-active class is managed by AssemblyController based on
   //  climaxDone — the proper source of truth. App-level toggle removed
@@ -302,6 +415,7 @@ export default function App() {
         {!isMobile && (
           <div
             aria-hidden
+            className="canvas-overlay-panel"
             style={{
               position: "fixed",
               top: 0,
@@ -326,6 +440,27 @@ export default function App() {
             }}
           />
         )}
+        {/* Hero signature — covers full viewport. Visible at scroll top,
+            fades out as the user enters About. Positioned BELOW the
+            HUD (z-index 9999) and ABOVE the room canvas (z-index 0)
+            so the loading-state orange paints around it via the wrapper
+            bg and the 3D version sits in front of the soon-to-fade-in
+            room. */}
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            pointerEvents: "none",
+            opacity: heroOpacity,
+            transition: "opacity 200ms linear",
+            zIndex: 2,
+          }}
+        >
+          <HeroSignature />
+        </div>
         <div
           style={{
             position: "fixed",
@@ -341,8 +476,15 @@ export default function App() {
             // scroll-pixel-based fade in useMobileHeroFade, the room
             // dissolves cleanly as the user scrolls into About.
             height: "100vh",
-            opacity: isMobile ? mobileCanvasOpacity : 1,
-            pointerEvents: isMobile && mobileCanvasOpacity < 0.05 ? "none" : "auto",
+            // Room is now ONLY visible during the About section (per
+            // the curiosity-cabinet redesign). roomOpacity is 0 during
+            // Hero, fades to 1 through About, fades back to 0 as the
+            // user scrolls into Skills/Macintosh.
+            opacity: (isMobile ? mobileCanvasOpacity : 1) * roomOpacity,
+            pointerEvents:
+              (isMobile && mobileCanvasOpacity < 0.05) || roomOpacity < 0.05
+                ? "none"
+                : "auto",
             zIndex: 0,
           }}
         >

@@ -1,4 +1,6 @@
+import { useEffect, useRef, useState } from "react";
 import "./sections.css";
+import "./work-timeline.css";
 
 interface Stint {
   when: string;
@@ -6,6 +8,8 @@ interface Stint {
   role?: string;
   location?: string;
   bullets: string[];
+  /** When true, marked as the current/active role with accent styling. */
+  current?: boolean;
 }
 
 const STINTS: Stint[] = [
@@ -14,6 +18,7 @@ const STINTS: Stint[] = [
     where: "Windscribe",
     role: "Software Developer Intern",
     location: "Toronto, ON",
+    current: true,
     bullets: [
       "Engineered a ticket automation extension that resolved 30% of support load autonomously, cutting response times by 50% and improving SLA compliance at scale for 89M users.",
       "Built and deployed an internal Slackbot \"Demerzel\" with thread-based context management, TOML-configured endpoints, Prometheus metrics, and Notion-integrated memory prompts — built from 650+ articles of internal docs.",
@@ -42,6 +47,82 @@ const STINTS: Stint[] = [
   },
 ];
 
+/**
+ * Lightweight hook: returns true once the ref'd element has entered
+ * the viewport (with a margin) for the first time. We latch the
+ * "seen" state so scrolling back up doesn't re-animate cards (the
+ * animation should be a one-shot reveal, not a flicker every time
+ * the user scrolls past).
+ */
+function useInViewOnce<T extends HTMLElement>(): [
+  React.RefObject<T | null>,
+  boolean,
+] {
+  const ref = useRef<T | null>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    if (seen) return;
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setSeen(true);
+            io.disconnect();
+            return;
+          }
+        }
+      },
+      { rootMargin: "0px 0px -15% 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen]);
+  return [ref, seen];
+}
+
+interface TimelineCardProps {
+  stint: Stint;
+  index: number;
+}
+
+function TimelineCard({ stint, index }: TimelineCardProps) {
+  const [ref, inView] = useInViewOnce<HTMLDivElement>();
+  return (
+    <div
+      ref={ref}
+      className={`tl-card${stint.current ? " tl-card--current" : ""}${
+        inView ? " is-in-view" : ""
+      }`}
+      style={{
+        // Staggered delay so the cards animate in one after the other
+        // when the section enters viewport instead of all at once.
+        transitionDelay: `${index * 90}ms`,
+      }}
+    >
+      <div className="tl-card-dot" aria-hidden />
+      <div className="tl-card-meta">
+        <span className="tl-card-when">{stint.when}</span>
+        {stint.current && <span className="tl-card-tag">CURRENT</span>}
+      </div>
+      <h3 className="tl-card-where">{stint.where}</h3>
+      {(stint.role || stint.location) && (
+        <div className="tl-card-role">
+          {stint.role}
+          {stint.role && stint.location ? " · " : ""}
+          {stint.location}
+        </div>
+      )}
+      <ul className="tl-card-bullets">
+        {stint.bullets.map((b, j) => (
+          <li key={j}>{b}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function Work() {
   return (
     <section className="portfolio-section">
@@ -49,33 +130,17 @@ export function Work() {
         <span className="section-marker">04</span>
         <span className="section-index">04 / 07 &middot; Work</span>
         <h2>Where I&rsquo;ve been.</h2>
-        <div className="section-card">
+        <div className="tl-rail">
           {STINTS.map((s, i) => (
-            <div key={i} className="exp-item">
-              <div className="exp-item-when">{s.when}</div>
-              <div className="exp-item-where">{s.where}</div>
-              {(s.role || s.location) && (
-                <div className="exp-item-role">
-                  {s.role}
-                  {s.role && s.location ? " · " : ""}
-                  {s.location}
-                </div>
-              )}
-              <ul className="exp-item-bullets">
-                {s.bullets.map((b, j) => (
-                  <li key={j}>{b}</li>
-                ))}
-              </ul>
-            </div>
+            <TimelineCard key={i} stint={s} index={i} />
           ))}
-          <div className="section-rule" />
           <a
             href="/resume/Daniel_Tan_Resume.pdf"
             target="_blank"
             rel="noreferrer"
-            className="btn-pill"
+            className="tl-resume-btn"
           >
-            Download Resume &darr;
+            Download Résumé &darr;
           </a>
         </div>
       </div>
