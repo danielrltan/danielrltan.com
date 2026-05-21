@@ -96,11 +96,17 @@ export function buildSignatureTubes(
       );
       if (pts.length < 2) return null;
       // CatmullRomCurve3 smooths between control points. Tubular
-      // segments scale with polyline length so detailed strokes get
-      // more geometry, sparse straight strokes don't waste polys.
+      // segments scale with polyline length — bumped 4x → 10x per
+      // point so long strokes get more geometry along their length
+      // and don't look faceted under the cursor-tracking highlight.
       const curve = new THREE.CatmullRomCurve3(pts, false, "catmullrom", 0.5);
-      const segs = tubularSegments ?? Math.max(8, Math.min(256, pts.length * 4));
-      return new THREE.TubeGeometry(curve, segs, tubeRadius, 8, false);
+      const segs = tubularSegments ?? Math.max(16, Math.min(512, pts.length * 10));
+      // Radial segments bumped 8 → 20: at 8, the tube's silhouette
+      // showed octagonal facets that read as sharp polygon edges
+      // along the outer profile of each stroke. 20 segments is a
+      // smooth round tube even close-up; cost is negligible since
+      // there are only ~5-10 strokes total in the signature.
+      return new THREE.TubeGeometry(curve, segs, tubeRadius, 20, false);
     })
     .filter((g): g is THREE.TubeGeometry => g !== null);
 }

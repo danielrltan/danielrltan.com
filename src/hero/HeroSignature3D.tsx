@@ -157,9 +157,21 @@ export function HeroSignature3D({ data, opacity }: Props) {
       {shouldRender && data && (
         <Canvas
           camera={{ position: [0, 0, 6], fov: 28, near: 0.1, far: 50 }}
-          dpr={[1, 1.5]}
+          // DPR capped at the actual device value (up to 2.5). 1.5 was
+          // leaving the signature soft/aliased on high-DPI displays
+          // where the signature is the page's hero element and any
+          // jaggies are immediately visible. 2.5 covers most Retina-
+          // class screens; native antialias + tube-geometry segment
+          // bumps do the rest.
+          dpr={[1, Math.min(window.devicePixelRatio || 1, 2.5)]}
           gl={{
             antialias: true,
+            // MSAA samples — bumps multi-sample anti-aliasing on the
+            // default WebGL framebuffer. 4 is the safe ceiling across
+            // mobile + integrated GPUs; pairs with the high tube-
+            // segment count to clean up edges along the stroke
+            // silhouettes.
+            samples: 4,
             alpha: true,
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.0,
