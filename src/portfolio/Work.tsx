@@ -155,8 +155,8 @@ export function Work() {
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-work">
       <div className="portfolio-col work-col">
-        <span className="section-marker">04</span>
-        <span className="section-index">04 / 06 &middot; Work</span>
+        <span className="section-marker">03</span>
+        <span className="section-index">03 / 06 &middot; Work</span>
         <h2>Where I&rsquo;ve been.</h2>
         <p className="work-blurb">
           Scroll — the timeline draws itself.

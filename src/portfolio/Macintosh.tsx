@@ -117,7 +117,7 @@ export function Macintosh() {
       </div>
       <div className="portfolio-col mac-col">
         <span className="section-marker">02</span>
-        <span className="section-index">02 / 07 &middot; Stack + Work</span>
+        <span className="section-index">02 / 06 &middot; Stack + Projects</span>
         <h2>The kit.</h2>
         <p className="mac-blurb">
           Stack on the left, scroll to boot it up. Project tiles open

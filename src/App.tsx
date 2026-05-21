@@ -425,6 +425,14 @@ export default function App() {
               background: "var(--wrapper-bg)",
               zIndex: 1,
               pointerEvents: "none",
+              // The overlay panel exists to visually shrink the ROOM
+              // canvas to its right-half-only position during About.
+              // Outside About (Hero, Macintosh, Work, Hobbies, etc.)
+              // the room is hidden — fading the overlay with roomOpacity
+              // hides it too, otherwise its 50vw cream rectangle drops
+              // a visible vertical seam across non-room sections.
+              opacity: roomOpacity,
+              transition: "opacity 200ms linear",
               /* Soft cast-shadow projecting LEFT onto the canvas plus
                  a 1px walnut hairline at the boundary. Reads as a
                  physical card laid over the room instead of a CSS

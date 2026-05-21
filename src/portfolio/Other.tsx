@@ -142,8 +142,8 @@ export function Other() {
         {mounted && <OtherDeskScene hobbies={HOBBIES} />}
       </div>
       <div className="portfolio-col other-col">
-        <span className="section-marker">05</span>
-        <span className="section-index">05 / 06 &middot; Off the clock</span>
+        <span className="section-marker">04</span>
+        <span className="section-index">04 / 06 &middot; Off the clock</span>
         <h2>Things I love.</h2>
         <p className="other-blurb">
           Tap an object on the desk. The photos above are flashes from

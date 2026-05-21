@@ -5,7 +5,7 @@ export function About() {
     <section className="portfolio-section">
       <div className="portfolio-col">
         <span className="section-marker">01</span>
-        <span className="section-index">01 / 07 &middot; About</span>
+        <span className="section-index">01 / 06 &middot; About</span>
         <h2>About me.</h2>
         <div className="section-card">
           <p>

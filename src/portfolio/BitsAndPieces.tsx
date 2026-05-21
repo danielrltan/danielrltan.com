@@ -146,8 +146,8 @@ export function BitsAndPieces() {
   return (
     <section className="portfolio-section portfolio-bp">
       <div className="portfolio-col bp-col">
-        <span className="section-marker">06</span>
-        <span className="section-index">06 / 06 &middot; Bits and pieces</span>
+        <span className="section-marker">05</span>
+        <span className="section-index">05 / 06 &middot; Bits and pieces</span>
         <h2>The trophy wall.</h2>
         <p className="bp-blurb">
           The extras. Awards, grants, leadership, scholarships.
