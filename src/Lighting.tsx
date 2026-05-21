@@ -83,15 +83,24 @@ export function Lighting() {
       {/* 2. Sun directional — neutral daylight key + shadow caster.
               Pulled toward bright cool-white so the lit faces read
               as crisp product-shot lighting rather than golden
-              hour. The practicals carry the warmth. */}
+              hour. The practicals carry the warmth.
+              Shadow tuning:
+              - mapSize bumped 1024 → 2048 for sharper room-scale shadows
+              - bias flipped -0.001 → +0.0001 (negative bias pushes
+                shadow toward caster and can make it invisible /
+                surface-clipped; positive moves it slightly away
+                from caster which is the conventional default).
+              - normalBias 0.04 — softens shadow-acne at grazing
+                angles without needing aggressive position bias. */}
       <directionalLight
         color="#fff8ec"
         intensity={1.0}
         position={[2.823, 3.0, 2.596]}
         castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-        shadow-bias={-0.001}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-bias={0.0001}
+        shadow-normalBias={0.04}
         shadow-camera-left={-3.2}
         shadow-camera-right={3.2}
         shadow-camera-top={3.2}

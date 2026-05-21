@@ -21,7 +21,8 @@
     "postprocessing": "^6.36.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "three": "^0.170.0"
+    "three": "^0.170.0",
+    "three-subdivide": "^1.1.5"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

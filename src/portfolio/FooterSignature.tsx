@@ -118,19 +118,32 @@ export function FooterSignature({
 
       // Project the normalised gesture into our small canvas while
       // preserving the gesture's natural aspect ratio. Fit-contain
-      // with vertical centering + small horizontal padding.
+      // with vertical centering and a LEFT-edge anchor (so the
+      // signature reads as a sign-off above the Elsewhere column
+      // header).
+      //
+      // Margin = brushRadius on each side: the brush is a soft
+      // radial-gradient stamp that extends ±brushRadius from each
+      // path point. With x0 = 0, the leftmost path point's stamp
+      // drew from x = -brushRadius (clipped by the wrap's
+      // overflow:hidden). Insetting by one brush-radius on both
+      // sides gives the stamps clearance without re-centering the
+      // signature.
+      //
+      // Same logic vertically — h * 0.7 clamp instead of 0.84 leaves
+      // brush headroom top + bottom.
       const bounds = sig.bounds ?? { minX: 0, minY: 0, maxX: 1000, maxY: 300 };
       const aspect =
         (bounds.maxX - bounds.minX) /
         Math.max(1, bounds.maxY - bounds.minY);
-      const padX = w * 0.06;
-      let targetW = w - padX * 2;
+      const xMargin = brushRadius;
+      let targetW = w - xMargin * 2;
       let targetH = targetW / aspect;
-      if (targetH > h * 0.84) {
-        targetH = h * 0.84;
+      if (targetH > h * 0.7) {
+        targetH = h * 0.7;
         targetW = targetH * aspect;
       }
-      const x0 = (w - targetW) / 2;
+      const x0 = xMargin;
       const y0 = (h - targetH) / 2;
       const projectX = (nx: number) => x0 + nx * targetW;
       const projectY = (ny: number) => y0 + ny * targetH;

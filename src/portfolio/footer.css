@@ -6,17 +6,13 @@
 
 .portfolio-footer {
   position: relative;
-  /* Stronger separation from the last section. Cool darker grey to
-     contrast with the body's lighter wrapper-bg. */
-  background:
-    linear-gradient(
-      180deg,
-      var(--wrapper-bg-deep) 0%,
-      #c8cacf 100%
-    );
+  /* Solid wrapper-bg-deep (was a 2-stop vertical gradient down to
+     #c8cacf — felt overdesigned). Separation from the keypad section
+     comes from the 1px walnut hairline on top. */
+  background: var(--wrapper-bg-deep);
   border-top: 1px solid rgba(21, 23, 26, 0.12);
   padding: 96px 6vw 48px;
-  margin-top: 80px;
+  margin-top: 0;
   z-index: 5;
 }
 
@@ -41,6 +37,31 @@
   color: var(--accent);
   font-weight: 600;
   margin-bottom: 22px;
+}
+
+/* Elsewhere column carries the signature canvas above its label.
+   The signature paints into the column's natural width as a
+   sign-off above the social links.
+   - flex column so we can push the label + links to the BOTTOM of
+     the column via `margin-top: auto` on the label. That makes the
+     elsewhere column's links end at the same horizontal line as
+     the index column's last item (grid cell stretches to tallest
+     column height; pushing elsewhere's content to bottom aligns
+     bottoms instead of tops). */
+.footer-col-elsewhere {
+  display: flex;
+  flex-direction: column;
+}
+.footer-col-elsewhere > :first-child {
+  margin-bottom: 18px;
+  max-width: 100%;
+  overflow: hidden;
+}
+/* Push the label+nav block to the bottom of the elsewhere column
+   so its last item (Resume) aligns vertically with the last item
+   of the index column (Socials). */
+.footer-col-elsewhere .footer-col-label {
+  margin-top: auto;
 }
 
 .footer-nav {

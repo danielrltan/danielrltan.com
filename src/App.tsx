@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, ContactShadows } from "@react-three/drei";
+import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { Physics } from "@react-three/rapier";
 import * as THREE from "three";
@@ -151,6 +151,23 @@ export default function App() {
     setRoomResetKey((k) => k + 1);
   }, []);
 
+  /* Listen for keypad cursor-hover signals. The keypad section lives
+   * in its OWN Canvas (outside the room's SceneStateProvider scope)
+   * so it can't call setMoveableHover via context. It dispatches a
+   * window-level `keypad-cursor-hover` CustomEvent on every cap /
+   * dial / sidebtn pointer enter/leave; we mirror that into the
+   * shared moveableHover state so the orange ring goes "hot" the
+   * same way it does for room-scene draggables. */
+  useEffect(() => {
+    const onKeypadHover = (e: Event) => {
+      const ev = e as CustomEvent<{ hot: boolean }>;
+      setMoveableHover(!!ev.detail?.hot);
+    };
+    window.addEventListener("keypad-cursor-hover", onKeypadHover);
+    return () =>
+      window.removeEventListener("keypad-cursor-hover", onKeypadHover);
+  }, []);
+
   /* First scroll / wheel / touch input triggers the intro tilt. No
    * more "click to begin" gate — the natural impulse on a portfolio
    * page is to scroll, so we use that as the start signal. Keydown
@@ -254,10 +271,10 @@ export default function App() {
   return (
     <AssemblyProvider>
       <div
+        className="app-wrapper"
         style={{
           position: "relative",
           minHeight: "100vh",
-          background: "var(--wrapper-bg)",
           cursor: "none",
         }}
         onPointerEnter={() => {
@@ -406,20 +423,30 @@ export default function App() {
                 <RoomLoadedSignal onLoaded={() => setRoomLoaded(true)} />
                 <Lighting />
                 <GroundPlane />
-                {/* Contact shadow ABOVE the plane (y > plane.y) so it
-                    renders on the plane surface. Stronger opacity +
-                    bigger spread because at iso projection / FOV 15°
-                    the camera is far enough that a subtle shadow
-                    disappears entirely. */}
-                <ContactShadows
+                {/* Shadow catcher. The GroundPlane uses a custom
+                    ShaderMaterial that doesn't include three.js's
+                    shadowmap chunks, so it can't natively receive
+                    shadows from the directional light. Drei's
+                    ContactShadows (a fake depth-capture approach)
+                    failed to render at all in this scene — likely a
+                    drei version / orthocam frustum quirk. This is
+                    the classic shadow-catcher pattern instead: a
+                    transparent plane sitting just above the
+                    GroundPlane that ONLY draws the shadow regions
+                    via `shadowMaterial`. Non-shadowed pixels stay
+                    transparent so the rice-dot ground beneath shows
+                    through unchanged. Driven by the real
+                    directionalLight in Lighting.tsx (castShadow +
+                    shadow camera ±3.2). */}
+                <mesh
                   position={[0, 0.005, 0]}
-                  opacity={0.85}
-                  scale={16}
-                  blur={3.0}
-                  far={3.5}
-                  resolution={256}
-                  color="#0a0c10"
-                />
+                  rotation={[-Math.PI / 2, 0, 0]}
+                  receiveShadow
+                  renderOrder={1}
+                >
+                  <planeGeometry args={[20, 20]} />
+                  <shadowMaterial transparent opacity={0.28} />
+                </mesh>
                 {/* Mobile: keep the Physics provider mounted (Room's
                     <RigidBody>s require it) but pause the sim — near-zero
                     CPU, and drag/throw on touch is awkward anyway. */}

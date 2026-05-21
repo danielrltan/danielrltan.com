@@ -38,7 +38,7 @@ const PROJECTS: Project[] = [
     blurb:
       "This site. Hand-modelled isometric bedroom in Blender, brought to life with React Three Fiber + Rapier physics. Real keyboard typing, mouse cursor following, throwable objects, scroll-driven camera, signature replay.",
     tags: ["React", "TypeScript", "R3F", "Rapier", "GLSL"],
-    repoHref: "https://github.com/danielrltan/portfolioweb",
+    repoHref: "https://github.com/danielrltan/danielrltan.com",
   },
 ];
 

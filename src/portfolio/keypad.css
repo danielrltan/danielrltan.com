@@ -1,0 +1,89 @@
+/* Keypad section — full-width band that breaks out of the right-
+   column layout used by every other portfolio section. The keypad
+   is the entire stage; no copy, no card chrome. The section sits
+   over the rest of the page on its own near-white backdrop so it
+   reads as a distinct register from the cream-toned room above. */
+
+.keypad-section {
+  /* Section is exactly one viewport tall. Tried 150vh + sticky-follow
+     for a "follow user for a few frames" effect — but the canvas's
+     internal rice-plane bg (#f3f3f3) doesn't match the section bg
+     below it, so when sticky released a visible bright band appeared.
+     Reverted to 100vh. The dwell beat is now provided ONLY by the
+     JS body-overflow scroll lock in Keypad.tsx, which blocks scroll
+     for 800ms without any visual artifacts. */
+  display: block;
+  min-height: 100vh;
+  padding: 0;
+  background: #f3f3f3;
+  position: relative;
+  pointer-events: auto;
+  /* Snap the section's top to the viewport top when scroll lands
+     near it. Pairs with `scroll-snap-type: y proximity` on the
+     scroller (set globally below) to give a "guided story" feel
+     without forcing every scroll to snap. */
+  scroll-snap-align: start;
+  scroll-snap-stop: normal;
+}
+
+/* Kill the odd-row warm orange gradient — keypad wants its cool
+   grey to read uninterrupted. */
+.keypad-section:nth-of-type(odd) {
+  background: #f3f3f3;
+}
+
+.keypad-stage {
+  /* Section is now exactly 100vh tall, so sticky vs static doesn't
+     change layout — kept sticky just so the stage is rock-stable
+     during scroll, no chance of subpixel drift relative to the
+     viewport top. */
+  position: sticky;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  min-height: 720px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.keypad-canvas-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.keypad-canvas-wrapper > canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.keypad-placeholder {
+  width: 100%;
+  height: 100%;
+}
+
+/* Visually-hidden semantic content for screen readers / SEO. The
+   standard sr-only recipe — DOM-real and focusable, off-screen. */
+.keypad-section .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Mobile — keep the section full-viewport but a bit shorter so it
+   doesn't feel like dead space below a phone fold. */
+@media (max-width: 768px) {
+  .keypad-stage {
+    height: 80vh;
+    min-height: 520px;
+  }
+}

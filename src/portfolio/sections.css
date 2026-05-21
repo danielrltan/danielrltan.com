@@ -24,12 +24,10 @@
 /* Alternate cream-tinted rows for vertical rhythm. Even sections
    (02, 04) get a slightly warmer band that contrasts against the
    white cards inside. Subtle but it kills the "endless cream" feel. */
-.portfolio-section:nth-of-type(odd) {
-  background: linear-gradient(180deg,
-    transparent 0,
-    rgba(232, 112, 64, 0.025) 50%,
-    transparent 100%);
-}
+/* Alternating-row tint REMOVED — was a 3-stop transparent→orange→
+   transparent vertical gradient that added subtle warmth to odd
+   sections. Reading as overproduced; sections inherit the solid
+   wrapper-bg from #root now. */
 
 /* Hero is intentionally bare — no text, just space and the room
    behind. No padding so the scroll-hint sits flush with viewport. */
@@ -169,21 +167,18 @@
   box-shadow:
     0 1px 0 rgba(26, 23, 20, 0.04),
     0 32px 64px -36px rgba(180, 80, 30, 0.12);
-  /* Faint dot grid (technical-paper feel) + faint orange gradient
-     bleeding in from the right edge (heat-finish panel). */
+  /* Faint dot grid (technical-paper feel). Previously also had a
+     heat-finish orange gradient bleeding from the right edge — that
+     overlapping orange tint read as overdesigned. Just the dots
+     now: a quiet texture, not a colored panel. */
   background-image:
     radial-gradient(
       circle at center,
       rgba(26, 23, 20, 0.06) 1px,
       transparent 1.3px
-    ),
-    linear-gradient(
-      to right,
-      transparent 70%,
-      rgba(232, 112, 64, 0.055) 100%
     );
-  background-size: 22px 22px, auto;
-  background-position: 0 0, 0 0;
+  background-size: 22px 22px;
+  background-position: 0 0;
 }
 /* Crosshair "+" — top-right corner. Two thin lines crossed. */
 .section-card::after {
@@ -329,7 +324,9 @@
 
 .project-card-media {
   aspect-ratio: 16 / 9;
-  background: linear-gradient(135deg, #ffe7cf, #f5d9b6);
+  /* Solid warm-cream placeholder (was a 2-stop diagonal gradient,
+     part of the "everything gradient" pile-up). */
+  background: #f4dec0;
   display: flex;
   align-items: center;
   justify-content: center;

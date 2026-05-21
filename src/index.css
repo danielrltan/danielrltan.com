@@ -113,8 +113,14 @@
    * reference (clean white-grey backdrop with baked shadows + soft
    * gradients). Ink slightly cooler to match. Orange accent stays. */
   --wrapper-bg: #ecedef;
-  --wrapper-bg-soft: #f4f5f7;        /* near-white, top of gradient */
-  --wrapper-bg-deep: #d9dbdf;        /* slightly darker, bottom of gradient */
+  --wrapper-bg-soft: #f4f5f7;        /* near-white */
+  /* Was #d9dbdf (slight cool-blue tint that read as a "blueish
+     gradient" — even though it's a solid color, the blue cast +
+     adjacency to the lighter wrapper-bg created a perceptual
+     gradient between sections). Shifted to a NEUTRAL grey with
+     equal R/G/B so the footer / keypad-section reads as plain
+     warm-neutral grey, not blue-tinted. */
+  --wrapper-bg-deep: #d6d4d2;
   --wrapper-ink: #15171a;            /* cool near-black */
   --wrapper-ink-soft: rgba(21, 23, 26, 0.6);
   --wrapper-ink-faint: rgba(21, 23, 26, 0.12);
@@ -184,16 +190,10 @@ body,
   margin: 0;
   padding: 0;
   width: 100%;
-  /* Subtle vertical gradient — softer near the hero, slightly cooler
-     near the bottom. Echoes baked product-photography lighting. */
-  background:
-    linear-gradient(
-      180deg,
-      var(--wrapper-bg-soft) 0%,
-      var(--wrapper-bg) 35%,
-      var(--wrapper-bg-deep) 100%
-    );
-  background-attachment: fixed;
+  /* Solid wrapper-bg. Previously a 3-stop vertical gradient (soft →
+     bg → deep) — read as overworked / vibecoded. Plain cool grey is
+     cleaner and lets section bgs speak. */
+  background: var(--wrapper-bg);
   font-family: var(--font-body);
   color: var(--wrapper-ink);
 }
@@ -223,6 +223,30 @@ html, body { min-height: 100%; }
 html { overflow-x: hidden; overflow-y: auto; }
 body { overflow-x: hidden; }
 
+/* App wrapper background. The wrapper-bg is what shows behind the
+   3D canvas + section content. During loading we want it to match
+   the orange cover dome (#e87040, set on body via index.html) so
+   there's no white-grey flash between #boot-screen being removed
+   and the cover dome painting. The transition smooths the post-
+   loading shift. main.tsx adds html.loading-active synchronously
+   before React mounts so this rule applies on the very first paint. */
+.app-wrapper {
+  background: var(--wrapper-bg);
+  transition: background 350ms ease;
+}
+html.loading-active .app-wrapper {
+  background: #e87040;
+}
+
+/* Scroll-snap: proximity snap on the html scroller, only triggered
+   by sections that explicitly opt in via `scroll-snap-align`. The
+   keypad section is the only opt-in today — when the user scrolls
+   into its vicinity, the page eases-snaps to its top so the drop-in
+   animation gets watched rather than blown past. proximity (not
+   mandatory) keeps the rest of the page feeling normal — only
+   nearby snaps engage. */
+html { scroll-snap-type: y proximity; }
+
 /* Hide the native scrollbar. The custom ScrollRail on the right
    edge is the only scroll indicator — the OS scrollbar duplicates
    it and breaks the editorial feel. */
@@ -250,23 +274,35 @@ html.loading-active .moveable-cursor {
   display: none;
 }
 
-/* Loading state — swap chrome text + brand cat to WHITE for legible
-   contrast on the orange-print backdrop, and hide the scroll hint
-   (the loading screen is not scrollable). All changes are instant,
-   no opacity transitions, so there's no fade-in/out flicker when
-   the room finishes loading and the rules drop. */
-/* Hero mark + brand cat hidden entirely during loading — the
-   "PORTFOLIO 2026 · DANIEL TAN" block and the cat icon aren't part
-   of the orange-print moment, they only appear after the climax. */
+/* Loading state — hero brand mark, blinking cat, and scroll hint
+   stay hidden during loading (the orange-print sequence is the
+   only brand moment; chrome doesn't compete with it). When the
+   climax completes and `loading-active` is removed from <html>,
+   these elements fade in via a ONE-SHOT keyframe animation. Using
+   an animation (not a transition) means scroll-driven inline
+   opacity updates on .hero-mark / .scroll-hint don't inherit the
+   transition timing — those still feel instant after the initial
+   fade-in completes. */
+@keyframes hero-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.hero-mark,
+.blinking-cat,
+.scroll-hint {
+  animation: hero-fade-in 0.7s ease 0.25s both;
+}
 html.loading-active .hero-mark,
-html.loading-active .blinking-cat {
-  display: none !important;
-}
+html.loading-active .blinking-cat,
 html.loading-active .scroll-hint {
-  display: none !important;
+  animation: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
-/* Status bar + scroll rail are hidden behind sceneReady gate already,
-   but make sure no stragglers slip onto the orange screen. */
+/* Status bar + scroll rail are hidden behind the sceneReady gate
+   already (they're conditionally rendered, not just opacity-toggled),
+   so they don't need a transition rule here. Keep the display:none
+   safety so no stragglers slip onto the orange screen. */
 html.loading-active .status-bar,
 html.loading-active .scroll-rail {
   display: none !important;

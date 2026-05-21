@@ -1,0 +1,130 @@
+/* Bridge between the editorial portfolio sections and the keypad
+   section. Marquee + rice-cascade overlay. See SectionTransition.tsx
+   for the component-level rationale. */
+
+.section-transition {
+  position: relative;
+  width: 100vw;
+  /* Tall enough to read as a deliberate beat — not so tall it costs
+     a full extra viewport of scroll. The marquee + cascade need
+     vertical room to breathe (~35vh feels editorial; 25vh felt
+     squished, 50vh felt wasteful). */
+  height: 35vh;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  /* Solid wrapper-bg. Was a 3-stop vertical gradient blending deep
+     → bg → keypad's #f3f3f3 — felt like the page was constantly
+     shifting under the user. Plain bg + the 1px hairline borders
+     bracket the marquee band cleanly without color noise. */
+  background: var(--wrapper-bg);
+  /* Hairline at top + bottom edges so the band reads as a defined
+     editorial element, not as accidental whitespace. */
+  border-top: 1px solid rgba(21, 23, 26, 0.07);
+  border-bottom: 1px solid rgba(21, 23, 26, 0.07);
+  z-index: 2;
+}
+
+/* Drifting dot cascade. A repeating radial-gradient layer that
+   shifts vertically over time — picks up the rice motif and gives
+   the band depth (so it's not a flat marquee band). Subtle: 6%
+   opacity dots, slow drift, behind the marquee. */
+.st-cascade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* Tile of orange dots over a transparent base. Small dot size,
+     loose spacing — should read as light static, not pattern. */
+  background-image: radial-gradient(
+    circle at center,
+    rgba(232, 112, 64, 0.18) 1.2px,
+    transparent 1.6px
+  );
+  background-size: 22px 22px;
+  /* Slow downward drift to suggest the rice falling into the
+     keypad below. */
+  animation: st-cascade-drift 24s linear infinite;
+  opacity: 0.6;
+}
+
+@keyframes st-cascade-drift {
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 220px; }
+}
+
+/* Marquee — full-width track that translates -50% over its duration,
+   giving the illusion of an endless scroll because the contents are
+   duplicated and the loop point is one phrase-set wide. */
+.st-marquee {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  /* Two thin horizontal cream stripes above + below the marquee row
+     to bracket it like spec-sheet rules. Uses inset shadows so the
+     stripes scale with the band height. */
+}
+
+.st-track {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  width: max-content;
+  /* Linear so the loop is seamless — easing would be visible at the
+     join point. */
+  animation: st-marquee-scroll 38s linear infinite;
+}
+
+@keyframes st-marquee-scroll {
+  0%   { transform: translate3d(0, 0, 0); }
+  /* 50% because the phrase track is duplicated; -50% repositions
+     copy #2 at the exact start point of copy #1 → seamless. */
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+.st-text {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: clamp(48px, 9vw, 130px);
+  letter-spacing: -0.02em;
+  /* Solid wrapper-ink so the marquee reads loud against the cool
+     grey gradient. */
+  color: var(--wrapper-ink);
+  text-transform: lowercase;
+  padding-right: 0.32em;
+  /* Subtle drop shadow gives the editorial type a touch of weight
+     against the gradient bg without making it heavy. */
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.st-bullet {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: clamp(48px, 9vw, 130px);
+  /* Orange accent — the only color in the band, used as the
+     separator. Reads as a chapter-divider dot. */
+  color: var(--accent);
+  padding-right: 0.32em;
+  transform: translateY(-0.05em);
+}
+
+@media (max-width: 768px) {
+  .section-transition {
+    height: 26vh;
+    min-height: 180px;
+  }
+  .st-text,
+  .st-bullet {
+    font-size: clamp(32px, 12vw, 64px);
+  }
+}
+
+/* Honor reduced-motion preference — stop the marquee scroll and the
+   cascade drift. The band still renders, just statically. */
+@media (prefers-reduced-motion: reduce) {
+  .st-track,
+  .st-cascade {
+    animation-duration: 0s;
+    animation-play-state: paused;
+  }
+}

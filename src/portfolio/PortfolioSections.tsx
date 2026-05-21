@@ -5,7 +5,8 @@ import { Projects } from "./Projects";
 import { Work } from "./Work";
 import { Play } from "./Play";
 import { Other } from "./Other";
-import { Contact } from "./Contact";
+import { SectionTransition } from "./SectionTransition";
+import { Keypad } from "./Keypad";
 import { Footer } from "./Footer";
 
 /**
@@ -15,7 +16,7 @@ import { Footer } from "./Footer";
  * — empty, room takes the whole viewport.
  *
  * Order: Hero → About → Skills → Projects → Work → Play → Other →
- * Contact → Footer.
+ * SectionTransition (editorial marquee bridge) → Keypad → Footer.
  */
 export function PortfolioSections() {
   return (
@@ -36,7 +37,8 @@ export function PortfolioSections() {
       <Work />
       <Play />
       <Other />
-      <Contact />
+      <SectionTransition />
+      <Keypad />
       <Footer />
     </main>
   );

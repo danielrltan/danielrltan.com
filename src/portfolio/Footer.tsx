@@ -18,7 +18,7 @@ const JUMP_LINKS: Link[] = [
   { number: "04", label: "Work", selector: ".portfolio-section:nth-of-type(5)" },
   { number: "05", label: "Play", selector: ".portfolio-section:nth-of-type(6)" },
   { number: "06", label: "Other", selector: ".portfolio-section:nth-of-type(7)" },
-  { number: "07", label: "Contact", selector: ".portfolio-section:nth-of-type(8)" },
+  { number: "07", label: "Socials", selector: ".portfolio-section:nth-of-type(8)" },
 ];
 
 const ELSEWHERE: Link[] = [
@@ -70,26 +70,14 @@ export function Footer() {
   return (
     <footer className="portfolio-footer" ref={footerRef}>
       <div className="footer-inner">
-        {/* Top: nav + elsewhere */}
+        {/* Three-column grid. Order (left → right):
+            1. Elsewhere — sits behind the signature, which renders
+               ABOVE the column label as a sign-off flourish.
+            2. Index — was originally first; swapped per layout request.
+            3. Colophon — unchanged. */}
         <div className="footer-grid">
-          <div className="footer-col">
-            <div className="footer-col-label">Index</div>
-            <nav className="footer-nav">
-              {JUMP_LINKS.map((l) => (
-                <button
-                  key={l.label}
-                  type="button"
-                  className="footer-link"
-                  onClick={() => jumpTo(l.selector)}
-                >
-                  <span className="footer-link-num">{l.number}</span>
-                  <span className="footer-link-label">{l.label}</span>
-                </button>
-              ))}
-            </nav>
-          </div>
-
-          <div className="footer-col">
+          <div className="footer-col footer-col-elsewhere">
+            <FooterSignature height={132} />
             <div className="footer-col-label">Elsewhere</div>
             <nav className="footer-nav">
               {ELSEWHERE.map((l) => (
@@ -103,6 +91,23 @@ export function Footer() {
                   <span className="footer-link-num">{l.number}</span>
                   <span className="footer-link-label">{l.label}</span>
                 </a>
+              ))}
+            </nav>
+          </div>
+
+          <div className="footer-col">
+            <div className="footer-col-label">Index</div>
+            <nav className="footer-nav">
+              {JUMP_LINKS.map((l) => (
+                <button
+                  key={l.label}
+                  type="button"
+                  className="footer-link"
+                  onClick={() => jumpTo(l.selector)}
+                >
+                  <span className="footer-link-num">{l.number}</span>
+                  <span className="footer-link-label">{l.label}</span>
+                </button>
               ))}
             </nav>
           </div>
@@ -140,10 +145,10 @@ export function Footer() {
           <span className="footer-mark">Made with intent and the orange crab.</span>
         </div>
 
-        {/* Signature — sits at the VERY bottom of the page, full
-            width, painted on scroll-into-view. Sized 20% smaller than
-            the previous 140px placement: 112px tall. */}
-        <FooterSignature height={112} />
+        {/* Signature was here — moved to PortfolioSections.tsx above
+            the footer so it acts as a sign-off bridge between the
+            keypad section and the footer instead of living inside
+            the dark footer band. */}
       </div>
     </footer>
   );

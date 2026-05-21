@@ -178,13 +178,22 @@ export function WireframeRoom({ state }: Props) {
           /* "Orange-print" loading screen — the cover dome paints the
            * whole frame in the brand orange while the wireframes
            * (white) resolve over it. Crossfades to the wrapper-bg
-           * cool grey when the climax fires. */
+           * cool grey when the climax fires.
+           *
+           * toneMapped:false bypasses the renderer's ACESFilmic tone
+           * mapping for this material. Without it, #e87040 gets
+           * curve-shifted on output and shows up as a darker /
+           * desaturated orange — visibly different from the CSS
+           * #e87040 on the body / wrapper, so the loading-screen
+           * orange and the wireframe-backdrop orange wouldn't match
+           * during the boot→wireframe handoff. */
           color="#e87040"
           side={THREE.BackSide}
           transparent
           opacity={1}
           depthWrite={false}
           depthTest={false}
+          toneMapped={false}
         />
       </mesh>
     </group>
