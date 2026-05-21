@@ -1,0 +1,118 @@
+/* Bits and Pieces — HTML accomplishments wall. 3-column grid of
+   compact category cards. Each card has a left-edge accent stripe
+   colored per category. Cards reveal on viewport intersection with
+   a small per-card stagger.
+*/
+
+.portfolio-bp {
+  position: relative;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+.bp-col {
+  padding-top: 8vh;
+  padding-bottom: 12vh;
+}
+
+.bp-blurb {
+  font-family: var(--font-body, "Inter", sans-serif);
+  font-size: 14px;
+  color: rgba(26, 23, 20, 0.65);
+  line-height: 1.55;
+  margin-top: 14px;
+  margin-bottom: 36px;
+  max-width: 460px;
+}
+
+.bp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  width: 100%;
+  max-width: 760px;
+}
+
+.bp-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(26, 23, 20, 0.08);
+  border-radius: 10px;
+  padding: 14px 16px 14px 22px;
+  opacity: 0;
+  transform: translate3d(0, 12px, 0);
+  filter: blur(2px);
+  transition:
+    opacity 460ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 540ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    filter 460ms ease;
+  overflow: hidden;
+}
+.bp-card.is-in-view {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  filter: blur(0);
+}
+
+/* Left-edge stripe — colored per category. */
+.bp-card-stripe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--bp-stripe-color, #bbb);
+}
+.bp-card--hackathon .bp-card-stripe { background: #e87040; }
+.bp-card--competition .bp-card-stripe { background: #7a4f30; }
+.bp-card--grant .bp-card-stripe { background: #2e7d32; }
+.bp-card--leadership .bp-card-stripe { background: #4c5b88; }
+.bp-card--scholarship .bp-card-stripe { background: #a8755b; }
+
+.bp-card-eyebrow {
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(26, 23, 20, 0.55);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.bp-card-title {
+  font-family: var(--font-display, "Space Grotesk", system-ui, sans-serif);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--wrapper-ink, #1a1714);
+  margin: 0 0 4px;
+  line-height: 1.25;
+}
+
+.bp-card-metric {
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--accent, #e87040);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.bp-card-blurb {
+  font-family: var(--font-body, "Inter", sans-serif);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(26, 23, 20, 0.7);
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .bp-grid {
+    grid-template-columns: 1fr;
+  }
+  .bp-card {
+    padding: 14px 14px 14px 20px;
+  }
+}

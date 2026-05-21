@@ -1,90 +1,164 @@
-/* Work section — scroll-animated timeline. Cards translate + fade
-   in from the right as they enter viewport. A vertical "rail" line
-   runs down the left edge of the column with dots anchoring each
-   card. The current role gets accent-orange treatment.
+/* Work section — dramatic pinned timeline. While the section is
+   pinned, the vertical rail "draws" downward as scroll progresses,
+   a scrubber dot rides the leading edge, and each card unfolds in
+   sequence as the rail passes it. */
 
-   Implementation: each card has class `.tl-card` and toggles
-   `.is-in-view` when an IntersectionObserver fires; CSS handles the
-   transition (transform + opacity + filter). Stagger is provided per
-   card via inline transition-delay from TSX. */
-
-.tl-rail {
+.portfolio-work {
   position: relative;
+  height: 100vh;
+  overflow: hidden;
+  /* The section sits at right-half layout (same as About/Macintosh)
+     but the timeline content takes the full column width. */
+}
+
+.work-col {
+  position: relative;
+  padding-top: 8vh;
+  padding-bottom: 4vh;
+}
+
+.work-blurb {
+  font-family: var(--font-body, "Inter", sans-serif);
+  font-size: 14px;
+  color: rgba(26, 23, 20, 0.65);
+  line-height: 1.55;
+  margin-top: 14px;
+  margin-bottom: 22px;
+}
+
+.work-timeline-stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 0;
+  align-items: stretch;
+}
+
+/* Rail column — narrow stripe on the left of the cards. */
+.work-rail-wrap {
+  position: relative;
+  width: 28px;
+}
+
+/* Base rail (faint full-height stripe). */
+.work-rail {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  bottom: 50px;
+  width: 1px;
+  transform: translateX(-50%);
+  background: rgba(26, 23, 20, 0.12);
+}
+
+/* Animated rail fill — same geometry, scaled vertically 0..1 by JS
+   to "draw" the line downward as scroll progresses. */
+.work-rail-fill {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  bottom: 50px;
+  width: 2px;
+  transform: translateX(-50%) scaleY(0);
+  transform-origin: top;
+  background: linear-gradient(
+    to bottom,
+    var(--accent, #e87040) 0%,
+    var(--accent, #e87040) 75%,
+    rgba(232, 112, 64, 0.5) 100%
+  );
+  box-shadow: 0 0 12px rgba(232, 112, 64, 0.55);
+  /* No transition — JS writes the transform every frame. */
+}
+
+/* Scrubber dot riding the rail's leading edge. */
+.work-scrubber {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: var(--accent, #e87040);
+  box-shadow:
+    0 0 0 4px rgba(232, 112, 64, 0.22),
+    0 0 18px rgba(232, 112, 64, 0.65);
+  transform: translate(-50%, 0);
+  opacity: 0;
+  pointer-events: none;
+  /* No CSS transition — JS-driven via translateY-of-rail-height. */
+}
+
+/* Cards column. */
+.work-cards {
   display: flex;
   flex-direction: column;
-  gap: 36px;
-  /* Vertical rail line on the left, walnut at low alpha. */
-  padding-left: 28px;
-  margin-top: 32px;
+  gap: 24px;
+  padding-left: 22px;
 }
 
-.tl-rail::before {
-  content: "";
-  position: absolute;
-  left: 7px;
-  top: 8px;
-  bottom: 56px;
-  width: 1px;
-  background: rgba(26, 23, 20, 0.18);
-}
-
-.tl-card {
+.work-card {
   position: relative;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.62);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   border: 1px solid rgba(26, 23, 20, 0.08);
   border-radius: 12px;
-  padding: 22px 24px 20px;
-  /* Reveal animation initial state — translated right + faded out. */
+  padding: 18px 22px 18px;
   opacity: 0;
-  transform: translate3d(24px, 8px, 0);
-  filter: blur(2px);
+  transform: translate3d(28px, 6px, 0) scale(0.97);
+  filter: blur(3px);
   transition:
-    opacity 480ms cubic-bezier(0.2, 0.7, 0.2, 1),
-    transform 580ms cubic-bezier(0.2, 0.7, 0.2, 1),
-    filter 480ms ease;
+    opacity 520ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 620ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    filter 520ms ease;
   will-change: opacity, transform, filter;
 }
-.tl-card.is-in-view {
+.work-card.is-revealed {
   opacity: 1;
-  transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0) scale(1);
   filter: blur(0);
 }
 
-/* Dot on the rail aligned with each card's top. */
-.tl-card-dot {
+/* Dot on the rail aligned with each card's top, shown in addition to
+   the scrubber. Marks the discrete stop. */
+.work-card-dot {
   position: absolute;
   left: -28px;
-  top: 24px;
-  width: 12px;
-  height: 12px;
+  top: 22px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: rgba(26, 23, 20, 0.20);
+  background: rgba(26, 23, 20, 0.16);
   border: 2px solid var(--wrapper-bg, #f8f6f3);
   box-shadow: 0 0 0 1px rgba(26, 23, 20, 0.10);
+  transition: background 200ms ease, box-shadow 200ms ease;
 }
-.tl-card--current .tl-card-dot {
+.work-card.is-revealed .work-card-dot {
   background: var(--accent, #e87040);
-  box-shadow: 0 0 0 4px rgba(232, 112, 64, 0.18);
 }
-.tl-card--current {
+.work-card--current .work-card-dot {
+  background: var(--accent, #e87040);
+  box-shadow: 0 0 0 4px rgba(232, 112, 64, 0.22);
+}
+.work-card--current.is-revealed {
   border-color: rgba(232, 112, 64, 0.35);
-  background: rgba(255, 245, 238, 0.75);
+  background: rgba(255, 245, 238, 0.78);
 }
 
-.tl-card-meta {
+.work-card-meta {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-family: var(--font-mono);
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: rgba(26, 23, 20, 0.55);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
-.tl-card-tag {
+.work-card-tag {
   display: inline-block;
   background: var(--accent, #e87040);
   color: white;
@@ -95,39 +169,39 @@
   font-weight: 600;
 }
 
-.tl-card-where {
+.work-card-where {
   font-family: var(--font-display, "Space Grotesk", sans-serif);
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 600;
   letter-spacing: -0.005em;
   color: var(--wrapper-ink, #1a1714);
-  margin: 0 0 4px;
+  margin: 0 0 3px;
 }
 
-.tl-card-role {
+.work-card-role {
   font-family: var(--font-body, "Inter", sans-serif);
-  font-size: 13px;
+  font-size: 12.5px;
   color: rgba(26, 23, 20, 0.65);
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
-.tl-card-bullets {
+.work-card-bullets {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
-.tl-card-bullets li {
+.work-card-bullets li {
   position: relative;
-  padding-left: 18px;
+  padding-left: 16px;
   font-family: var(--font-body, "Inter", sans-serif);
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 13.5px;
+  line-height: 1.5;
   color: rgba(26, 23, 20, 0.85);
 }
-.tl-card-bullets li::before {
+.work-card-bullets li::before {
   content: "";
   position: absolute;
   left: 0;
@@ -137,11 +211,11 @@
   background: var(--accent, #e87040);
 }
 
-.tl-resume-btn {
-  margin-top: 20px;
+.work-resume-btn {
   align-self: flex-start;
+  margin-top: 10px;
   display: inline-block;
-  padding: 12px 22px;
+  padding: 11px 22px;
   background: var(--accent, #e87040);
   color: white;
   font-family: var(--font-mono);
@@ -150,22 +224,34 @@
   text-transform: uppercase;
   text-decoration: none;
   border-radius: 999px;
-  transition: transform 180ms ease, box-shadow 180ms ease;
-  box-shadow: 0 2px 0 rgba(26, 23, 20, 0.15), 0 8px 20px -8px rgba(232, 112, 64, 0.55);
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 480ms ease,
+    transform 480ms ease,
+    box-shadow 180ms ease;
+  box-shadow:
+    0 2px 0 rgba(26, 23, 20, 0.15),
+    0 8px 20px -8px rgba(232, 112, 64, 0.55);
 }
-.tl-resume-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 3px 0 rgba(26, 23, 20, 0.15), 0 12px 28px -10px rgba(232, 112, 64, 0.65);
+.work-resume-btn.is-revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+.work-resume-btn:hover {
+  box-shadow:
+    0 3px 0 rgba(26, 23, 20, 0.15),
+    0 12px 28px -10px rgba(232, 112, 64, 0.65);
 }
 
 @media (max-width: 768px) {
-  .tl-card {
-    padding: 18px 18px 16px;
+  .work-card {
+    padding: 16px 18px;
   }
-  .tl-card-where {
-    font-size: 19px;
+  .work-card-where {
+    font-size: 18px;
   }
-  .tl-card-bullets li {
+  .work-card-bullets li {
     font-size: 13px;
   }
 }
