@@ -50,32 +50,25 @@ const STINTS: Stint[] = [
   },
 ];
 
-/** How long the user spends scrolling through the pinned section. */
 const PIN_DURATION_PX = 1800;
 
 /**
- * Work section — dramatic pinned timeline.
+ * Work section — dramatic pinned timeline with a wide two-column
+ * layout. The section breaks OUT of the standard `.portfolio-col`
+ * pattern (which constrains content to ~40% of viewport, leaving
+ * cards crushed to ~200px wide) and uses a custom grid:
+ *   [aside ~32%] [rail 32px] [cards ~remaining]
  *
- * The section pins for PIN_DURATION_PX of scroll. While pinned the
- * pin progress (0..1) drives:
- *   - A vertical "rail" line that draws downward from the top of the
- *     section, filling its full height.
- *   - A "scrubber" dot that rides the rail's leading edge.
- *   - Each timeline card unfolds in sequence as the rail passes it
- *     (translate-in from the right, fade, slight scale).
- *   - The current/most-recent card stays pinned and accent-orange.
- *
- * Replaces the previous version where cards just animated in on
- * intersection — the dramatic version sits the user in front of the
- * timeline for a beat and walks them through it.
+ * Pin progress drives:
+ *   - Vertical "rail" line draws downward from 0 to 100% height
+ *   - Scrubber dot rides the rail's leading edge
+ *   - Cards reveal in sequence as the rail passes each one
+ *   - Current/most-recent card stays accent-orange highlighted
  */
 export function Work() {
   const sectionRef = useRef<HTMLElement>(null);
   const railFillRef = useRef<HTMLDivElement>(null);
   const scrubberRef = useRef<HTMLDivElement>(null);
-  // Per-card revealed state. We mirror the pin progress into per-card
-  // "revealed" booleans inside useEffect so React renders the cards
-  // with their reveal class — CSS animates the transition.
   const [revealed, setRevealed] = useState<boolean[]>(() =>
     STINTS.map(() => false),
   );
@@ -84,11 +77,11 @@ export function Work() {
     const el = sectionRef.current;
     if (!el) return;
 
-    // Where on the pin progress 0..1 each card crosses its reveal
-    // threshold. First card at 0.15 (just after pin engages), last
-    // card by 0.85 (leaves a beat of pure timeline at the end).
+    // Each card's pin-progress threshold for reveal. Slightly later
+    // than the rail's reveal of that vertical slice, so the card
+    // unfurls just after the rail has drawn past its dot.
     const cardThresholds = STINTS.map(
-      (_, i) => 0.15 + (i / Math.max(1, STINTS.length - 1)) * 0.70,
+      (_, i) => 0.18 + (i / Math.max(1, STINTS.length - 1)) * 0.62,
     );
 
     const st = ScrollTrigger.create({
@@ -101,25 +94,16 @@ export function Work() {
       anticipatePin: 1,
       onUpdate: (self) => {
         const p = self.progress;
-        // Rail fill: scale a 1px-wide div from 0 → full height. We
-        // animate via transform, not height, so the GPU does the work.
+        const railProgress = Math.max(0, Math.min(1, (p - 0.05) / 0.85));
         const railEl = railFillRef.current;
         if (railEl) {
-          // Rail starts drawing at p=0.05 so there's a tiny breath
-          // before the line begins to extend.
-          const railProgress = Math.max(0, Math.min(1, (p - 0.05) / 0.85));
           railEl.style.transform = `scaleY(${railProgress})`;
         }
-        // Scrubber follows the rail's leading edge. Positioned with
-        // top:0 + translateY scaled to rail height.
         const sc = scrubberRef.current;
         if (sc) {
-          const railProgress = Math.max(0, Math.min(1, (p - 0.05) / 0.85));
           sc.style.transform = `translate(-50%, calc(${railProgress * 100}% - 6px))`;
           sc.style.opacity = railProgress > 0 && railProgress < 1 ? "1" : "0";
         }
-        // Reveal cards in sequence. Only mutate state on threshold
-        // crossings to avoid a setState every frame.
         setRevealed((prev) => {
           let changed = false;
           const next = prev.map((wasRevealed, i) => {
@@ -132,8 +116,6 @@ export function Work() {
       },
     });
 
-    // Same refresh-on-loading-settled pattern as Macintosh/Keypad —
-    // ScrollTrigger needs to re-measure once layout settles.
     const html = document.documentElement;
     let lastLoading = html.classList.contains("loading-active");
     const obs = new MutationObserver(() => {
@@ -154,13 +136,25 @@ export function Work() {
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-work">
-      <div className="portfolio-col work-col">
-        <span className="section-marker">03</span>
-        <span className="section-index">03 / 06 &middot; Work</span>
-        <h2>Where I&rsquo;ve been.</h2>
-        <p className="work-blurb">
-          Scroll — the timeline draws itself.
-        </p>
+      <div className="work-layout">
+        <aside className="work-aside">
+          <span className="section-marker">03</span>
+          <span className="section-index">03 / 06 &middot; Work</span>
+          <h2>Where I&rsquo;ve been.</h2>
+          <p className="work-blurb">
+            Scroll — the timeline draws itself.
+          </p>
+          <a
+            href="/resume/Daniel_Tan_Resume.pdf"
+            target="_blank"
+            rel="noreferrer"
+            className={`work-resume-btn${
+              revealed[revealed.length - 1] ? " is-revealed" : ""
+            }`}
+          >
+            Download Résumé &darr;
+          </a>
+        </aside>
         <div className="work-timeline-stage">
           <div className="work-rail-wrap" aria-hidden>
             <div className="work-rail" />
@@ -195,16 +189,6 @@ export function Work() {
                 </ul>
               </article>
             ))}
-            <a
-              href="/resume/Daniel_Tan_Resume.pdf"
-              target="_blank"
-              rel="noreferrer"
-              className={`work-resume-btn${
-                revealed[revealed.length - 1] ? " is-revealed" : ""
-              }`}
-            >
-              Download Résumé &darr;
-            </a>
           </div>
         </div>
       </div>

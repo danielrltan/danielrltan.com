@@ -1,20 +1,46 @@
-/* Work section — dramatic pinned timeline. While the section is
-   pinned, the vertical rail "draws" downward as scroll progresses,
-   a scrubber dot rides the leading edge, and each card unfolds in
-   sequence as the rail passes it. */
+/* Work section — dramatic pinned timeline.
+   Custom 2-column layout that breaks out of the standard
+   portfolio-col pattern (which would constrain the cards to a
+   narrow strip). Aside (heading/blurb/cta) sits on the LEFT,
+   timeline (rail + cards) on the RIGHT with proper card width. */
 
 .portfolio-work {
   position: relative;
   height: 100vh;
   overflow: hidden;
-  /* The section sits at right-half layout (same as About/Macintosh)
-     but the timeline content takes the full column width. */
 }
 
-.work-col {
+.work-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 32%) 1fr;
+  gap: 6vw;
+  align-items: start;
+  height: 100%;
+  width: 100%;
+  padding: 9vh 6vw 6vh;
+  box-sizing: border-box;
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.work-aside {
   position: relative;
-  padding-top: 8vh;
-  padding-bottom: 4vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.work-aside .section-marker {
+  /* The default section-marker is huge ASCII art; keep that styling
+     but make sure it doesn't push the layout. */
+  margin-bottom: 4px;
+}
+.work-aside .section-index {
+  margin-bottom: 8px;
+}
+.work-aside h2 {
+  margin-top: 6px;
+  margin-bottom: 14px;
 }
 
 .work-blurb {
@@ -22,42 +48,48 @@
   font-size: 14px;
   color: rgba(26, 23, 20, 0.65);
   line-height: 1.55;
-  margin-top: 14px;
-  margin-bottom: 22px;
+  margin: 0 0 24px;
+  max-width: 320px;
 }
 
+/* Timeline stage — rail on the left, cards on the right. Cards
+   column is the natural width of the parent grid track minus the
+   28px rail and gap. */
 .work-timeline-stage {
   position: relative;
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: 32px 1fr;
   gap: 0;
-  align-items: stretch;
+  height: 100%;
+  max-width: 720px;
+  /* Vertical scroll is intentionally NOT enabled — section is
+     pinned and cards animate into a fixed visible area. If the
+     content grows beyond the section height, that's a content
+     length problem, not a UX problem to solve with overflow. */
 }
 
-/* Rail column — narrow stripe on the left of the cards. */
+/* Rail column. */
 .work-rail-wrap {
   position: relative;
-  width: 28px;
+  width: 32px;
+  height: 100%;
 }
 
-/* Base rail (faint full-height stripe). */
 .work-rail {
   position: absolute;
   left: 50%;
-  top: 4px;
-  bottom: 50px;
+  top: 8px;
+  bottom: 30px;
   width: 1px;
   transform: translateX(-50%);
   background: rgba(26, 23, 20, 0.12);
 }
 
-/* Animated rail fill — same geometry, scaled vertically 0..1 by JS
-   to "draw" the line downward as scroll progresses. */
 .work-rail-fill {
   position: absolute;
   left: 50%;
-  top: 4px;
-  bottom: 50px;
+  top: 8px;
+  bottom: 30px;
   width: 2px;
   transform: translateX(-50%) scaleY(0);
   transform-origin: top;
@@ -68,34 +100,33 @@
     rgba(232, 112, 64, 0.5) 100%
   );
   box-shadow: 0 0 12px rgba(232, 112, 64, 0.55);
-  /* No transition — JS writes the transform every frame. */
 }
 
-/* Scrubber dot riding the rail's leading edge. */
 .work-scrubber {
   position: absolute;
   left: 50%;
-  top: 4px;
-  width: 12px;
-  height: 12px;
-  margin-left: -6px;
+  top: 8px;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
   border-radius: 50%;
   background: var(--accent, #e87040);
   box-shadow:
     0 0 0 4px rgba(232, 112, 64, 0.22),
-    0 0 18px rgba(232, 112, 64, 0.65);
+    0 0 22px rgba(232, 112, 64, 0.65);
   transform: translate(-50%, 0);
   opacity: 0;
   pointer-events: none;
-  /* No CSS transition — JS-driven via translateY-of-rail-height. */
 }
 
 /* Cards column. */
 .work-cards {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding-left: 22px;
+  gap: 22px;
+  padding-left: 24px;
+  padding-right: 4px;
+  min-width: 0; /* Allow flex children to shrink rather than overflow */
 }
 
 .work-card {
@@ -105,7 +136,7 @@
   -webkit-backdrop-filter: blur(6px);
   border: 1px solid rgba(26, 23, 20, 0.08);
   border-radius: 12px;
-  padding: 18px 22px 18px;
+  padding: 20px 24px;
   opacity: 0;
   transform: translate3d(28px, 6px, 0) scale(0.97);
   filter: blur(3px);
@@ -121,12 +152,10 @@
   filter: blur(0);
 }
 
-/* Dot on the rail aligned with each card's top, shown in addition to
-   the scrubber. Marks the discrete stop. */
 .work-card-dot {
   position: absolute;
-  left: -28px;
-  top: 22px;
+  left: -29px;
+  top: 24px;
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -171,7 +200,7 @@
 
 .work-card-where {
   font-family: var(--font-display, "Space Grotesk", sans-serif);
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.005em;
   color: var(--wrapper-ink, #1a1714);
@@ -180,9 +209,9 @@
 
 .work-card-role {
   font-family: var(--font-body, "Inter", sans-serif);
-  font-size: 12.5px;
+  font-size: 13px;
   color: rgba(26, 23, 20, 0.65);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .work-card-bullets {
@@ -191,21 +220,21 @@
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
 }
 .work-card-bullets li {
   position: relative;
   padding-left: 16px;
   font-family: var(--font-body, "Inter", sans-serif);
   font-size: 13.5px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: rgba(26, 23, 20, 0.85);
 }
 .work-card-bullets li::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 0.65em;
+  top: 0.7em;
   width: 6px;
   height: 1px;
   background: var(--accent, #e87040);
@@ -213,12 +242,11 @@
 
 .work-resume-btn {
   align-self: flex-start;
-  margin-top: 10px;
   display: inline-block;
-  padding: 11px 22px;
+  padding: 12px 22px;
   background: var(--accent, #e87040);
   color: white;
-  font-family: var(--font-mono);
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
   font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -244,14 +272,13 @@
     0 12px 28px -10px rgba(232, 112, 64, 0.65);
 }
 
-@media (max-width: 768px) {
-  .work-card {
-    padding: 16px 18px;
+@media (max-width: 900px) {
+  .work-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 6vh 5vw;
   }
-  .work-card-where {
-    font-size: 18px;
-  }
-  .work-card-bullets li {
-    font-size: 13px;
+  .work-timeline-stage {
+    max-width: none;
   }
 }
