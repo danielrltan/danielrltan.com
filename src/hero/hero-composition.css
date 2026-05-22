@@ -38,6 +38,47 @@
   opacity: 1;
 }
 
+/* Bitmap ring — positioned upper-right of the composition. Sits
+   BEHIND the wordmark text via z-index 0 vs the wordmark stack which
+   inherits z-index auto (default = above). */
+.hero-ring-slot {
+  position: absolute;
+  top: clamp(8vh, 14vh, 18vh);
+  right: clamp(4vw, 6vw, 10vw);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.85;
+  animation: hero-ring-fade-in 1000ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: 0.4s;
+}
+@keyframes hero-ring-fade-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 0.85; transform: scale(1); }
+}
+
+.hero-bitmap-ring {
+  position: relative;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+/* CSS keyframes for the spin animation. HeroBitmapRing applies the
+   animation NAME + duration inline (so consumers can pass spinDuration
+   as a prop). Two variants for clockwise / counter-clockwise. */
+@keyframes hero-ring-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes hero-ring-spin-rev {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-bitmap-ring {
+    animation-duration: 0s !important;
+  }
+}
+
 /* Top row — minimal eyebrow on the left. */
 .hero-top {
   display: flex;

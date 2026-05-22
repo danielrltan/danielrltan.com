@@ -33,6 +33,7 @@ import {
   AssemblyWireframesSlot,
 } from "./loading";
 import { HeroSignature } from "./hero/HeroSignature";
+import { ScrollWireframeRoom } from "./loading/ScrollWireframeRoom";
 import { ScrollCamera } from "./ScrollCamera";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { useScrollProgress } from "./useScrollProgress";
@@ -234,6 +235,37 @@ export default function App() {
   const [roomResetKey, setRoomResetKey] = useState(0);
   const scrollProgress = useScrollProgress();
   const isMobile = useIsMobile();
+
+  // About-pin scroll progress (0..1). Used to drive the scroll-driven
+  // wireframe overlay inside the room canvas — wireframes assemble
+  // as the user scrolls into About, peak mid-pin, fade back out as
+  // the user approaches the Mac handoff. Updated by a scroll
+  // listener below; consumed by <ScrollWireframeRoom> via ref.
+  const aboutProgressRef = useRef(0);
+  useEffect(() => {
+    let raf = 0;
+    const ABOUT_START_VH = 0.9;  // matches room fade-in start
+    const ABOUT_END_VH = 2.20;   // matches room fade-out end
+    const update = () => {
+      const vh = window.innerHeight || 1;
+      const ratio = window.scrollY / vh;
+      const span = ABOUT_END_VH - ABOUT_START_VH;
+      const p = (ratio - ABOUT_START_VH) / span;
+      aboutProgressRef.current = Math.max(0, Math.min(1, p));
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
 
   const startTransition = useCallback(() => {
     if (transitionStarted) return;
@@ -647,6 +679,11 @@ export default function App() {
                 >
                   <Room key={roomResetKey} roomGroupRef={roomGroupRef} />
                 </Physics>
+                {/* Scroll-driven wireframe annotation layer. Reads
+                    aboutProgressRef per frame, draws orange line-
+                    segment AABBs over the room that assemble +
+                    disassemble with scroll. */}
+                <ScrollWireframeRoom progressRef={aboutProgressRef} />
                 <IntroController
                   cameraRef={cameraRef}
                   roomGroupRef={roomGroupRef}

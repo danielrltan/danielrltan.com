@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { HeroSignature2D } from "./HeroSignature2D";
 import { HeroSignature3D } from "./HeroSignature3D";
+import { HeroBitmapRing } from "./HeroBitmapRing";
 import { type SignatureData } from "./signatureGeometry";
 import { useAssembly } from "../loading";
 import "./hero-composition.css";
@@ -81,6 +82,14 @@ export function HeroSignature() {
         className={`hero-composition${compositionVisible ? " is-visible" : ""}`}
         aria-hidden={!compositionVisible}
       >
+        {/* Bitmap-dithered ring spinning slowly behind the wordmark.
+            Sits in the upper-right of the composition as a kinetic
+            background element — the page's primary motion when the
+            user lands. CSS rotates the wrapper; the canvas paints
+            its scatter once. */}
+        <div className="hero-ring-slot" aria-hidden>
+          <HeroBitmapRing size={560} spinDuration={50} />
+        </div>
         <div className="hero-top">
           <span className="hero-eyebrow">00 / Portfolio &nbsp;&middot;&nbsp; 2026</span>
         </div>
