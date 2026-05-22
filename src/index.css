@@ -413,6 +413,27 @@ html.loading-active .scroll-rail {
   opacity: 1;
 }
 
+/* Click reaction — keyframe pulse on the ring + dot. Triggered by
+   .moveable-cursor--click which MoveableCursor.tsx applies on
+   pointerdown, removed by the animationend listener. Cursor visibly
+   "presses" — ring squashes down then springs back; dot brightens. */
+.moveable-cursor--click .moveable-cursor__ring {
+  animation: moveable-cursor-click 240ms cubic-bezier(0.2, 0.7, 0.3, 1.4);
+}
+.moveable-cursor--click .moveable-cursor__dot {
+  animation: moveable-cursor-click-dot 240ms cubic-bezier(0.2, 0.7, 0.3, 1.4);
+}
+@keyframes moveable-cursor-click {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(0.55); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes moveable-cursor-click-dot {
+  0%   { transform: scale(1); opacity: 1; }
+  35%  { transform: scale(2.4); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 /* ---------------------------------------------------------------- */
 /* Glass HUD buttons — shared reactivity for the floating pill /
 /* icon-only buttons (StatusBar reset + mute, JumpToTop, etc.).

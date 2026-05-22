@@ -81,10 +81,37 @@ export function MoveableCursor({ hot }: Props) {
       frame = requestAnimationFrame(tick);
     };
 
+    // Click reaction — adds .moveable-cursor--click for ~180ms on
+    // any pointer-down. The class drives a CSS keyframe that
+    // pulses the ring (briefly shrinks then settles) so the cursor
+    // visibly reacts to clicks instead of just staying expanded.
+    const onPointerDown = () => {
+      rootEl.classList.remove("moveable-cursor--click");
+      // Force a reflow so the keyframe restarts cleanly on rapid
+      // back-to-back clicks (otherwise the animation only plays
+      // once until the class is fully removed).
+      void rootEl.offsetWidth;
+      rootEl.classList.add("moveable-cursor--click");
+    };
+    const onPointerUp = () => {
+      // Let the keyframe finish — animationend cleans the class up.
+    };
+    const onAnimEnd = (e: AnimationEvent) => {
+      if (e.animationName === "moveable-cursor-click") {
+        rootEl.classList.remove("moveable-cursor--click");
+      }
+    };
+
     window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerdown", onPointerDown, { passive: true });
+    window.addEventListener("pointerup", onPointerUp, { passive: true });
+    rootEl.addEventListener("animationend", onAnimEnd);
     frame = requestAnimationFrame(tick);
     return () => {
       window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      rootEl.removeEventListener("animationend", onAnimEnd);
       cancelAnimationFrame(frame);
     };
   }, []);

@@ -33,15 +33,21 @@ export const START_POS = new THREE.Vector3(55, 55, 55);
 // isometric feel rather than soft perspective. Camera offsets scaled
 // to keep the room framed at the same apparent size as the previous
 // 14° + (16.3, 10.24, 16.3) tuning.
-// True isometric — equal X, Y, Z distance from the lookAt point.
-// Was (15.2, 9.6, 15.2) which had the camera too low → perspective
-// foreshortening made the back-wall / side-wall corner lines
-// diverge instead of meet. With X=Y=Z=14, the camera sits at a
-// 45° rotation around Y AND a 35.26° elevation — the canonical
-// iso angle where all three axes project at equal lengths.
-export const END_POS = new THREE.Vector3(14, 14, 14);
+// True iso = equal X/Y/Z distance from lookAt + minimal perspective
+// foreshortening. With perspective camera, we push the camera back
+// + drop FOV proportionally to keep the room's apparent size while
+// flattening perspective.
+//
+// Pushed to (100, 100, 100) with FOV 6° — distance ≈ 173 from
+// lookAt. Room (~10u extent) subtends ~3.3° = ~55% of viewport
+// width. Perspective foreshortening is well under 1%, parallel
+// lines stay visually parallel — effectively orthographic.
+export const END_POS = new THREE.Vector3(100, 100, 100);
 export const START_FOV = 5;
-export const END_FOV = 15;
+// FOV narrowed with the camera-distance bump. Was 15° at distance
+// ~24; now 6° at distance ~173. The narrower FOV is what makes the
+// projection approach orthographic.
+export const END_FOV = 6;
 export const START_LOOK_AT = new THREE.Vector3(0, 0.6, 0);
 export const END_LOOK_AT = new THREE.Vector3(0, 0.8, 0);
 

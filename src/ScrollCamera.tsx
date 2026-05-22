@@ -36,24 +36,21 @@ interface ScrollStop {
 // Camera offsets from look-at scaled ≈1.43× from the v1 iso poses to
 // match the v2 END_FOV 14° projection. Targets are world look-at
 // points so they don't change with FOV.
+// All stops use the new (100, 100, 100) iso pose with shifted
+// targets. Was (15.2, 9.6, 15.2)-anchored which was the OLD
+// perspective-iso. Now near-orthographic, so the camera distance
+// is much greater AND must stay equal X=Y=Z to keep the iso
+// projection. Targets shift around the room to point the
+// (orthographically-projected) view at different objects.
 const STOPS: ScrollStop[] = [
-  // Hero — matches END_POS / END_LOOK_AT from IntroController so
-  // there's no snap when ScrollCamera takes over from the intro tilt.
-  { at: 0.0, position: [15.2, 9.6, 15.2], target: [0, 0.8, 0] },
-  // About — closer to the bed (cozy / personal corner).
-  { at: 0.13, position: [12.30, 6.43, 15.02], target: [-0.5, 0.8, -0.6] },
-  // Skills — pulled back, framing the whole stack.
-  { at: 0.26, position: [15.59, 8.87, 15.59], target: [0, 1.0, 0] },
-  // Projects — looking at the desk / monitor (where the work happens).
-  { at: 0.40, position: [11.44, 5.09, 11.76], target: [1.2, 1.0, -1.3] },
-  // Work — shelf / bookcase, back-left (where the books are).
-  { at: 0.55, position: [10.83, 7.85, 10.72], target: [-1.2, 1.2, 1.0] },
-  // Play — closer to the floor / rug / record player corner.
-  { at: 0.70, position: [9.73, 4.40, 13.37], target: [-1.0, 0.4, 0.5] },
-  // Other — high angle, surveying the whole room (catch-all view).
-  { at: 0.83, position: [17.16, 13.16, 17.16], target: [0, 1.0, 0] },
-  // Contact — pulled back to a wide hero-mirror view.
-  { at: 0.95, position: [19.20, 11.55, 19.20], target: [0, 0.8, 0] },
+  { at: 0.0,  position: [100, 100, 100], target: [0, 0.8, 0] },
+  { at: 0.13, position: [100, 100, 100], target: [-0.5, 0.8, -0.6] },
+  { at: 0.26, position: [100, 100, 100], target: [0, 1.0, 0] },
+  { at: 0.40, position: [100, 100, 100], target: [1.2, 1.0, -1.3] },
+  { at: 0.55, position: [100, 100, 100], target: [-1.2, 1.2, 1.0] },
+  { at: 0.70, position: [100, 100, 100], target: [-1.0, 0.4, 0.5] },
+  { at: 0.83, position: [100, 100, 100], target: [0, 1.0, 0] },
+  { at: 0.95, position: [100, 100, 100], target: [0, 0.8, 0] },
 ];
 
 interface Props {

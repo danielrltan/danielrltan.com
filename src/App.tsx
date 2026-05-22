@@ -584,16 +584,13 @@ export default function App() {
               // resetter, no zoom-in animation.
               position: [END_POS.x, END_POS.y, END_POS.z],
               fov: END_FOV,
-              // Near widened 0.1 → 1 (no scene geometry sits inside
-              // distance 1 from camera — minDistance is 1.2 on orbit
-              // controls). Far must cover the loading-screen cover
-              // dome (sphereGeometry radius 60 centred at origin):
-              // from START_POS at distance ~95, the back face of the
-              // dome lands at ~155. Far = 180 leaves headroom. Depth
-              // precision is fine despite the wide range because
-              // `logarithmicDepthBuffer: true` is set on the renderer.
+              // Near 1, far 300 to accommodate the near-orthographic
+              // camera distance (END_POS at 100,100,100 → ~173 from
+              // origin + scrollwireframe dome at radius 20 around
+              // camera + room geometry extent). Was 180 which clipped
+              // the room at the very edge of the far plane.
               near: 1,
-              far: 180,
+              far: 300,
             }}
             // High-DPR screens already supersample — MSAA on top is
             // redundant cost. Pin DPR to 1.25 on mobile (cuts fragment
@@ -640,15 +637,7 @@ export default function App() {
               gl.shadowMap.enabled = true;
               gl.shadowMap.type = THREE.PCFShadowMap;
               cameraRef.current = camera as THREE.PerspectiveCamera;
-              // lookAt slightly biased toward the room model's
-              // visual center of mass (not just world origin). The
-              // room's actual geometry extends asymmetrically from
-              // origin — looking at (0, 0.8, 0) put the visible
-              // room in the right 2/3 of the viewport. Biasing
-              // toward (1.5, 1.2, 1.5) re-centers it. END_LOOK_AT
-              // still drives OrbitControls + reset behaviour
-              // (re-syncs cleanly when control transfers).
-              camera.lookAt(1.5, 1.2, 1.5);
+              camera.lookAt(END_LOOK_AT);
             }}
           >
             <SceneStateProvider

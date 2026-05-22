@@ -1,53 +1,69 @@
 import "./section-transition.css";
 
 /**
- * Bridge between the editorial portfolio sections (Other, ...) and
- * the keypad/socials section. Replaces what was a hard horizontal
- * cut with a guided, awwwards-style transition:
+ * Bridge between BitsAndPieces and Keypad — a two-row "contact
+ * ticker" with one row sliding LEFT and the other sliding RIGHT
+ * at slightly different speeds. Each row mixes phrases (`drop a
+ * line`, `say hi`) with the actual email address and social handles
+ * so the marquee carries information, not just decoration.
  *
- *   - A LARGE horizontal marquee with brand phrasing scrolls slowly
- *     across the band, separated by orange accent bullets. Reads as
- *     an intentional editorial divider rather than dead space.
- *   - A vertical gradient bg transitions from the cool grey of the
- *     page (`--wrapper-bg-deep`) into the keypad section's slightly
- *     lighter grey, so the color shift feels engineered.
- *   - A subtle dot-cascade overlay drifts downward beneath the
- *     marquee — picks up the rice motif from the keypad section and
- *     hints at the rice-fluid blob the user is about to discover.
+ * Improvements over the v1 single-row marquee:
+ *   - Two counter-direction rows give the band visual energy without
+ *     auto-marquee fatigue (single row at constant speed gets boring
+ *     after one cycle).
+ *   - Inline social handles + the email = the band IS the contact
+ *     info, not just an editorial frame around it.
+ *   - Different sizes between rows create typographic rhythm.
  *
- * Pure CSS (no JS / Canvas), so it costs essentially nothing — the
- * marquee is a transform-only animation and the cascade is repeating
- * radial-gradient + background-position animation.
+ * Pure CSS — two transform animations. No scroll binding so it can't
+ * conflict with the Keypad pin (the prior single-row version had
+ * a visual overlap issue with the pinned Keypad below).
  */
+
 export function SectionTransition() {
-  // Duplicate the phrase track so the marquee can translate -50%
-  // (one copy off the left) and loop seamlessly.
-  const phrase = (
+  const rowTop = (
     <>
       <span className="st-text">Let&rsquo;s connect</span>
-      <span className="st-bullet">•</span>
+      <span className="st-bullet">●</span>
+      <span className="st-text st-text--accent">hello@danielrltan.com</span>
+      <span className="st-bullet">●</span>
       <span className="st-text">Say hi</span>
-      <span className="st-bullet">•</span>
-      <span className="st-text">Drop a line</span>
-      <span className="st-bullet">•</span>
-      <span className="st-text">Socials below</span>
-      <span className="st-bullet">•</span>
-      <span className="st-text">hello@danielrltan.com</span>
-      <span className="st-bullet">•</span>
+      <span className="st-bullet">●</span>
+      <span className="st-text">@danielrltan</span>
+      <span className="st-bullet">●</span>
+    </>
+  );
+  const rowBot = (
+    <>
+      <span className="st-text-sm">socials below</span>
+      <span className="st-bullet-sm">/</span>
+      <span className="st-text-sm">github · linkedin · x · pinterest</span>
+      <span className="st-bullet-sm">/</span>
+      <span className="st-text-sm">Toronto, CA</span>
+      <span className="st-bullet-sm">/</span>
+      <span className="st-text-sm">2026 work in progress</span>
+      <span className="st-bullet-sm">/</span>
     </>
   );
 
   return (
     <section className="section-transition" aria-hidden="true">
-      {/* Rice-cascade overlay — repeating dot pattern that drifts
-          downward, hinting at the keypad's rice fluid backdrop. */}
-      <div className="st-cascade" />
-      {/* Marquee track. aria-hidden because the same content lives
-          (semantically) in the keypad section's hidden link list. */}
-      <div className="st-marquee">
-        <div className="st-track">
-          {phrase}
-          {phrase}
+      {/* Top row — bigger pixel-font phrases sliding LEFT. The
+          accent-orange email is the visual anchor. */}
+      <div className="st-marquee st-marquee--top">
+        <div className="st-track st-track--left">
+          {rowTop}
+          {rowTop}
+        </div>
+      </div>
+      {/* Bottom row — smaller mono-font meta sliding RIGHT at a
+          slightly different speed. Counter-direction sets up a
+          parallax-like band that's more interesting than one fast
+          line. */}
+      <div className="st-marquee st-marquee--bot">
+        <div className="st-track st-track--right">
+          {rowBot}
+          {rowBot}
         </div>
       </div>
     </section>

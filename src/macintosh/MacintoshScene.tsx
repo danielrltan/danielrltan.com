@@ -31,6 +31,11 @@ interface Props {
   pinProgressRef: React.MutableRefObject<number>;
   projects: MacProject[];
   onSelectProject: (p: MacProject) => void;
+  /** Currently selected project — if non-null, the camera zooms
+   *  into the screen + the canvas texture renders the project's
+   *  detail view instead of the desktop tile grid. */
+  selected: MacProject | null;
+  onClose: () => void;
 }
 
 const THRESHOLDS = {
@@ -433,6 +438,8 @@ function useScreenTexture(
   projects: MacProject[],
   bootProgress: number,
   hoverIndex: number | null,
+  selected: MacProject | null,
+  detailReveal: number,
 ): THREE.CanvasTexture {
   return useMemo(() => {
     const w = 780;
@@ -441,7 +448,7 @@ function useScreenTexture(
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d")!;
-    drawScreen(ctx, w, h, projects, bootProgress, hoverIndex);
+    drawScreen(ctx, w, h, projects, bootProgress, hoverIndex, selected, detailReveal);
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
@@ -449,7 +456,7 @@ function useScreenTexture(
     return tex;
     // We rebuild the texture on every change of inputs — for boot text
     // typing this fires at the 30Hz throttle of the parent's state.
-  }, [projects, bootProgress, hoverIndex]);
+  }, [projects, bootProgress, hoverIndex, selected, detailReveal]);
 }
 
 function drawScreen(
@@ -459,7 +466,16 @@ function drawScreen(
   projects: MacProject[],
   bootProgress: number,
   hoverIndex: number | null,
+  selected: MacProject | null,
+  detailReveal: number,
 ) {
+  // Selected-project detail view OVERRIDES the desktop. As the
+  // camera zooms in (detailReveal 0→1), the desktop fades out and
+  // the detail view types itself in via a typewriter effect.
+  if (selected && detailReveal > 0.1) {
+    drawProjectDetail(ctx, w, h, selected, detailReveal);
+    return;
+  }
   // Background.
   ctx.fillStyle = "#0b0b0b";
   ctx.fillRect(0, 0, w, h);

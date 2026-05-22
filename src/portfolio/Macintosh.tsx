@@ -179,6 +179,8 @@ export function Macintosh() {
             pinProgressRef={pinProgressRef}
             projects={MAC_PROJECTS}
             onSelectProject={setSelected}
+            selected={selected}
+            onClose={() => setSelected(null)}
           />
         )}
       </div>
@@ -200,30 +202,18 @@ export function Macintosh() {
           on the right.
         </p>
       </div>
+      {/* Floating Esc-to-close hint, only visible during the zoom-in
+          beat. Provides accessibility + discoverability for the
+          close action since the project content is rendered inside
+          the Mac screen rather than as a modal with an X button. */}
       {selected && (
-        <>
-          <div
-            className="mac-detail-backdrop"
-            onClick={() => setSelected(null)}
-            aria-hidden
-          />
-          <ProjectDetailCard
-            project={selected}
-            onClose={() => setSelected(null)}
-          />
-        </>
+        <EscToCloseHint onClose={() => setSelected(null)} />
       )}
     </section>
   );
 }
 
-function ProjectDetailCard({
-  project,
-  onClose,
-}: {
-  project: MacProject;
-  onClose: () => void;
-}) {
+function EscToCloseHint({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -232,36 +222,14 @@ function ProjectDetailCard({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="mac-detail" role="dialog" aria-modal="true">
-      <button
-        className="mac-detail-close"
-        onClick={onClose}
-        aria-label="Close"
-      >
-        ×
-      </button>
-      <div className="mac-detail-meta">{project.meta}</div>
-      <h3 className="mac-detail-title">{project.title}</h3>
-      <p className="mac-detail-blurb">{project.blurb}</p>
-      <div className="mac-detail-tags">
-        {project.tags.map((t) => (
-          <span key={t} className="mac-detail-tag">
-            {t}
-          </span>
-        ))}
-      </div>
-      <div className="mac-detail-links">
-        {project.liveHref && (
-          <a href={project.liveHref} target="_blank" rel="noreferrer">
-            Live &rarr;
-          </a>
-        )}
-        {project.repoHref && (
-          <a href={project.repoHref} target="_blank" rel="noreferrer">
-            GitHub &rarr;
-          </a>
-        )}
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onClose}
+      className="mac-esc-hint"
+      aria-label="Close project detail"
+    >
+      <span className="mac-esc-hint-key">ESC</span>
+      <span>or click to close</span>
+    </button>
   );
 }

@@ -4,6 +4,7 @@ import { Macintosh } from "./Macintosh";
 import { Work } from "./Work";
 import { Other } from "./Other";
 import { BitsAndPieces } from "./BitsAndPieces";
+import { SectionTransition } from "./SectionTransition";
 import { Keypad } from "./Keypad";
 import { Footer } from "./Footer";
 
@@ -42,6 +43,7 @@ export function PortfolioSections() {
       <Work />
       <Other />
       <BitsAndPieces />
+      <SectionTransition />
       <Keypad />
       <Footer />
     </main>
