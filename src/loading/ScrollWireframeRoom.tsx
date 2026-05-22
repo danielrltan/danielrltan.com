@@ -145,13 +145,27 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
     } else {
       env = 0;
     }
-    // Cover dome stays at FULL opacity while wireframes are present,
-    // then snaps off in lockstep with the wireframes. The dome's
-    // job is to hide the room until the moment the wireframes leave;
-    // it doesn't ever exist at an in-between opacity that the user
-    // would perceive as a cream wash.
+    // Cover dome opacity is INDEPENDENT of the wireframe envelope.
+    // The dome must be fully opaque from the moment About begins
+    // (pin > 0) so the room never flashes through during the
+    // wireframe-assemble ramp. User saw: 'i still see the room for
+    // a split second before wireframe' — that was because the dome
+    // opacity was bound to env, so during the 0→1 wireframe
+    // assemble (pin 0..0.30) the dome was also at 0→1 and the room
+    // showed through it.
+    //
+    // Now: dome = 1 the entire pin 0.00-0.50 window, then matches
+    // the wireframe envelope for the 0.50-0.52 hard-swap exit.
+    let domeOpacity: number;
+    if (p < 0.50) {
+      domeOpacity = 1;
+    } else if (p < 0.52) {
+      domeOpacity = 1 - (p - 0.50) / 0.02;
+    } else {
+      domeOpacity = 0;
+    }
     if (coverMatRef.current) {
-      coverMatRef.current.opacity = env;
+      coverMatRef.current.opacity = domeOpacity;
     }
     for (const e of entries) {
       const { mesh, material } = e;
