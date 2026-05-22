@@ -123,18 +123,19 @@ function useHeroFade(): number {
  * typographic moment.
  */
 // Hard-swap point: at pin 0.50 the wireframe envelope + cover dome
-// drop to 0 within 2% of pin range, and the room is revealed beneath
-// them. The room's own canvas-wrapper opacity is a wider window so
-// it ramps in slightly before the swap (subliminal) and out alongside
-// the About pin's release.
+// drop to 0 within 2% of pin range, and the room is revealed.
 //
-// In scrollY-vh terms (anchored to 0.9..2.20vh About range):
-//   pin 0.50 = 0.9 + 0.50 * 1.30 = 1.55vh
-//   pin 0.52 = 1.576vh
+// The room must stay visible for the ENTIRE remainder of the About
+// pin so the panel-slide-in beat (pin 0.68-0.78) and the content
+// reveal beat (pin 0.78-1.00) both have the room as their backdrop.
+// About pin = 1700px = ~1.89vh starting at vh 1.0, ending at vh
+// ~2.89. Room fade-out window pushed to 2.80-2.95 so the room stays
+// fully visible through panel + content reveal and only fades as
+// About releases into Mac.
 const ROOM_FADE_IN_START_VH = 1.50;
 const ROOM_FADE_IN_END_VH = 1.58;
-const ROOM_FADE_OUT_START_VH = 2.10;
-const ROOM_FADE_OUT_END_VH = 2.30;
+const ROOM_FADE_OUT_START_VH = 2.80;
+const ROOM_FADE_OUT_END_VH = 2.95;
 /**
  * Wireframe-canvas-visibility hook — returns 1 while the wireframe
  * envelope (defined in ScrollWireframeRoom) is active, 0 otherwise.

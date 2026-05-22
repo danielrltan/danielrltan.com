@@ -112,9 +112,11 @@ export function About() {
     };
   }, []);
 
-  // Floating "ABOUT" eyebrow visible from the moment the room appears
-  // (pin 0.52) and stays until the panel takes over.
-  const floatingEyebrowVisible = progress >= 0.52 && progress < PANEL_SLIDE_END;
+  // Floating "ABOUT" eyebrow appears with the room and STAYS for
+  // the rest of the section. User: 'about title should stay.'
+  // Positioned bottom-left so the panel sliding in from the right
+  // never covers it.
+  const floatingEyebrowVisible = progress >= 0.52;
   // Panel slide-in: 0 = off-screen right, 1 = landed.
   const panelSlide = Math.max(
     0,

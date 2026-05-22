@@ -1,18 +1,14 @@
-/* Bridge between BitsAndPieces and Keypad — two-row counter-
-   direction contact ticker. Each row has its own CSS animation; no
-   scroll-driven JS. Position relative + low z-index so the pinned
-   Keypad below renders ON TOP when its pin engages — prevents the
-   v1 bug where the marquee scrolled across the live keypad. */
+/* Bridge between BitsAndPieces and Keypad — single-row marquee.
+   Pure CSS animation. z-index 0 so the pinned Keypad floats above
+   when its pin engages. */
 
 .section-transition {
   position: relative;
   width: 100vw;
-  height: 28vh;
-  min-height: 220px;
+  height: 35vh;
+  min-height: 240px;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
+  align-items: center;
   overflow: hidden;
   background: var(--wrapper-bg);
   border-top: 1px solid rgba(21, 23, 26, 0.07);
@@ -26,94 +22,52 @@
   overflow: hidden;
 }
 
-.st-marquee--top {
-  height: 18vh;
-  display: flex;
-  align-items: center;
-}
-.st-marquee--bot {
-  height: 6vh;
-  display: flex;
-  align-items: center;
-}
-
 .st-track {
   display: flex;
   align-items: center;
   white-space: nowrap;
   width: max-content;
-  will-change: transform;
+  animation: st-marquee-scroll 38s linear infinite;
 }
-.st-track--left {
-  animation: st-track-left 42s linear infinite;
-}
-.st-track--right {
-  animation: st-track-right 32s linear infinite;
-}
-@keyframes st-track-left {
+
+@keyframes st-marquee-scroll {
   0%   { transform: translate3d(0, 0, 0); }
   100% { transform: translate3d(-50%, 0, 0); }
-}
-@keyframes st-track-right {
-  0%   { transform: translate3d(-50%, 0, 0); }
-  100% { transform: translate3d(0, 0, 0); }
 }
 
 .st-text {
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(40px, 7vw, 100px);
+  font-size: clamp(48px, 9vw, 130px);
   letter-spacing: -0.02em;
   color: var(--wrapper-ink);
   text-transform: lowercase;
   padding-right: 0.32em;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
 }
-.st-text--accent {
-  color: var(--accent);
-}
 
 .st-bullet {
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(40px, 7vw, 100px);
+  font-size: clamp(48px, 9vw, 130px);
   color: var(--accent);
   padding-right: 0.32em;
-  transform: translateY(-0.08em);
-}
-
-.st-text-sm {
-  font-family: var(--font-mono, "JetBrains Mono", monospace);
-  font-size: clamp(11px, 1.1vw, 16px);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: rgba(26, 23, 20, 0.55);
-  padding-right: 1.2em;
-}
-.st-bullet-sm {
-  font-family: var(--font-mono, "JetBrains Mono", monospace);
-  font-size: clamp(11px, 1.1vw, 16px);
-  color: var(--accent);
-  padding-right: 1.2em;
-  font-weight: 600;
+  transform: translateY(-0.05em);
 }
 
 @media (max-width: 768px) {
   .section-transition {
-    height: 24vh;
-    min-height: 160px;
+    height: 26vh;
+    min-height: 180px;
   }
-  .st-marquee--top { height: 16vh; }
-  .st-marquee--bot { height: 5vh; }
   .st-text,
   .st-bullet {
-    font-size: clamp(28px, 10vw, 56px);
+    font-size: clamp(32px, 12vw, 64px);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .st-track--left,
-  .st-track--right {
+  .st-track {
     animation-duration: 0s;
     animation-play-state: paused;
   }
