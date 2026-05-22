@@ -9,25 +9,34 @@ gsap.registerPlugin(ScrollTrigger);
 /**
  * About section — GSAP-pinned theatrical reveal.
  *
- * Pin holds the section in place for ~1.4 viewports of scroll. While
- * pinned, pin-progress drives a 3-beat content reveal:
+ * Beats (anchored to pin progress 0..1):
  *
- *   beat 1 (0.00-0.30): big lede "I'm Daniel."
- *   beat 2 (0.30-0.65): "Currently / Studying / Building / Off-hours"
- *                       table reveals, row by row
- *   beat 3 (0.65-1.00): "Reach" row + a closing line
+ *   0.00 – 0.30   wireframes assemble (room hidden by cover dome)
+ *   0.30 – 0.50   wireframes hold
+ *   0.50 – 0.52   hard swap — wireframes/dome cut to 0, room appears
+ *   0.52 – 0.68   ROOM SOLO  — full room visible, only a small
+ *                              "ABOUT" eyebrow floats in the
+ *                              bottom-left. Lets the user actually
+ *                              look at the room without competing
+ *                              copy.
+ *   0.68 – 0.78   content panel slides in from the right
+ *   0.78 – 0.94   lede + 4 inline rows reveal sequentially inside
+ *                 the panel
+ *   0.94 – 1.00   "Reach" row + "Scroll for the kit →" sign-off
  *
- * Throughout the pin the room canvas stays at full opacity behind —
- * no mid-pin fade-out. The transition to Macintosh happens AFTER the
- * pin releases, with a tight room fade-out window so it doesn't drift
- * into the next section.
- *
- * Replaces the previous version where About content scrolled past
- * the user too quickly while the room faded mid-paragraph — read as
- * "everything is fading and overlapping at once."
+ * The room canvas stays at full opacity from the swap onward. The
+ * Macintosh transition happens after the pin releases.
  */
 
-const PIN_DURATION_PX = 1100;
+// Longer pin than the original 1100px — the room-solo beat needs
+// dwell time, and the panel slide-in + content reveal needs scroll
+// room of its own.
+const PIN_DURATION_PX = 1700;
+
+// Pin progress at which the content panel begins sliding in.
+const PANEL_SLIDE_START = 0.68;
+// Pin progress at which the content panel is fully landed.
+const PANEL_SLIDE_END = 0.78;
 
 interface Beat {
   /** pin-progress threshold at which this beat is fully revealed. */
@@ -45,27 +54,27 @@ const ROWS: Array<{ label: string; value: React.ReactNode; beat: Beat }> = [
         </a>
       </>
     ),
-    beat: { at: 0.32 },
+    beat: { at: 0.81 },
   },
   {
     label: "Studying",
     value: <>B.Sc. Computer Science, Western Ontario &rarr; 2027</>,
-    beat: { at: 0.42 },
+    beat: { at: 0.85 },
   },
   {
     label: "Building",
     value: <>Cognetech &middot; Revamp &middot; this site</>,
-    beat: { at: 0.52 },
+    beat: { at: 0.88 },
   },
   {
     label: "Off-hours",
     value: <>Piano &middot; Taekwondo &middot; mechanical keyboards</>,
-    beat: { at: 0.62 },
+    beat: { at: 0.91 },
   },
   {
     label: "Reach",
     value: <a href="mailto:hello@danielrltan.com">hello@danielrltan.com</a>,
-    beat: { at: 0.78 },
+    beat: { at: 0.95 },
   },
 ];
 
@@ -103,13 +112,47 @@ export function About() {
     };
   }, []);
 
-  // Lede fades in early, stays. The other beats are owned per-row
-  // via the beat.at threshold check below.
-  const ledeRevealed = progress >= 0.05;
+  // Floating "ABOUT" eyebrow visible from the moment the room appears
+  // (pin 0.52) and stays until the panel takes over.
+  const floatingEyebrowVisible = progress >= 0.52 && progress < PANEL_SLIDE_END;
+  // Panel slide-in: 0 = off-screen right, 1 = landed.
+  const panelSlide = Math.max(
+    0,
+    Math.min(
+      1,
+      (progress - PANEL_SLIDE_START) / (PANEL_SLIDE_END - PANEL_SLIDE_START),
+    ),
+  );
+  // Ease-out cubic for a softer arrival.
+  const panelEased = 1 - Math.pow(1 - panelSlide, 3);
+  // Lede revealed once the panel is mostly landed.
+  const ledeRevealed = progress >= 0.79;
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-about">
-      <div className="portfolio-col about-col">
+      {/* Floating eyebrow during the room-solo beat. Fixed to the
+          bottom-left of the section viewport so it reads as a label
+          on the room rather than overlapping its center. */}
+      <div
+        className={`about-floating-eyebrow${
+          floatingEyebrowVisible ? " is-visible" : ""
+        }`}
+        aria-hidden
+      >
+        <span className="about-floating-num">01</span>
+        <span className="about-floating-label">About</span>
+      </div>
+
+      <div
+        className="portfolio-col about-col"
+        style={{
+          // Slide the panel in from the right. The translateX
+          // percentage is relative to the panel's own width, so 100%
+          // is fully off-screen to the right.
+          transform: `translate3d(${(1 - panelEased) * 100}%, 0, 0)`,
+          opacity: panelEased,
+        }}
+      >
         <span className="section-marker">01</span>
         <span className="section-index">01 / 06 &middot; About</span>
         <h2 className="about-h">About.</h2>
@@ -133,7 +176,7 @@ export function About() {
           ))}
         </div>
         <div
-          className={`about-sign${progress >= 0.9 ? " is-revealed" : ""}`}
+          className={`about-sign${progress >= 0.97 ? " is-revealed" : ""}`}
         >
           <span className="about-sign-line" />
           <span className="about-sign-text">

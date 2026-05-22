@@ -698,12 +698,12 @@ export function MacintoshScene(props: Props) {
   return (
     <>
       <Canvas
-        // Camera framing: user dragged to pos [-1.09, 0.74, 3.03],
-        // fov 28 — that was visually close to ideal but the Mac
-        // was clipping at the right edge. Pulled back ~50% along
-        // the same direction vector to keep the angle but give
-        // breathing room around the model: [-1.6, 1.1, 4.5].
-        camera={{ position: [-1.6, 1.1, 4.5], fov: 28, near: 0.1, far: 40 }}
+        // Iso 3/4 angle — matches the room camera's stylistic
+        // (X=Z) iso lookoff. User wanted the 'old iso angle back
+        // here' instead of the head-on view. lookAt is set
+        // explicitly in onCreated so the Mac center (y≈0.6 after
+        // scale) frames in the viewport center, not high-biased.
+        camera={{ position: [3.2, 2.6, 3.2], fov: 28, near: 0.1, far: 40 }}
         dpr={[1, 1.5]}
         shadows
         gl={{
@@ -711,6 +711,9 @@ export function MacintoshScene(props: Props) {
           alpha: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.0,
+        }}
+        onCreated={({ camera }) => {
+          camera.lookAt(0, 0.6, 0);
         }}
       >
         <Scene {...props} />
