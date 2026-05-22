@@ -26,16 +26,13 @@ interface Props {
 // the primary subject), so it's framed smaller — sits in the slim
 // band between the two wordmark lines.
 const RIG_WIDTH = 1.8;
-const TUBE_RADIUS = 0.018;
-// Soft warm walnut. Previous tuning (metalness 0.55, roughness 0.4)
-// gave the strokes a sharp, polished-metal feel that read as
-// "rendered" — the user called it "super sharp." Bumping metalness
-// down and roughness up makes the surface diffuse like a wooden
-// engraving, with the cursor-light just gently warming the edges
-// rather than throwing harsh specular highlights.
+// Bumped 0.018 → 0.030 (≈65% thicker). Visually weightier signature.
+const TUBE_RADIUS = 0.030;
+// Material is now MeshLambertMaterial (see SignatureMesh below) —
+// pure diffuse, no specular, no PBR. Only the base color is used.
+// metalness/roughness/envMapIntensity constants removed since
+// they don't apply to Lambert.
 const SIGNATURE_BASE_COLOR = "#3d2719";
-const SIGNATURE_METALNESS = 0.15;
-const SIGNATURE_ROUGHNESS = 0.68;
 
 function SignatureMesh({ data }: { data: SignatureData }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -105,26 +102,32 @@ function SignatureMesh({ data }: { data: SignatureData }) {
       {/* Ambient anchor so the unlit side of each tube isn't pitch
           black — small, just enough to read silhouette. */}
       <ambientLight intensity={0.18} color="#fff4e8" />
-      {/* Cursor-tracked highlight light. Warm orange to match brand. */}
+      {/* Cursor-tracked warm light. Dropped 14 → 3 — even at the
+          previous "soft" intensity, a 14-intensity light on a small
+          1.8-wide rig was producing visible diffuse hotspots that
+          the eye read as specular sheen. Cursor light now provides
+          just a subtle warmth on the cursor-side of each stroke. */}
       <pointLight
         ref={lightRef}
         position={[0, 0, 2]}
-        intensity={42}
-        distance={9}
-        decay={1.4}
+        intensity={3}
+        distance={6}
+        decay={1.8}
         color="#ffae6a"
       />
-      {/* Soft fill from above so the rig isn't entirely dependent on
-          cursor proximity for visibility. */}
-      <directionalLight position={[0.5, 1.5, 2]} intensity={0.6} color="#ffffff" />
+      {/* No directional fill — was contributing a top-down rim
+          highlight that compounded the "polished" perception. The
+          ambient light alone handles unlit-side visibility. */}
+      <ambientLight intensity={0.62} color="#fff4e8" />
       {geometries.map((geom, i) => (
         <mesh key={i} geometry={geom} castShadow={false} receiveShadow={false}>
-          <meshStandardMaterial
-            color={SIGNATURE_BASE_COLOR}
-            metalness={SIGNATURE_METALNESS}
-            roughness={SIGNATURE_ROUGHNESS}
-            envMapIntensity={1.0}
-          />
+          {/* MeshLambertMaterial — pure diffuse, NO specular term at
+              all. Previously MeshStandardMaterial with metalness 0 /
+              roughness 1 still had a microscopic specular component
+              from its energy-conserving BRDF, plus an env-map probe
+              contribution. Lambert is the actual "flat paint" model:
+              shading is just lighting × diffuse color, period. */}
+          <meshLambertMaterial color={SIGNATURE_BASE_COLOR} />
         </mesh>
       ))}
     </group>

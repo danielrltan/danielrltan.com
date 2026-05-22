@@ -102,24 +102,10 @@
   background: var(--accent, #e87040);
 }
 
-/* The "scrubber" is now JUST the leading edge of the rail-fill,
-   highlighted by a thin glow rather than a ball-bearing-shaped dot.
-   It's the same height as the fill but renders the bottom 2px of it
-   as a bright wedge — purely visual via a gradient stop. */
-.work-rail-fill::after {
-  content: "";
-  position: absolute;
-  left: -3px;
-  bottom: 0;
-  width: 8px;
-  height: 8px;
-  background: var(--accent, #e87040);
-  box-shadow: 0 0 12px rgba(232, 112, 64, 0.6);
-  transform: rotate(45deg);
-  /* Diamond shape (rotated square) — sits at the bottom of the
-     fill as a sharp leading-edge marker. Way more deliberate than
-     a soft dot with an outer ring. */
-}
+/* No leading-edge marker. User's note: "looks like u just learned
+   css" — the diamond + glow read as a CSS playground tutorial, not
+   editorial. The rail-fill itself growing down the line is the
+   indicator. */
 
 /* Old scrubber dot — hidden. Kept the element in JSX for now so
    the JS-driven transform doesn't error; we just don't render it. */

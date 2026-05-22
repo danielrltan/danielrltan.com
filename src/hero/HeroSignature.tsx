@@ -98,14 +98,10 @@ export function HeroSignature() {
             <HeroSignature3D data={data} opacity={threeDOpacity} />
           </div>
           <div className="hero-line hero-line-2">
-            <span style={{ animationDelay: "0.46s" }}>R</span>
-            <span style={{ animationDelay: "0.50s" }}>.</span>
-            <span style={{ animationDelay: "0.54s" }}>L</span>
-            <span style={{ animationDelay: "0.58s" }}>.</span>
-            <span style={{ animationDelay: "0.66s" }}>T</span>
-            <span style={{ animationDelay: "0.70s" }}>a</span>
-            <span style={{ animationDelay: "0.74s" }}>n</span>
-            <span style={{ animationDelay: "0.78s" }}>.</span>
+            <span style={{ animationDelay: "0.50s" }}>T</span>
+            <span style={{ animationDelay: "0.54s" }}>a</span>
+            <span style={{ animationDelay: "0.58s" }}>n</span>
+            <span style={{ animationDelay: "0.62s" }}>.</span>
           </div>
         </div>
 

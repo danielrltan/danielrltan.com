@@ -167,10 +167,17 @@ export function Macintosh() {
         </p>
       </div>
       {selected && (
-        <ProjectDetailCard
-          project={selected}
-          onClose={() => setSelected(null)}
-        />
+        <>
+          <div
+            className="mac-detail-backdrop"
+            onClick={() => setSelected(null)}
+            aria-hidden
+          />
+          <ProjectDetailCard
+            project={selected}
+            onClose={() => setSelected(null)}
+          />
+        </>
       )}
     </section>
   );

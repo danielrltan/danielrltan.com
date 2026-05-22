@@ -209,22 +209,9 @@
   margin-bottom: 2px;
 }
 
-/* Category accent dot in the upper-right corner. */
-.bp-tile::after {
-  content: "";
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--bp-accent, #999);
-}
-.bp-tile--hackathon { --bp-accent: #e87040; }
-.bp-tile--competition { --bp-accent: #7a4f30; }
-.bp-tile--grant { --bp-accent: #2e7d32; }
-.bp-tile--leadership { --bp-accent: #4c5b88; }
-.bp-tile--scholarship { --bp-accent: #a8755b; }
+/* Category dot in upper-right corner — removed. User flagged the
+   colored dot-per-card pattern as "vibecoded look." Category
+   distinction now lives in the eyebrow label alone. */
 
 .bp-tile-title {
   font-family: var(--font-display, "Space Grotesk", system-ui, sans-serif);

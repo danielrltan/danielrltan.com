@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import Lenis from "lenis";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -234,6 +235,32 @@ export default function App() {
     // explicit mute toggle in RoomHUD which defaults to OFF.
   }, [transitionStarted]);
 
+  // Lenis smooth scroll — site-wide. Wraps native scroll into a
+  // tween-driven scrollTo so wheel deltas / touch swipes feel
+  // momentum-y rather than discrete. Plays well with GSAP because
+  // Lenis emits standard scroll events on every frame; ScrollTrigger
+  // picks them up automatically. On mobile the default touch-action
+  // is preserved so iOS rubber-banding still works.
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.05,
+      easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      smoothWheel: true,
+      wheelMultiplier: 1,
+      touchMultiplier: 1.4,
+    });
+    let raf = 0;
+    const tick = (time: number) => {
+      lenis.raf(time);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      lenis.destroy();
+    };
+  }, []);
+
   const completeTransition = useCallback(() => {
     sceneReadyRef.current = true;
     setSceneReady(true);
@@ -285,21 +312,28 @@ export default function App() {
    * user's real scroll once loading completes does nothing. */
   useEffect(() => {
     if (transitionStarted) return;
-    const fire = () => {
+    // FIX: was firing on the first wheel/touch/scroll input — which
+    // happens at scrollY ≈ 0, where the room canvas is still at
+    // opacity 0 (ROOM_FADE_IN_START_VH = 0.9). The 1.5s intro dolly
+    // played behind an invisible canvas; by the time the user
+    // scrolled into the room's visibility window the camera was
+    // already at END pose. Net effect: cinematic reveal never read.
+    //
+    // Now gates on scrollY crossing 0.75vh (just before fade-in
+    // starts at 0.9vh) AND on `roomLoaded` so the dolly only begins
+    // when the user is actually looking at the room.
+    const check = () => {
       if (transitionStarted) return;
       if (document.documentElement.classList.contains("loading-active")) return;
-      startTransition();
+      if (!roomLoaded) return;
+      const vhRatio = window.scrollY / Math.max(1, window.innerHeight);
+      if (vhRatio >= 0.75) startTransition();
     };
-    const opts = { passive: true } as const;
-    window.addEventListener("wheel", fire, opts);
-    window.addEventListener("touchstart", fire, opts);
-    window.addEventListener("scroll", fire, opts);
-    return () => {
-      window.removeEventListener("wheel", fire);
-      window.removeEventListener("touchstart", fire);
-      window.removeEventListener("scroll", fire);
-    };
-  }, [transitionStarted, startTransition]);
+    const onScroll = () => requestAnimationFrame(check);
+    check();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [transitionStarted, startTransition, roomLoaded]);
 
   useEffect(() => {
     if (!sceneReady) return;

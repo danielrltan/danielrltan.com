@@ -1,0 +1,91 @@
+/* About section — editorial right-column layout, no card wrapper,
+   no decorative `+` icon. The room canvas sits on the left ~50% of
+   the viewport (handled in App.tsx). Right ~40% is content. */
+
+.portfolio-about {
+  position: relative;
+  min-height: 100vh;
+}
+
+.about-col {
+  padding-top: 9vh;
+  padding-bottom: 6vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Section heading — already styled via the global h2 in sections.css.
+   The `about-h` class is a hook in case we need a one-off tweak
+   later. */
+.about-h {
+  margin-top: 6px;
+  margin-bottom: 22px;
+}
+
+.about-lede {
+  font-family: var(--font-display, "Geist", "Inter", sans-serif);
+  font-size: clamp(20px, 2.1vw, 28px);
+  line-height: 1.35;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  color: var(--wrapper-ink, #1a1714);
+  margin: 0 0 36px;
+  max-width: 540px;
+}
+.about-lede .accent {
+  /* Single moment of color in the lede — orange picks out the role. */
+  color: var(--accent, #e87040);
+  font-weight: 600;
+}
+
+.about-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 520px;
+}
+
+.about-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 22px;
+  align-items: baseline;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(26, 23, 20, 0.08);
+}
+.about-row:last-child {
+  border-bottom: none;
+}
+
+.about-label {
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(26, 23, 20, 0.45);
+  font-weight: 600;
+}
+
+.about-value {
+  font-family: var(--font-body, "Inter", sans-serif);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--wrapper-ink, #1a1714);
+}
+
+/* About-section links keep the global `.portfolio-section a` accent
+   color (orange) + underline — those defaults work well for the
+   inline links here. No override needed. */
+
+@media (max-width: 900px) {
+  .about-col {
+    padding-top: 6vh;
+  }
+  .about-lede {
+    font-size: clamp(18px, 4vw, 22px);
+  }
+  .about-row {
+    grid-template-columns: 80px 1fr;
+    gap: 16px;
+  }
+}
