@@ -26,6 +26,20 @@
   opacity: 1;
 }
 
+/* Tech ticker is wrapped in this slot so visibility can be gated
+   the same way the canvas stage is — hidden until the section pins,
+   visible during pin. Was previously visible all the time, which
+   bled the marquee row into the bottom of the About section as the
+   user scrolled toward Mac. */
+.mac-ticker-slot {
+  opacity: 0;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+}
+.mac-ticker-slot[data-stage-visible="true"] {
+  opacity: 1;
+}
+
 /* Flat tech-stack scroller — auto-scrolling marquee row pinned at
    the top of the section. Replaces the 3D orbit ring around the
    Mac, which was hard to read (logos passed in front of / behind

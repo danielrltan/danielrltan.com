@@ -120,10 +120,17 @@ function useHeroFade(): number {
  * SectionGate curtain (see App JSX) fills that gap with a deliberate
  * typographic moment.
  */
+// Room is visible during the ENTIRE About-section pin (which now
+// holds for ~1.4 viewports of scroll via GSAP pin in About.tsx).
+// About section's content body lives from scrollY ≈ 1vh to ≈ 2.2vh
+// after pin, so the fade window is anchored to those edges:
+//   0.9 .. 1.2vh  : fading in
+//   1.2 .. 2.10vh : visible — full About beat
+//   2.10 .. 2.30vh: fading out, just as About's pin releases
 const ROOM_FADE_IN_START_VH = 0.9;
-const ROOM_FADE_IN_END_VH = 1.3;
-const ROOM_FADE_OUT_START_VH = 1.55;
-const ROOM_FADE_OUT_END_VH = 1.85;
+const ROOM_FADE_IN_END_VH = 1.2;
+const ROOM_FADE_OUT_START_VH = 2.10;
+const ROOM_FADE_OUT_END_VH = 2.30;
 function useRoomFade(): number {
   const [t, setT] = useState(0);
   useEffect(() => {

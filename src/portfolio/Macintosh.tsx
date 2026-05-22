@@ -92,16 +92,26 @@ export function Macintosh() {
     // the same vh thresholds the SectionGate uses (1.85vh = curtain
     // fully holds) so the timing stays in lockstep.
     const stage = el.querySelector(".mac-stage") as HTMLElement | null;
-    const STAGE_REVEAL_VH = 1.85;
+    const ticker = el.querySelector(".mac-ticker-slot") as HTMLElement | null;
+    // Sync with the room fade-out window in App.tsx
+    // (ROOM_FADE_OUT_END_VH = 2.30). Mac elements reveal RIGHT AFTER
+    // the room is fully gone, so there's never a moment where the
+    // two scenes overlap.
+    const STAGE_REVEAL_VH = 2.25;
     let raf = 0;
     let lastVisible = false;
     const updateStageVisibility = () => {
       const vh = window.innerHeight || 1;
       const ratio = window.scrollY / vh;
       const visible = ratio >= STAGE_REVEAL_VH;
-      if (visible !== lastVisible && stage) {
+      if (visible !== lastVisible) {
         lastVisible = visible;
-        stage.setAttribute("data-stage-visible", visible ? "true" : "false");
+        if (stage) {
+          stage.setAttribute("data-stage-visible", visible ? "true" : "false");
+        }
+        if (ticker) {
+          ticker.setAttribute("data-stage-visible", visible ? "true" : "false");
+        }
       }
     };
     const onScroll = () => {
@@ -153,10 +163,15 @@ export function Macintosh() {
           />
         )}
       </div>
-      {/* Flat tech-stack scroller — replaces the orbiting 3D logos.
-          Pinned along the top of the section's portion of the viewport,
-          auto-scrolling horizontally with a slow CSS keyframe. */}
-      <TechStackTicker />
+      {/* Flat tech-stack scroller — same visibility gate as the
+          mac-stage above. Without this the ticker was visible at the
+          top of the section while the user was still scrolling through
+          About, bleeding into the About viewport. The wrapper div
+          is opacity-controlled by the same `data-stage-visible`
+          attribute that gates the canvas. */}
+      <div className="mac-ticker-slot" data-stage-visible="false">
+        <TechStackTicker />
+      </div>
       <div className="portfolio-col mac-col">
         <span className="section-marker">02</span>
         <span className="section-index">02 / 06 &middot; Stack + Projects</span>

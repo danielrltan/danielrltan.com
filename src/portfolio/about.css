@@ -1,10 +1,12 @@
-/* About section — editorial right-column layout, no card wrapper,
-   no decorative `+` icon. The room canvas sits on the left ~50% of
-   the viewport (handled in App.tsx). Right ~40% is content. */
+/* About section — GSAP-pinned theatrical reveal.
+   Layout: room canvas on the left (handled in App.tsx), content
+   column on the right. While the section is pinned, content blocks
+   reveal in sequence as pin-progress advances. */
 
 .portfolio-about {
   position: relative;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .about-col {
@@ -14,14 +16,12 @@
   flex-direction: column;
 }
 
-/* Section heading — already styled via the global h2 in sections.css.
-   The `about-h` class is a hook in case we need a one-off tweak
-   later. */
 .about-h {
   margin-top: 6px;
   margin-bottom: 22px;
 }
 
+/* Lede paragraph — reveals at the start of the pin. */
 .about-lede {
   font-family: var(--font-display, "Geist", "Inter", sans-serif);
   font-size: clamp(20px, 2.1vw, 28px);
@@ -31,9 +31,17 @@
   color: var(--wrapper-ink, #1a1714);
   margin: 0 0 36px;
   max-width: 540px;
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 700ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.about-lede.is-revealed {
+  opacity: 1;
+  transform: translateY(0);
 }
 .about-lede .accent {
-  /* Single moment of color in the lede — orange picks out the role. */
   color: var(--accent, #e87040);
   font-weight: 600;
 }
@@ -45,6 +53,7 @@
   max-width: 520px;
 }
 
+/* Per-row reveal — each row at its own pin-progress threshold. */
 .about-row {
   display: grid;
   grid-template-columns: 96px 1fr;
@@ -52,8 +61,17 @@
   align-items: baseline;
   padding: 14px 0;
   border-bottom: 1px solid rgba(26, 23, 20, 0.08);
+  opacity: 0;
+  transform: translateX(16px);
+  transition:
+    opacity 540ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 540ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-.about-row:last-child {
+.about-row.is-revealed {
+  opacity: 1;
+  transform: translateX(0);
+}
+.about-row:last-of-type {
   border-bottom: none;
 }
 
@@ -73,9 +91,36 @@
   color: var(--wrapper-ink, #1a1714);
 }
 
-/* About-section links keep the global `.portfolio-section a` accent
-   color (orange) + underline — those defaults work well for the
-   inline links here. No override needed. */
+/* Sign-off line — last beat, points the user toward the next
+   section. */
+.about-sign {
+  margin-top: 32px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 520ms ease,
+    transform 520ms ease;
+}
+.about-sign.is-revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+.about-sign-line {
+  display: block;
+  width: 48px;
+  height: 1px;
+  background: var(--accent, #e87040);
+}
+.about-sign-text {
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(26, 23, 20, 0.55);
+}
 
 @media (max-width: 900px) {
   .about-col {
