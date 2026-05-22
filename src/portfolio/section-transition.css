@@ -5,8 +5,10 @@
 .section-transition {
   position: relative;
   width: 100vw;
-  height: 35vh;
-  min-height: 240px;
+  /* Bridge downsized by 1.2x per user feedback — 35vh → 29vh,
+     240px → 200px. Text scales the same factor below. */
+  height: 29vh;
+  min-height: 200px;
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -38,7 +40,8 @@
 .st-text {
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(48px, 9vw, 130px);
+  /* Downsized 1.2x: 48/9vw/130 → 40/7.5vw/108. */
+  font-size: clamp(40px, 7.5vw, 108px);
   letter-spacing: -0.02em;
   color: var(--wrapper-ink);
   text-transform: lowercase;
@@ -49,7 +52,7 @@
 .st-bullet {
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(48px, 9vw, 130px);
+  font-size: clamp(40px, 7.5vw, 108px);
   color: var(--accent);
   padding-right: 0.32em;
   transform: translateY(-0.05em);
