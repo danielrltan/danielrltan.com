@@ -11,68 +11,72 @@
 /* HTML photo trains pinned to the upper ~50% of the section. */
 .other-trains-layer {
   position: absolute;
-  top: 6vh;
+  top: 5vh;
   left: 0;
   right: 0;
-  height: 38vh;
+  /* Bumped from 38vh → 44vh to fit the larger train cards below
+     (220x140 vs old 140x86) without the rows overlapping. */
+  height: 44vh;
   pointer-events: none;
   z-index: 2;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 14px;
+  gap: 18px;
   padding: 0;
 }
 
 .other-trains {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
   width: 100%;
 }
 
 .other-train-row {
   overflow: hidden;
-  height: 86px;
+  /* Cards bumped from 86 → 140 tall, so row height matches. */
+  height: 140px;
   width: 100%;
   mask-image: linear-gradient(
     to right,
     transparent 0,
-    black 4%,
-    black 96%,
+    black 5%,
+    black 95%,
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0,
-    black 4%,
-    black 96%,
+    black 5%,
+    black 95%,
     transparent 100%
   );
 }
 
 .other-train-strip {
   display: flex;
-  gap: 16px;
+  gap: 22px;
   will-change: transform;
-  /* No transition — JS computes the transform every scroll frame,
-     a CSS transition would add lag. */
+  /* No transition — JS writes the transform every scroll frame via
+     ref (no React state), and a CSS transition would add lag. */
 }
 
 .other-train-card {
   flex: 0 0 auto;
-  width: 140px;
-  height: 86px;
-  border-radius: 8px;
+  /* Bumped 140 → 220 wide, 86 → 140 tall. Bigger, more confident. */
+  width: 220px;
+  height: 140px;
+  border-radius: 10px;
   display: flex;
   align-items: flex-end;
-  padding: 10px 12px;
+  padding: 14px 16px;
   color: white;
   font-family: var(--font-mono, "JetBrains Mono", monospace);
-  font-size: 10.5px;
-  letter-spacing: 0.12em;
+  font-size: 13px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  box-shadow: 0 8px 20px -10px rgba(26, 23, 20, 0.35);
+  box-shadow: 0 10px 24px -12px rgba(26, 23, 20, 0.35);
 }
 
 /* 3D desk canvas in the lower portion of the viewport. */

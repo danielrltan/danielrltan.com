@@ -21,20 +21,21 @@ interface Props {
   opacity: number;
 }
 
-// World-space width of the signature rig. Camera is at z=6 with
-// fov=28° (perspective half-angle 14°), giving a viewport half-width
-// at z=0 of tan(14°) * 6 ≈ 1.5 world units. Setting RIG_WIDTH to 2.5
-// frames the signature at ~83% of viewport width with breathing room
-// on either side.
-const RIG_WIDTH = 2.5;
-const TUBE_RADIUS = 0.022;
-// Warm walnut base picks up orange highlights from the cursor-tracking
-// point light. Pure-dark base read as a flat black silhouette and the
-// only color visible was the highlight smear; the warmer base lets
-// the unlit portions of the signature still feel "alive."
-const SIGNATURE_BASE_COLOR = "#3a2418";
-const SIGNATURE_METALNESS = 0.55;
-const SIGNATURE_ROUGHNESS = 0.40;
+// World-space width of the signature rig. The signature is now a
+// SECONDARY accent inside the hero composition (HTML wordmark is
+// the primary subject), so it's framed smaller — sits in the slim
+// band between the two wordmark lines.
+const RIG_WIDTH = 1.8;
+const TUBE_RADIUS = 0.018;
+// Soft warm walnut. Previous tuning (metalness 0.55, roughness 0.4)
+// gave the strokes a sharp, polished-metal feel that read as
+// "rendered" — the user called it "super sharp." Bumping metalness
+// down and roughness up makes the surface diffuse like a wooden
+// engraving, with the cursor-light just gently warming the edges
+// rather than throwing harsh specular highlights.
+const SIGNATURE_BASE_COLOR = "#3d2719";
+const SIGNATURE_METALNESS = 0.15;
+const SIGNATURE_ROUGHNESS = 0.68;
 
 function SignatureMesh({ data }: { data: SignatureData }) {
   const groupRef = useRef<THREE.Group>(null);

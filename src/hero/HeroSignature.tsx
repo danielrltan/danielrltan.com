@@ -3,22 +3,31 @@ import { HeroSignature2D } from "./HeroSignature2D";
 import { HeroSignature3D } from "./HeroSignature3D";
 import { type SignatureData } from "./signatureGeometry";
 import { useAssembly } from "../loading";
+import "./hero-composition.css";
 
 /**
- * Hero signature orchestrator — replaces the wireframe loading screen.
+ * Hero composition — the full landing scene. Replaces the
+ * standalone 3D signature with an editorial composition:
  *
- * State machine:
- *   drawing    — 2D canvas drawing the signature in white on orange.
- *                The orange background comes from the wrapper's
- *                `loading-active` CSS; this component itself only
- *                renders the strokes.
- *   transition — drawing complete AND assets loaded. 2D fades out,
- *                3D fades in. Loading-active is removed by
- *                AssemblyController as soon as the assembly state's
- *                `climaxDone` flips (we treat that as our "ready"
- *                signal).
- *   settled    — only the 3D signature is rendered. Cursor parallax +
- *                cursor-tracked point light run continuously.
+ *   ┌─ 00 / hero —————————————————────────────────────────────────┐
+ *   │                                                              │
+ *   │   D A N I E L                                                │
+ *   │           R . L . T A N .                                    │
+ *   │       [3D signature accent, drawn small, sits in the         │
+ *   │        negative space between the wordmark lines]            │
+ *   │                                                              │
+ *   ├──────── ·  software engineer · toronto · ●  2026  ───────────┤
+ *   │                                                  scroll ↓    │
+ *   └──────────────────────────────────────────────────────────────┘
+ *
+ * Asymmetric stagger between the two wordmark lines + giant scale,
+ * with the signature as a kinetic accent. The 3D signature is now
+ * supporting, not the entire hero.
+ *
+ * State machine — same gates as before (signature draws in white on
+ * orange during loading, transitions to 3D once assets + draw both
+ * done), but the wordmark composition is always present and animates
+ * in on the same `settled` trigger.
  */
 
 type Phase = "drawing" | "transition" | "settled";
@@ -29,7 +38,6 @@ export function HeroSignature() {
   const [phase, setPhase] = useState<Phase>("drawing");
   const assembly = useAssembly();
 
-  // Fetch signature.json once.
   useEffect(() => {
     let cancelled = false;
     fetch("/signature.json")
@@ -43,18 +51,11 @@ export function HeroSignature() {
     };
   }, []);
 
-  // Trigger the crossfade when (a) the 2D draw finished AND (b) the
-  // loader says we're ready. Both gates required so a cached-asset
-  // load doesn't snap to 3D before the signature finishes drawing,
-  // and a slow asset load doesn't strand the user on a completed 2D
-  // canvas with nothing to do.
   useEffect(() => {
     if (phase !== "drawing") return;
     if (!drawingComplete) return;
     if (!assembly.climaxReady) return;
     setPhase("transition");
-    // Crossfade duration matches the CSS transition on the 2D / 3D
-    // wrappers. After the fade, drop the 2D canvas entirely.
     const t = window.setTimeout(() => setPhase("settled"), 600);
     return () => window.clearTimeout(t);
   }, [phase, drawingComplete, assembly.climaxReady]);
@@ -62,6 +63,10 @@ export function HeroSignature() {
   const twoDOpacity = phase === "drawing" ? 1 : 0;
   const threeDOpacity = phase === "drawing" ? 0 : 1;
   const renderTwoD = phase !== "settled";
+  // The composition wrapper is hidden while the white-on-orange
+  // signature draw is in progress (during loading). Once the draw
+  // completes we crossfade the whole editorial composition in.
+  const compositionVisible = phase !== "drawing";
 
   return (
     <>
@@ -72,7 +77,59 @@ export function HeroSignature() {
           onComplete={() => setDrawingComplete(true)}
         />
       )}
-      <HeroSignature3D data={data} opacity={threeDOpacity} />
+      <div
+        className={`hero-composition${compositionVisible ? " is-visible" : ""}`}
+        aria-hidden={!compositionVisible}
+      >
+        <div className="hero-top">
+          <span className="hero-eyebrow">
+            <span className="hero-eyebrow-dot" />
+            00 / Portfolio &nbsp;&middot;&nbsp; 2026
+          </span>
+        </div>
+
+        <div className="hero-wordmark-stack">
+          <div className="hero-line hero-line-1">
+            <span style={{ animationDelay: "0.18s" }}>D</span>
+            <span style={{ animationDelay: "0.22s" }}>a</span>
+            <span style={{ animationDelay: "0.26s" }}>n</span>
+            <span style={{ animationDelay: "0.30s" }}>i</span>
+            <span style={{ animationDelay: "0.34s" }}>e</span>
+            <span style={{ animationDelay: "0.38s" }}>l</span>
+          </div>
+          <div className="hero-signature-slot">
+            <HeroSignature3D data={data} opacity={threeDOpacity} />
+          </div>
+          <div className="hero-line hero-line-2">
+            <span style={{ animationDelay: "0.46s" }}>R</span>
+            <span style={{ animationDelay: "0.50s" }}>.</span>
+            <span style={{ animationDelay: "0.54s" }}>L</span>
+            <span style={{ animationDelay: "0.58s" }}>.</span>
+            <span style={{ animationDelay: "0.66s" }}>T</span>
+            <span style={{ animationDelay: "0.70s" }}>a</span>
+            <span style={{ animationDelay: "0.74s" }}>n</span>
+            <span style={{ animationDelay: "0.78s" }}>.</span>
+          </div>
+        </div>
+
+        <div className="hero-bottom">
+          <div className="hero-rule" aria-hidden />
+          <div className="hero-meta">
+            <span className="hero-meta-bullet">●</span>
+            <span>Software engineer</span>
+            <span className="hero-meta-dot">/</span>
+            <span>Toronto, CA</span>
+            <span className="hero-meta-dot">/</span>
+            <span>Available 2026</span>
+          </div>
+          <div className="hero-scroll">
+            <span className="hero-scroll-label">Scroll</span>
+            <span className="hero-scroll-arrow" aria-hidden>
+              ↓
+            </span>
+          </div>
+        </div>
+      </div>
     </>
   );
 }

@@ -31,7 +31,6 @@ import {
   AssemblyWireframesSlot,
 } from "./loading";
 import { HeroSignature } from "./hero/HeroSignature";
-import { SectionGate } from "./portfolio/SectionGate";
 import { ScrollCamera } from "./ScrollCamera";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { useScrollProgress } from "./useScrollProgress";
@@ -666,12 +665,6 @@ export default function App() {
         {roomLoaded && !isMobile && <MoveableCursor hot={moveableHover} />}
 
         <PortfolioSections />
-
-        {/* About→Macintosh transition curtain. Slides up from below,
-            holds with a giant "The stack." title, slides up out the
-            top. Fills the visual seam between two heavy 3D scenes
-            with a deliberate typographic moment. */}
-        {!isMobile && <SectionGate />}
 
         <RoomHUD
           onReset={resetRoom}

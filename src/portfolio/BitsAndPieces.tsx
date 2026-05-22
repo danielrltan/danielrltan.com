@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import "./sections.css";
 import "./bits-and-pieces.css";
-
-gsap.registerPlugin(ScrollTrigger);
 
 /**
  * Bits and Pieces — the "extras" / accomplishments section, rebuilt
@@ -127,8 +123,6 @@ const TOTAL_WINS = ENTRIES.filter(
 ).length;
 const TOTAL_LEADERSHIP = ENTRIES.filter((e) => e.category === "Leadership").length;
 
-const PIN_DURATION_PX = 1600;
-
 function formatMoney(n: number): string {
   if (n >= 1000) return `$${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
   return `$${n}`;
@@ -138,6 +132,66 @@ interface CountUpProps {
   to: number;
   active: boolean;
   format?: (n: number) => string;
+}
+
+/**
+ * Per-card reveal — each card watches itself via IntersectionObserver
+ * and adds `is-revealed` when it enters viewport. Latched (one-shot)
+ * so scrolling back up doesn't replay the reveal.
+ */
+function BpTile({
+  entry,
+  index,
+  direction,
+}: {
+  entry: Entry;
+  index: number;
+  direction: "left" | "right";
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    if (revealed) return;
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setRevealed(true);
+            io.disconnect();
+            return;
+          }
+        }
+      },
+      { rootMargin: "0px 0px -10% 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [revealed]);
+  return (
+    <article
+      ref={ref as unknown as React.RefObject<HTMLDivElement>}
+      className={[
+        "bp-tile",
+        `bp-tile--${entry.category.toLowerCase()}`,
+        entry.featured ? "bp-tile--featured" : "",
+        `bp-tile--from-${direction}`,
+        revealed ? "is-revealed" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={{
+        transitionDelay: `${(index % 6) * 60}ms`,
+      }}
+    >
+      <div className="bp-tile-cat">{entry.category}</div>
+      <h3 className="bp-tile-title">{entry.title}</h3>
+      {entry.metric && <div className="bp-tile-metric">{entry.metric}</div>}
+      {entry.context && <div className="bp-tile-context">{entry.context}</div>}
+      {entry.blurb && <p className="bp-tile-blurb">{entry.blurb}</p>}
+    </article>
+  );
 }
 
 function CountUp({ to, active, format = (n) => `${n}` }: CountUpProps) {
@@ -163,56 +217,63 @@ export function BitsAndPieces() {
   const sectionRef = useRef<HTMLElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const [statsActive, setStatsActive] = useState(false);
-  const [pinProgress, setPinProgress] = useState(0);
 
+  // Section is NO LONGER pinned — previously a GSAP pin tried to fit
+  // 12 cards into a single 100vh viewport, which cut off the bottom
+  // half. Now it's a regular tall section: cards reveal as they
+  // enter viewport (IntersectionObserver per card, no global pin),
+  // and the marquee shifts based on the section's own scroll
+  // progress against the viewport.
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
 
-    const st = ScrollTrigger.create({
-      trigger: el,
-      start: "top top",
-      end: `+=${PIN_DURATION_PX}`,
-      pin: true,
-      pinSpacing: true,
-      scrub: true,
-      anticipatePin: 1,
-      onEnter: () => setStatsActive(true),
-      onUpdate: (self) => {
-        // Marquee horizontal shift scales with pin progress for a
-        // gentle scroll-driven slide (no auto-marquee — feels more
-        // intentional when the user's scroll is what moves it).
-        if (marqueeRef.current) {
-          marqueeRef.current.style.transform = `translate3d(${-self.progress * 28}%, 0, 0)`;
+    // IntersectionObserver to trigger the stats count-up once the
+    // section first enters viewport.
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setStatsActive(true);
+            io.disconnect();
+            return;
+          }
         }
-        setPinProgress(self.progress);
       },
-    });
+      { rootMargin: "-20% 0px" },
+    );
+    io.observe(el);
 
-    const html = document.documentElement;
-    let lastLoading = html.classList.contains("loading-active");
-    const obs = new MutationObserver(() => {
-      const now = html.classList.contains("loading-active");
-      if (lastLoading && !now) ScrollTrigger.refresh();
-      lastLoading = now;
-    });
-    obs.observe(html, { attributes: true, attributeFilter: ["class"] });
-    if (!lastLoading) {
-      requestAnimationFrame(() => ScrollTrigger.refresh());
-    }
+    // Marquee — track the section's vertical scroll progress with
+    // the viewport and slide horizontally. rAF-paced so it doesn't
+    // reconcile React; we write transform directly via ref.
+    let raf = 0;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      const vh = window.innerHeight || 1;
+      // section-progress = how far the section has scrolled past
+      // viewport bottom toward viewport top. 0 = just entered, 1 =
+      // about to leave.
+      const p = (vh - r.top) / (vh + r.height);
+      const clamped = Math.max(0, Math.min(1, p));
+      if (marqueeRef.current) {
+        marqueeRef.current.style.transform = `translate3d(${-clamped * 36}%, 0, 0)`;
+      }
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
     return () => {
-      obs.disconnect();
-      st.kill();
+      io.disconnect();
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
     };
   }, []);
-
-  // Each card reveals at a per-card threshold computed from pin
-  // progress. Threshold = 0.20 + (i / N) * 0.55 — final card lands
-  // at p≈0.75, leaving the back ~25% as a dwell beat with everything
-  // in place.
-  const cardThresholds = ENTRIES.map(
-    (_, i) => 0.20 + (i / Math.max(1, ENTRIES.length - 1)) * 0.55,
-  );
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-bp">
@@ -236,9 +297,7 @@ export function BitsAndPieces() {
           <span className="section-index bp-index">
             05 / 06 &middot; Bits and pieces
           </span>
-          <h2 className="bp-title">
-            The <em>trophy</em> wall.
-          </h2>
+          <h2 className="bp-title">The trophy wall.</h2>
           <p className="bp-blurb">
             The extras — awards, grants, leadership, scholarships.
             What the timeline above doesn&rsquo;t have room for.
@@ -274,27 +333,14 @@ export function BitsAndPieces() {
 
         <div className="bp-grid">
           {ENTRIES.map((e, i) => {
-            const revealed = pinProgress >= cardThresholds[i]!;
             const direction = i % 2 === 0 ? "left" : "right";
             return (
-              <article
+              <BpTile
                 key={i}
-                className={[
-                  "bp-tile",
-                  `bp-tile--${e.category.toLowerCase()}`,
-                  e.featured ? "bp-tile--featured" : "",
-                  `bp-tile--from-${direction}`,
-                  revealed ? "is-revealed" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <div className="bp-tile-cat">{e.category}</div>
-                <h3 className="bp-tile-title">{e.title}</h3>
-                {e.metric && <div className="bp-tile-metric">{e.metric}</div>}
-                {e.context && <div className="bp-tile-context">{e.context}</div>}
-                {e.blurb && <p className="bp-tile-blurb">{e.blurb}</p>}
-              </article>
+                entry={e}
+                index={i}
+                direction={direction}
+              />
             );
           })}
         </div>

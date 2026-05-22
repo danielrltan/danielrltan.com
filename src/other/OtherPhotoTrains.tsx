@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 /**
- * HTML photo "trains" — 3 horizontal rows stacked vertically, each
- * sliding sideways at a different rate (alternating directions) as
- * the user scrolls vertically through the section. Provides the
- * "indication of scrolling" the user wanted without forcing the
- * carousel-style 3D treatment of the Photos section.
+ * Hobby photo trains — three horizontal rows that slide opposite
+ * directions as the user scrolls vertically through the section.
+ *
+ * Performance note: previous version updated React state on every
+ * scroll frame, which reconciled the WHOLE strip + its repeated
+ * children on every rAF → janky scroll. Rebuilt to write transforms
+ * DIRECTLY to refs in a rAF loop with NO state — the strips
+ * themselves never re-render after mount.
  */
 
 interface Props {
@@ -14,17 +17,21 @@ interface Props {
 }
 
 const ROWS = 3;
-// Each row's relative speed (in row-widths per section-scroll). +1 =
-// scroll right as user scrolls down; -1 = scroll left. Mixed signs
-// give the parallax-y look.
-const ROW_SPEEDS = [1.2, -1.0, 0.8];
+// Relative speed per row. Sign = direction. Magnitude > 1 means the
+// strip moves faster than the user's scroll progress through the
+// section.
+const ROW_SPEEDS = [1.6, -1.3, 1.1];
 
 export function OtherPhotoTrains({ photos, sectionRef }: Props) {
-  const [progress, setProgress] = useState(0);
+  const rowRefs = useRef<Array<HTMLDivElement | null>>([null, null, null]);
 
-  // Track vertical scroll progress through the section. Same math
-  // as PhotosCarousel — section's vertical position relative to
-  // viewport mapped to 0..1.
+  // Repeat the photos 3x per row so the strip is always wider than
+  // the viewport regardless of which direction it's translating.
+  const repeated = useMemo(
+    () => [...photos, ...photos, ...photos],
+    [photos],
+  );
+
   useEffect(() => {
     let raf = 0;
     const update = () => {
@@ -32,8 +39,20 @@ export function OtherPhotoTrains({ photos, sectionRef }: Props) {
       if (!el) return;
       const r = el.getBoundingClientRect();
       const vh = window.innerHeight || 1;
+      // 0 = section just appeared at viewport bottom
+      // 1 = section just exited viewport top
       const p = (vh - r.top) / (vh + r.height);
-      setProgress(Math.max(0, Math.min(1, p)));
+      const clamped = Math.max(0, Math.min(1, p));
+      for (let i = 0; i < ROWS; i++) {
+        const row = rowRefs.current[i];
+        if (!row) continue;
+        const speed = ROW_SPEEDS[i]!;
+        // Anchor at (clamped - 0.5) so each row passes through its
+        // "rest position" at section midpoint. Width 280% of strip
+        // gives meaningful travel even on smaller viewports.
+        const shift = (clamped - 0.5) * speed * 280;
+        row.style.transform = `translate3d(${-shift}%, 0, 0)`;
+      }
     };
     const onScroll = () => {
       cancelAnimationFrame(raf);
@@ -49,46 +68,30 @@ export function OtherPhotoTrains({ photos, sectionRef }: Props) {
     };
   }, [sectionRef]);
 
-  // For visual continuity each row repeats the photo list twice
-  // (with different starting offsets) so the slide never reveals
-  // empty space at the edges, regardless of which direction it
-  // moves.
-  const repeated = useMemo(
-    () => [...photos, ...photos, ...photos],
-    [photos],
-  );
-
   return (
     <div className="other-trains">
-      {Array.from({ length: ROWS }).map((_, rowIdx) => {
-        // Negative speeds go right-to-left. translateX is
-        // proportional to (progress - 0.5) so each row passes through
-        // its "centered" position at section midpoint.
-        const speed = ROW_SPEEDS[rowIdx]!;
-        const shift = (progress - 0.5) * speed * 200; // percent
-        return (
-          <div key={rowIdx} className="other-train-row">
-            <div
-              className="other-train-strip"
-              style={{
-                transform: `translate3d(${-shift}%, 0, 0)`,
-              }}
-            >
-              {repeated.map((p, i) => (
-                <div
-                  key={i}
-                  className="other-train-card"
-                  style={{
-                    background: `linear-gradient(135deg, ${p.color}, ${darken(p.color, 0.35)})`,
-                  }}
-                >
-                  <span>{p.label}</span>
-                </div>
-              ))}
-            </div>
+      {Array.from({ length: ROWS }).map((_, rowIdx) => (
+        <div key={rowIdx} className="other-train-row">
+          <div
+            ref={(el) => {
+              rowRefs.current[rowIdx] = el;
+            }}
+            className="other-train-strip"
+          >
+            {repeated.map((p, i) => (
+              <div
+                key={i}
+                className="other-train-card"
+                style={{
+                  background: `linear-gradient(135deg, ${p.color}, ${darken(p.color, 0.35)})`,
+                }}
+              >
+                <span>{p.label}</span>
+              </div>
+            ))}
           </div>
-        );
-      })}
+        </div>
+      ))}
     </div>
   );
 }
