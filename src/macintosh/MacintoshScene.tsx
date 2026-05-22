@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import {
   SKILL_LOGOS,
@@ -185,6 +186,10 @@ function relLuminance(hex: string): number {
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }
 
+// Preload the GLB so it's ready when the section pins. URL is the
+// path served by Vite/static — see public/mac.glb.
+useGLTF.preload("/mac.glb");
+
 function MacBody({
   screenOnRef,
   screenTexture,
@@ -192,66 +197,86 @@ function MacBody({
   screenOnRef: React.MutableRefObject<number>;
   screenTexture: THREE.Texture;
 }) {
-  const screenMatRef = useRef<THREE.MeshStandardMaterial>(null);
+  // Load the GLB. The shape of the .scene return from useGLTF is a
+  // THREE.Group; we walk it to find the screen mesh + apply the
+  // CanvasTexture there, so the boot text / desktop tiles paint on
+  // whatever mesh the artist designated as the CRT face.
+  const { scene } = useGLTF("/mac.glb") as unknown as { scene: THREE.Group };
+  const screenMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
+
+  // Clone the loaded GLB once. The traversal below operates on this
+  // clone (NOT the cached original) because <primitive> renders the
+  // clone — swapping a material on the cached scene wouldn't change
+  // anything visible. The deep clone gives each instance its own
+  // material objects.
+  const clone = useMemo(() => scene?.clone(true), [scene]);
+
+  // Walk the clone, identify the screen mesh by material name
+  // "screen" (set by the artist), and replace its material with one
+  // bound to the live CanvasTexture so the boot text + desktop
+  // tiles render on the CRT face.
+  useEffect(() => {
+    if (!clone) return;
+    let screenMesh: THREE.Mesh | null = null;
+    clone.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const matSources: THREE.Material[] = Array.isArray(obj.material)
+        ? obj.material
+        : [obj.material];
+      const matchesByMat = matSources.some((m) => {
+        const n = (m?.name ?? "").toLowerCase();
+        return n === "screen" || n.includes("screen") || n.includes("crt");
+      });
+      const objName = obj.name.toLowerCase();
+      if (
+        !screenMesh &&
+        (matchesByMat ||
+          objName.includes("screen") ||
+          objName.includes("crt") ||
+          objName.includes("display"))
+      ) {
+        screenMesh = obj;
+      }
+      obj.castShadow = true;
+      obj.receiveShadow = false;
+    });
+    if (screenMesh) {
+      const newMat = new THREE.MeshStandardMaterial({
+        map: screenTexture,
+        color: "#ffffff",
+        emissiveMap: screenTexture,
+        emissive: new THREE.Color("#ffffff"),
+        emissiveIntensity: 0,
+        transparent: true,
+        roughness: 0.25,
+        metalness: 0,
+        toneMapped: false,
+      });
+      (screenMesh as THREE.Mesh).material = newMat;
+      screenMatRef.current = newMat;
+    }
+  }, [clone, screenTexture]);
+
   useFrame(() => {
     if (screenMatRef.current) {
-      // The screen face is opacity-controlled so it stays dark when
-      // off and fully visible (with map drawn) when on.
-      screenMatRef.current.opacity = Math.min(1, screenOnRef.current * 1.5 + 0.1);
+      screenMatRef.current.opacity = Math.min(
+        1,
+        screenOnRef.current * 1.5 + 0.1,
+      );
       screenMatRef.current.emissiveIntensity = screenOnRef.current * 0.6;
     }
   });
+
+  if (!clone) return null;
+  // The exported mac.glb has its bottom anchored near y=0 with the
+  // model extending up to y≈8.26 (size 6×8×6 world units). Old
+  // primitive Mac was ~1.6×1.7×1.05, so we scale 0.21 to bring it
+  // back to roughly the same footprint. No additional translation
+  // needed since the model is already bottom-anchored — at scale
+  // 0.21 the bottom stays near origin and the top sits at y≈1.73.
   return (
-    <group>
-      <mesh position={[0, 0.85, 0]} castShadow>
-        <boxGeometry args={[1.6, 1.7, 1.05]} />
-        <meshStandardMaterial color="#e3dccf" roughness={0.6} metalness={0.05} />
-      </mesh>
-      <mesh position={[0, 1.71, 0]}>
-        <boxGeometry args={[1.4, 0.04, 0.95]} />
-        <meshStandardMaterial color="#c8c0b0" roughness={0.55} metalness={0.1} />
-      </mesh>
-      <mesh position={[0, 1.0, 0.53]}>
-        <boxGeometry args={[1.15, 0.85, 0.02]} />
-        <meshStandardMaterial color="#171511" roughness={0.4} metalness={0.05} />
-      </mesh>
-      <mesh position={[0, 1.0, 0.545]}>
-        <planeGeometry args={[1.02, 0.72]} />
-        <meshStandardMaterial
-          ref={screenMatRef}
-          map={screenTexture}
-          color="#ffffff"
-          emissiveMap={screenTexture}
-          emissive="#ffffff"
-          emissiveIntensity={0}
-          transparent
-          roughness={0.25}
-          metalness={0}
-          toneMapped={false}
-        />
-      </mesh>
-      <mesh position={[0, 0.32, 0.53]}>
-        <boxGeometry args={[1.4, 0.5, 0.02]} />
-        <meshStandardMaterial color="#d8d0c0" roughness={0.55} metalness={0.05} />
-      </mesh>
-      <mesh position={[0.5, 0.3, 0.545]}>
-        <circleGeometry args={[0.025, 16]} />
-        <meshStandardMaterial
-          color="#e87040"
-          emissive="#e87040"
-          emissiveIntensity={1.2}
-          roughness={0.3}
-          metalness={0}
-        />
-      </mesh>
-      <mesh position={[0.45, 0.55, 0.545]}>
-        <boxGeometry args={[0.5, 0.03, 0.005]} />
-        <meshStandardMaterial color="#a89e8c" roughness={0.6} metalness={0.05} />
-      </mesh>
-      <mesh position={[0, -0.05, 0]}>
-        <boxGeometry args={[1.5, 0.1, 1.0]} />
-        <meshStandardMaterial color="#c8c0b0" roughness={0.55} metalness={0.1} />
-      </mesh>
+    <group scale={[0.21, 0.21, 0.21]}>
+      <primitive object={clone} />
     </group>
   );
 }
