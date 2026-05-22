@@ -122,17 +122,67 @@ function useHeroFade(): number {
  * SectionGate curtain (see App JSX) fills that gap with a deliberate
  * typographic moment.
  */
-// Room is visible during the ENTIRE About-section pin (which now
-// holds for ~1.4 viewports of scroll via GSAP pin in About.tsx).
-// About section's content body lives from scrollY ≈ 1vh to ≈ 2.2vh
-// after pin, so the fade window is anchored to those edges:
-//   0.9 .. 1.2vh  : fading in
-//   1.2 .. 2.10vh : visible — full About beat
-//   2.10 .. 2.30vh: fading out, just as About's pin releases
-const ROOM_FADE_IN_START_VH = 0.9;
-const ROOM_FADE_IN_END_VH = 1.2;
+// Room appears AFTER the wireframe assembly sequence completes.
+// User feedback: "wireframe first, then have the room model appear.
+// this looks messy."
+//
+// ScrollWireframeRoom's envelope is anchored to aboutProgress
+// (0..1 across scrollY 0.9..2.20vh):
+//   pin 0.00-0.30 : wireframes assemble
+//   pin 0.30-0.45 : wireframes hold
+//   pin 0.45-0.55 : wireframes disassemble
+//
+// So the room solid render fades in from 0.55 → 0.65, which in
+// scrollY-vh terms is:
+//   0.9 + 0.55 * (2.20 - 0.9) = 1.615
+//   0.9 + 0.65 * (2.20 - 0.9) = 1.745
+//
+//   1.615 .. 1.745vh : fading in (post-wireframe)
+//   1.745 .. 2.10vh  : visible
+//   2.10 .. 2.30vh   : fading out (About pin releases)
+const ROOM_FADE_IN_START_VH = 1.615;
+const ROOM_FADE_IN_END_VH = 1.745;
 const ROOM_FADE_OUT_START_VH = 2.10;
 const ROOM_FADE_OUT_END_VH = 2.30;
+/**
+ * Wireframe-canvas-visibility hook — returns 1 while the wireframe
+ * envelope (defined in ScrollWireframeRoom) is active, 0 otherwise.
+ * Used to keep the room canvas wrapper from going opacity 0 during
+ * the wireframe-only beat (where roomOpacity itself is still 0).
+ *
+ * Anchored to the same scrollY/vh thresholds:
+ *   0.9vh    : wireframe pin start
+ *   1.615vh  : wireframe envelope returns to 0
+ */
+function useWireframeCanvasFade(): number {
+  const [t, setT] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      const vh = window.innerHeight || 1;
+      const ratio = window.scrollY / vh;
+      // Visible from 0.9vh to 1.615vh, with a soft 0.02vh fade at
+      // each edge so the canvas doesn't flick on/off if scroll
+      // happens to land on the boundary.
+      const on = ratio >= 0.88 && ratio <= 1.64;
+      setT(on ? 1 : 0);
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+  return t;
+}
+
 function useRoomFade(): number {
   const [t, setT] = useState(0);
   useEffect(() => {
@@ -275,45 +325,15 @@ export default function App() {
     // explicit mute toggle in RoomHUD which defaults to OFF.
   }, [transitionStarted]);
 
-  // Lenis smooth scroll — site-wide. Wraps native scroll into a
-  // tween-driven scrollTo so wheel deltas / touch swipes feel
-  // momentum-y rather than discrete.
-  //
-  // Sync with GSAP ScrollTrigger: ScrollTrigger reads scrollY on its
-  // own scroll listener, but Lenis interpolates BETWEEN the native
-  // scroll events — without explicit sync, pinned sections (About,
-  // Macintosh, BitsAndPieces) hand off jaggedly at their pin
-  // boundaries because ScrollTrigger sees discrete native scroll
-  // values while the page is actually at an intermediate Lenis-
-  // tweened position. Driving ScrollTrigger.update() from the same
-  // rAF as lenis.raf() removes that mismatch.
-  useEffect(() => {
-    const lenis = new Lenis({
-      duration: 1.05,
-      easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-      wheelMultiplier: 1,
-      touchMultiplier: 1.4,
-    });
-    gsap.registerPlugin(ScrollTrigger);
-    // The official Lenis × GSAP recipe:
-    //   1. On every Lenis scroll update, call ScrollTrigger.update().
-    //   2. Drive Lenis off the GSAP ticker (instead of a separate rAF)
-    //      so both run on the same frame timer — eliminates the
-    //      one-frame skew that made pin handoffs feel "snappy."
-    //   3. Disable GSAP's lag-smoothing for ScrollTrigger so it
-    //      reads the live Lenis position immediately.
-    lenis.on("scroll", ScrollTrigger.update);
-    const tickerFn = (time: number) => {
-      lenis.raf(time * 1000);
-    };
-    gsap.ticker.add(tickerFn);
-    gsap.ticker.lagSmoothing(0);
-    return () => {
-      gsap.ticker.remove(tickerFn);
-      lenis.destroy();
-    };
-  }, []);
+  // Lenis smooth scroll is owned by src/portfolio/Keypad.tsx
+  // (module-scope `ensureLenis()` singleton — it pre-dates this file
+  // and was already wired to ScrollTrigger.update + gsap.ticker).
+  // Initializing a SECOND Lenis here meant TWO smooth-scroll engines
+  // were both trying to drive window.scrollY, both calling
+  // ScrollTrigger.update, both adding to gsap.ticker — they fought
+  // over the scroll value and the keypad section's drop-in trigger
+  // never received clean monotonic progress, so the keypad failed
+  // to render on first scroll. Single source of truth restored.
 
   const completeTransition = useCallback(() => {
     sceneReadyRef.current = true;
@@ -453,6 +473,11 @@ export default function App() {
   // bump if either section gets taller.
   const heroOpacity = useHeroFade();
   const roomOpacity = useRoomFade();
+  // Canvas-wrapper opacity must include the WIREFRAME window too —
+  // otherwise the canvas is invisible during scroll 0.9..1.615vh
+  // (wireframes assembling) because roomOpacity is still 0 there.
+  // Wireframe phase spans 0.9..1.615vh on a 900px viewport.
+  const canvasOpacity = Math.max(roomOpacity, useWireframeCanvasFade());
 
   // Publish content opacity as a CSS variable on the document root so
   // every non-hero section's .portfolio-col can read it without
@@ -551,9 +576,9 @@ export default function App() {
             // the curiosity-cabinet redesign). roomOpacity is 0 during
             // Hero, fades to 1 through About, fades back to 0 as the
             // user scrolls into Skills/Macintosh.
-            opacity: (isMobile ? mobileCanvasOpacity : 1) * roomOpacity,
+            opacity: (isMobile ? mobileCanvasOpacity : 1) * canvasOpacity,
             pointerEvents:
-              (isMobile && mobileCanvasOpacity < 0.05) || roomOpacity < 0.05
+              (isMobile && mobileCanvasOpacity < 0.05) || canvasOpacity < 0.05
                 ? "none"
                 : "auto",
             zIndex: 0,
@@ -677,7 +702,17 @@ export default function App() {
                   allowedLinearError={0.0025}
                   contactNaturalFrequency={22}
                 >
-                  <Room key={roomResetKey} roomGroupRef={roomGroupRef} />
+                  {/* Room visibility gate — hide the solid model
+                      while wireframes are doing the work. User
+                      asked for "wireframe first, then have the
+                      room model appear." When canvasOpacity is non-
+                      zero but roomOpacity is 0, we're in the
+                      wireframe-only beat: render the Room but mark
+                      the group invisible so its meshes are skipped
+                      by the renderer. */}
+                  <group visible={roomOpacity > 0.01}>
+                    <Room key={roomResetKey} roomGroupRef={roomGroupRef} />
+                  </group>
                 </Physics>
                 {/* Scroll-driven wireframe annotation layer. Reads
                     aboutProgressRef per frame, draws orange line-
