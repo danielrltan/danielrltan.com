@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useWireframeManifest } from "./useWireframeManifest";
 import { PHASE_THRESHOLDS } from "./types";
@@ -64,6 +64,9 @@ function easeOutBack(t: number): number {
 export function ScrollWireframeRoom({ progressRef }: Props) {
   const manifest = useWireframeManifest();
   const groupRef = useRef<THREE.Group>(null);
+  const coverRef = useRef<THREE.Mesh>(null);
+  const coverMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const { camera } = useThree();
 
   const entries = useMemo<LineEntry[]>(() => {
     if (!manifest) return [];
@@ -111,26 +114,42 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
   // About pin so wireframes assemble (0→1) during the entry beat
   // and fade back out as the user approaches the Mac handoff.
   useFrame(() => {
-    if (entries.length === 0) return;
+    // Pin the cover dome to the camera so the camera is always
+    // inside it (BackSide material → renders only the inner face).
+    if (coverRef.current) {
+      coverRef.current.position.copy(camera.position);
+    }
+    if (entries.length === 0 && !coverMatRef.current) return;
     const p = progressRef.current;
-    // Envelope: wireframes ASSEMBLE on entry, then HARD DISASSEMBLE
-    // before the solid room appears. The two never share screen time
-    // — user feedback: "wireframes at the same time looks messy."
-    // Solid room's fade-in window (App.tsx ROOM_FADE_IN_END_VH) is
-    // tuned to begin RIGHT AFTER this envelope returns to 0.
-    //   p 0.00..0.30 : 0 → 1 (assemble)
-    //   p 0.30..0.45 : 1 (hold — the wireframe "moment")
-    //   p 0.45..0.55 : 1 → 0 (disassemble fast)
-    //   p > 0.55     : 0 (solid room takes over)
+    // Envelope: wireframes assemble first, hold, then CROSSFADE
+    // with the solid room (not a hard sequential cut — that left a
+    // moment of empty viewport between the two layers). The solid
+    // room's fade-in window in App.tsx (ROOM_FADE_IN_START/END_VH
+    // = 1.42..1.615vh) matches the disassemble window here so the
+    // two opacities cross at ~50/50 around pin 0.475.
+    //   p 0.00..0.30 : 0 → 1 (assemble, room hidden)
+    //   p 0.30..0.40 : 1 (hold — wireframe is the moment)
+    //   p 0.40..0.55 : 1 → 0 (disassemble while room fades IN)
+    //   p > 0.55     : 0 (solid room alone)
     let env: number;
     if (p < 0.30) {
       env = p / 0.30;
-    } else if (p < 0.45) {
+    } else if (p < 0.40) {
       env = 1;
     } else if (p < 0.55) {
-      env = 1 - (p - 0.45) / 0.10;
+      env = 1 - (p - 0.40) / 0.15;
     } else {
       env = 0;
+    }
+    // Cover dome opacity matches the wireframe envelope so the
+    // dome HIDES the real room behind it during the wireframe-only
+    // beat (pin 0.00 → 0.40 fully opaque), then fades in lockstep
+    // with the wireframes (pin 0.40 → 0.55). After pin 0.55 the
+    // dome is invisible and the solid room shows through. This
+    // eliminates the previous "empty viewport" gap where wireframes
+    // had faded but the solid room hadn't appeared yet.
+    if (coverMatRef.current) {
+      coverMatRef.current.opacity = env;
     }
     for (const e of entries) {
       const { mesh, material } = e;
@@ -158,5 +177,26 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
     }
   });
 
-  return <group ref={groupRef} />;
+  return (
+    <group ref={groupRef}>
+      {/* Cover dome pinned to the camera. While wireframes are
+          active, this dome's cream-colored interior face hides the
+          real room from the camera. Opacity tracks the wireframe
+          envelope so the room is revealed via a smooth dome-fade
+          rather than a popping group.visible toggle. */}
+      <mesh ref={coverRef} renderOrder={500} frustumCulled={false}>
+        <sphereGeometry args={[20, 16, 12]} />
+        <meshBasicMaterial
+          ref={coverMatRef}
+          color="#f4f1ea"
+          side={THREE.BackSide}
+          transparent
+          opacity={1}
+          depthWrite={false}
+          depthTest={false}
+          toneMapped={false}
+        />
+      </mesh>
+    </group>
+  );
 }

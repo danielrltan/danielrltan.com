@@ -122,26 +122,26 @@ function useHeroFade(): number {
  * SectionGate curtain (see App JSX) fills that gap with a deliberate
  * typographic moment.
  */
-// Room appears AFTER the wireframe assembly sequence completes.
-// User feedback: "wireframe first, then have the room model appear.
-// this looks messy."
+// Room CROSSFADES with the wireframe disassembly — they overlap so
+// there's never a moment of empty viewport between the two layers.
+// User feedback: "i dont like how the wireframe disappears and then
+// the room does, it looks so janky." Previous version had a 0.10
+// scroll gap (wireframes 1→0 at pin 0.45-0.55, then room 0→1 at
+// pin 0.55-0.65) where both layers were near-zero opacity → empty
+// frame.
 //
-// ScrollWireframeRoom's envelope is anchored to aboutProgress
-// (0..1 across scrollY 0.9..2.20vh):
-//   pin 0.00-0.30 : wireframes assemble
-//   pin 0.30-0.45 : wireframes hold
-//   pin 0.45-0.55 : wireframes disassemble
+// Now ScrollWireframeRoom's envelope is:
+//   pin 0.00-0.30 : wireframes assemble (room hidden)
+//   pin 0.30-0.40 : wireframes hold
+//   pin 0.40-0.55 : wireframes disassemble        ┐
+//   pin 0.40-0.55 : room fades IN simultaneously  ┘ crossfade
+//   pin 0.55+     : room alone
 //
-// So the room solid render fades in from 0.55 → 0.65, which in
-// scrollY-vh terms is:
+// In scrollY-vh terms (anchored to 0.9..2.20vh About range):
+//   0.9 + 0.40 * (2.20 - 0.9) = 1.42
 //   0.9 + 0.55 * (2.20 - 0.9) = 1.615
-//   0.9 + 0.65 * (2.20 - 0.9) = 1.745
-//
-//   1.615 .. 1.745vh : fading in (post-wireframe)
-//   1.745 .. 2.10vh  : visible
-//   2.10 .. 2.30vh   : fading out (About pin releases)
-const ROOM_FADE_IN_START_VH = 1.615;
-const ROOM_FADE_IN_END_VH = 1.745;
+const ROOM_FADE_IN_START_VH = 1.42;
+const ROOM_FADE_IN_END_VH = 1.615;
 const ROOM_FADE_OUT_START_VH = 2.10;
 const ROOM_FADE_OUT_END_VH = 2.30;
 /**
@@ -702,17 +702,14 @@ export default function App() {
                   allowedLinearError={0.0025}
                   contactNaturalFrequency={22}
                 >
-                  {/* Room visibility gate — hide the solid model
-                      while wireframes are doing the work. User
-                      asked for "wireframe first, then have the
-                      room model appear." When canvasOpacity is non-
-                      zero but roomOpacity is 0, we're in the
-                      wireframe-only beat: render the Room but mark
-                      the group invisible so its meshes are skipped
-                      by the renderer. */}
-                  <group visible={roomOpacity > 0.01}>
-                    <Room key={roomResetKey} roomGroupRef={roomGroupRef} />
-                  </group>
+                  {/* Room visibility is now handled by the
+                      ScrollWireframeRoom's cover dome — an opaque
+                      cream sphere pinned to the camera that hides
+                      the room during the wireframe-only beat and
+                      fades in lockstep with the wireframes. The
+                      Room itself stays mounted + visible always
+                      (no group.visible toggle, no pop-in seam). */}
+                  <Room key={roomResetKey} roomGroupRef={roomGroupRef} />
                 </Physics>
                 {/* Scroll-driven wireframe annotation layer. Reads
                     aboutProgressRef per frame, draws orange line-
