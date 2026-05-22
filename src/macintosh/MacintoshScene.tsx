@@ -496,12 +496,18 @@ function Scene({
   // accidental clicks during boot don't trigger project selection.
   const showDesktop = bootProgress >= 0.95;
 
+  // disintegrateRef kept alive so the existing per-frame state-update
+  // code path still runs without modification, but the LogoOrbit
+  // consumer is gone — tech logos are now rendered as a flat HTML
+  // marquee outside the canvas (see Macintosh.tsx → TechStackTicker).
+  // The user's note: "showing it around the monitor is gonna be
+  // really fucking hard and it's better to just see it laid out flat."
+  void disintegrateRef;
   return (
     <>
       <ambientLight intensity={0.55} color="#fff4e8" />
       <directionalLight position={[3, 5, 3]} intensity={1.0} color="#fff" />
       <directionalLight position={[-3, 2, 2]} intensity={0.35} color="#ffd4a8" />
-      <LogoOrbit logos={SKILL_LOGOS} disintegrateRef={disintegrateRef} />
       <group ref={macGroupRef}>
         <MacBody screenOnRef={screenOnRef} screenTexture={screenTexture} />
         <ScreenClickPlane

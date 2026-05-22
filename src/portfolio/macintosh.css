@@ -26,6 +26,91 @@
   opacity: 1;
 }
 
+/* Flat tech-stack scroller — auto-scrolling marquee row pinned at
+   the top of the section. Replaces the 3D orbit ring around the
+   Mac, which was hard to read (logos passed in front of / behind
+   the screen at unpredictable angles). The flat row uses a CSS
+   keyframe for the scroll — no JS, no scroll binding, no jitter.
+*/
+.tech-ticker {
+  position: absolute;
+  top: 10vh;
+  left: 0;
+  right: 0;
+  height: 60px;
+  pointer-events: none;
+  z-index: 3;
+  overflow: hidden;
+  /* Soft fade at left + right edges so the marquee loop point is
+     never visible. */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 6%,
+    black 94%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 6%,
+    black 94%,
+    transparent 100%
+  );
+}
+
+.tech-ticker-track {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 100%;
+  width: max-content;
+  white-space: nowrap;
+  /* Triple-content slide: -33.33% positions the second copy at the
+     original starting point, making the loop seamless. 42s is slow
+     enough to read each chip without feeling stalled. */
+  animation: tech-ticker-slide 42s linear infinite;
+  will-change: transform;
+}
+@keyframes tech-ticker-slide {
+  0%   { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-33.333%, 0, 0); }
+}
+
+.tech-ticker-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px 10px 14px;
+  background: rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(26, 23, 20, 0.08);
+  border-radius: 999px;
+  font-family: var(--font-display, "Geist", "Inter", sans-serif);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--wrapper-ink, #1a1714);
+}
+.tech-ticker-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--chip-color, #999);
+}
+.tech-ticker-label {
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tech-ticker-track {
+    animation-duration: 0s;
+    animation-play-state: paused;
+  }
+}
+
 .mac-col {
   position: relative;
   z-index: 2;

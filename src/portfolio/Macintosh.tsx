@@ -4,6 +4,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import "./sections.css";
 import "./macintosh.css";
 import { MacintoshScene } from "../macintosh/MacintoshScene";
+import { TechStackTicker } from "../macintosh/TechStackTicker";
 import { MAC_PROJECTS, type MacProject } from "../macintosh/projects";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -152,6 +153,10 @@ export function Macintosh() {
           />
         )}
       </div>
+      {/* Flat tech-stack scroller — replaces the orbiting 3D logos.
+          Pinned along the top of the section's portion of the viewport,
+          auto-scrolling horizontally with a slow CSS keyframe. */}
+      <TechStackTicker />
       <div className="portfolio-col mac-col">
         <span className="section-marker">02</span>
         <span className="section-index">02 / 06 &middot; Stack + Projects</span>

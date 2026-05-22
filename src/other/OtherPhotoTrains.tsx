@@ -4,11 +4,18 @@ import { useEffect, useMemo, useRef } from "react";
  * Hobby photo trains — three horizontal rows that slide opposite
  * directions as the user scrolls vertically through the section.
  *
- * Performance note: previous version updated React state on every
- * scroll frame, which reconciled the WHOLE strip + its repeated
- * children on every rAF → janky scroll. Rebuilt to write transforms
- * DIRECTLY to refs in a rAF loop with NO state — the strips
- * themselves never re-render after mount.
+ * Smoothness strategy (Awwwards-grade, hopefully):
+ *   - Scroll-driven target shift updates per scroll event.
+ *   - A continuous rAF loop lerps the ACTUAL strip transform toward
+ *     that target each frame.
+ *   - Result: even if scroll events come in jumpy chunks (Lenis
+ *     smoothing, mouse wheel, etc.), the strips glide smoothly to
+ *     their target position.
+ *
+ * Previous version bound the transform DIRECTLY to scrollY: any
+ * jitter in scrollY (which Lenis can introduce when it interpolates
+ * between scroll deltas) translated 1:1 to jitter in the strip
+ * transform. Lerp factor 0.08 absorbs that.
  */
 
 interface Props {
@@ -17,60 +24,81 @@ interface Props {
 }
 
 const ROWS = 3;
-// Relative speed per row. Sign = direction. Slowed dramatically
-// from [1.6, -1.3, 1.1] → [0.45, -0.38, 0.5] per user feedback:
-// "scrolling here increments these too fast, you need to slow down
-// scrolling here and allow these all to get shown." The strips
-// were sliding by faster than the eye could pick out individual
-// hobby labels.
+// Slow horizontal travel — every label has time to read.
 const ROW_SPEEDS = [0.45, -0.38, 0.5];
+// Total travel multiplier (in %) at full section progress. Paired
+// with the per-row speed so each row's max travel ~25–28% of the
+// strip width.
+const TRAVEL_MULT = 110;
+// Lerp factor per frame. 0.08 = ~25 frames to reach 95% of target
+// at 60fps (~400ms catch-up), smooth without feeling laggy.
+const LERP_K = 0.08;
 
 export function OtherPhotoTrains({ photos, sectionRef }: Props) {
   const rowRefs = useRef<Array<HTMLDivElement | null>>([null, null, null]);
+  // Target shift values are written from scroll handler; the rAF
+  // loop reads them and lerps the visible transform.
+  const targetShiftRef = useRef<number[]>([0, 0, 0]);
+  const currentShiftRef = useRef<number[]>([0, 0, 0]);
 
-  // Repeat the photos 3x per row so the strip is always wider than
-  // the viewport regardless of which direction it's translating.
   const repeated = useMemo(
     () => [...photos, ...photos, ...photos],
     [photos],
   );
 
   useEffect(() => {
-    let raf = 0;
-    const update = () => {
+    let scrollRaf = 0;
+    let loopRaf = 0;
+
+    const updateTargets = () => {
       const el = sectionRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
       const vh = window.innerHeight || 1;
-      // 0 = section just appeared at viewport bottom
-      // 1 = section just exited viewport top
       const p = (vh - r.top) / (vh + r.height);
       const clamped = Math.max(0, Math.min(1, p));
       for (let i = 0; i < ROWS; i++) {
-        const row = rowRefs.current[i];
-        if (!row) continue;
-        const speed = ROW_SPEEDS[i]!;
-        // Anchor at (clamped - 0.5) so each row passes through its
-        // "rest position" at section midpoint. Travel multiplier
-        // 280 → 110: paired with the slower ROW_SPEEDS, total
-        // travel per row across the full section scroll is now
-        // ~50% of strip width (was ~450%). Every hobby label has
-        // time to be read instead of blurring past.
-        const shift = (clamped - 0.5) * speed * 110;
-        row.style.transform = `translate3d(${-shift}%, 0, 0)`;
+        targetShiftRef.current[i] =
+          (clamped - 0.5) * ROW_SPEEDS[i]! * TRAVEL_MULT;
       }
     };
+
     const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
+      cancelAnimationFrame(scrollRaf);
+      scrollRaf = requestAnimationFrame(updateTargets);
     };
-    update();
+
+    // Continuous lerp loop — runs every frame, glides the actual
+    // strip transform toward the target. Always rAF, never tied to
+    // scroll events directly.
+    const tick = () => {
+      for (let i = 0; i < ROWS; i++) {
+        const cur = currentShiftRef.current[i]!;
+        const tgt = targetShiftRef.current[i]!;
+        const next = cur + (tgt - cur) * LERP_K;
+        currentShiftRef.current[i] = next;
+        const row = rowRefs.current[i];
+        if (row) {
+          row.style.transform = `translate3d(${-next}%, 0, 0)`;
+        }
+      }
+      loopRaf = requestAnimationFrame(tick);
+    };
+
+    updateTargets();
+    // Snap the initial position to avoid a 25-frame slide-in from 0
+    // when the section is already partially visible on mount.
+    for (let i = 0; i < ROWS; i++) {
+      currentShiftRef.current[i] = targetShiftRef.current[i]!;
+    }
+    loopRaf = requestAnimationFrame(tick);
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
-      cancelAnimationFrame(raf);
+      cancelAnimationFrame(scrollRaf);
+      cancelAnimationFrame(loopRaf);
     };
   }, [sectionRef]);
 
