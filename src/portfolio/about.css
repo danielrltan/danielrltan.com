@@ -40,13 +40,20 @@
   font-weight: 600;
   letter-spacing: 0.22em;
   color: var(--accent, #e87040);
+  /* Pin to the bottom of the wordmark line height so the small
+     mono "01" sits visually beside the big "Daniel." baseline. */
+  align-self: flex-end;
+  margin-bottom: 0.18em;
 }
 .about-floating-label {
   font-family: var(--font-display, "Geist", "Inter", sans-serif);
-  font-size: clamp(38px, 5vw, 64px);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 0.95;
+  /* Bumped up — the floating wordmark is now the section's editorial
+     anchor (the panel's redundant 'About.' H2 has been removed),
+     so this needs the typographic weight to carry the moment. */
+  font-size: clamp(64px, 9vw, 128px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 0.9;
   color: var(--wrapper-ink, #1a1714);
 }
 
@@ -131,10 +138,8 @@
   z-index: 1;
 }
 
-.about-h {
-  margin-top: 6px;
-  margin-bottom: 22px;
-}
+/* .about-h removed — the panel no longer renders an H2 since the
+   floating 'Daniel.' wordmark carries that role. */
 
 /* Lede paragraph — reveals at the start of the pin. */
 .about-lede {

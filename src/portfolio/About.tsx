@@ -130,9 +130,11 @@ export function About() {
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-about">
-      {/* Floating eyebrow during the room-solo beat. Fixed to the
-          bottom-left of the section viewport so it reads as a label
-          on the room rather than overlapping its center. */}
+      {/* Floating wordmark during the room-solo beat. Anchored to
+          the bottom-left of the viewport with the room as its
+          backdrop. Says 'Daniel.' instead of 'About' so it carries
+          personality rather than duplicating the panel's section
+          heading — the panel's eyebrow already says '01 / 06 · About'. */}
       <div
         className={`about-floating-eyebrow${
           floatingEyebrowVisible ? " is-visible" : ""
@@ -140,7 +142,7 @@ export function About() {
         aria-hidden
       >
         <span className="about-floating-num">01</span>
-        <span className="about-floating-label">About</span>
+        <span className="about-floating-label">Daniel.</span>
       </div>
 
       <div
@@ -155,7 +157,10 @@ export function About() {
       >
         <span className="section-marker">01</span>
         <span className="section-index">01 / 06 &middot; About</span>
-        <h2 className="about-h">About.</h2>
+        {/* H2 'About.' removed — the floating wordmark on the room
+            ('Daniel.') + the eyebrow above + the lede paragraph
+            below carry the section heading. A literal 'About.' here
+            duplicated what the floating element already said. */}
         <p
           className={`about-lede${ledeRevealed ? " is-revealed" : ""}`}
         >
