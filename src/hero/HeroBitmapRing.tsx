@@ -1,48 +1,60 @@
 import { useEffect, useMemo, useRef } from "react";
 
 /**
- * Bitmap-dithered ring for the hero composition. The ring is
- * rendered as a static canvas (one-time pixel paint), then a wrapper
- * div rotates it via a CSS keyframe — cheap, smooth, scales linearly
- * with viewport size.
+ * Bitmap ring — pixel-art arc.
  *
- * Aesthetic: scattered pixel dots in a circular band, like a
- * halftone screen exposed to noise. Inspired by editorial / risograph
- * print artifacts. The dot scatter is deterministic (seeded RNG) so
- * the ring renders the same on every load.
+ * Per the reference image (Pinterest DesignFamilyMarket post): a
+ * thick CURVED band made of chunky square pixels, color split into
+ * 3-4 zones around the arc, ragged pixel-art edges with the
+ * occasional fragment dropping off.
+ *
+ * Implementation:
+ * - Grid sized to CELL_PX. Each cell either filled or empty.
+ * - For each cell, compute (radius, angle) from canvas center.
+ * - Inside the band → fill with probability 1.
+ * - Edge cells (just past inner/outer radius) → fill with falloff
+ *   probability so the band has organic torn edges.
+ * - Color picked from a palette section based on the cell's angle —
+ *   each quadrant gets a dominant tone (top: orange, right: walnut,
+ *   bottom: ink, left: warm highlight). Within each section the
+ *   exact color is chosen randomly with the deterministic seeded
+ *   RNG, so the band has variegated mottling rather than 4 flat
+ *   color blocks.
  */
 
 interface Props {
-  /** CSS size — applied to both width and height of the wrapper. */
   size: number;
-  /** Seconds per full revolution. */
   spinDuration?: number;
-  /** Counter-clockwise if true. */
   reverse?: boolean;
 }
 
-// Outer / inner radius as a fraction of canvas size (which is square).
-const OUTER_R = 0.49;
-const INNER_R = 0.31;
-// How many dots to scatter. Higher = denser ring.
-const DOT_COUNT = 3200;
-// Pixel size distribution. Mostly small, occasional big.
-const DOT_SIZES = [1, 1, 1, 1, 2, 2, 2, 3];
+// CSS pixels per grid cell. Bigger = chunkier blocks. 8px gives
+// the visible "lego brick" feel from the reference.
+const CELL_PX = 8;
+const OUTER_R = 0.48;
+const INNER_R = 0.30;
+// Edge fuzziness — cells just outside the band are still filled at
+// decreasing probability so the band silhouette is ragged.
+const EDGE_FUZZ_OUT = 0.35;
+const EDGE_FUZZ_IN = 0.30;
+// Scatter dots that drop outside the ring entirely — like dust kicked
+// off the band. Used sparingly.
+const STRAY_RATE = 0.012;
+const STRAY_REACH = 1.7;
 
-// Brand palette for the dots. Heavy on the orange + walnut tones,
-// with occasional bright accent.
-const DOT_COLORS = [
-  "#e87040", // brand orange (frequent)
-  "#e87040",
-  "#e87040",
-  "#3a2418", // walnut (frequent)
-  "#3a2418",
-  "#7a4f30", // mid-tone
-  "#1a1714", // ink (rare, anchor weight)
-  "#ffae6a", // light highlight (rare)
+// Palette zones around the arc. Each entry is a list of candidate
+// colors for that angular region. Angles go 0 = right, ccw.
+//   region 0 (right):       walnut tones
+//   region 1 (top):         brand orange + warm highlight
+//   region 2 (left):        ink + walnut
+//   region 3 (bottom):      mid walnut + orange accent
+const ZONE_PALETTES: string[][] = [
+  ["#3a2418", "#3a2418", "#5a3a1f", "#1a1714"],
+  ["#e87040", "#e87040", "#ffae6a", "#3a2418"],
+  ["#1a1714", "#1a1714", "#3a2418", "#5a3a1f"],
+  ["#5a3a1f", "#3a2418", "#e87040", "#1a1714"],
 ];
 
-// Seeded RNG so the ring is identical on every render. Simple mulberry32.
 function makeRng(seed: number): () => number {
   let s = seed >>> 0;
   return () => {
@@ -55,52 +67,65 @@ function makeRng(seed: number): () => number {
 }
 
 function paintRing(canvas: HTMLCanvasElement, dpr: number) {
-  // Canvas backing buffer at dpr scale. The CSS width/height match
-  // the parent's logical size; we paint at higher density for crisp
-  // pixels.
-  const cssSize = canvas.width / dpr;
   const ctx = canvas.getContext("2d")!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const rng = makeRng(0xCAFE);
+  // Two RNG streams — one for cell-fill decisions, one for color
+  // choice — so changing density doesn't shift the color
+  // distribution.
+  const rngFill = makeRng(0xC0FFEE);
+  const rngColor = makeRng(0xDECAF);
   const cx = canvas.width / 2;
   const cy = canvas.height / 2;
   const outer = OUTER_R * canvas.width;
   const inner = INNER_R * canvas.width;
-  // Band thickness for density falloff (denser near the centre of
-  // the band, sparser at outer/inner edges).
-  for (let i = 0; i < DOT_COUNT; i++) {
-    // Angle uniformly distributed; radius weighted toward band
-    // centre so the ring's "core" reads denser.
-    const angle = rng() * Math.PI * 2;
-    // Bias radius toward the middle of the band using two random
-    // numbers (sum-of-uniforms gives a triangular distribution).
-    const tBias = (rng() + rng()) / 2;
-    const radius = inner + tBias * (outer - inner);
-    const x = cx + Math.cos(angle) * radius;
-    const y = cy + Math.sin(angle) * radius;
-    // Occasionally place a scatter dot OUTSIDE the band for the
-    // halftone-bleed effect (mimics the reference's edge speckle).
-    const scatter = rng() < 0.06;
-    const finalRadius = scatter
-      ? radius + (rng() - 0.5) * inner * 0.6
-      : radius;
-    const finalX = cx + Math.cos(angle) * finalRadius;
-    const finalY = cy + Math.sin(angle) * finalRadius;
-    if (finalX < 0 || finalY < 0 || finalX > canvas.width || finalY > canvas.height) continue;
-    const size = DOT_SIZES[Math.floor(rng() * DOT_SIZES.length)]! * dpr;
-    const color = DOT_COLORS[Math.floor(rng() * DOT_COLORS.length)]!;
-    ctx.fillStyle = color;
-    // Square pixels — matches the bitmap aesthetic better than round.
-    ctx.fillRect(finalX - size / 2, finalY - size / 2, size, size);
+  const band = outer - inner;
+  const cell = CELL_PX * dpr;
+  const halfCell = cell / 2;
+  const minX = Math.floor((cx - outer * STRAY_REACH) / cell) * cell;
+  const maxX = Math.ceil((cx + outer * STRAY_REACH) / cell) * cell;
+  const minY = Math.floor((cy - outer * STRAY_REACH) / cell) * cell;
+  const maxY = Math.ceil((cy + outer * STRAY_REACH) / cell) * cell;
+  for (let y = minY; y < maxY; y += cell) {
+    for (let x = minX; x < maxX; x += cell) {
+      const dx = x + halfCell - cx;
+      const dy = y + halfCell - cy;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      // Fill probability — band core 100%, edges taper, strays past.
+      let p = 0;
+      if (r >= inner && r <= outer) {
+        p = 1;
+      } else if (r > outer && r <= outer + band * EDGE_FUZZ_OUT) {
+        const over = (r - outer) / (band * EDGE_FUZZ_OUT);
+        p = (1 - over) ** 1.5;
+      } else if (r < inner && r >= inner - band * EDGE_FUZZ_IN) {
+        const under = (inner - r) / (band * EDGE_FUZZ_IN);
+        p = (1 - under) ** 1.5;
+      } else {
+        // Way outside — chance of a stray dust pixel.
+        p = STRAY_RATE * Math.max(0, 1 - (r - outer) / (outer * 0.7));
+      }
+      if (rngFill() < p) {
+        // Color zone by angle. atan2 range -PI..PI → 0..4.
+        const angle = Math.atan2(dy, dx);
+        const norm = (angle + Math.PI) / (Math.PI * 2); // 0..1
+        const zoneIdx = Math.floor(norm * ZONE_PALETTES.length) % ZONE_PALETTES.length;
+        const palette = ZONE_PALETTES[zoneIdx]!;
+        const color = palette[Math.floor(rngColor() * palette.length)]!;
+        ctx.fillStyle = color;
+        // Render cell minus 1 device pixel so each block has a hair-
+        // line gap from its neighbors — reads as discrete bricks.
+        ctx.fillRect(x, y, cell - dpr, cell - dpr);
+      } else {
+        // Advance color RNG too so colors stay deterministic per
+        // cell across re-renders.
+        rngColor();
+      }
+    }
   }
-  // Reference size for any consumer that wants to know what was painted.
-  void cssSize;
 }
 
 export function HeroBitmapRing({ size, spinDuration = 56, reverse }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // Backing buffer at devicePixelRatio for crisp dots on Retina
-  // displays. Re-painted whenever size or dpr changes.
   const dpr = useMemo(
     () =>
       typeof window === "undefined"
@@ -129,7 +154,12 @@ export function HeroBitmapRing({ size, spinDuration = 56, reverse }: Props) {
     >
       <canvas
         ref={canvasRef}
-        style={{ width: "100%", height: "100%", display: "block" }}
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "block",
+          imageRendering: "pixelated",
+        }}
       />
     </div>
   );

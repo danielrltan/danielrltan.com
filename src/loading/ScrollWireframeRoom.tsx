@@ -113,16 +113,24 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
   useFrame(() => {
     if (entries.length === 0) return;
     const p = progressRef.current;
-    // Convert to a unimodal envelope so wireframes ARE briefly the
-    // visual centerpiece, then yield to the solid room as the user
-    // settles in. peakProgress = a triangular wave peaking at 0.45.
+    // Envelope: wireframes ASSEMBLE on entry, then HARD DISASSEMBLE
+    // before the solid room appears. The two never share screen time
+    // — user feedback: "wireframes at the same time looks messy."
+    // Solid room's fade-in window (App.tsx ROOM_FADE_IN_END_VH) is
+    // tuned to begin RIGHT AFTER this envelope returns to 0.
+    //   p 0.00..0.30 : 0 → 1 (assemble)
+    //   p 0.30..0.45 : 1 (hold — the wireframe "moment")
+    //   p 0.45..0.55 : 1 → 0 (disassemble fast)
+    //   p > 0.55     : 0 (solid room takes over)
     let env: number;
-    if (p < 0.45) {
-      env = p / 0.45; // 0..1 ramp
-    } else if (p < 0.75) {
-      env = 1; // hold
+    if (p < 0.30) {
+      env = p / 0.30;
+    } else if (p < 0.45) {
+      env = 1;
+    } else if (p < 0.55) {
+      env = 1 - (p - 0.45) / 0.10;
     } else {
-      env = Math.max(0, 1 - (p - 0.75) / 0.25); // 1..0 ramp
+      env = 0;
     }
     for (const e of entries) {
       const { mesh, material } = e;

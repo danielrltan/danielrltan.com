@@ -24,21 +24,71 @@
   padding-bottom: 6vh;
   display: flex;
   flex-direction: column;
-  /* Glassy backdrop so text reads against the room: blur + a
-     barely-there cream overlay. Light enough to feel like an editorial
-     vellum sheet, not a heavy card. */
-  background: linear-gradient(
-    90deg,
-    rgba(248, 246, 243, 0) 0%,
-    rgba(248, 246, 243, 0.78) 10%,
-    rgba(248, 246, 243, 0.92) 100%
-  );
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-left: 1px solid rgba(26, 23, 20, 0.06);
-  padding-left: 38px;
-  padding-right: 38px;
+  /* Solid wrapper-bg panel with a sharp left edge — no gradient
+     fade-in. User's note on the previous gradient: "looks like a
+     shitty gradient, you can do better." Editorial newsprint-style
+     side panel: clean hard edge, light grain via a subtle pseudo-
+     element noise, a thin orange spine rule for editorial structure. */
+  background: var(--wrapper-bg, #f4f1ea);
+  border-left: 1px solid rgba(26, 23, 20, 0.08);
+  padding-left: 42px;
+  padding-right: 42px;
   box-sizing: border-box;
+  position: relative;
+}
+
+/* Thin orange spine on the left edge — picks up the brand accent
+   and reads as a deliberate editorial mark (folio rule) instead of
+   a fade-in gradient. */
+.portfolio-about .about-col::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 9vh;
+  bottom: 9vh;
+  width: 2px;
+  background: var(--accent, #e87040);
+  /* Tapered ends — masks the rule to fade out at top + bottom so it
+     doesn't read as a clinical border. */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 8%,
+    black 92%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 8%,
+    black 92%,
+    transparent 100%
+  );
+}
+
+/* Paper grain over the panel — very subtle, ~3% opacity speckled
+   noise. Sells the "newsprint sheet" feel against the flat cream. */
+.portfolio-about .about-col::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle at center,
+    rgba(26, 23, 20, 0.12) 0.5px,
+    transparent 1px
+  );
+  background-size: 4px 4px;
+  background-position: 0 0;
+  opacity: 0.45;
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+
+/* Lift the actual content above the grain pseudo-element. */
+.portfolio-about .about-col > * {
+  position: relative;
+  z-index: 1;
 }
 
 .about-h {
