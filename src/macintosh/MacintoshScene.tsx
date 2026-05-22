@@ -698,12 +698,14 @@ export function MacintoshScene(props: Props) {
   return (
     <>
       <Canvas
-        // Iso 3/4 angle — matches the room camera's stylistic
-        // (X=Z) iso lookoff. User wanted the 'old iso angle back
-        // here' instead of the head-on view. lookAt is set
-        // explicitly in onCreated so the Mac center (y≈0.6 after
-        // scale) frames in the viewport center, not high-biased.
-        camera={{ position: [3.2, 2.6, 3.2], fov: 28, near: 0.1, far: 40 }}
+        // Centered head-on framing. The iso angle that was here
+        // briefly applied the room's iso composition to the Mac —
+        // user clarified: 'you applied the iso camera angle to the
+        // mac not the ROOM.' Iso is on the room canvas
+        // (IntroController END_POS); the Mac sits straight-on,
+        // centered in viewport, screen face perpendicular to the
+        // camera so the canvas texture maps cleanly.
+        camera={{ position: [0, 0.9, 5.2], fov: 28, near: 0.1, far: 40 }}
         dpr={[1, 1.5]}
         shadows
         gl={{
