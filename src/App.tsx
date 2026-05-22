@@ -122,26 +122,17 @@ function useHeroFade(): number {
  * SectionGate curtain (see App JSX) fills that gap with a deliberate
  * typographic moment.
  */
-// Room CROSSFADES with the wireframe disassembly — they overlap so
-// there's never a moment of empty viewport between the two layers.
-// User feedback: "i dont like how the wireframe disappears and then
-// the room does, it looks so janky." Previous version had a 0.10
-// scroll gap (wireframes 1→0 at pin 0.45-0.55, then room 0→1 at
-// pin 0.55-0.65) where both layers were near-zero opacity → empty
-// frame.
-//
-// Now ScrollWireframeRoom's envelope is:
-//   pin 0.00-0.30 : wireframes assemble (room hidden)
-//   pin 0.30-0.40 : wireframes hold
-//   pin 0.40-0.55 : wireframes disassemble        ┐
-//   pin 0.40-0.55 : room fades IN simultaneously  ┘ crossfade
-//   pin 0.55+     : room alone
+// Hard-swap point: at pin 0.50 the wireframe envelope + cover dome
+// drop to 0 within 2% of pin range, and the room is revealed beneath
+// them. The room's own canvas-wrapper opacity is a wider window so
+// it ramps in slightly before the swap (subliminal) and out alongside
+// the About pin's release.
 //
 // In scrollY-vh terms (anchored to 0.9..2.20vh About range):
-//   0.9 + 0.40 * (2.20 - 0.9) = 1.42
-//   0.9 + 0.55 * (2.20 - 0.9) = 1.615
-const ROOM_FADE_IN_START_VH = 1.42;
-const ROOM_FADE_IN_END_VH = 1.615;
+//   pin 0.50 = 0.9 + 0.50 * 1.30 = 1.55vh
+//   pin 0.52 = 1.576vh
+const ROOM_FADE_IN_START_VH = 1.50;
+const ROOM_FADE_IN_END_VH = 1.58;
 const ROOM_FADE_OUT_START_VH = 2.10;
 const ROOM_FADE_OUT_END_VH = 2.30;
 /**

@@ -121,33 +121,35 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
     }
     if (entries.length === 0 && !coverMatRef.current) return;
     const p = progressRef.current;
-    // Envelope: wireframes assemble first, hold, then CROSSFADE
-    // with the solid room (not a hard sequential cut — that left a
-    // moment of empty viewport between the two layers). The solid
-    // room's fade-in window in App.tsx (ROOM_FADE_IN_START/END_VH
-    // = 1.42..1.615vh) matches the disassemble window here so the
-    // two opacities cross at ~50/50 around pin 0.475.
-    //   p 0.00..0.30 : 0 → 1 (assemble, room hidden)
-    //   p 0.30..0.40 : 1 (hold — wireframe is the moment)
-    //   p 0.40..0.55 : 1 → 0 (disassemble while room fades IN)
-    //   p > 0.55     : 0 (solid room alone)
+    // HARD SWAP envelope. User feedback iterated through:
+    //   - crossfade: 'both layers visible at same time = messy'
+    //   - sequential gap: 'janky empty viewport between them'
+    //   - soft dome fade: 'i can see it wtf' (intermediate cream wash)
+    //
+    // Now: wireframes assemble cleanly during pin 0.00-0.30, hold at
+    // full opacity through 0.30-0.50, then BOTH wireframes AND the
+    // cover dome cut to 0 instantly at pin 0.50. The room (which
+    // has been hidden by the opaque dome the whole time) is suddenly
+    // revealed. One frame, no in-between mush.
+    //
+    // Short ramp-down at 0.50-0.52 (just 2% of pin) instead of true
+    // hard cut so it doesn't STROBE — but the fade is too fast to
+    // visually register as a separate "transition state."
     let env: number;
     if (p < 0.30) {
       env = p / 0.30;
-    } else if (p < 0.40) {
+    } else if (p < 0.50) {
       env = 1;
-    } else if (p < 0.55) {
-      env = 1 - (p - 0.40) / 0.15;
+    } else if (p < 0.52) {
+      env = 1 - (p - 0.50) / 0.02;
     } else {
       env = 0;
     }
-    // Cover dome opacity matches the wireframe envelope so the
-    // dome HIDES the real room behind it during the wireframe-only
-    // beat (pin 0.00 → 0.40 fully opaque), then fades in lockstep
-    // with the wireframes (pin 0.40 → 0.55). After pin 0.55 the
-    // dome is invisible and the solid room shows through. This
-    // eliminates the previous "empty viewport" gap where wireframes
-    // had faded but the solid room hadn't appeared yet.
+    // Cover dome stays at FULL opacity while wireframes are present,
+    // then snaps off in lockstep with the wireframes. The dome's
+    // job is to hide the room until the moment the wireframes leave;
+    // it doesn't ever exist at an in-between opacity that the user
+    // would perceive as a cream wash.
     if (coverMatRef.current) {
       coverMatRef.current.opacity = env;
     }
