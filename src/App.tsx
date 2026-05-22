@@ -640,7 +640,15 @@ export default function App() {
               gl.shadowMap.enabled = true;
               gl.shadowMap.type = THREE.PCFShadowMap;
               cameraRef.current = camera as THREE.PerspectiveCamera;
-              camera.lookAt(END_LOOK_AT);
+              // lookAt slightly biased toward the room model's
+              // visual center of mass (not just world origin). The
+              // room's actual geometry extends asymmetrically from
+              // origin — looking at (0, 0.8, 0) put the visible
+              // room in the right 2/3 of the viewport. Biasing
+              // toward (1.5, 1.2, 1.5) re-centers it. END_LOOK_AT
+              // still drives OrbitControls + reset behaviour
+              // (re-syncs cleanly when control transfers).
+              camera.lookAt(1.5, 1.2, 1.5);
             }}
           >
             <SceneStateProvider
