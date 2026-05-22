@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useGLTF, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+
+// Tune mode — visit ?tune=mac to enter a free-camera, slider-driven
+// positioning view. Lets the user drag the Mac into the framing they
+// want and read back the scale / camera values to paste into the
+// constants below.
+const TUNE_MODE =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("tune") === "mac";
 import {
   SKILL_LOGOS,
   type MacProject,
@@ -268,14 +276,32 @@ function MacBody({
   });
 
   if (!clone) return null;
-  // The exported mac.glb has its bottom anchored near y=0 with the
-  // model extending up to y≈8.26 (size 6×8×6 world units). Old
-  // primitive Mac was ~1.6×1.7×1.05, so we scale 0.21 to bring it
-  // back to roughly the same footprint. No additional translation
-  // needed since the model is already bottom-anchored — at scale
-  // 0.21 the bottom stays near origin and the top sits at y≈1.73.
+  // In tune mode, read scale + position from window.__macTune so
+  // the slider HUD can drive the model live.
+  return <MacRig clone={clone} />;
+}
+
+/**
+ * Wraps the loaded mac.glb in a group whose scale + position can be
+ * tweaked at runtime by the tune HUD (TUNE_MODE only) or remain at
+ * the locked-in defaults outside tune mode.
+ */
+function MacRig({ clone }: { clone: THREE.Group }) {
+  const groupRef = useRef<THREE.Group>(null);
+  useFrame(() => {
+    if (!TUNE_MODE) return;
+    const g = groupRef.current;
+    if (!g) return;
+    const t = (window as unknown as { __macTune?: { scale: number; y: number } })
+      .__macTune;
+    if (!t) return;
+    g.scale.setScalar(t.scale);
+    g.position.y = t.y;
+  });
+  // Defaults match the values that frame the Mac centered in view at
+  // the canonical camera pose. Tune mode lets the user override.
   return (
-    <group scale={[0.21, 0.21, 0.21]}>
+    <group ref={groupRef} scale={[0.21, 0.21, 0.21]} position={[0, 0, 0]}>
       <primitive object={clone} />
     </group>
   );
@@ -553,18 +579,141 @@ function Scene({
 
 export function MacintoshScene(props: Props) {
   return (
-    <Canvas
-      camera={{ position: [0, 1.6, 7.0], fov: 28, near: 0.1, far: 40 }}
-      dpr={[1, 1.5]}
-      shadows
-      gl={{
-        antialias: true,
-        alpha: true,
-        toneMapping: THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 1.0,
+    <>
+      <Canvas
+        camera={{ position: [0, 1.6, 7.0], fov: 28, near: 0.1, far: 40 }}
+        dpr={[1, 1.5]}
+        shadows
+        gl={{
+          antialias: true,
+          alpha: true,
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.0,
+        }}
+      >
+        <Scene {...props} />
+        {TUNE_MODE && <TuneCameraReader />}
+        {TUNE_MODE && (
+          <OrbitControls
+            enableDamping
+            dampingFactor={0.08}
+            target={[0, 0.8, 0]}
+            minDistance={2}
+            maxDistance={20}
+          />
+        )}
+      </Canvas>
+      {TUNE_MODE && <MacTuneHUD />}
+    </>
+  );
+}
+
+/**
+ * In tune mode, copies the OrbitControls-driven camera position +
+ * fov into window.__macCamTune every frame so the HUD can show
+ * paste-ready values.
+ */
+function TuneCameraReader() {
+  const { camera } = useThree();
+  useFrame(() => {
+    const c = camera as THREE.PerspectiveCamera;
+    (window as unknown as {
+      __macCamTune?: { pos: [number, number, number]; fov: number };
+    }).__macCamTune = {
+      pos: [
+        Math.round(c.position.x * 100) / 100,
+        Math.round(c.position.y * 100) / 100,
+        Math.round(c.position.z * 100) / 100,
+      ],
+      fov: Math.round((c as THREE.PerspectiveCamera).fov * 10) / 10,
+    };
+  });
+  return null;
+}
+
+/**
+ * Slider panel pinned to the screen edge in TUNE_MODE. Lets the user
+ * drag the Mac's scale + Y offset live, while the camera is free-
+ * moved by OrbitControls. The current values are reflected back so
+ * the user can copy them into the code.
+ */
+function MacTuneHUD() {
+  const [scale, setScale] = useState(0.21);
+  const [y, setY] = useState(0);
+  const [camInfo, setCamInfo] = useState({ pos: [0, 1.6, 7] as number[], fov: 28 });
+
+  useEffect(() => {
+    (window as unknown as { __macTune: { scale: number; y: number } })
+      .__macTune = { scale, y };
+  }, [scale, y]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const c = (window as unknown as {
+        __macCamTune?: { pos: [number, number, number]; fov: number };
+      }).__macCamTune;
+      if (c) setCamInfo(c);
+    }, 100);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 16,
+        left: 16,
+        zIndex: 9999,
+        background: "rgba(20, 17, 14, 0.92)",
+        color: "#fff",
+        padding: "16px 18px",
+        borderRadius: 10,
+        fontFamily: "var(--font-mono), JetBrains Mono, monospace",
+        fontSize: 11,
+        letterSpacing: "0.06em",
+        lineHeight: 1.5,
+        boxShadow: "0 12px 32px -8px rgba(0,0,0,0.55)",
+        width: 260,
       }}
     >
-      <Scene {...props} />
-    </Canvas>
+      <div style={{ fontWeight: 700, marginBottom: 10, color: "#ffae6a" }}>
+        MAC TUNE
+      </div>
+      <label style={{ display: "block", marginBottom: 8 }}>
+        scale: {scale.toFixed(3)}
+        <input
+          type="range"
+          min={0.05}
+          max={1.5}
+          step={0.005}
+          value={scale}
+          onChange={(e) => setScale(parseFloat(e.target.value))}
+          style={{ width: "100%", marginTop: 4 }}
+        />
+      </label>
+      <label style={{ display: "block", marginBottom: 12 }}>
+        y offset: {y.toFixed(3)}
+        <input
+          type="range"
+          min={-3}
+          max={3}
+          step={0.01}
+          value={y}
+          onChange={(e) => setY(parseFloat(e.target.value))}
+          style={{ width: "100%", marginTop: 4 }}
+        />
+      </label>
+      <div style={{ borderTop: "1px solid rgba(255,255,255,0.18)", paddingTop: 10, marginBottom: 10 }}>
+        <div style={{ opacity: 0.65, marginBottom: 4 }}>CAMERA</div>
+        <div>
+          pos: [{camInfo.pos[0]}, {camInfo.pos[1]}, {camInfo.pos[2]}]
+        </div>
+        <div>fov: {camInfo.fov}</div>
+      </div>
+      <div style={{ opacity: 0.7, fontSize: 10 }}>
+        Drag the canvas to rotate camera. Adjust sliders for Mac scale + Y.
+        Paste values back to MacintoshScene.tsx when done.
+      </div>
+    </div>
   );
 }

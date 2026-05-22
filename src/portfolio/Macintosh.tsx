@@ -36,20 +36,38 @@ gsap.registerPlugin(ScrollTrigger);
 // pin's pacing.
 const PIN_DURATION_PX = 1800;
 
+// Tune mode (?tune=mac) skips lazy-mount + pin so the section is
+// always live and the OrbitControls inside MacintoshScene have a
+// chance to drive the camera freely.
+const TUNE_MODE =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("tune") === "mac";
+
 export function Macintosh() {
   const sectionRef = useRef<HTMLElement>(null);
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(TUNE_MODE);
   // Pin progress 0..1 — written by GSAP, read each frame by the 3D
   // scene. Using a ref (not state) so progress updates don't re-render
-  // the React tree.
-  const pinProgressRef = useRef(0);
+  // the React tree. In tune mode parked at 1 so all reveal beats are
+  // already complete (mac landed, boot done, desktop visible).
+  const pinProgressRef = useRef(TUNE_MODE ? 1 : 0);
   // Project click → expand side card. State so we re-render the card
   // overlay on selection change.
   const [selected, setSelected] = useState<MacProject | null>(null);
 
+  // In tune mode, park the page on the Mac section so the user can
+  // see + manipulate the model immediately.
+  useEffect(() => {
+    if (!TUNE_MODE) return;
+    setTimeout(() => {
+      sectionRef.current?.scrollIntoView({ block: "start" });
+    }, 100);
+  }, []);
+
   // Lazy-mount the 3D canvas via IO so the GLB / shader compile is
   // deferred until the user approaches. Same pattern as Keypad.
   useEffect(() => {
+    if (TUNE_MODE) return;
     const el = sectionRef.current;
     if (!el || mounted) return;
     const io = new IntersectionObserver(
@@ -70,6 +88,7 @@ export function Macintosh() {
 
   // GSAP ScrollTrigger pin.
   useEffect(() => {
+    if (TUNE_MODE) return;
     const el = sectionRef.current;
     if (!el) return;
     const st = ScrollTrigger.create({
@@ -154,7 +173,7 @@ export function Macintosh() {
           user scrolls through the gap between About and the pin
           start. The visual seam is owned by the SectionGate curtain
           (see src/portfolio/SectionGate.tsx). */}
-      <div className="mac-stage" data-stage-visible="false">
+      <div className="mac-stage" data-stage-visible={TUNE_MODE ? "true" : "false"}>
         {mounted && (
           <MacintoshScene
             pinProgressRef={pinProgressRef}
@@ -169,7 +188,7 @@ export function Macintosh() {
           About, bleeding into the About viewport. The wrapper div
           is opacity-controlled by the same `data-stage-visible`
           attribute that gates the canvas. */}
-      <div className="mac-ticker-slot" data-stage-visible="false">
+      <div className="mac-ticker-slot" data-stage-visible={TUNE_MODE ? "true" : "false"}>
         <TechStackTicker />
       </div>
       <div className="portfolio-col mac-col">
