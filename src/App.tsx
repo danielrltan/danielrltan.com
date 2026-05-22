@@ -1,5 +1,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Lenis from "lenis";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -9,9 +11,8 @@ import { Room } from "./Room";
 import { Lighting } from "./Lighting";
 import {
   IntroController,
-  START_POS,
-  START_FOV,
-  START_LOOK_AT,
+  END_POS,
+  END_FOV,
   END_LOOK_AT,
   ORBIT_MAX_DISTANCE,
 } from "./IntroController";
@@ -244,10 +245,16 @@ export default function App() {
 
   // Lenis smooth scroll — site-wide. Wraps native scroll into a
   // tween-driven scrollTo so wheel deltas / touch swipes feel
-  // momentum-y rather than discrete. Plays well with GSAP because
-  // Lenis emits standard scroll events on every frame; ScrollTrigger
-  // picks them up automatically. On mobile the default touch-action
-  // is preserved so iOS rubber-banding still works.
+  // momentum-y rather than discrete.
+  //
+  // Sync with GSAP ScrollTrigger: ScrollTrigger reads scrollY on its
+  // own scroll listener, but Lenis interpolates BETWEEN the native
+  // scroll events — without explicit sync, pinned sections (About,
+  // Macintosh, BitsAndPieces) hand off jaggedly at their pin
+  // boundaries because ScrollTrigger sees discrete native scroll
+  // values while the page is actually at an intermediate Lenis-
+  // tweened position. Driving ScrollTrigger.update() from the same
+  // rAF as lenis.raf() removes that mismatch.
   useEffect(() => {
     const lenis = new Lenis({
       duration: 1.05,
@@ -256,14 +263,22 @@ export default function App() {
       wheelMultiplier: 1,
       touchMultiplier: 1.4,
     });
-    let raf = 0;
-    const tick = (time: number) => {
-      lenis.raf(time);
-      raf = requestAnimationFrame(tick);
+    gsap.registerPlugin(ScrollTrigger);
+    // The official Lenis × GSAP recipe:
+    //   1. On every Lenis scroll update, call ScrollTrigger.update().
+    //   2. Drive Lenis off the GSAP ticker (instead of a separate rAF)
+    //      so both run on the same frame timer — eliminates the
+    //      one-frame skew that made pin handoffs feel "snappy."
+    //   3. Disable GSAP's lag-smoothing for ScrollTrigger so it
+    //      reads the live Lenis position immediately.
+    lenis.on("scroll", ScrollTrigger.update);
+    const tickerFn = (time: number) => {
+      lenis.raf(time * 1000);
     };
-    raf = requestAnimationFrame(tick);
+    gsap.ticker.add(tickerFn);
+    gsap.ticker.lagSmoothing(0);
     return () => {
-      cancelAnimationFrame(raf);
+      gsap.ticker.remove(tickerFn);
       lenis.destroy();
     };
   }, []);
@@ -368,13 +383,11 @@ export default function App() {
   const shrinkT = clamp01(
     (scrollProgress - SHRINK_AT) / (SHRINK_DONE - SHRINK_AT),
   );
-  // Right-side overlay width — grows from 0 to (100-PINNED)vw as the
-  // user scrolls, "covering" the right portion of the (always full-
-  // width) canvas with the wrapper-bg colour. Replaces the previous
-  // CSS width-resize on the canvas wrapper, which forced Three.js to
-  // recompute the renderer + camera projection every scroll frame →
-  // visible snap.
-  const overlayWidthVw = lerp(0, 100 - PINNED_WIDTH_VW, shrinkT);
+  // overlayWidthVw was driving the canvas-overlay-panel (now removed
+  // — see deletion above with full-width room change). Kept the
+  // shrinkT calculation since other things still reference it.
+  void lerp;
+  void PINNED_WIDTH_VW;
   // Content opacity — sections (everything below hero) only fade in
   // AFTER the overlay panel has fully covered the right half. Earlier
   // tuning started the fade at shrinkT 0.7 (overlay only ~70% wide),
@@ -459,42 +472,13 @@ export default function App() {
             shader. Having both layered together caused the "old rice
             fading in occasionally" visual bug.) */}
 
-        {!isMobile && (
-          <div
-            aria-hidden
-            className="canvas-overlay-panel"
-            style={{
-              position: "fixed",
-              top: 0,
-              right: 0,
-              width: `${overlayWidthVw}vw`,
-              height: "100vh",
-              background: "var(--wrapper-bg)",
-              zIndex: 1,
-              pointerEvents: "none",
-              // The overlay panel exists to visually shrink the ROOM
-              // canvas to its right-half-only position during About.
-              // Outside About (Hero, Macintosh, Work, Hobbies, etc.)
-              // the room is hidden — fading the overlay with roomOpacity
-              // hides it too, otherwise its 50vw cream rectangle drops
-              // a visible vertical seam across non-room sections.
-              opacity: roomOpacity,
-              transition: "opacity 200ms linear",
-              /* Soft cast-shadow projecting LEFT onto the canvas plus
-                 a 1px walnut hairline at the boundary. Reads as a
-                 physical card laid over the room instead of a CSS
-                 paint cut. */
-              boxShadow:
-                "-1px 0 0 rgba(26, 23, 20, 0.10), -36px 0 64px -28px rgba(26, 23, 20, 0.30)",
-              /* Soft inner left edge — a 24px-wide gradient bleed of
-                 cream so the boundary doesn't read as a guillotine
-                 cut on the canvas side either. */
-              backgroundImage:
-                "linear-gradient(to right, rgba(248, 246, 243, 0) 0%, var(--wrapper-bg) 36px)",
-              backgroundRepeat: "no-repeat",
-            }}
-          />
-        )}
+        {/* The canvas-overlay-panel (50vw cream rectangle that visually
+            shrunk the room to a half-viewport) is now gone. User
+            asked: "you don't have to stick with the half/half
+            layout." Room fills the full viewport during About; the
+            section content overlays editorially on top instead of
+            being relegated to a right-half column. See
+            .portfolio-about CSS for the new overlay positioning. */}
         {/* Hero signature — covers full viewport. Visible at scroll top,
             fades out as the user enters About. Positioned BELOW the
             HUD (z-index 9999) and ABOVE the room canvas (z-index 0)
@@ -545,8 +529,13 @@ export default function App() {
         >
           <Canvas
             camera={{
-              position: [START_POS.x, START_POS.y, START_POS.z],
-              fov: START_FOV,
+              // Was START_POS/START_FOV — kicked off the 1.5s dolly
+              // intro on transitionStarted. User feedback: the dolly
+              // was "unnecessary." Camera now starts at the final
+              // canonical pose, IntroController is a no-op tilt
+              // resetter, no zoom-in animation.
+              position: [END_POS.x, END_POS.y, END_POS.z],
+              fov: END_FOV,
               // Near widened 0.1 → 1 (no scene geometry sits inside
               // distance 1 from camera — minDistance is 1.2 on orbit
               // controls). Far must cover the loading-screen cover
@@ -603,7 +592,7 @@ export default function App() {
               gl.shadowMap.enabled = true;
               gl.shadowMap.type = THREE.PCFShadowMap;
               cameraRef.current = camera as THREE.PerspectiveCamera;
-              camera.lookAt(START_LOOK_AT);
+              camera.lookAt(END_LOOK_AT);
             }}
           >
             <SceneStateProvider

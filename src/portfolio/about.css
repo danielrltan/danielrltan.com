@@ -1,7 +1,9 @@
 /* About section — GSAP-pinned theatrical reveal.
-   Layout: room canvas on the left (handled in App.tsx), content
-   column on the right. While the section is pinned, content blocks
-   reveal in sequence as pin-progress advances. */
+   The canvas-overlay-panel that previously hid the right half of
+   the room is gone (per user's "break the half/half layout"
+   feedback). Room canvas now fills the full viewport behind the
+   About content; this CSS positions the text as an editorial
+   overlay over the room. */
 
 .portfolio-about {
   position: relative;
@@ -9,11 +11,34 @@
   overflow: hidden;
 }
 
-.about-col {
+/* Override the default `.portfolio-col` 50vw-right-margin so the
+   About text can use the full viewport — but pinned to the right
+   third with a slight backdrop-blur so it reads cleanly on top of
+   the visible room behind. The content forms a sidebar-ish editorial
+   panel rather than an opaque half-column. */
+.portfolio-about .about-col {
+  margin-left: auto;
+  width: min(540px, 42vw);
+  margin-right: 5vw;
   padding-top: 9vh;
   padding-bottom: 6vh;
   display: flex;
   flex-direction: column;
+  /* Glassy backdrop so text reads against the room: blur + a
+     barely-there cream overlay. Light enough to feel like an editorial
+     vellum sheet, not a heavy card. */
+  background: linear-gradient(
+    90deg,
+    rgba(248, 246, 243, 0) 0%,
+    rgba(248, 246, 243, 0.78) 10%,
+    rgba(248, 246, 243, 0.92) 100%
+  );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-left: 1px solid rgba(26, 23, 20, 0.06);
+  padding-left: 38px;
+  padding-right: 38px;
+  box-sizing: border-box;
 }
 
 .about-h {

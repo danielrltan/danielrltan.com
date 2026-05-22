@@ -1,6 +1,8 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+// tmpLookAt + easeOutCubic + DURATION removed when the 1.5s dolly
+// intro was killed — see the controller body for the no-op pass.
 
 interface Props {
   cameraRef: RefObject<THREE.PerspectiveCamera | null>;
@@ -55,11 +57,6 @@ export const END_RADIUS = END_POS.distanceTo(END_LOOK_AT);
  * `END_POS` above can never re-introduce that bug.
  */
 export const ORBIT_MAX_DISTANCE = END_RADIUS * 1.2;
-const DURATION = 1.5;
-
-function easeOutCubic(t: number): number {
-  return 1 - Math.pow(1 - t, 3);
-}
 
 export function IntroController({
   cameraRef,
@@ -68,70 +65,44 @@ export function IntroController({
   transitionStarted,
   onComplete,
 }: Props) {
-  const phase = useRef<"pre" | "transition" | "done">("pre");
-  const progress = useRef(0);
+  const phase = useRef<"pre" | "done">("pre");
   const startRotX = useRef(0);
   const startRotY = useRef(0);
   const startY = useRef(0);
-  const tmpLookAt = useRef(new THREE.Vector3());
-  // App-level isHoveringRef is now unused — the hitbox check below
-  // uses R3F's state.pointer directly.
+  void cameraRef;
+  void startRotX;
+  void startRotY;
+  void startY;
   void isHoveringRef;
 
+  // User asked: kill the camera dolly. It was 1.5s of camera lerp
+  // from (55,55,55) → (15.2,9.6,15.2) — a "zoom into the room"
+  // intro that played whenever transitionStarted flipped true. The
+  // user found it "unnecessary." Camera now starts at the final
+  // pose (see Canvas camera prop in App.tsx), and the controller
+  // just locks the room group in place and reports "done" on the
+  // first frame after transitionStarted so downstream code (OrbitControls
+  // enable, ScrollCamera mount) still receives its signal.
   useEffect(() => {
     if (!transitionStarted || phase.current !== "pre") return;
-    phase.current = "transition";
-    progress.current = 0;
+    phase.current = "done";
     const group = roomGroupRef.current;
     if (group) {
       startRotX.current = group.rotation.x;
       startRotY.current = group.rotation.y;
       startY.current = group.position.y;
     }
-  }, [transitionStarted, roomGroupRef]);
+    onComplete();
+  }, [transitionStarted, roomGroupRef, onComplete]);
 
-  useFrame((_state, dt) => {
+  useFrame(() => {
     const group = roomGroupRef.current;
-    const camera = cameraRef.current;
-    if (!group || !camera) return;
-
-    if (phase.current === "pre") {
-      // Room sits perfectly still on the ground plane. The previous
-      // float + cursor-parallax + hover-lift were removed when the
-      // aesthetic shifted to product-photo (room on a plane, not
-      // floating in space).
-      group.rotation.set(0, 0, 0);
-      group.position.set(0, 0, 0);
-      return;
-    }
-
-    if (phase.current === "transition") {
-      progress.current = Math.min(progress.current + dt / DURATION, 1);
-      const t = easeOutCubic(progress.current);
-
-      group.rotation.x = startRotX.current * (1 - t);
-      group.rotation.y = startRotY.current * (1 - t);
-      group.rotation.z = 0;
-      group.position.y = startY.current * (1 - t);
-
-      camera.position.lerpVectors(START_POS, END_POS, t);
-      camera.fov = THREE.MathUtils.lerp(START_FOV, END_FOV, t);
-      camera.updateProjectionMatrix();
-
-      tmpLookAt.current.lerpVectors(START_LOOK_AT, END_LOOK_AT, t);
-      camera.lookAt(tmpLookAt.current);
-
-      if (progress.current >= 1) {
-        phase.current = "done";
-        group.rotation.set(0, 0, 0);
-        group.position.set(0, 0, 0);
-        camera.position.copy(END_POS);
-        camera.fov = END_FOV;
-        camera.updateProjectionMatrix();
-        camera.lookAt(END_LOOK_AT);
-        onComplete();
-      }
-    }
+    if (!group) return;
+    // Lock the room group at the origin pose regardless of phase.
+    // (Previously held rotation/lerp animation state during the
+    // 1.5s intro — that animation is now gone.)
+    group.rotation.set(0, 0, 0);
+    group.position.set(0, 0, 0);
   });
 
   return null;
