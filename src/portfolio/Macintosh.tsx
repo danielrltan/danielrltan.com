@@ -84,6 +84,33 @@ export function Macintosh() {
       },
     });
 
+    // Reveal the Mac stage RIGHT WHEN the SectionGate curtain is
+    // fully covering the viewport — that way the canvas is in place
+    // behind the curtain, and when the curtain slides off the user
+    // sees the Mac already rendered. Use a scrollY listener tied to
+    // the same vh thresholds the SectionGate uses (1.85vh = curtain
+    // fully holds) so the timing stays in lockstep.
+    const stage = el.querySelector(".mac-stage") as HTMLElement | null;
+    const STAGE_REVEAL_VH = 1.85;
+    let raf = 0;
+    let lastVisible = false;
+    const updateStageVisibility = () => {
+      const vh = window.innerHeight || 1;
+      const ratio = window.scrollY / vh;
+      const visible = ratio >= STAGE_REVEAL_VH;
+      if (visible !== lastVisible && stage) {
+        lastVisible = visible;
+        stage.setAttribute("data-stage-visible", visible ? "true" : "false");
+      }
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(updateStageVisibility);
+    };
+    updateStageVisibility();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+
     // Refresh when loading-active is removed (same as Keypad — pin
     // positions can shift during initial layout).
     const html = document.documentElement;
@@ -101,12 +128,22 @@ export function Macintosh() {
     return () => {
       obs.disconnect();
       st.kill();
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
     };
   }, []);
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-mac">
-      <div className="mac-stage">
+      {/* Stage is opacity-gated by the section's `data-stage-visible`
+          attribute (toggled by GSAP onToggle when the pin engages).
+          Before the pin engages, the stage is hidden — otherwise the
+          orbiting logos peek out into the About section above as the
+          user scrolls through the gap between About and the pin
+          start. The visual seam is owned by the SectionGate curtain
+          (see src/portfolio/SectionGate.tsx). */}
+      <div className="mac-stage" data-stage-visible="false">
         {mounted && (
           <MacintoshScene
             pinProgressRef={pinProgressRef}

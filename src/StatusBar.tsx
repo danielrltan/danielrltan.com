@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { RotateCcw, Volume2, VolumeX } from "lucide-react";
-import { useScrollProgress } from "./useScrollProgress";
 import { useAudioToggle } from "./useAudioToggle";
 
 interface Props {
@@ -9,34 +8,35 @@ interface Props {
 }
 
 /**
- * Top-right status badge. TE / spec-sheet flavour: a small pill with
- * the current section index, a live clock, and a pulsing "REC" dot.
+ * Top-right status pill. Shows the section the user is currently
+ * looking at, plus the live clock, scroll progress, and audio /
+ * reset controls.
  *
- * Purpose: anchor the page to the moment (this is alive, not static)
- * and reinforce the industrial-spec-sheet aesthetic. Sits opposite
- * the brand cat in the top-left for visual balance.
+ * Section detection is IntersectionObserver-based — observes every
+ * `.portfolio-section` and the keypad section, picks whichever one
+ * is most prominently in view. This stays accurate as section
+ * heights change (e.g., pinned sections grow their pin spacer); the
+ * previous scroll-progress-threshold version drifted whenever a
+ * section's content grew.
  */
 
-interface Section {
-  /** scroll-progress threshold at which this section becomes active. */
-  at: number;
-  /** "01" — "07" */
+interface SectionEntry {
   number: string;
-  /** human label */
   label: string;
+  /** Selector to identify the section in the DOM. */
+  selector: string;
 }
 
-// Mirrors PortfolioSections render order and (roughly) the ScrollCamera
-// stop schedule. When the user crosses a threshold the badge updates.
-const SECTIONS: Section[] = [
-  { at: 0.00, number: "00", label: "Hero" },
-  { at: 0.10, number: "01", label: "About" },
-  { at: 0.22, number: "02", label: "Skills" },
-  { at: 0.36, number: "03", label: "Projects" },
-  { at: 0.52, number: "04", label: "Work" },
-  { at: 0.66, number: "05", label: "Play" },
-  { at: 0.80, number: "06", label: "Other" },
-  { at: 0.92, number: "07", label: "Contact" },
+// Render order from PortfolioSections.tsx — keep this in lockstep
+// when sections are added/removed/renamed.
+const SECTION_REGISTRY: SectionEntry[] = [
+  { number: "00", label: "Hero", selector: ".portfolio-section--hero" },
+  { number: "01", label: "About", selector: ".portfolio-section:not([class*='--'])" }, // generic match — falls back via index
+  { number: "02", label: "Stack", selector: ".portfolio-mac" },
+  { number: "03", label: "Work", selector: ".portfolio-work" },
+  { number: "04", label: "Off the clock", selector: ".portfolio-other" },
+  { number: "05", label: "Bits and pieces", selector: ".portfolio-bp" },
+  { number: "06", label: "Contact", selector: ".keypad-section" },
 ];
 
 function formatClock(d: Date): string {
@@ -46,9 +46,40 @@ function formatClock(d: Date): string {
   return `${hh}:${mm}:${ss}`;
 }
 
+/**
+ * Locates each registered section in the DOM. Returns an ordered
+ * array (matching SECTION_REGISTRY indices) of nullable elements so
+ * we know which slots have a real DOM node and which are still
+ * loading.
+ */
+function findSectionElements(): Array<{ entry: SectionEntry; el: Element | null }> {
+  return SECTION_REGISTRY.map((entry, i) => {
+    if (i === 1) {
+      // About is the second `.portfolio-section` (after hero) that
+      // ISN'T one of the special-class sections. Find by index
+      // rather than selector to avoid clashing with the keypad's
+      // own class.
+      const all = Array.from(document.querySelectorAll(".portfolio-section"));
+      // Filter to sections WITHOUT the special-section modifier classes.
+      const generic = all.filter(
+        (e) =>
+          !e.classList.contains("portfolio-section--hero") &&
+          !e.classList.contains("portfolio-mac") &&
+          !e.classList.contains("portfolio-work") &&
+          !e.classList.contains("portfolio-other") &&
+          !e.classList.contains("portfolio-bp") &&
+          !e.classList.contains("keypad-section"),
+      );
+      return { entry, el: generic[0] ?? null };
+    }
+    return { entry, el: document.querySelector(entry.selector) };
+  });
+}
+
 export function StatusBar({ onReset }: Props) {
-  const progress = useScrollProgress();
+  const [activeIdx, setActiveIdx] = useState(0);
   const [now, setNow] = useState(() => new Date());
+  const [progressPct, setProgressPct] = useState(0);
   const audio = useAudioToggle();
 
   useEffect(() => {
@@ -56,13 +87,69 @@ export function StatusBar({ onReset }: Props) {
     return () => clearInterval(id);
   }, []);
 
-  // Pick the highest-threshold section whose .at <= progress.
-  let active = SECTIONS[0]!;
-  for (const s of SECTIONS) {
-    if (progress >= s.at) active = s;
-    else break;
-  }
-  const progressPct = Math.round(progress * 100);
+  // IntersectionObserver-based active-section detection. We observe
+  // each registered section and recompute the active one whenever an
+  // intersection changes. The active section is the LAST one in
+  // document order whose center is at or above the viewport center
+  // — i.e. the deepest-scrolled-into section.
+  useEffect(() => {
+    const found = findSectionElements();
+    const visibleRatios = new Map<Element, number>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          visibleRatios.set(entry.target, entry.intersectionRatio);
+        }
+        // Determine the active section by finding the deepest one
+        // whose top is at or above 50% of the viewport.
+        const vh = window.innerHeight || 1;
+        let bestIdx = 0;
+        for (let i = 0; i < found.length; i++) {
+          const el = found[i]!.el;
+          if (!el) continue;
+          const r = el.getBoundingClientRect();
+          // "Active" = the section whose top edge has passed the
+          // viewport's upper third. Index-of-deepest wins.
+          if (r.top <= vh * 0.45) bestIdx = i;
+        }
+        setActiveIdx(bestIdx);
+      },
+      // Slightly inset rootMargin so the boundaries land where the
+      // user perceives the section change (not at the very edge).
+      { threshold: [0, 0.25, 0.5, 0.75, 1] },
+    );
+    for (const f of found) {
+      if (f.el) io.observe(f.el);
+    }
+    return () => io.disconnect();
+  }, []);
+
+  // Scroll-progress percent for the right side of the pill — keep
+  // the existing display, just decouple from section detection.
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      const max = Math.max(
+        1,
+        document.documentElement.scrollHeight - window.innerHeight,
+      );
+      setProgressPct(Math.round((window.scrollY / max) * 100));
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  const active = SECTION_REGISTRY[activeIdx] ?? SECTION_REGISTRY[0]!;
 
   return (
     <div
@@ -89,15 +176,15 @@ export function StatusBar({ onReset }: Props) {
         userSelect: "none",
       }}
     >
-      {/* Fixed-width slot for the section badge so the pill width stays
-          constant as the label changes ("HERO" → "PROJECTS"). Avoids
-          the bar visibly resizing on every section transition. */}
+      {/* Fixed-min-width section slot so the pill doesn't visibly
+          resize as the label changes between short ("HERO") and
+          longer ("OFF THE CLOCK", "BITS AND PIECES"). */}
       <span
         style={{
           display: "inline-flex",
           alignItems: "center",
           gap: 10,
-          minWidth: 110,
+          minWidth: 162,
         }}
       >
         <span
@@ -145,8 +232,6 @@ export function StatusBar({ onReset }: Props) {
   );
 }
 
-/** Shared icon-button style for the StatusBar pill — round, 28×28,
- *  walnut-on-translucent-white, orange tint when "active". */
 function iconButtonStyle(active: boolean): React.CSSProperties {
   return {
     marginLeft: 2,

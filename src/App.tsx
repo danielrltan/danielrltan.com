@@ -31,6 +31,7 @@ import {
   AssemblyWireframesSlot,
 } from "./loading";
 import { HeroSignature } from "./hero/HeroSignature";
+import { SectionGate } from "./portfolio/SectionGate";
 import { ScrollCamera } from "./ScrollCamera";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { useScrollProgress } from "./useScrollProgress";
@@ -106,17 +107,23 @@ function useHeroFade(): number {
  * Room canvas fade — visible only during the About section.
  *   < 0.9vh scrolled : hidden  (Hero)
  *   0.9 .. 1.3vh     : fading in
- *   1.3 .. 2.4vh     : visible (About)
- *   2.4 .. 3.0vh     : fading out
- *   > 3.0vh          : hidden  (all subsequent sections)
+ *   1.3 .. 1.55vh    : visible (About)
+ *   1.55 .. 1.85vh   : fading out
+ *   > 1.85vh         : hidden  (all subsequent sections)
  *
- * Anchored to viewport units, not scrollProgress, so growing other
- * sections' content doesn't shift the About window.
+ * Fade-out tightened so the room is FULLY GONE before the Macintosh
+ * section (which starts pinning at ~2.0vh on a 900px viewport)
+ * enters the viewport. Earlier tuning had the room at ~90% opacity
+ * during Mac entry, which made the two 3D scenes overlap visually
+ * and read as a broken transition. Now there's a clean ~0.3vh gap
+ * between "room fully invisible" and "Mac fully pinned" — the
+ * SectionGate curtain (see App JSX) fills that gap with a deliberate
+ * typographic moment.
  */
 const ROOM_FADE_IN_START_VH = 0.9;
 const ROOM_FADE_IN_END_VH = 1.3;
-const ROOM_FADE_OUT_START_VH = 2.4;
-const ROOM_FADE_OUT_END_VH = 3.0;
+const ROOM_FADE_OUT_START_VH = 1.55;
+const ROOM_FADE_OUT_END_VH = 1.85;
 function useRoomFade(): number {
   const [t, setT] = useState(0);
   useEffect(() => {
@@ -659,6 +666,12 @@ export default function App() {
         {roomLoaded && !isMobile && <MoveableCursor hot={moveableHover} />}
 
         <PortfolioSections />
+
+        {/* About→Macintosh transition curtain. Slides up from below,
+            holds with a giant "The stack." title, slides up out the
+            top. Fills the visual seam between two heavy 3D scenes
+            with a deliberate typographic moment. */}
+        {!isMobile && <SectionGate />}
 
         <RoomHUD
           onReset={resetRoom}

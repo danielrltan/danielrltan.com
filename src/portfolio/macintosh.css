@@ -15,6 +15,15 @@
   width: 60%;
   height: 100%;
   pointer-events: auto;
+  /* Hidden until the section pins. Without this the orbit ring's
+     logos bleed up into the bottom of the About section as the
+     user scrolls toward the Macintosh section — see Macintosh.tsx's
+     STAGE_REVEAL_VH gate. */
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+.mac-stage[data-stage-visible="true"] {
+  opacity: 1;
 }
 
 .mac-col {
