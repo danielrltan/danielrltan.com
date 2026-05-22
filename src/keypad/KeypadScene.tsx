@@ -81,15 +81,15 @@ interface CursorState {
 }
 
 interface KeypadSceneProps {
-  // Stamped by Keypad.tsx's onEnter ScrollTrigger the moment the
-  // section first enters viewport. `null` = hasn't entered yet
-  // (model sits above frame, invisible). KeypadScene reads this and
-  // computes drop progress purely from elapsed time, decoupling the
-  // animation from scroll speed.
-  dropStartTimeRef: React.MutableRefObject<number | null>;
+  // Pin progress 0..1 driven by Keypad.tsx's GSAP ScrollTrigger pin
+  // (scrub:true). 0 = section just engaged the pin; 1 = section is
+  // about to release. KeypadScene reads this each frame and drives
+  // its drop animation from pin progress 0.00 → 0.30, then settles
+  // for the remaining dwell.
+  pinProgressRef: React.MutableRefObject<number>;
 }
 
-export function KeypadScene({ dropStartTimeRef }: KeypadSceneProps) {
+export function KeypadScene({ pinProgressRef }: KeypadSceneProps) {
   const isMobile = useIsMobile();
   // Cursor target shared with RiceBlob (uniform driver) and with the
   // SceneContents component (parallax driver).
@@ -166,7 +166,7 @@ export function KeypadScene({ dropStartTimeRef }: KeypadSceneProps) {
         <SceneContents
           cursorRef={cursorRef}
           isMobile={isMobile}
-          dropStartTimeRef={dropStartTimeRef}
+          pinProgressRef={pinProgressRef}
           tuneStateRef={tuneStateRef}
           transformMode={transformMode}
         />
@@ -265,13 +265,13 @@ function TuneHud({
 function SceneContents({
   cursorRef,
   isMobile,
-  dropStartTimeRef,
+  pinProgressRef,
   tuneStateRef,
   transformMode,
 }: {
   cursorRef: React.MutableRefObject<CursorState>;
   isMobile: boolean;
-  dropStartTimeRef: React.MutableRefObject<number | null>;
+  pinProgressRef: React.MutableRefObject<number>;
   tuneStateRef: React.MutableRefObject<TuneState>;
   transformMode: TuneTransformMode;
 }) {
@@ -341,40 +341,32 @@ function SceneContents({
     // slow down the drop by scrolling faster or slower, so the
     // landing always feels deliberate.
     //
-    // Driven by `dropStartTimeRef`, set by Keypad.tsx's onEnter
-    // ScrollTrigger the moment the section first crosses into the
-    // viewport. While null (section hasn't been entered), the model
-    // sits at DROP_HEIGHT (above frame, invisible). easeOutCubic on
-    // the local 0..1 timeline gives a soft, weighty landing.
-    const startTime = dropStartTimeRef.current;
-    let local: number;
-    if (startTime == null) {
-      local = 0;
-    } else {
-      const elapsed = performance.now() - startTime;
-      local = Math.max(0, Math.min(1, elapsed / DROP_DURATION_MS));
-    }
+    // Driven by `pinProgressRef`, written by Keypad.tsx's GSAP pin
+    // (scrub:true). Pin progress 0..1 across the entire pin window;
+    // the drop animation uses the first 30% of pin progress so the
+    // keypad is landed by the time the user is 1/3 through the pin,
+    // leaving the back 70% for the dwell / interact beat.
+    //
+    // easeOutCubic on the local 0..1 timeline gives a soft landing.
+    const pinP = pinProgressRef.current;
+    const DROP_PIN_RANGE = 0.30;
+    const local = Math.max(0, Math.min(1, pinP / DROP_PIN_RANGE));
     const eased = 1 - Math.pow(1 - local, 3);
     g.position.y = (1 - eased) * DROP_HEIGHT;
-    // We still update dropY for any external consumers expecting it,
-    // but the animation is no longer lerped — local already maps
-    // directly to a position via easeOutCubic, and any per-frame
-    // smoothing would just slow the fixed-rate animation back down.
     dropY.current = g.position.y;
 
-    // Auto-spin the dial mid-drop. Fires ONCE at local >= 0.3 (~480ms
-    // into the 1600ms drop) so the dial is mid-rotation when the
-    // keypad lands. KeypadModel's DIAL_DAMP decays it naturally over
-    // the remaining ~1.1s, settling just as the model finishes
-    // landing — "the device gave a quick shake on impact."
+    // Auto-spin the dial mid-drop. Fires ONCE at local >= 0.3 so the
+    // dial is mid-rotation when the keypad lands. KeypadModel's
+    // DIAL_DAMP decays it naturally over the remaining drop frames,
+    // settling just as the model touches down.
     if (!hasAutoSpunRef.current && local >= 0.3 && kickDialRef.current) {
       hasAutoSpunRef.current = true;
       kickDialRef.current(12);
     }
-    // Reset latch when the user scrolls fully back above the section
-    // (Keypad.tsx clears dropStartTimeRef in onLeaveBack), so a
-    // re-entry replays the drop + dial spin fresh.
-    if (startTime == null && hasAutoSpunRef.current) {
+    // Reset the auto-spin latch when the user scrolls fully back
+    // above the pin (pin progress = 0). Re-entering replays the drop
+    // + dial kick fresh.
+    if (pinP <= 0.001 && hasAutoSpunRef.current) {
       hasAutoSpunRef.current = false;
     }
 
