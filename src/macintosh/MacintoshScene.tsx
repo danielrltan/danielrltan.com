@@ -210,7 +210,14 @@ function MacBody({
   // CanvasTexture there, so the boot text / desktop tiles paint on
   // whatever mesh the artist designated as the CRT face.
   const { scene } = useGLTF("/mac.glb") as unknown as { scene: THREE.Group };
-  const screenMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  // screenMeshRef tracks the GLB's screen mesh (housing painted
+  // dark). screenOverlayRef is the plane we attach in front of it
+  // with the live canvas texture — overlay has clean 0..1 UVs so
+  // the texture renders regardless of the GLB mesh's UV layout.
+  const screenMeshRef = useRef<THREE.Mesh | null>(null);
+  const screenOverlayRef = useRef<THREE.Mesh | null>(null);
+  void screenMeshRef;
+  void screenOverlayRef;
 
   // Clone the loaded GLB once. The traversal below operates on this
   // clone (NOT the cached original) because <primitive> renders the
@@ -249,31 +256,138 @@ function MacBody({
       obj.receiveShadow = false;
     });
     if (screenMesh) {
-      const newMat = new THREE.MeshStandardMaterial({
-        map: screenTexture,
-        color: "#ffffff",
-        emissiveMap: screenTexture,
-        emissive: new THREE.Color("#ffffff"),
-        emissiveIntensity: 0,
-        transparent: true,
-        roughness: 0.25,
-        metalness: 0,
+      // Two layers for the CRT face:
+      //   1. Paint the existing GLB screen mesh JET BLACK so it
+      //      reads as the unlit CRT housing behind the picture.
+      //   2. Compute the screen mesh's world-space bounding box and
+      //      attach an OVERLAY PLANE in front of it with the canvas
+      //      texture. The overlay has clean 0..1 UVs so the texture
+      //      renders correctly regardless of the GLB mesh's
+      //      (possibly weird) UV layout — which is why the previous
+      //      direct material swap was rendering black.
+      (screenMesh as THREE.Mesh).material = new THREE.MeshBasicMaterial({
+        color: "#080808",
         toneMapped: false,
       });
-      (screenMesh as THREE.Mesh).material = newMat;
-      screenMatRef.current = newMat;
-    }
-  }, [clone, screenTexture]);
+      screenMeshRef.current = screenMesh;
 
-  useFrame(() => {
-    if (screenMatRef.current) {
-      screenMatRef.current.opacity = Math.min(
-        1,
-        screenOnRef.current * 1.5 + 0.1,
+      // Use the screen mesh's GEOMETRY to derive its actual face
+      // orientation — bounding-box axis detection misses tilted
+      // screens (CRT faces are angled in the classic Mac model).
+      const m = screenMesh as THREE.Mesh;
+      m.geometry.computeBoundingBox();
+      m.geometry.computeVertexNormals();
+      const box = m.geometry.boundingBox!;
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+
+      // Find the dominant face normal from the geometry. Iterate
+      // the position attribute as triangles, compute each face's
+      // normal, accumulate by area. The biggest-area direction is
+      // the screen face's normal.
+      const posAttr = m.geometry.getAttribute("position") as THREE.BufferAttribute;
+      const idxAttr = m.geometry.getIndex();
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      const c = new THREE.Vector3();
+      const ab = new THREE.Vector3();
+      const ac = new THREE.Vector3();
+      const n = new THREE.Vector3();
+      const accum = new THREE.Vector3();
+      const triCount = idxAttr ? idxAttr.count / 3 : posAttr.count / 3;
+      for (let i = 0; i < triCount; i++) {
+        const i0 = idxAttr ? idxAttr.getX(i * 3) : i * 3;
+        const i1 = idxAttr ? idxAttr.getX(i * 3 + 1) : i * 3 + 1;
+        const i2 = idxAttr ? idxAttr.getX(i * 3 + 2) : i * 3 + 2;
+        a.fromBufferAttribute(posAttr, i0);
+        b.fromBufferAttribute(posAttr, i1);
+        c.fromBufferAttribute(posAttr, i2);
+        ab.subVectors(b, a);
+        ac.subVectors(c, a);
+        n.crossVectors(ab, ac);
+        const area = n.length() / 2;
+        // Bias toward the screen-facing normal: in the mac.glb the
+        // screen face is tilted forward (toward camera), and that
+        // face has the largest area among the screen mesh's faces.
+        accum.add(n.normalize().multiplyScalar(area));
+      }
+      accum.normalize();
+      // Use the dominant normal for both face direction AND the
+      // direction we nudge the overlay so it sits in front of the
+      // screen mesh's surface.
+      const overlaySize = new THREE.Vector2(
+        Math.max(size.x, size.z) * 0.95,
+        Math.max(size.y, size.x) * 0.6,
       );
-      screenMatRef.current.emissiveIntensity = screenOnRef.current * 0.6;
+      // Better width/height: use the two largest bbox axes.
+      const sortedSizes: Array<[string, number]> = [
+        ["x", size.x],
+        ["y", size.y],
+        ["z", size.z],
+      ].sort((p, q) => q[1] - p[1]) as Array<[string, number]>;
+      overlaySize.set(sortedSizes[0]![1], sortedSizes[1]![1]);
+
+      const overlayGeo = new THREE.PlaneGeometry(
+        overlaySize.x,
+        overlaySize.y,
+      );
+      const overlayMat = new THREE.MeshBasicMaterial({
+        map: screenTexture,
+        color: "#ffffff",
+        toneMapped: false,
+        side: THREE.DoubleSide,
+        transparent: false,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const overlay = new THREE.Mesh(overlayGeo, overlayMat);
+      // Position at center of screen mesh, nudged 1% of the bbox
+      // diagonal along the dominant normal direction.
+      overlay.position.copy(center);
+      const nudge = Math.max(size.length() * 0.01, 0.01);
+      overlay.position.add(accum.clone().multiplyScalar(nudge));
+      // Orient the plane so its +Z normal aligns with `accum`.
+      // lookAt expects a target point; passing center + accum makes
+      // the plane face that direction.
+      const target = overlay.position.clone().add(accum);
+      overlay.lookAt(target);
+      overlay.renderOrder = 999;
+      screenMesh.add(overlay);
+      screenOverlayRef.current = overlay;
     }
-  });
+    return () => {
+      const overlay = screenOverlayRef.current;
+      if (overlay && overlay.parent) {
+        overlay.parent.remove(overlay);
+        overlay.geometry.dispose();
+        (overlay.material as THREE.Material).dispose();
+      }
+      screenOverlayRef.current = null;
+    };
+    // Only depend on `clone` — overlay is created once per mac model.
+    // Texture updates handled by the separate effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clone]);
+
+  // Swap the overlay material's texture whenever the canvas re-renders
+  // (boot text typing, hover, desktop tiles). Avoids recreating the
+  // overlay geometry every 30Hz.
+  useEffect(() => {
+    const overlay = screenOverlayRef.current;
+    if (!overlay) return;
+    const mat = overlay.material as THREE.MeshBasicMaterial;
+    mat.map = screenTexture;
+    mat.needsUpdate = true;
+  }, [screenTexture]);
+
+  // (Previous per-frame opacity/emissive ramp on screenMatRef is
+  // gone — MeshBasicMaterial doesn't have those properties; the CRT
+  // is now always 'on' so the texture renders the moment the boot
+  // sequence starts drawing into the canvas. screenOnRef left wired
+  // up for future ramped effects.)
+  void screenOnRef;
 
   if (!clone) return null;
   // In tune mode, read scale + position from window.__macTune so
@@ -556,9 +670,12 @@ function Scene({
   void disintegrateRef;
   return (
     <>
-      <ambientLight intensity={0.55} color="#fff4e8" />
-      <directionalLight position={[3, 5, 3]} intensity={1.0} color="#fff" />
-      <directionalLight position={[-3, 2, 2]} intensity={0.35} color="#ffd4a8" />
+      {/* Neutral lighting — was warm cream + orange fill which made the
+          off-white Mac body read muddy. Pure white directional +
+          cooler white fill keeps the body color clean. */}
+      <ambientLight intensity={0.7} color="#ffffff" />
+      <directionalLight position={[3, 5, 3]} intensity={1.2} color="#ffffff" />
+      <directionalLight position={[-3, 2, 2]} intensity={0.45} color="#eef4ff" />
       <group ref={macGroupRef}>
         <MacBody screenOnRef={screenOnRef} screenTexture={screenTexture} />
         <ScreenClickPlane
@@ -581,7 +698,12 @@ export function MacintoshScene(props: Props) {
   return (
     <>
       <Canvas
-        camera={{ position: [0, 1.6, 7.0], fov: 28, near: 0.1, far: 40 }}
+        // Camera framing: user dragged to pos [-1.09, 0.74, 3.03],
+        // fov 28 — that was visually close to ideal but the Mac
+        // was clipping at the right edge. Pulled back ~50% along
+        // the same direction vector to keep the angle but give
+        // breathing room around the model: [-1.6, 1.1, 4.5].
+        camera={{ position: [-1.6, 1.1, 4.5], fov: 28, near: 0.1, far: 40 }}
         dpr={[1, 1.5]}
         shadows
         gl={{
