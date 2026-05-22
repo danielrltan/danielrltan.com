@@ -82,10 +82,7 @@ export function HeroSignature() {
         aria-hidden={!compositionVisible}
       >
         <div className="hero-top">
-          <span className="hero-eyebrow">
-            <span className="hero-eyebrow-dot" />
-            00 / Portfolio &nbsp;&middot;&nbsp; 2026
-          </span>
+          <span className="hero-eyebrow">00 / Portfolio &nbsp;&middot;&nbsp; 2026</span>
         </div>
 
         <div className="hero-wordmark-stack">
@@ -115,7 +112,6 @@ export function HeroSignature() {
         <div className="hero-bottom">
           <div className="hero-rule" aria-hidden />
           <div className="hero-meta">
-            <span className="hero-meta-bullet">●</span>
             <span>Software engineer</span>
             <span className="hero-meta-dot">/</span>
             <span>Toronto, CA</span>

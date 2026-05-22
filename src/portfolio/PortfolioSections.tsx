@@ -4,18 +4,25 @@ import { Macintosh } from "./Macintosh";
 import { Work } from "./Work";
 import { Other } from "./Other";
 import { BitsAndPieces } from "./BitsAndPieces";
-import { SectionTransition } from "./SectionTransition";
 import { Keypad } from "./Keypad";
 import { Footer } from "./Footer";
 
 /**
  * Vertical stack of scroll-driven content sections + footer.
- * Each section's column is on the right ~50% of the viewport so the
- * fixed 3D room on the left stays visible. Hero is the only exception
- * — empty, room takes the whole viewport.
+ * Each section is its own object in the curiosity-cabinet design.
  *
- * Order: Hero → About → Skills → Projects → Work → Play → Other →
- * SectionTransition (editorial marquee bridge) → Keypad → Footer.
+ * Order: Hero → About → Macintosh (Stack+Projects) → Work →
+ *        Other (Hobbies) → BitsAndPieces → Keypad (Contact) → Footer.
+ *
+ * SectionTransition (the marquee bridge) was removed — it was a
+ * full-width pixel-font marquee positioned just above Keypad, and
+ * its 35vh height + relative position was overlapping the pinned
+ * Keypad section as the user scrolled (the marquee scrolled into
+ * view while the keypad was still pinned, drawing a horizontal
+ * band across the live keypad). The Keypad's own contact card
+ * ("Let's connect / hello@danielrltan.com") already carries the
+ * social-CTA the marquee was teasing, so removing the bridge
+ * doesn't lose any information.
  */
 export function PortfolioSections() {
   return (
@@ -35,7 +42,6 @@ export function PortfolioSections() {
       <Work />
       <Other />
       <BitsAndPieces />
-      <SectionTransition />
       <Keypad />
       <Footer />
     </main>

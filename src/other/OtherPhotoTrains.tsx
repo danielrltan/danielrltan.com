@@ -17,10 +17,13 @@ interface Props {
 }
 
 const ROWS = 3;
-// Relative speed per row. Sign = direction. Magnitude > 1 means the
-// strip moves faster than the user's scroll progress through the
-// section.
-const ROW_SPEEDS = [1.6, -1.3, 1.1];
+// Relative speed per row. Sign = direction. Slowed dramatically
+// from [1.6, -1.3, 1.1] → [0.45, -0.38, 0.5] per user feedback:
+// "scrolling here increments these too fast, you need to slow down
+// scrolling here and allow these all to get shown." The strips
+// were sliding by faster than the eye could pick out individual
+// hobby labels.
+const ROW_SPEEDS = [0.45, -0.38, 0.5];
 
 export function OtherPhotoTrains({ photos, sectionRef }: Props) {
   const rowRefs = useRef<Array<HTMLDivElement | null>>([null, null, null]);
@@ -48,9 +51,12 @@ export function OtherPhotoTrains({ photos, sectionRef }: Props) {
         if (!row) continue;
         const speed = ROW_SPEEDS[i]!;
         // Anchor at (clamped - 0.5) so each row passes through its
-        // "rest position" at section midpoint. Width 280% of strip
-        // gives meaningful travel even on smaller viewports.
-        const shift = (clamped - 0.5) * speed * 280;
+        // "rest position" at section midpoint. Travel multiplier
+        // 280 → 110: paired with the slower ROW_SPEEDS, total
+        // travel per row across the full section scroll is now
+        // ~50% of strip width (was ~450%). Every hobby label has
+        // time to be read instead of blurring past.
+        const shift = (clamped - 0.5) * speed * 110;
         row.style.transform = `translate3d(${-shift}%, 0, 0)`;
       }
     };

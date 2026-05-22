@@ -1,8 +1,21 @@
 /* Work section — dramatic pinned timeline.
-   Custom 2-column layout that breaks out of the standard
-   portfolio-col pattern (which would constrain the cards to a
-   narrow strip). Aside (heading/blurb/cta) sits on the LEFT,
-   timeline (rail + cards) on the RIGHT with proper card width. */
+   Custom 2-column layout: aside (heading/blurb/CTA) on the LEFT,
+   timeline (rail + cards) on the RIGHT.
+
+   Timeline visual language (post-redesign):
+   - ONE vertical rail line, with an animated orange-fill drawing
+     down as the user scrolls (no scrubber dot, no card dots, no
+     halo rings — the leading edge of the fill is the indicator).
+   - Each card has a thin horizontal "tick" crossing the rail at
+     its row, plus a typographic year/date label to the LEFT of
+     the rail. The year is the marker, not a circle.
+   - Current/latest card gets accent-orange treatment on its tick
+     and a tiny "CURRENT" tag inline with its meta line.
+
+   No more ball clutter. The user's frustration was eight overlapping
+   circular elements (rail dot + ring shadow + scrubber + scrubber
+   shadow ring + card dot + card dot border + current shadow ring)
+   competing for visual attention. */
 
 .portfolio-work {
   position: relative;
@@ -31,8 +44,6 @@
 }
 
 .work-aside .section-marker {
-  /* The default section-marker is huge ASCII art; keep that styling
-     but make sure it doesn't push the layout. */
   margin-bottom: 4px;
 }
 .work-aside .section-index {
@@ -52,81 +63,78 @@
   max-width: 320px;
 }
 
-/* Timeline stage — rail on the left, cards on the right. Cards
-   column is the natural width of the parent grid track minus the
-   28px rail and gap. */
+/* Timeline stage — rail on the left, cards on the right. Year
+   labels sit BEYOND the rail to the left (as part of the cards
+   column, just absolute-positioned). */
 .work-timeline-stage {
   position: relative;
   display: grid;
-  grid-template-columns: 32px 1fr;
+  grid-template-columns: 1px 1fr;
   gap: 0;
   height: 100%;
-  max-width: 720px;
-  /* Vertical scroll is intentionally NOT enabled — section is
-     pinned and cards animate into a fixed visible area. If the
-     content grows beyond the section height, that's a content
-     length problem, not a UX problem to solve with overflow. */
+  max-width: 760px;
 }
 
-/* Rail column. */
+/* Rail column — just a 1px-wide track. */
 .work-rail-wrap {
   position: relative;
-  width: 32px;
+  width: 1px;
   height: 100%;
 }
 
 .work-rail {
   position: absolute;
-  left: 50%;
+  left: 0;
   top: 8px;
   bottom: 30px;
   width: 1px;
-  transform: translateX(-50%);
   background: rgba(26, 23, 20, 0.12);
 }
 
 .work-rail-fill {
   position: absolute;
-  left: 50%;
+  left: 0;
   top: 8px;
   bottom: 30px;
   width: 2px;
-  transform: translateX(-50%) scaleY(0);
+  transform: scaleY(0);
   transform-origin: top;
-  background: linear-gradient(
-    to bottom,
-    var(--accent, #e87040) 0%,
-    var(--accent, #e87040) 75%,
-    rgba(232, 112, 64, 0.5) 100%
-  );
-  box-shadow: 0 0 12px rgba(232, 112, 64, 0.55);
+  background: var(--accent, #e87040);
 }
 
-.work-scrubber {
+/* The "scrubber" is now JUST the leading edge of the rail-fill,
+   highlighted by a thin glow rather than a ball-bearing-shaped dot.
+   It's the same height as the fill but renders the bottom 2px of it
+   as a bright wedge — purely visual via a gradient stop. */
+.work-rail-fill::after {
+  content: "";
   position: absolute;
-  left: 50%;
-  top: 8px;
-  width: 14px;
-  height: 14px;
-  margin-left: -7px;
-  border-radius: 50%;
+  left: -3px;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
   background: var(--accent, #e87040);
-  box-shadow:
-    0 0 0 4px rgba(232, 112, 64, 0.22),
-    0 0 22px rgba(232, 112, 64, 0.65);
-  transform: translate(-50%, 0);
-  opacity: 0;
-  pointer-events: none;
+  box-shadow: 0 0 12px rgba(232, 112, 64, 0.6);
+  transform: rotate(45deg);
+  /* Diamond shape (rotated square) — sits at the bottom of the
+     fill as a sharp leading-edge marker. Way more deliberate than
+     a soft dot with an outer ring. */
+}
+
+/* Old scrubber dot — hidden. Kept the element in JSX for now so
+   the JS-driven transform doesn't error; we just don't render it. */
+.work-scrubber {
+  display: none;
 }
 
 /* Cards column. */
 .work-cards {
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  padding-left: 24px;
+  gap: 26px;
+  padding-left: 28px;
   padding-right: 4px;
-  min-width: 0; /* Allow flex children to shrink rather than overflow */
+  min-width: 0;
 }
 
 .work-card {
@@ -152,28 +160,37 @@
   filter: blur(0);
 }
 
-.work-card-dot {
+/* Horizontal tick mark — thin line connecting the rail to the
+   card's leading edge. Replaces the old circular dot indicator. */
+.work-card::before {
+  content: "";
   position: absolute;
-  left: -29px;
-  top: 24px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: rgba(26, 23, 20, 0.16);
-  border: 2px solid var(--wrapper-bg, #f8f6f3);
-  box-shadow: 0 0 0 1px rgba(26, 23, 20, 0.10);
-  transition: background 200ms ease, box-shadow 200ms ease;
+  left: -28px;
+  top: 28px;
+  width: 24px;
+  height: 1px;
+  background: rgba(26, 23, 20, 0.18);
+  transition: background 240ms ease;
 }
-.work-card.is-revealed .work-card-dot {
+.work-card.is-revealed::before {
   background: var(--accent, #e87040);
 }
-.work-card--current .work-card-dot {
-  background: var(--accent, #e87040);
-  box-shadow: 0 0 0 4px rgba(232, 112, 64, 0.22);
+
+/* Old card-dot is no longer rendered (we removed it from JSX). */
+.work-card-dot {
+  display: none;
 }
-.work-card--current.is-revealed {
+
+.work-card--current {
   border-color: rgba(232, 112, 64, 0.35);
   background: rgba(255, 245, 238, 0.78);
+}
+.work-card--current::before {
+  background: var(--accent, #e87040);
+  /* Slightly thicker tick for the current card to read as "you are
+     here" without resorting to another circle. */
+  height: 2px;
+  top: 28px;
 }
 
 .work-card-meta {
@@ -199,10 +216,10 @@
 }
 
 .work-card-where {
-  font-family: var(--font-display, "Space Grotesk", sans-serif);
+  font-family: var(--font-display, "Geist", "Inter", sans-serif);
   font-size: 22px;
   font-weight: 600;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.01em;
   color: var(--wrapper-ink, #1a1714);
   margin: 0 0 3px;
 }
@@ -240,17 +257,27 @@
   background: var(--accent, #e87040);
 }
 
-.work-resume-btn {
+/* Resume CTA — specificity scoped under .portfolio-work because the
+   global `.portfolio-section a` rule (sections.css) was painting
+   the link orange + adding a `border-bottom`, which turned the
+   pill into an empty orange blob with invisible white-on-orange
+   text under an orange underline. Scoping under the work section's
+   class wins the cascade. */
+.portfolio-work .work-resume-btn {
   align-self: flex-start;
   display: inline-block;
   padding: 12px 22px;
   background: var(--accent, #e87040);
-  color: white;
+  /* color: #fff important so the global `.portfolio-section a` rule
+     can't repaint the text in accent orange (which would make the
+     label invisible on the orange pill). */
+  color: #ffffff !important;
   font-family: var(--font-mono, "JetBrains Mono", monospace);
   font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   text-decoration: none;
+  border-bottom: none;
   border-radius: 999px;
   opacity: 0;
   transform: translateY(6px);
@@ -262,11 +289,12 @@
     0 2px 0 rgba(26, 23, 20, 0.15),
     0 8px 20px -8px rgba(232, 112, 64, 0.55);
 }
-.work-resume-btn.is-revealed {
+.portfolio-work .work-resume-btn.is-revealed {
   opacity: 1;
   transform: translateY(0);
 }
-.work-resume-btn:hover {
+.portfolio-work .work-resume-btn:hover {
+  opacity: 1 !important;
   box-shadow:
     0 3px 0 rgba(26, 23, 20, 0.15),
     0 12px 28px -10px rgba(232, 112, 64, 0.65);
