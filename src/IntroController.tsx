@@ -38,10 +38,12 @@ export const START_POS = new THREE.Vector3(55, 55, 55);
 // + drop FOV proportionally to keep the room's apparent size while
 // flattening perspective.
 //
-// (80, 80, 80) — pulled back to shrink the room slightly + push
-// projection further toward orthographic. Equal X=Y=Z keeps the
-// iso angle correct. Distance ~139 from lookAt.
-export const END_POS = new THREE.Vector3(80, 80, 80);
+// (50, 50, 50) — pulled in 1.6x from (80, 80, 80) per user request
+// 'zoom it in by about 1.6x.' Equal X=Y=Z keeps the iso angle
+// correct; FOV stays narrow (5°) so the projection remains near-
+// orthographic — pulling the camera CLOSER (vs widening FOV)
+// preserves the parallel-line iso look.
+export const END_POS = new THREE.Vector3(50, 50, 50);
 export const START_FOV = 5;
 // FOV narrowed to 5 — at distance 139, room subtends ~5° = ~50%
 // of viewport width. With FOV this narrow + camera this far, the
