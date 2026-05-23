@@ -119,50 +119,57 @@ export function Keypad() {
   // at module scope so it's cached by the time the canvas needs it.
   const [mounted] = useState(true);
 
-  // "Approach progress" — 0..1 across the window from "section top
-  // crosses viewport bottom" (about to appear) to "section top hits
-  // viewport top" (pin engages). KeypadScene reads this to drive
-  // the drop animation, which lands the model just as the pin
-  // engages. Separate scroll-listener-driven ref (NOT the GSAP pin's
-  // progress) because the pin's progress is only defined ONCE the
-  // pin engages — by then it's too late to play a drop-in animation.
+  // pinProgressRef is now a TIME-driven 0..1 ramp, not scroll-driven.
+  // User feedback: the scroll-bound drop matched the scroll rate so
+  // closely that the landing felt 'overwhelming' — the keypad was
+  // arriving as fast as the user scrolled, leaving no moment to
+  // actually watch it land.
+  //
+  // New behaviour: ramp from 0 → 1 over DROP_RAMP_MS once the section
+  // ENTERS the viewport (IntersectionObserver). User scrolls there,
+  // section enters, keypad drops in on its own pace, user has the
+  // pinned dwell to read + interact.
+  //
   // TUNE_MODE parks at 1 so the playground sees the landed model.
   const pinProgressRef = useRef<number>(TUNE_MODE ? 1 : 0);
 
-  // Drive pinProgressRef from a plain scroll listener. The "progress
-  // value" is a continuous 0..1 across approach + pin:
-  //
-  //   ratio = (vh - section.top) / (vh + pinDuration)
-  //
-  // 0   = section's top is at viewport bottom (about to enter)
-  // ~vh/(vh+pin) = pin engages (section top hits viewport top)
-  // 1   = pin releases (user has scrolled vh+pinDuration since
-  //       section was at viewport bottom)
-  //
-  // KeypadScene uses the first ~30% of this to drive the drop.
+  // Animate the drop with a fixed-rate timer started on first
+  // viewport entry.
   useEffect(() => {
     if (TUNE_MODE) return;
     const el = sectionRef.current;
     if (!el) return;
-    let raf = 0;
-    const update = () => {
-      const r = el.getBoundingClientRect();
-      const vh = window.innerHeight || 1;
-      const total = vh + PIN_DURATION_PX;
-      const p = (vh - r.top) / total;
-      pinProgressRef.current = Math.max(0, Math.min(1, p));
+    const DROP_RAMP_MS = 1100;
+    let started = false;
+    let startTime = 0;
+    let rafId = 0;
+    const tick = () => {
+      const elapsed = performance.now() - startTime;
+      const t = Math.max(0, Math.min(1, elapsed / DROP_RAMP_MS));
+      // Map to KeypadScene's 0..1 drop window (which it uses 0..0.30
+      // for the drop). 0.4 leaves room for the rest of the scene to
+      // breathe past the drop.
+      pinProgressRef.current = t * 0.4;
+      if (t < 1) rafId = requestAnimationFrame(tick);
     };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && !started) {
+            started = true;
+            startTime = performance.now();
+            rafId = requestAnimationFrame(tick);
+            io.disconnect();
+            return;
+          }
+        }
+      },
+      { rootMargin: "-15% 0px -15% 0px" },
+    );
+    io.observe(el);
     return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      cancelAnimationFrame(raf);
+      io.disconnect();
+      cancelAnimationFrame(rafId);
     };
   }, []);
 
