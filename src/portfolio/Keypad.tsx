@@ -133,22 +133,26 @@ export function Keypad() {
   // TUNE_MODE parks at 1 so the playground sees the landed model.
   const pinProgressRef = useRef<number>(TUNE_MODE ? 1 : 0);
 
-  // Animate the drop with a fixed-rate timer started on first
-  // viewport entry.
+  // Time-driven drop with an explicit pre-drop pause. User: 'no you
+  // still need to delay it more.' Sequence:
+  //   1. IO fires when section is well inside viewport (-25% inset)
+  //   2. Wait DROP_DELAY_MS — empty section visible, user settles
+  //   3. Ramp over DROP_RAMP_MS — keypad drops at a deliberate cadence
+  //   4. Stays landed
   useEffect(() => {
     if (TUNE_MODE) return;
     const el = sectionRef.current;
     if (!el) return;
-    const DROP_RAMP_MS = 1100;
+    const DROP_DELAY_MS = 750;
+    const DROP_RAMP_MS = 1400;
     let started = false;
+    let rampStarted = false;
     let startTime = 0;
     let rafId = 0;
+    let delayId: number | null = null;
     const tick = () => {
       const elapsed = performance.now() - startTime;
       const t = Math.max(0, Math.min(1, elapsed / DROP_RAMP_MS));
-      // Map to KeypadScene's 0..1 drop window (which it uses 0..0.30
-      // for the drop). 0.4 leaves room for the rest of the scene to
-      // breathe past the drop.
       pinProgressRef.current = t * 0.4;
       if (t < 1) rafId = requestAnimationFrame(tick);
     };
@@ -157,19 +161,26 @@ export function Keypad() {
         for (const entry of entries) {
           if (entry.isIntersecting && !started) {
             started = true;
-            startTime = performance.now();
-            rafId = requestAnimationFrame(tick);
             io.disconnect();
+            // Pre-drop pause — user gets a beat of empty section
+            // before the keypad starts landing.
+            delayId = window.setTimeout(() => {
+              if (rampStarted) return;
+              rampStarted = true;
+              startTime = performance.now();
+              rafId = requestAnimationFrame(tick);
+            }, DROP_DELAY_MS);
             return;
           }
         }
       },
-      { rootMargin: "-15% 0px -15% 0px" },
+      { rootMargin: "-25% 0px -25% 0px" },
     );
     io.observe(el);
     return () => {
       io.disconnect();
       cancelAnimationFrame(rafId);
+      if (delayId != null) window.clearTimeout(delayId);
     };
   }, []);
 
