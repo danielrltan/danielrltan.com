@@ -38,18 +38,16 @@ export const START_POS = new THREE.Vector3(55, 55, 55);
 // + drop FOV proportionally to keep the room's apparent size while
 // flattening perspective.
 //
-// Balanced near-ortho — (45, 45, 45) with FOV 11°. Distance to
-// lookAt ≈ 78. Room extent ~10u subtends ~7.3° = ~66% of viewport.
-// Perspective foreshortening is mild (~6%) so lines look nearly
-// parallel without the room shrinking to a tiny model in viewport
-// center (the v2 (100, 100, 100) was too far back). Iso angle
-// preserved because X=Y=Z.
-export const END_POS = new THREE.Vector3(45, 45, 45);
+// Pulled in to (25, 25, 25) for a bigger room — FOV stays narrow
+// (still equal X=Y=Z so iso angle holds). Distance ~43. Room at
+// FOV 16 subtends ~14° = ~88% of viewport width.
+export const END_POS = new THREE.Vector3(25, 25, 25);
 export const START_FOV = 5;
-// FOV tuned to match (45, 45, 45) camera distance — keeps the room
-// at ~66% viewport width while flattening perspective enough to read
-// as near-isometric.
-export const END_FOV = 11;
+// FOV narrowed 16 → 8 — narrower FOV at constant camera distance
+// makes the room appear ~2x bigger on screen AND makes the
+// projection more orthographic. Combined with END_POS (25, 25, 25)
+// the room fills ~60% of viewport at a clean iso angle.
+export const END_FOV = 8;
 export const START_LOOK_AT = new THREE.Vector3(0, 0.6, 0);
 export const END_LOOK_AT = new THREE.Vector3(0, 0.8, 0);
 
