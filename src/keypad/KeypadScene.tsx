@@ -87,9 +87,14 @@ interface KeypadSceneProps {
   // its drop animation from pin progress 0.00 → 0.30, then settles
   // for the remaining dwell.
   pinProgressRef: React.MutableRefObject<number>;
+  /** 0..1 target opacity for the RiceBlob's orange glow layer.
+   *  Keypad.tsx ramps this from 0 to 1 once the drop-in animation
+   *  has completed, so the orange wash never appears behind an
+   *  empty section. */
+  glowOpacityRef?: React.MutableRefObject<number>;
 }
 
-export function KeypadScene({ pinProgressRef }: KeypadSceneProps) {
+export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps) {
   const isMobile = useIsMobile();
   // Cursor target shared with RiceBlob (uniform driver) and with the
   // SceneContents component (parallax driver).
@@ -167,6 +172,7 @@ export function KeypadScene({ pinProgressRef }: KeypadSceneProps) {
           cursorRef={cursorRef}
           isMobile={isMobile}
           pinProgressRef={pinProgressRef}
+          glowOpacityRef={glowOpacityRef}
           tuneStateRef={tuneStateRef}
           transformMode={transformMode}
         />
@@ -266,12 +272,14 @@ function SceneContents({
   cursorRef,
   isMobile,
   pinProgressRef,
+  glowOpacityRef,
   tuneStateRef,
   transformMode,
 }: {
   cursorRef: React.MutableRefObject<CursorState>;
   isMobile: boolean;
   pinProgressRef: React.MutableRefObject<number>;
+  glowOpacityRef?: React.MutableRefObject<number>;
   tuneStateRef: React.MutableRefObject<TuneState>;
   transformMode: TuneTransformMode;
 }) {
@@ -404,7 +412,7 @@ function SceneContents({
 
   return (
     <>
-      <RiceBlob cursorRef={cursorRef} />
+      <RiceBlob cursorRef={cursorRef} glowOpacityRef={glowOpacityRef} />
       {/* Neutral paper-white ambient. */}
       <ambientLight intensity={0.5} color="#f4f3f0" />
       {/* Pure-white KEY from upper-right with shadow. */}

@@ -91,6 +91,7 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uRice;
   uniform vec3 uGlow;
   uniform float uActive;
+  uniform float uGlowOpacity;
 
   float hash21(vec2 p) {
     p = fract(p * vec2(443.897, 441.423));
@@ -184,6 +185,13 @@ const FRAGMENT = /* glsl */ `
     // — even at peak intensity the section still reads as light grey
     // with an orange wash, not pure orange.
     glow = clamp(glow * 0.45, 0.0, 0.45);
+    // Multiply by external reveal opacity (driven from KeypadScene
+    // → ref → useFrame). 0 = no glow at all, 1 = full glow. Lets
+    // Keypad.tsx hide the orange wash until AFTER the keypad's
+    // drop-in animation completes — without this gate, the orange
+    // backdrop appeared before any keypad was visible, making the
+    // scene look unfinished.
+    glow *= uGlowOpacity;
 
     // Composite: orange tint first, then rice grains on top of the
     // tinted bg (so dots remain crisp gray over the orange field).
@@ -201,9 +209,13 @@ export interface CursorState {
 
 interface Props {
   cursorRef: React.MutableRefObject<CursorState>;
+  /** 0..1 target glow opacity. The shader uniform lerps toward this
+   *  each frame for a soft fade — Keypad.tsx ramps this from 0 to
+   *  1 once the keypad's drop-in animation has finished. */
+  glowOpacityRef?: React.MutableRefObject<number>;
 }
 
-export function RiceBlob({ cursorRef }: Props) {
+export function RiceBlob({ cursorRef, glowOpacityRef }: Props) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   const { size, camera } = useThree();
@@ -222,6 +234,7 @@ export function RiceBlob({ cursorRef }: Props) {
       uRice: { value: new THREE.Color(RICE_COLOR) },
       uGlow: { value: new THREE.Color(GLOW_COLOR) },
       uActive: { value: 0 },
+      uGlowOpacity: { value: 0 },
     }),
     [],
   );
@@ -272,6 +285,13 @@ export function RiceBlob({ cursorRef }: Props) {
     mat.uniforms.uActive.value += (
       (t.active ? 1 : 0) - mat.uniforms.uActive.value
     ) * k;
+    // Soft lerp toward target glow opacity. Slower coefficient than
+    // the cursor-active follow so the fade-in reads as deliberate
+    // rather than a snap.
+    const targetGlow = glowOpacityRef?.current ?? 1;
+    const glowK = 1 - Math.exp(-dt * 2.2);
+    mat.uniforms.uGlowOpacity.value +=
+      (targetGlow - mat.uniforms.uGlowOpacity.value) * glowK;
   });
 
   // Base geometry (24, 16) — useFrame above repositions, orients,

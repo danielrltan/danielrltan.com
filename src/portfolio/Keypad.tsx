@@ -133,6 +133,12 @@ export function Keypad() {
   // TUNE_MODE parks at 1 so the playground sees the landed model.
   const pinProgressRef = useRef<number>(TUNE_MODE ? 1 : 0);
 
+  // RiceBlob's orange glow opacity 0..1. Held at 0 until the keypad
+  // drop animation finishes, then ramped to 1 with a subtle fade so
+  // the orange wash doesn't appear behind an empty section. Read by
+  // RiceBlob's shader uniform.
+  const glowOpacityRef = useRef<number>(TUNE_MODE ? 1 : 0);
+
   // Time-driven drop with an explicit pre-drop pause. User: 'no you
   // still need to delay it more.' Sequence:
   //   1. IO fires when section is well inside viewport (-25% inset)
@@ -143,8 +149,8 @@ export function Keypad() {
     if (TUNE_MODE) return;
     const el = sectionRef.current;
     if (!el) return;
-    const DROP_DELAY_MS = 750;
-    const DROP_RAMP_MS = 1400;
+    const DROP_DELAY_MS = 300;
+    const DROP_RAMP_MS = 1200;
     let started = false;
     let rampStarted = false;
     let startTime = 0;
@@ -154,7 +160,14 @@ export function Keypad() {
       const elapsed = performance.now() - startTime;
       const t = Math.max(0, Math.min(1, elapsed / DROP_RAMP_MS));
       pinProgressRef.current = t * 0.4;
-      if (t < 1) rafId = requestAnimationFrame(tick);
+      if (t < 1) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        // Drop has landed — release the glow. RiceBlob lerps toward
+        // this target over ~1s, so the wash reads as a deliberate
+        // fade-in rather than a pop.
+        glowOpacityRef.current = 1;
+      }
     };
     const io = new IntersectionObserver(
       (entries) => {
@@ -266,7 +279,10 @@ export function Keypad() {
 
       <div className="keypad-stage">
         {mounted ? (
-          <KeypadScene pinProgressRef={pinProgressRef} />
+          <KeypadScene
+            pinProgressRef={pinProgressRef}
+            glowOpacityRef={glowOpacityRef}
+          />
         ) : (
           <div className="keypad-placeholder" />
         )}
