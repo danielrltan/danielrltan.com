@@ -40,14 +40,14 @@ interface ScrollStop {
 // for the iso projection to read correctly; only the lookAt target
 // varies so different sections focus on different room corners.
 const STOPS: ScrollStop[] = [
-  { at: 0.0,  position: [25, 25, 25], target: [0, 0.8, 0] },
-  { at: 0.13, position: [25, 25, 25], target: [-0.5, 0.8, -0.6] },
-  { at: 0.26, position: [25, 25, 25], target: [0, 1.0, 0] },
-  { at: 0.40, position: [25, 25, 25], target: [1.2, 1.0, -1.3] },
-  { at: 0.55, position: [25, 25, 25], target: [-1.2, 1.2, 1.0] },
-  { at: 0.70, position: [25, 25, 25], target: [-1.0, 0.4, 0.5] },
-  { at: 0.83, position: [25, 25, 25], target: [0, 1.0, 0] },
-  { at: 0.95, position: [25, 25, 25], target: [0, 0.8, 0] },
+  { at: 0.0,  position: [80, 80, 80], target: [0, 0.8, 0] },
+  { at: 0.13, position: [80, 80, 80], target: [-0.5, 0.8, -0.6] },
+  { at: 0.26, position: [80, 80, 80], target: [0, 1.0, 0] },
+  { at: 0.40, position: [80, 80, 80], target: [1.2, 1.0, -1.3] },
+  { at: 0.55, position: [80, 80, 80], target: [-1.2, 1.2, 1.0] },
+  { at: 0.70, position: [80, 80, 80], target: [-1.0, 0.4, 0.5] },
+  { at: 0.83, position: [80, 80, 80], target: [0, 1.0, 0] },
+  { at: 0.95, position: [80, 80, 80], target: [0, 0.8, 0] },
 ];
 
 interface Props {
