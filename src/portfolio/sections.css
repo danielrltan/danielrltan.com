@@ -1,18 +1,6 @@
-/* Portfolio sections — editorial card layout.
- *
- * Aesthetic: retro-modern editorial. Big architectural section numbers
- * in Offbit Dot anchor each section as a chapter marker; the actual
- * content lives in white cards with sharp corners, thin walnut hairline
- * borders, generous padding, and a subtle warm corner bracket. Headings
- * are Offbit (solid) — we commit to the pixel/Power-Type family rather
- * than half-mixing with a generic grotesque. Body stays Inter for read.
- *
- * Layout system: the right column is 50vw wide on desktop (mirrors the
- * 50vw fixed-canvas room on the left). Inside it, each section has a
- * "rail" left margin where the giant section number lives, and a "card"
- * area that holds the content. On mobile everything collapses to full
- * width and the section number shrinks into an inline marker.
- */
+/* Portfolio sections: editorial structure shared by every content
+   section (markers, indices, columns). Section-specific styling lives
+   in {about,macintosh,work-timeline,other,bits-and-pieces,footer}.css. */
 
 .portfolio-section {
   min-height: 100vh;
@@ -21,64 +9,42 @@
   position: relative;
   padding: 120px 0;
 }
-/* Alternate cream-tinted rows for vertical rhythm. Even sections
-   (02, 04) get a slightly warmer band that contrasts against the
-   white cards inside. Subtle but it kills the "endless cream" feel. */
-/* Alternating-row tint REMOVED — was a 3-stop transparent→orange→
-   transparent vertical gradient that added subtle warmth to odd
-   sections. Reading as overproduced; sections inherit the solid
-   wrapper-bg from #root now. */
 
-/* Hero is intentionally bare — no text, just space and the room
-   behind. No padding so the scroll-hint sits flush with viewport. */
+/* Hero is intentionally bare: no padding, just space and the room
+   behind. */
 .portfolio-section--hero {
   padding: 0;
   min-height: 100vh;
 }
 .portfolio-section--hero::before { display: none; }
 
-/* Right column (the content gutter). Sits on the right half of the
-   viewport. The fixed 3D canvas occupies the left 50vw. Generous
-   right padding (10vw) and a touch of left breathing room so content
-   doesn't kiss the canvas edge. max-width caps line length for
-   readability. Opacity is driven by --content-opacity (set from
-   App.tsx based on the canvas-shrink progress) so the section
-   content only fades in AFTER the right overlay finishes covering
-   the canvas — otherwise the marker / heading would overlap the
-   room geometry during the shrink. */
+/* Right-column gutter. Content opacity follows --content-opacity from
+   the consolidated scroll listener so section text only fades in
+   AFTER the canvas-shrink window completes. */
 .portfolio-col {
   margin-left: 50vw;
   width: 50vw;
-  /* Balanced left/right padding so the card has breathing room from
-     both the canvas divider AND the right-edge scroll rail. Earlier
-     `0 5vw 0 8vw` combined with the card's `margin-right: -4vw` made
-     the card's right edge sit at ~99vw, crashing into the ScrollRail
-     (right: 28px). Now: 8vw on both sides, card margin-right zeroed
-     below — card right edge lands at 92vw, leaving the rail a clean
-     ~8vw gutter. */
+  /* Balanced left/right padding leaves the card a clean ~8vw gutter
+     from the right-edge ScrollRail. */
   padding: 0 8vw;
   max-width: 880px;
   pointer-events: auto;
-  color: var(--wrapper-ink);
+  color: var(--ink);
   position: relative;
   opacity: var(--content-opacity, 1);
 }
-/* Hero never participates in the shrink gate — it's the room. */
 .portfolio-section--hero .portfolio-col {
   opacity: 1;
 }
 
-/* Section number — Teenage-Engineering-style "03." marker. Solid
-   Offbit (not the dotted face) for crisp industrial-design feel;
-   trailing period reinforces the spec-sheet aesthetic. Sits inside
-   the column with a tiny mono index label tucked alongside. */
+/* Section number: TE-style "03." marker. */
 .section-marker {
   font-family: var(--font-dot);
   font-weight: 700;
   font-size: clamp(96px, 11vw, 148px);
   line-height: 0.82;
   letter-spacing: 0.01em;
-  color: var(--wrapper-ink);
+  color: var(--ink);
   margin: 0 0 4px 0;
   display: inline-flex;
   align-items: baseline;
@@ -86,10 +52,6 @@
   user-select: none;
   pointer-events: none;
 }
-/* Arrow accent after the section number — was a `.` rendered in
-   the dotted font, which produced a 4-dot starburst that read as a
-   stray decorative glyph. A simple arrow in the sans face is more
-   purposeful — it gestures the eye down into the section card. */
 .section-marker::after {
   content: "↓";
   color: var(--accent);
@@ -104,158 +66,38 @@
   font-size: 11px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--wrapper-ink-soft);
+  color: var(--ink-muted);
   font-weight: 500;
   margin-bottom: 18px;
   display: block;
 }
 
-/* Eyebrow — small mono tag that names the section. */
-.portfolio-section .eyebrow {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  color: var(--accent);
-  font-weight: 600;
-  margin-bottom: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-}
-/* Decorative dot pattern in the eyebrow — keeps the pixel-dot motif
-   alive at small sizes. */
-.portfolio-section .eyebrow::before {
-  content: "";
-  display: inline-block;
-  width: 4px;
-  height: 4px;
-  background: var(--accent);
-  border-radius: 50%;
-  box-shadow: 7px 0 0 var(--accent), 14px 0 0 var(--accent);
-  margin-right: 18px;
-}
-
-/* Section heading — Geist mixed-case with trailing period
-   ("About me."). Tight letter-spacing for the premium / industrial
-   typeset feel. Lets the Offbit number marker carry the loud
-   statement; the heading reads as refined sans. */
+/* Section heading: Geist mixed-case, tight tracking. */
 .portfolio-section h2 {
   font-family: var(--font-display);
   font-weight: 500;
   font-size: clamp(40px, 4.6vw, 68px);
   line-height: 1.02;
   letter-spacing: -0.045em;
-  color: var(--wrapper-ink);
+  color: var(--ink);
   margin: 0 0 48px;
 }
 
-/* The card — TE-style industrial panel. White, sharp corners, thin
-   hairline border, generous padding. A tiny crosshair "+" lives in
-   the top-right corner (echoes the Beyond. spec sheet) and a small
-   orange status dot pulses in the top-left. A subtle orange gradient
-   bleeds down the right edge like the heat-coloured panel finish. */
-.section-card {
-  position: relative;
-  background-color: #ffffff;
-  border: 1px solid rgba(26, 23, 20, 0.08);
-  padding: 72px 64px;
-  /* Was -4vw — pushed the card past the column's right padding so it
-     overlapped the ScrollRail. Card now sits inside the column's
-     gutter, balanced with the left side. */
-  margin-right: 0;
-  box-shadow:
-    0 1px 0 rgba(26, 23, 20, 0.04),
-    0 32px 64px -36px rgba(180, 80, 30, 0.12);
-  /* Faint dot grid (technical-paper feel). Previously also had a
-     heat-finish orange gradient bleeding from the right edge — that
-     overlapping orange tint read as overdesigned. Just the dots
-     now: a quiet texture, not a colored panel. */
-  background-image:
-    radial-gradient(
-      circle at center,
-      rgba(26, 23, 20, 0.06) 1px,
-      transparent 1.3px
-    );
-  background-size: 22px 22px;
-  background-position: 0 0;
-}
-/* Crosshair "+" — top-right corner. Two thin lines crossed. */
-.section-card::after {
-  content: "";
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  width: 14px;
-  height: 14px;
-  background:
-    linear-gradient(currentColor, currentColor) center / 100% 1px no-repeat,
-    linear-gradient(currentColor, currentColor) center / 1px 100% no-repeat;
-  color: rgba(26, 23, 20, 0.45);
-  pointer-events: none;
-}
-/* Orange status dot — top-left. Faint TE-style indicator. */
-.section-card::before {
-  content: "";
-  position: absolute;
-  top: 22px;
-  left: 22px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px rgba(232, 112, 64, 0.12);
-  pointer-events: none;
-}
-
-/* Ridged / striped decorative band — used inside cards as a divider
-   variant or on section corners. Vertical hairlines repeating, like
-   the speaker grill or vent textures on the Beyond. panel. */
-.section-ridge {
-  height: 14px;
-  margin: 28px 0;
-  background-image: repeating-linear-gradient(
-    to right,
-    rgba(26, 23, 20, 0.18) 0,
-    rgba(26, 23, 20, 0.18) 1px,
-    transparent 1px,
-    transparent 4px
-  );
-  opacity: 0.85;
-}
-/* Horizontal striped band (echoes the perforated panel detail). */
-.section-perf {
-  height: 6px;
-  margin: 22px 0;
-  background-image: radial-gradient(
-    circle,
-    rgba(26, 23, 20, 0.30) 0.8px,
-    transparent 1.3px
-  );
-  background-size: 7px 6px;
-  background-repeat: repeat-x;
-  background-position: center;
-}
-
-/* Body type — Geist, comfortable line-height. Slightly tightened
-   tracking for the premium spec-sheet feel. */
-.portfolio-section p,
-.section-card p {
+/* Body type: Geist, comfortable line-height. */
+.portfolio-section p {
   font-family: var(--font-body);
   font-size: 17px;
   line-height: 1.65;
   letter-spacing: -0.01em;
-  color: var(--wrapper-ink);
+  color: var(--ink);
   opacity: 0.88;
   margin: 0 0 1.1em;
   font-weight: 400;
 }
-.portfolio-section p:last-child,
-.section-card p:last-child {
+.portfolio-section p:last-child {
   margin-bottom: 0;
 }
 
-/* Inline links inside body text */
 .portfolio-section a {
   color: var(--accent);
   text-decoration: none;
@@ -266,472 +108,25 @@
   opacity: 0.7;
 }
 
-/* Dotted rule — used inside cards to separate body from tags / links.
-   Built with a repeating radial gradient so the dots are crisp at any
-   DPI without an inline SVG. */
-.section-rule {
-  height: 6px;
-  margin: 32px 0;
-  background-image: radial-gradient(
-    circle,
-    rgba(26, 23, 20, 0.25) 1px,
-    transparent 1.5px
-  );
-  background-size: 10px 6px;
-  background-repeat: repeat-x;
-  background-position: center;
-}
-
-/* ---------------------------------------------------------------- */
-/* Project cards */
-/* ---------------------------------------------------------------- */
-
-.project-card {
-  background: #ffffff;
-  border: 1px solid rgba(26, 23, 20, 0.08);
-  overflow: hidden;
-  margin-bottom: 40px;
-  pointer-events: auto;
-  position: relative;
-  box-shadow:
-    0 1px 0 rgba(26, 23, 20, 0.04),
-    0 24px 48px -32px rgba(180, 80, 30, 0.10);
-}
-.project-card::before,
-.project-card::after {
-  content: "";
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-color: var(--accent);
-  pointer-events: none;
-}
-.project-card::before {
-  top: -1px;
-  left: -1px;
-  border-left: 2px solid;
-  border-top: 2px solid;
-}
-.project-card::after {
-  bottom: -1px;
-  right: -1px;
-  border-right: 2px solid;
-  border-bottom: 2px solid;
-}
-.project-card:last-child {
-  margin-bottom: 0;
-}
-
-.project-card-media {
-  aspect-ratio: 16 / 9;
-  /* Solid warm-cream placeholder (was a 2-stop diagonal gradient,
-     part of the "everything gradient" pile-up). */
-  background: #f4dec0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(26, 23, 20, 0.45);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  border-bottom: 1px solid rgba(26, 23, 20, 0.08);
-}
-.project-card-body {
-  padding: 36px 40px 36px;
-}
-.project-card h3 {
-  font-family: var(--font-dot);
-  font-weight: 700;
-  font-size: 26px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--wrapper-ink);
-  margin: 0 0 8px;
-  line-height: 1.05;
-}
-.project-card-meta {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--wrapper-ink-soft);
-  font-weight: 500;
-  margin: 0 0 16px;
-}
-.project-card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 22px 0 22px;
-}
-.project-tag {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.12em;
-  padding: 6px 12px;
-  background: transparent;
-  color: var(--accent);
-  border: 1px solid rgba(232, 112, 64, 0.35);
-  text-transform: uppercase;
-  font-weight: 600;
-}
-.project-card-links {
-  display: flex;
-  gap: 22px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  font-weight: 600;
-}
-
-/* ---------------------------------------------------------------- */
-/* Skills — chip grid grouped by category */
-/* ---------------------------------------------------------------- */
-
-.skill-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 32px 28px;
-}
-.skill-group-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--accent);
-  font-weight: 600;
-  margin-bottom: 14px;
-}
-.skill-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.skill-chip {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  font-weight: 600;
-  padding: 7px 12px;
-  border: 1px solid rgba(26, 23, 20, 0.14);
-  color: var(--wrapper-ink);
-  background: transparent;
-  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
-}
-.skill-chip:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-/* ---------------------------------------------------------------- */
-/* Play — grid of side projects / off-clock work */
-/* ---------------------------------------------------------------- */
-
-.play-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 28px;
-}
-.play-item {
-  padding: 24px;
-  border: 1px solid rgba(26, 23, 20, 0.08);
-  background: #fbf8f4;
-}
-.play-item-title {
-  font-family: var(--font-dot);
-  font-weight: 700;
-  font-size: 18px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  margin: 0 0 8px;
-  color: var(--wrapper-ink);
-}
-.play-item-blurb {
-  font-family: var(--font-body);
-  font-size: 14.5px;
-  line-height: 1.55;
-  opacity: 0.78;
-  margin: 0 0 12px;
-}
-
-/* ---------------------------------------------------------------- */
-/* Other — stack of writing / talks / open-source entries */
-/* ---------------------------------------------------------------- */
-
-.other-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.other-entry {
-  padding: 22px 0;
-  border-bottom: 1px solid rgba(26, 23, 20, 0.08);
-}
-.other-entry:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
-}
-.other-entry:first-child {
-  padding-top: 0;
-}
-.other-entry-label {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--accent);
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-.other-entry-title {
-  font-family: var(--font-dot);
-  font-weight: 700;
-  font-size: 20px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  margin: 0 0 6px;
-  color: var(--wrapper-ink);
-}
-.other-entry-blurb {
-  font-family: var(--font-body);
-  font-size: 14.5px;
-  line-height: 1.55;
-  opacity: 0.78;
-  margin: 0;
-}
-
-/* ---------------------------------------------------------------- */
-/* Contact — grid of social / resume buttons */
-/* ---------------------------------------------------------------- */
-
-.contact-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-/* ---------------------------------------------------------------- */
-/* Experience timeline (used by Work section) */
-/* ---------------------------------------------------------------- */
-
-.exp-item {
-  position: relative;
-  padding: 26px 0 26px 32px;
-  border-left: 1px solid rgba(232, 112, 64, 0.25);
-}
-.exp-item:first-of-type {
-  padding-top: 8px;
-}
-.exp-item:last-of-type {
-  padding-bottom: 8px;
-}
-.exp-item::before {
-  content: "";
-  position: absolute;
-  left: -6px;
-  top: 34px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(232, 112, 64, 0.25);
-}
-.exp-item:first-of-type::before {
-  top: 16px;
-}
-.exp-item-when {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--wrapper-ink-soft);
-  margin-bottom: 6px;
-  font-weight: 500;
-}
-.exp-item-where {
-  font-family: var(--font-dot);
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  margin-bottom: 4px;
-  color: var(--wrapper-ink);
-}
-.exp-item-role {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--wrapper-ink-soft);
-  font-weight: 500;
-  margin-bottom: 14px;
-}
-.exp-item-bullets {
-  font-family: var(--font-body);
-  font-size: 15.5px;
-  line-height: 1.6;
-  opacity: 0.82;
-  margin: 0;
-  padding-left: 18px;
-  list-style: square;
-}
-.exp-item-bullets li {
-  margin-bottom: 8px;
-}
-.exp-item-bullets li:last-child {
-  margin-bottom: 0;
-}
-.exp-item-bullets li::marker {
-  color: var(--accent);
-}
-.exp-item-what {
-  font-family: var(--font-body);
-  font-size: 15.5px;
-  line-height: 1.6;
-  opacity: 0.78;
-}
-
-.btn-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 24px;
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  background: transparent;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  font-weight: 600;
-  text-decoration: none !important;
-  border-radius: 0;
-  cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease;
-  pointer-events: auto;
-}
-.btn-pill:hover {
-  background: var(--accent);
-  color: #ffffff;
-}
-
-/* ---------------------------------------------------------------- */
-/* Contact */
-/* ---------------------------------------------------------------- */
-
-.contact-email {
-  display: inline-block;
-  font-family: var(--font-dot);
-  font-weight: 700;
-  font-size: clamp(28px, 3.4vw, 46px);
-  color: var(--accent);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  margin: 6px 0 32px;
-  text-decoration: none !important;
-  border: none !important;
-}
-.contact-socials {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin: 8px 0 32px;
-}
-.contact-note {
-  margin-top: 24px;
-  opacity: 0.6;
-  font-size: 14px !important;
-}
-
-/* ---------------------------------------------------------------- */
-/* Hero — bottom-left identity block + scroll hint */
-/* ---------------------------------------------------------------- */
-
-/* "Portfolio · 2026" + "Daniel Tan" stacked bottom-left. Sits above
-   the reset/audio pills (which live at bottom-left HUD_PADDING ≈22px).
-   Fades on scroll via the inline opacity from Hero.tsx. */
-.hero-mark {
-  position: absolute;
-  left: 6vw;
-  bottom: 88px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  pointer-events: none;
-  user-select: none;
-  z-index: 20;
-}
-.hero-mark .eyebrow {
-  margin: 0;
-}
-.hero-wordmark {
-  /* Offbit (solid) to stay in the Power Type family — Space Grotesk
-     looked generic against the pixel face used everywhere else. */
-  font-family: var(--font-dot);
-  font-size: clamp(28px, 2.6vw, 40px);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--wrapper-ink);
-  /* Generous line-height keeps descenders from clipping on the
-     pixel face which has slightly extended baselines. */
-  line-height: 1.05;
-}
-
-.scroll-hint {
-  position: absolute;
-  bottom: 40px;
-  right: 6vw;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: var(--wrapper-ink-soft);
-  pointer-events: none;
-}
-
-/* ---------------------------------------------------------------- */
-/* Mobile */
-/* ---------------------------------------------------------------- */
-
 @media (max-width: 768px) {
-  /* All sections drop the 50/50 split — content takes the full width.
-     The fixed canvas pins to the top 55vh as a hero band, then fades
-     out for the content below. Sections stack normally. */
   .portfolio-section {
     padding: 80px 0;
   }
   .portfolio-section--hero {
     padding: 0;
   }
-  .portfolio-section:nth-of-type(odd) {
-    background: none;
-  }
   .portfolio-col {
     margin-left: 0;
     width: 100vw;
-    /* The about (first content) section needs to clear the hero
-       canvas band at the top. Subsequent sections start where they
-       naturally do. */
     padding: 0 6vw;
     max-width: none;
   }
-  /* Hero is now a full-100vh canvas band on mobile (was 55vh), and
-     the canvas fades out as the user scrolls past the first screen.
-     So the first content section only needs a modest top padding to
-     soften the transition — Hero itself provides the spacer. */
   .portfolio-section--hero + .portfolio-section .portfolio-col {
     padding-top: 14vh;
   }
-  /* Hero on mobile is purely the canvas at top — content starts after. */
   .portfolio-section--hero .portfolio-col {
     padding: 0;
   }
-  /* Section markers shrink — full-width column means we have less
-     horizontal room. Still pixel-dot dramatic. */
   .section-marker {
     font-size: clamp(88px, 26vw, 140px);
     margin: 0 0 4px 0;
@@ -745,63 +140,5 @@
     font-size: clamp(32px, 9vw, 48px);
     letter-spacing: -0.04em;
     margin-bottom: 32px;
-  }
-  .section-card {
-    padding: 32px 24px;
-    margin-right: 0;
-  }
-  /* Card corner decorations scale down on mobile so they don't
-     dominate the smaller card. */
-  .section-card::after {
-    top: 14px;
-    right: 14px;
-    width: 11px;
-    height: 11px;
-  }
-  .section-card::before {
-    top: 17px;
-    left: 17px;
-    width: 6px;
-    height: 6px;
-  }
-  /* Skills, Play grids collapse to single column on mobile. */
-  .skill-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
-  }
-  .play-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-  .play-item {
-    padding: 20px;
-  }
-  /* Project cards lose wide padding. */
-  .project-card-body {
-    padding: 26px 22px;
-  }
-  .project-card h3 {
-    font-size: 22px;
-  }
-  /* Contact buttons stack. */
-  .contact-grid {
-    flex-direction: column;
-  }
-  .contact-socials {
-    flex-direction: column;
-  }
-  .contact-email {
-    font-size: clamp(18px, 5.5vw, 28px);
-    /* `word-break: break-all` was splitting tokens mid-word (".COM"
-       landing on its own line). `overflow-wrap: anywhere` only breaks
-       when there's literally no other option, keeping the email
-       readable even on narrow viewports. */
-    overflow-wrap: anywhere;
-    word-break: normal;
-  }
-  .scroll-hint {
-    bottom: 28px;
-    right: 50%;
-    transform: translateX(50%);
   }
 }

@@ -1,11 +1,11 @@
-import { useRef, type RefObject } from "react";
+import { type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as THREE from "three";
 
 /**
  * Drives the room camera from page scroll progress. Defines a set of
- * named scroll "stops" — each is a camera pose (position + lookAt).
+ * named scroll "stops", each being a camera pose (position + lookAt).
  * On each frame, the current pose is interpolated between adjacent
  * stops by scroll progress, then lerped into the live camera +
  * OrbitControls target with a soft damping factor so user-driven
@@ -30,7 +30,7 @@ interface ScrollStop {
 // Camera poses keyed to scroll position. Tuned for the iso room layout.
 // Hero (full-viewport room) sits at the post-intro pose. Once the
 // canvas shrinks to the left ~50%, the room recenters by virtue of the
-// camera staying put while the canvas viewport changes — the camera's
+// camera staying put while the canvas viewport changes. The camera's
 // view is still the same room, just rendered in a smaller area.
 // 8-stop schedule for the 7-section page (hero + 7 content sections).
 // Camera offsets from look-at scaled ≈1.43× from the v1 iso poses to
@@ -53,8 +53,11 @@ const STOPS: ScrollStop[] = [
 interface Props {
   cameraRef: RefObject<THREE.PerspectiveCamera | null>;
   controlsRef: RefObject<OrbitControlsImpl | null>;
-  /** 0..1 scroll progress; drives which stop pair we interpolate between. */
-  progress: number;
+  /** 0..1 scroll progress; drives which stop pair we interpolate
+   *  between. PROVIDED AS A REF: reading the ref each frame avoids
+   *  re-rendering App.tsx on every scroll, which would otherwise
+   *  reconcile the entire 3D tree. */
+  progressRef: RefObject<number>;
 }
 
 const tmpPos = new THREE.Vector3();
@@ -69,16 +72,13 @@ function easeInOut(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-export function ScrollCamera({ cameraRef, controlsRef, progress }: Props) {
-  const progressRef = useRef(progress);
-  progressRef.current = progress;
-
-  // Keep the scroll-pose recomputation cheap — it runs every frame.
+export function ScrollCamera({ cameraRef, controlsRef, progressRef }: Props) {
+  // Keep the scroll-pose recomputation cheap; it runs every frame.
   useFrame((_, dt) => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
-    const p = progressRef.current;
+    const p = progressRef.current ?? 0;
 
     // Find the pair of stops bracketing the current progress.
     let a = STOPS[0]!;

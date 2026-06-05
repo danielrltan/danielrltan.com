@@ -1,19 +1,27 @@
-/* Hero composition — editorial spread that puts the wordmark first
-   and uses the 3D signature as a kinetic accent rather than the
-   whole show. Asymmetric two-line stagger with the signature
-   nestled between the lines.
+/* Hero composition: ASCII ring centerpiece, editorial type frame.
+   Wordmark hover paints a 16px square pixel-mesh over the black ink
+   fill via background-clip:text, masked to a 170px radial spotlight
+   that tracks the cursor. Coarse-pointer devices skip the matrix
+   (CSS + JS both gate it). */
 
-   Anti-AI-slop choices:
-   - No Inter / Space Grotesk as the display face — the wordmark
-     uses Geist (loaded in index.html) which is more characterful.
-   - No serif/sans mixing inside the same headline (matches the
-     user's "stop the vibecoded variation" feedback).
-   - Letterspacing tuned tight on the wordmark so the giant type
-     feels engineered, not stretched.
-   - Single dominant color (walnut ink) with the orange accent
-     reserved for one tiny moment (the eyebrow bullet) — restraint
-     over palette spray.
-*/
+/* Visually-hidden h1: the real accessible/SEO heading for the name.
+   The visible wordmark is decorative (aria-hidden span soup), so this
+   carries "Daniel Tan" for screen readers + crawlers. Standard
+   off-screen recipe: present in the a11y tree + DOM, zero visual
+   footprint, no layout impact. There's no global .sr-only utility in
+   this codebase (it's scoped per-section), so the hero ships its own. */
+.hero-sr-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 .hero-composition {
   position: fixed;
@@ -24,204 +32,537 @@
   pointer-events: none;
   z-index: 3;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  /* Two-row grid: wordmark fills the centre band (1fr), meta row pins
+     the bottom (auto). Top-row chrome (BrandMark, StatusBar) lives
+     outside this composition and floats over via its own fixed
+     positioning, so no top grid row needed here. */
+  grid-template-rows: 1fr auto;
   padding: 28px 6vw 28px;
   box-sizing: border-box;
-  color: var(--wrapper-ink, #1a1714);
-  /* The composition fades in once loading hands off and the 3D
-     signature has crossfaded in. Children stagger via per-letter
-     animation-delay. */
+  color: var(--ink);
+  /* Load-in is gated on .is-visible (toggled by React when the loader
+     clears). Default opacity 0; visible state lets the calc-driven
+     opacity in the dive-in rule below take over. The wordmark, ring,
+     and meta each have their own keyframe entrance animations
+     (hero-mega-in, hero-ring-fade-in, hero-meta-in) that stagger
+     the composition's appearance, so no need for a wrapper opacity
+     transition that would conflict with the scroll-bound calc.
+     IMPORTANT: no `transition: opacity ...` here, as it would smooth
+     out scroll-bound opacity changes and make the dive feel laggy. */
   opacity: 0;
-  transition: opacity 600ms cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-.hero-composition.is-visible {
-  opacity: 1;
+  overflow: hidden; /* clip the oversized ASCII ring at the viewport edge */
+  transform-origin: 50% 50%;
+  /* will-change scoped to the actually animated props to keep the
+     compositor layer minimal. */
+  will-change: transform, opacity, filter;
 }
 
-/* Bitmap ring — positioned upper-right of the composition. Sits
-   BEHIND the wordmark text via z-index 0 vs the wordmark stack which
-   inherits z-index auto (default = above). */
-.hero-ring-slot {
+/* ─────────────────────────────────────────────────────────────────────
+ * HERO → ABOUT: DIVE-IN (--hero-to-about: 0..1)
+ * ────────────────────────────────────────────────────────────────────
+ * ONE cohesive gesture. The entire hero composition (wordmark + ring
+ * + meta) participates as a single visual body: it scales up (1 →
+ * 3.0) from the centre as if the camera is diving INTO the type,
+ * translates DOWN slightly, blurs by a touch as it leaves focus, and
+ * fades. The wireframe room underneath becomes visible through the
+ * gap.
+ *
+ * The previous iteration chained four independent effects (wordmark
+ * mask-erosion, outline ghost lag, ring contract/rotate, orange scan-
+ * band) at offset progress windows. User feedback: "looks tacky with
+ * the gradient fade" and "looks glued together". This replacement
+ * uses a single transform + opacity + filter on the composition
+ * itself; every child element moves as one rigid body. No mask
+ * gradients, no scan bands, no per-element progress vars.
+ *
+ * Curve: smoothstep (t² · (3 − 2t)) on --hero-to-about. Visually
+ * matches easeInOutCubic for this range, and cheap to compute in a
+ * single calc(). Soft on both ends: the dive accelerates through
+ * the middle and decelerates as the hero clears the frame so the
+ * wireframe assemble underneath has a calm hand-off.
+ *
+ * Reduced motion (handled below): --hero-to-about is forced to 0 so
+ * the composition stays at rest; the wrapper's --hero-opacity fade
+ * (from .scroll-layer--hero in App.tsx) does the work instead.
+ * ─────────────────────────────────────────────────────────────────── */
+.hero-composition {
+  /* Smoothstep curve. Reused by transform / opacity / blur below. */
+  --p: calc(
+    var(--hero-to-about, 0) * var(--hero-to-about, 0) *
+    (3 - 2 * var(--hero-to-about, 0))
+  );
+  /* Scale: 1 → 3.0. Camera-dive feel: composition fills, then
+     overflows, the frame. Past p=1 the composition is fully off-
+     screen and faded. */
+  --hero-scale: calc(1 + var(--p) * 2.0);
+  /* Slight downward push (2vh max) so the dive isn't perfectly
+     symmetric, which adds the sense that the viewer is sinking THROUGH
+     the type, not staring at it pulling apart. */
+  --hero-shift-y: calc(var(--p) * 2vh);
+  /* Subtle blur 0 → 2px ramped through the dive ("out of focus" as
+     the composition leaves the camera's plane). PERF: capped at 2px
+     (was 4px). Blur cost is roughly O(viewport_pixels × radius²) and
+     the composition spans 130vw × 130vh; halving the radius cuts the
+     per-frame paint to ~1/4 of the previous cost. 2px still reads as
+     a depth cue without the scroll-jank tax. */
+  --hero-blur: calc(var(--p) * 2px);
+
+  transform: translate3d(0, var(--hero-shift-y), 0) scale(var(--hero-scale));
+  filter: blur(var(--hero-blur));
+}
+/* Opacity hand-off in two phases:
+     1) LOAD-IN (0→1 over 600ms): a one-shot CSS animation on
+        .is-visible runs at higher priority than normal cascade,
+        so the calc opacity below is "hidden" during the fade-in.
+     2) SCROLL-LOCKED dive-out: animation-fill-mode is `none`, so
+        once the 600ms animation ends the property reverts to the
+        underlying `opacity: calc(...)` value below. At
+        --hero-to-about=0 that calc evaluates to 1, matching the
+        keyframe end-value, so there's no discontinuity at the
+        hand-off. From then on opacity is scroll-locked (no CSS
+        transition smoothing the change). */
+.hero-composition.is-visible {
+  opacity: calc(1 - var(--p));
+  animation: hero-composition-fade-in 600ms var(--ease-soft) none;
+}
+@keyframes hero-composition-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ASCII ring wrapper. Deliberately oversized: 130vw wide, 130vh
+   tall, centered. The visible ring lands as a tilted disc that clips
+   off the left & right edges of the viewport. Sits BEHIND the
+   wordmark. The dive-in scale is applied to the composition root;
+   the ring participates automatically. */
+.hero-ring-wrap {
   position: absolute;
-  top: clamp(8vh, 14vh, 18vh);
-  right: clamp(4vw, 6vw, 10vw);
+  top: 50%;
+  left: 50%;
+  width: 130vw;
+  height: 130vh;
+  transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 0;
-  opacity: 0.85;
-  animation: hero-ring-fade-in 1000ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  animation-delay: 0.4s;
+  opacity: 0;
+  /* ENTRANCE CHOREOGRAPHY: signature stays anchored from the loading
+     phase; wordmark / ring / meta animate IN AROUND it with staggered
+     delays so the composition reads as assembling around the
+     persistent signature, not landing on top of it.
+       wordmark fill : 0.40s delay
+       ring          : 0.60s delay  ← this rule
+       meta row      : 0.80s delay
+     All settle within ~1.2s of phase=transition. */
+  animation: hero-ring-fade-in 1200ms var(--ease-soft) both;
+  animation-delay: 0.6s;
 }
 @keyframes hero-ring-fade-in {
-  from { opacity: 0; transform: scale(0.92); }
-  to   { opacity: 0.85; transform: scale(1); }
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+  to   { opacity: 0.55; transform: translate(-50%, -50%) scale(1); }
 }
 
-.hero-bitmap-ring {
-  position: relative;
-  transform-origin: center center;
-  will-change: transform;
+.hero-ascii-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  color: var(--accent);
+  font-family: "Courier New", monospace;
+  font-weight: 700;
+  /* No scroll-bound transform/filter here. The composition root
+     handles the dive-in transform; the ring moves as part of the
+     same rigid body. */
+}
+.hero-ascii-ring > div,
+.hero-ascii-ring table,
+.hero-ascii-ring td {
+  background: transparent !important;
+  color: inherit !important;
 }
 
-/* CSS keyframes for the spin animation. HeroBitmapRing applies the
-   animation NAME + duration inline (so consumers can pass spinDuration
-   as a prop). Two variants for clockwise / counter-clockwise. */
-@keyframes hero-ring-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-@keyframes hero-ring-spin-rev {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(-360deg); }
-}
 @media (prefers-reduced-motion: reduce) {
-  .hero-bitmap-ring {
-    animation-duration: 0s !important;
+  /* Reduced motion: collapse the dive transform to identity. The
+     wrapper's --hero-opacity (from .scroll-layer--hero in App.tsx)
+     still handles the hero-to-about handoff for these users:
+     quiet linear opacity, no transforms, no blur. */
+  .hero-composition {
+    transform: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+  }
+  /* Kill ALL entrance choreography: wordmark slide/scale, ring
+     fade+scale, meta/scroll/scrim rise, the accent-dot pulse, and the
+     composition load-in fade. Previously only the parent transform was
+     neutralized, so children still slid/scaled in on reduced-motion.
+     Each element reverts to its settled resting state; the ring-wrap
+     needs its settled opacity restored explicitly (its base rule is
+     opacity:0, only lifted by the keyframe we're disabling). */
+  .hero-composition.is-visible,
+  .hero-ring-wrap,
+  .hero-mega-fill,
+  .hero-bottom-scrim,
+  .hero-meta,
+  .hero-scroll,
+  .hero-scroll-arrow {
+    animation: none !important;
+  }
+  .hero-ring-wrap {
+    opacity: 0.55;
+    transform: translate(-50%, -50%);
   }
 }
 
-/* Top row — minimal eyebrow on the left. */
-.hero-top {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
+/* Scroll-cue bob: the down arrow nudges downward on a slow loop to
+   read as "scroll down" without shouting. */
+@keyframes hero-scroll-bob {
+  0%, 100% { transform: translateY(-1px); opacity: 0.75; }
+  50% { transform: translateY(2px); opacity: 1; }
 }
 
-.hero-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: rgba(26, 23, 20, 0.55);
-  animation: hero-eyebrow-in 800ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  animation-delay: 0.1s;
-}
-.hero-eyebrow-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent, #e87040);
-  box-shadow: 0 0 14px rgba(232, 112, 64, 0.65);
-  animation: hero-eyebrow-pulse 2.8s ease-in-out infinite;
-}
-@keyframes hero-eyebrow-pulse {
-  0%, 100% { opacity: 0.7; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.15); }
-}
-@keyframes hero-eyebrow-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Wordmark stack — center band of the hero. Asymmetric: the first
-   line is left-aligned, the signature accent + second line are
-   indented further right so the eye sweeps across diagonally. */
-.hero-wordmark-stack {
+/* ---- Mega wordmark: the centerpiece ----
+   Off-centre asymmetric stack. DANIEL anchors LEFT of viewport centre;
+   TAN drops down + RIGHT, overshooting flush-right so the composition
+   reads as a deliberate diagonal across the screen rather than a
+   centred block. The whole wordmark wrapper pulls slightly left of the
+   composition's centre column so the visual centre of mass falls
+   asymmetrically across the ASCII ring. */
+.hero-mega-wordmark {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: clamp(8px, 1vh, 22px);
-  padding: 6vh 0;
+  /* flex-start + a deliberate translate gives the wordmark its
+     off-centre anchor without breaking the max-content shrink-wrap
+     used below. */
+  align-items: flex-start;
+  padding-left: 4vw;
+  pointer-events: auto;
 }
 
-.hero-line {
-  font-family:
-    "Geist", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-  /* Wordmark scale — fills 80-92% of viewport width per line at
-     desktop. clamp protects mobile. */
-  font-size: clamp(72px, 14vw, 220px);
-  font-weight: 700;
-  letter-spacing: -0.045em;
-  line-height: 0.88;
-  color: var(--wrapper-ink, #1a1714);
-  margin: 0;
+.hero-mega-text {
+  position: relative;
   display: flex;
-  overflow: hidden;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 0.84;
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.058em;
+  font-size: clamp(96px, 17vw, 280px);
+  text-transform: uppercase;
+  user-select: none;
+  width: max-content;
+  max-width: 100%;
 }
-.hero-line span {
+
+.hero-mega-line {
+  position: relative;
   display: inline-block;
+  isolation: isolate;
+}
+.hero-mega-line-2 {
+  /* Asymmetric stagger: TAN shifts further right than DANIEL's end
+     and drops slightly so the two lines feel like a diagonal poured
+     across the viewport, not a stacked block. The 22% translate is
+     calibrated so on a typical viewport TAN's left edge starts past
+     DANIEL's right edge minus a couple of glyphs, enough horizontal
+     bite to feel asymmetric without breaking the wordmark's read. */
+  align-self: flex-start;
+  transform: translateX(22%);
+  margin-top: -0.06em;
+}
+
+.hero-mega-fill {
+  position: relative;
+  z-index: 2;
+  color: var(--accent);
+  display: inline-block;
+  /* See hero-ring-wrap for the full entrance choreography note.
+     Wordmark fill enters FIRST at 0.40s: the persistent signature
+     is already anchored from the loading phase, so the wordmark is
+     the first new element to compose around it. */
+  animation: hero-mega-in 900ms cubic-bezier(0.16, 0.84, 0.2, 1) both;
+  animation-delay: 0.4s;
+  /* No scroll-bound transform/mask here. The dive-in is driven by
+     the .hero-composition root, so the wordmark moves as part of
+     the single rigid body. The previous mask-image erosion and
+     per-element scale/letter-spacing ramp were removed per user
+     feedback: "tacky with the gradient fade" / "looks glued
+     together". */
+}
+.hero-mega-char {
+  display: inline-block;
+  /* Letter-spacing tightens on hover. Per-char so each can carry its
+     own transition-delay set inline. */
+  transition:
+    letter-spacing 380ms var(--ease-soft),
+    transform 380ms var(--ease-soft);
+  transform-origin: 50% 60%;
+}
+
+/* Outline ghost: HIDDEN.
+   User feedback: "WAY too much shit going on". The dark outline ghost
+   sitting behind the orange fill reads as a doubled type effect over
+   the busy ASCII ring background. Removed entirely; the orange fill
+   alone reads cleanly. Element kept in the DOM (no JSX churn) but
+   visually suppressed via display:none so the outline disassembly
+   var --p-out and the entrance keyframe don't run / consume layout. */
+.hero-mega-outline {
+  display: none;
+}
+
+/* Matrix proximity grid: wordmark hover overlay.
+   ──────────────────────────────────────────────────────────────────
+   Sits absolutely over .hero-mega-fill, sized 100%/100% so the box
+   matches the parent line exactly. The matrix renders the SAME per-
+   character span structure as the fill (kerning matches glyph-for-
+   glyph; rendering as one plain string drifted horizontally vs. the
+   fill).
+
+   `background-clip: text` clips a SOLID white fill to the matrix's own
+   glyph shapes. Matrix glyphs are color:transparent so only the clipped
+   fill paints through, tracing each letter.
+
+   The GRID + the cursor proximity both live in the MASK, not the
+   background. Three mask layers composited with `mask-composite:
+   intersect`:
+     A (grid-vertical)   repeating-linear-gradient → opaque 14px columns
+     B (grid-horizontal) repeating-linear-gradient → opaque 14px rows
+     C (proximity)       radial-gradient at the cursor (--mx / --my)
+   Visible region = A ∩ B ∩ C → only the 14×14 SQUARE CELLS (A∩B) that
+   are also within ~200px of the pointer (C) paint white. Distinct
+   squares, not a smooth blob.
+
+   Why not the old crossed-gradient background + background-blend:
+   multiply trick? The bands are WHITE now (orange gave no contrast over
+   the orange wordmark), and white × white under multiply = white
+   everywhere → the grid collapses to a solid fill and the radial mask
+   reveals it as a glow. Moving the grid into the mask sidesteps the
+   blend-mode entirely.
+
+   --mhover (0/1, written from React via rAF) drives a 240ms opacity
+   transition so the matrix fades out on pointerleave. */
+.hero-mega-matrix {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  pointer-events: none;
+  display: inline-block;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-transform: inherit;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  /* SOLID white fill (as a gradient, NOT `background-color`, because Chromium's
+     `background-clip:text` leaks background-color onto the full box).
+     White over the orange wordmark = crisp retro-monitor reveal. */
+  background-color: transparent;
+  background-image: linear-gradient(
+    rgba(255, 255, 255, 0.96),
+    rgba(255, 255, 255, 0.96)
+  );
+  -webkit-background-clip: text;
+          background-clip: text;
+  /* Mask layers A (vertical grid) ∩ B (horizontal grid) ∩ C (cursor
+     proximity). A∩B carves the box into 14×14 lit cells with a 2px
+     gutter (16px pitch); C limits the lit cells to a ~200px disc that
+     follows the cursor, feathering at the edge.
+     Layer order: C is listed FIRST so the standard `mask-composite:
+     intersect` (which composites each layer with the accumulation of
+     the ones before it) and the WebKit `source-in` chain both resolve
+     to A∩B∩C. */
+  -webkit-mask-image:
+    radial-gradient(
+      circle 200px at var(--mx, -9999px) var(--my, -9999px),
+      #000 0%, #000 30%, rgba(0, 0, 0, 0.5) 60%, transparent 100%
+    ),
+    repeating-linear-gradient(to right,  #000 0 14px, transparent 14px 16px),
+    repeating-linear-gradient(to bottom, #000 0 14px, transparent 14px 16px);
+          mask-image:
+    radial-gradient(
+      circle 200px at var(--mx, -9999px) var(--my, -9999px),
+      #000 0%, #000 30%, rgba(0, 0, 0, 0.5) 60%, transparent 100%
+    ),
+    repeating-linear-gradient(to right,  #000 0 14px, transparent 14px 16px),
+    repeating-linear-gradient(to bottom, #000 0 14px, transparent 14px 16px);
+  /* The radial layer is sized/positioned by its own gradient; the two
+     repeating grid layers tile from the box origin. no-repeat on the
+     radial keeps it a single disc; the grid layers repeat. */
+  -webkit-mask-repeat: no-repeat, repeat, repeat;
+          mask-repeat: no-repeat, repeat, repeat;
+  /* WebKit legacy keyword chain: source-in intersects each layer with
+     the composite of the layers AFTER it (bottom-up), so the net result
+     is grid-v ∩ grid-h ∩ radial. Standard spec uses `intersect` and is
+     applied per-layer with the accumulation BEFORE it; both land on
+     the same A∩B∩C set here. */
+  -webkit-mask-composite: source-in, source-in;
+          mask-composite: intersect;
   opacity: 0;
-  transform: translateY(110%);
-  animation: hero-letter-in 880ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition: opacity 240ms var(--ease-soft);
+  will-change: opacity, mask-image;
 }
-.hero-line-2 {
-  padding-left: clamp(36px, 8vw, 140px);
+
+.hero-mega-matrix-char {
+  display: inline-block;
+  transition: letter-spacing 380ms var(--ease-soft);
 }
-@keyframes hero-letter-in {
-  to {
-    opacity: 1;
-    transform: translateY(0);
+.hero-mega-wordmark:hover .hero-mega-matrix-char {
+  letter-spacing: -0.012em;
+}
+.hero-mega-line .hero-mega-matrix {
+  opacity: calc(var(--mhover, 0) * 1);
+}
+
+@keyframes hero-mega-in {
+  from { opacity: 0; transform: translateY(48px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* hero-mega-outline-in keyframe removed: the outline ghost is
+   display:none (see .hero-mega-outline) so nothing consumed it. */
+
+.hero-mega-wordmark:hover .hero-mega-char {
+  letter-spacing: -0.012em;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .hero-mega-matrix {
+    display: none;
+  }
+  /* Touch has no hover, so the wordmark needs no pointer affordance;
+     it's pure display type. Drop pointer-events so a vertical swipe over
+     the full-height wordmark wrapper scrolls the page instead of being
+     swallowed by the matrix hit-area (which is gated off on touch). */
+  .hero-mega-wordmark {
+    pointer-events: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-mega-matrix {
+    transition-duration: 0ms;
   }
 }
 
-/* Signature accent sits between the two wordmark lines. The 3D
-   canvas is constrained to a slim band so the signature reads as a
-   stamp / mark rather than the entire hero. The HeroSignature3D
-   div is `position: fixed` covering 100vw/100vh, but its Canvas's
-   camera is framed such that the visible signature lands centered
-   — we just clip the visible area via this slot's position. */
-.hero-signature-slot {
-  position: relative;
-  height: clamp(60px, 11vh, 110px);
-  /* The signature 3D wrapper inside is fixed-positioned at 100vw/100vh
-     — it's the entire viewport canvas. We just align the visible
-     "signature plate" of its content to this slot via the camera
-     framing. The slot itself is a hint to the layout that there's
-     a gap here for the kinetic accent. */
-  pointer-events: none;
-}
+/* The supplemental editorial tagline (.hero-mega-tagline*) and its
+   hero-tagline-in keyframe were removed: the wordmark JSX no longer
+   renders a tagline, so the rules were dead. */
 
-/* Bottom row — split: meta on the left, scroll on the right. */
+/* ---- Bottom row: meta chip + scroll affordance ---- */
 .hero-bottom {
+  position: relative;
+  z-index: 2;
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-rows: auto auto;
   gap: 14px 18px;
   align-items: end;
   pointer-events: auto;
+  /* No scroll-bound transform here. The dive-in on the composition
+     root carries the meta row out with the rest of the hero. Single
+     gesture, no per-element timing. */
 }
 
-.hero-rule {
-  grid-column: 1 / -1;
-  height: 1px;
+/* ---- Bottom scrim: feathered cool-white mask behind the bottom UI.
+   ──────────────────────────────────────────────────────────────────
+   A soft horizontal band along the very bottom of the composition that
+   quiets the dense orange ASCII ring in the bottom ~14vh so the meta
+   pill + scroll chip lift cleanly off the noise. Sits ABOVE the ring
+   (z-index 0 wrap) but BELOW the bottom row (z-index 2), so it masks
+   the ASCII without sitting on top of the text.
+
+   Feathered to transparent at its TOP edge via a vertical linear-
+   gradient, so no hard rectangle line. The ASCII ring stays fully
+   visible everywhere else; this only dims the strip directly behind
+   the corner UI. A child of .hero-composition, so it scales + fades
+   with the hero→about dive as one body (intended). */
+.hero-bottom-scrim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 16vh;
+  z-index: 1;
+  pointer-events: none;
+  /* Cool-white (var(--bg-page) #eef0f3) fading up to transparent.
+     Peaks at ~0.55 alpha at the very bottom, enough to knock the
+     orange chars back without reading as a solid fill, and feathers
+     to 0 well before the top edge. */
   background: linear-gradient(
-    to right,
-    rgba(26, 23, 20, 0.28) 0%,
-    rgba(26, 23, 20, 0.06) 60%,
+    to top,
+    rgba(238, 240, 243, 0.55) 0%,
+    rgba(238, 240, 243, 0.42) 28%,
+    rgba(238, 240, 243, 0.22) 58%,
+    rgba(238, 240, 243, 0.06) 82%,
     transparent 100%
   );
-  animation: hero-rule-in 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  animation-delay: 0.85s;
-  transform-origin: left;
-}
-@keyframes hero-rule-in {
-  from { transform: scaleX(0); opacity: 0; }
-  to { transform: scaleX(1); opacity: 1; }
+  /* Soft-light blend keeps the dim subtle: it lightens the orange
+     toward the page tone rather than flatly painting over it, so the
+     ring's texture still reads faintly through the scrim. */
+  mix-blend-mode: soft-light;
+  /* Enters with the bottom row so it doesn't pop in before the chips. */
+  animation: hero-meta-in 700ms var(--ease-soft) both;
+  animation-delay: 0.8s;
 }
 
 .hero-meta {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 12.5px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(26, 23, 20, 0.7);
+  font-family: var(--font-mono);
+  color: var(--ink);
+  background: rgba(238, 240, 243, 0.86);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  backdrop-filter: blur(10px) saturate(120%);
+  padding: 9px 16px;
+  border-radius: var(--r-chip);
+  box-shadow:
+    0 0 0 1px var(--ink-hairline),
+    0 8px 24px -16px rgba(13, 14, 16, 0.25);
+  width: max-content;
+  max-width: 100%;
   display: inline-flex;
   align-items: center;
   gap: 14px;
-  animation: hero-meta-in 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  animation-delay: 1.0s;
+  /* Meta row enters LAST at 0.80s. See hero-ring-wrap for choreography
+     note. Compressed from the previous 1.0s so the full composition
+     settles within ~1.2s of phase=transition. */
+  animation: hero-meta-in 700ms var(--ease-soft) both;
+  animation-delay: 0.8s;
 }
-.hero-meta-bullet {
-  color: var(--accent, #e87040);
-  font-size: 10px;
-  line-height: 1;
+.hero-meta-field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
 }
-.hero-meta-dot {
-  opacity: 0.35;
-  font-size: 14px;
-  line-height: 1;
+.hero-meta-key {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  /* A11y/contrast: raw --accent (#e87040) on the cool-white chip is
+     only ~3:1, below the 4.5:1 floor for this 9.5px label. Darken the
+     orange toward --ink (stays on-palette, no new warm hex) so the
+     key clears 4.5:1 while still reading as the accent. */
+  color: color-mix(in srgb, var(--accent) 66%, var(--ink));
+  font-weight: 600;
+}
+.hero-meta-val {
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  color: var(--ink);
+}
+.hero-meta-sep {
+  width: 1px;
+  height: 12px;
+  background: rgba(13, 14, 16, 0.18);
 }
 @keyframes hero-meta-in {
   from { opacity: 0; transform: translateY(8px); }
@@ -229,41 +570,222 @@
 }
 
 .hero-scroll {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  color: rgba(26, 23, 20, 0.7);
+  /* Now a real <button>: reset UA chrome so the chip styling controls
+     the look, and make it a proper affordance (pointer + keyboard). */
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  margin: 0;
+  cursor: pointer;
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
-  gap: 12px;
-  animation: hero-meta-in 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  animation-delay: 1.1s;
+  gap: 10px;
+  justify-self: end;
+  align-self: end;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--ink);
+  transition:
+    box-shadow var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out);
+  /* Pill chip: mirrors .hero-meta so both bottom-corner elements read
+     as one system against the orange ASCII ring. The scroll cluster
+     previously had only a text-shadow halo and the ring bled through;
+     the cool-white backdrop-blur chip knocks back the ASCII directly
+     behind it. (Replaces the prior text-shadow halo; the chip bg now
+     does the legibility work.) */
+  background: rgba(238, 240, 243, 0.86);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  backdrop-filter: blur(10px) saturate(120%);
+  padding: 9px 16px;
+  border-radius: var(--r-chip);
+  box-shadow:
+    0 0 0 1px var(--ink-hairline),
+    0 8px 24px -16px rgba(13, 14, 16, 0.25);
+  /* Scroll affordance lands just after the meta row: same 0.80s
+     starting beat but with a tiny stagger so the bottom row reads
+     as one unit settling together rather than two simultaneous
+     pops. */
+  animation: hero-meta-in 700ms var(--ease-soft) both;
+  animation-delay: 0.9s;
 }
 .hero-scroll-arrow {
   display: inline-block;
-  font-size: 16px;
-  animation: hero-scroll-bounce 1.9s ease-in-out infinite;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--accent);
+  text-shadow: 0 0 10px rgba(232, 112, 64, 0.45);
+  animation: hero-scroll-bob 2.2s ease-in-out infinite;
+  flex-shrink: 0;
 }
-@keyframes hero-scroll-bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(5px); }
+.hero-scroll-label {
+  color: inherit;
+}
+.hero-scroll-idx {
+  font-variant-numeric: tabular-nums;
+  /* Same contrast fix as .hero-meta-key: darkened accent so the small
+     "01" index clears 4.5:1 on the cool-white chip. */
+  color: color-mix(in srgb, var(--accent) 66%, var(--ink));
+  font-weight: 600;
+  letter-spacing: 0.18em;
+}
+/* Hover/active feedback for the scroll button: subtle lift, no layout
+   shift (transform only). */
+.hero-scroll:hover {
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 10px 28px -16px rgba(13, 14, 16, 0.32);
+  transform: translateY(-1px);
+}
+.hero-scroll:active {
+  transform: translateY(0);
+}
+/* Visible keyboard focus ring: mirrors the .hud-btn convention in
+   index.css (2px accent outline, 2px offset) so focus styling is
+   consistent across the app's interactive chrome. */
+.hero-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-scroll {
+    transition: none;
+  }
+  .hero-scroll:hover {
+    transform: none;
+  }
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+ * MOBILE / TABLET (≤768px): portrait-first build-out.
+ * ────────────────────────────────────────────────────────────────────
+ * Goal: keep the desktop identity (giant orange asymmetric DANIEL/TAN
+ * diagonal, ASCII ring behind, persistent signature, bottom meta +
+ * scroll) on a narrow tall viewport WITHOUT horizontal scroll or
+ * clipping the wordmark.
+ *
+ * The desktop asymmetry is `.hero-mega-line-2 { transform: translateX(22%) }`.
+ * On a 390px viewport that 22% of TAN's own width, stacked on a
+ * `width:max-content` flex column, pushes TAN's right edge past the
+ * composition box and it visually clips against the root's
+ * `overflow:hidden`. So portrait REDUCES the stagger (smaller translate)
+ * and tightens the type so both words sit fully inside the frame while
+ * still pouring diagonally down-and-right. */
 @media (max-width: 768px) {
   .hero-composition {
-    padding: 18px 5vw 24px;
+    /* Side padding pulled in (4vw) so the wordmark gets max width; safe-
+       area aware so the composition clears the notch / home indicator. */
+    padding:
+      calc(18px + var(--safe-top, 0px))
+      calc(4vw + var(--safe-right, 0px))
+      calc(20px + var(--safe-bottom, 0px))
+      calc(4vw + var(--safe-left, 0px));
   }
-  .hero-line {
-    font-size: clamp(56px, 18vw, 110px);
+  .hero-mega-wordmark {
+    /* Kill the desktop 4vw left nudge: on a narrow viewport every px of
+       width counts, so anchor DANIEL flush to the content box. */
+    padding-left: 0;
   }
-  .hero-line-2 {
-    padding-left: 8vw;
+  .hero-mega-text {
+    /* Bounded so DANIEL (6 glyphs, the widest line) always fits 92vw at
+       this weight/tracking. 19.5vw keeps it big and dominant; the 132px
+       cap stops it ballooning on the 768px tablet width. */
+    font-size: clamp(58px, 19.5vw, 132px);
+    letter-spacing: -0.045em;
   }
+  .hero-mega-line-2 {
+    /* Tame the diagonal for portrait: a small right shift (8%) keeps the
+       asymmetric DANIEL→TAN step without driving TAN off the right edge.
+       Slightly deeper vertical overlap reads as a tighter stacked
+       diagonal on the taller canvas. */
+    transform: translateX(8%);
+    margin-top: -0.04em;
+  }
+  /* Bottom row stays a single row (meta left, scroll right), mirrors
+     desktop so the scroll affordance keeps the bottom-RIGHT corner,
+     clear of the global HUD's bottom-LEFT mobile pills. */
   .hero-bottom {
-    grid-template-columns: 1fr;
+    gap: 10px 12px;
+    /* Lift the whole cluster above the ~54px bottom-left HUD pill zone
+       (reset/audio) so the meta chip never tucks under it. */
+    padding-bottom: 8px;
+  }
+  .hero-meta {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 9px 13px;
+  }
+  .hero-meta-key {
+    font-size: 9px;
+    letter-spacing: 0.22em;
+  }
+  .hero-meta-val {
+    /* ≥16px-equivalent legibility for the primary meta value on mobile
+       (12.5px desktop reads too small on a phone). */
+    font-size: 15px;
+  }
+  .hero-meta-sep {
+    display: none;
   }
   .hero-scroll {
-    justify-self: flex-end;
+    font-size: 10px;
+    gap: 9px;
+    /* ≥44×44 touch target: pad up to a comfortable hit area while the
+       visible pill stays compact. */
+    min-height: 44px;
+    padding: 11px 16px;
+    /* Kill the 300ms tap delay so the scroll feels instant on touch. */
+    touch-action: manipulation;
+  }
+  /* Portrait: the oversized ring is square-ish (130vw default reads as a
+     thin horizontal sliver on a tall viewport). Make it tall so the
+     tilted disc fills the narrow column and reads as a presence behind
+     the type rather than a slice. Sized off the LONGER axis (vmax) and
+     centered. */
+  .hero-ring-wrap {
+    width: 150vmax;
+    height: 150vmax;
+  }
+}
+
+/* Narrow portrait phones (≤400px, e.g. 390×844 / 360×640): squeeze the
+   wordmark + stagger a touch more so 6-glyph DANIEL never crowds the
+   edges, and pull the ring tighter so it isn't an overwhelming wash. */
+@media (max-width: 400px) {
+  .hero-mega-text {
+    font-size: clamp(54px, 19vw, 92px);
+    letter-spacing: -0.05em;
+  }
+  .hero-mega-line-2 {
+    transform: translateX(6%);
+  }
+  .hero-ring-wrap {
+    width: 140vmax;
+    height: 140vmax;
+  }
+  .hero-meta {
+    /* On the very narrowest screens let the two fields wrap to two rows
+       if needed without the chip ever exceeding the content box. */
+    max-width: 100%;
+  }
+}
+
+/* Short landscape phones (e.g. 360×640 rotated, or any ≤480px tall):
+   the giant wordmark + bottom row can't both fit a short viewport.
+   Trim the wordmark and ring so nothing gets pushed off-screen. */
+@media (max-height: 480px) and (max-width: 900px) {
+  .hero-mega-text {
+    font-size: clamp(40px, 11vh, 84px);
+  }
+  .hero-ring-wrap {
+    width: 120vmax;
+    height: 120vmax;
+  }
+  .hero-composition {
+    padding-top: calc(12px + var(--safe-top, 0px));
+    padding-bottom: calc(12px + var(--safe-bottom, 0px));
   }
 }

@@ -1,4 +1,4 @@
-/* Macintosh section — pinned full-viewport stage on the left, section
+/* Macintosh section: pinned full-viewport stage on the left, section
    marker + heading on the right column. Detail card slides in from
    the right when a project tile is clicked. */
 
@@ -8,16 +8,62 @@
   overflow: hidden;
 }
 
+/* Visually-hidden but DOM-real + focusable accessible content (the
+   project <nav> list). Mirrors the Keypad section's sr-only recipe so
+   screen readers, keyboard users, and crawlers reach the real work even
+   though the visible tiles live in a <canvas> texture. Scoped so it
+   never leaks the off-screen clip onto other sections. */
+.portfolio-mac .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* …but when an sr-only control receives keyboard focus, bring it into
+   view so a sighted keyboard user can see what they're activating
+   (standard "focusable skip-link" treatment). */
+.portfolio-mac .sr-only a:focus-visible,
+.portfolio-mac .sr-only button:focus-visible {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 70;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 10px 16px;
+  clip: auto;
+  white-space: normal;
+  background: var(--bg-surface);
+  color: var(--ink);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-card, 14px);
+  font-family: var(--font-mono, sans-serif);
+  font-size: 12px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .mac-stage {
   position: absolute;
   top: 0;
   left: 0;
-  width: 60%;
+  /* Stage spans the full viewport now (was 60%); the orbit ring
+     extends ~2 units past the Mac on each side, and with the camera
+     at z=5.2 those cards need the full width or they clip behind the
+     right column. The right column is positioned absolutely above
+     the canvas so it overlays cleanly. */
+  width: 100%;
   height: 100%;
   pointer-events: auto;
   /* Hidden until the section pins. Without this the orbit ring's
-     logos bleed up into the bottom of the About section as the
-     user scrolls toward the Macintosh section — see Macintosh.tsx's
+     cards bleed up into the bottom of the About section as the
+     user scrolls toward the Macintosh section; see Macintosh.tsx's
      STAGE_REVEAL_VH gate. */
   opacity: 0;
   transition: opacity 320ms ease;
@@ -26,12 +72,54 @@
   opacity: 1;
 }
 
-/* Tech ticker is wrapped in this slot so visibility can be gated
-   the same way the canvas stage is — hidden until the section pins,
-   visible during pin. Was previously visible all the time, which
-   bled the marquee row into the bottom of the About section as the
-   user scrolled toward Mac. */
+/* Loading state shown over the stage until mac.glb resolves. Cool
+   palette chip (white surface, ink text, accent dot): no warm hex. */
+.mac-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
+  border-radius: var(--r-chip, 999px);
+  font-family: var(--font-mono, sans-serif);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+  pointer-events: none;
+}
+.mac-loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #e87040);
+  animation: mac-loading-pulse 1s ease-in-out infinite;
+}
+@keyframes mac-loading-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mac-loading-dot {
+    animation: none;
+    opacity: 0.85;
+  }
+}
+
+/* Tech ticker is the MOBILE fallback for the 3D orbit. On desktop
+   TechStackTicker returns null and this slot is hidden via display:
+   none so it doesn't reserve space. On mobile it gates visibility
+   the same way the canvas stage does. */
 .mac-ticker-slot {
+  display: none;
   opacity: 0;
   transition: opacity 320ms ease;
   pointer-events: none;
@@ -39,12 +127,15 @@
 .mac-ticker-slot[data-stage-visible="true"] {
   opacity: 1;
 }
+/* Mobile ticker visibility is handled in the consolidated ≤900px block
+   below (the desktop default keeps it display:none so it reserves no
+   space). */
 
-/* Flat tech-stack scroller — auto-scrolling marquee row pinned at
+/* Flat tech-stack scroller: auto-scrolling marquee row pinned at
    the top of the section. Replaces the 3D orbit ring around the
    Mac, which was hard to read (logos passed in front of / behind
    the screen at unpredictable angles). The flat row uses a CSS
-   keyframe for the scroll — no JS, no scroll binding, no jitter.
+   keyframe for the scroll; no JS, no scroll binding, no jitter.
 */
 .tech-ticker {
   position: absolute;
@@ -100,13 +191,13 @@
   background: rgba(255, 255, 255, 0.62);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  border: 1px solid rgba(26, 23, 20, 0.08);
+  border: 1px solid rgba(13, 14, 16, 0.08);
   border-radius: 999px;
   font-family: var(--font-display, "Geist", "Inter", sans-serif);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.005em;
-  color: var(--wrapper-ink, #1a1714);
+  color: var(--wrapper-ink, #0d0e10);
 }
 .tech-ticker-dot {
   width: 9px;
@@ -125,21 +216,63 @@
   }
 }
 
+/* Right column overlays the canvas as a compact editorial header
+   in the top-right. The orbit + Mac live center-stage of the
+   canvas, so the heading needs to stay clear of the rotation arc
+   (rightmost card at world X ≈ 2.25 ≈ ~80% of viewport width on a
+   1440px screen). The column sits in the top-right corner and is
+   intentionally narrow so the orbit is the visual centerpiece. */
 .mac-col {
-  position: relative;
+  position: absolute;
+  top: 9vh;
+  right: 3vw;
   z-index: 2;
-  margin-left: auto;
-  max-width: 40%;
-  padding-right: 6vw;
+  /* Bumped 260 → 300px AND, critically, reset the .portfolio-col
+     inheritance: that shared class adds margin-left:50vw + padding:0 8vw
+     + width:50vw, none of which this absolute top-right rail wants. The
+     leftover 8vw padding was eating the entire 260px box (content width
+     collapsed to ~0), forcing the blurb to wrap one word per line; the
+     reported bug, present at EVERY width because the override never
+     neutralized the gutter. */
+  width: 300px;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  text-align: right;
+}
+.mac-col .section-marker,
+.mac-col .section-index,
+.mac-col h2,
+.mac-col .mac-blurb {
+  pointer-events: auto;
 }
 
-.mac-blurb {
+/* Smaller marker in the Mac section; the giant "02" competes with
+   the orbit. Editorial-restrained, like a TE spec sheet header. */
+.portfolio-mac .section-marker {
+  font-size: clamp(54px, 6vw, 84px);
+  margin-bottom: 0;
+}
+.portfolio-mac h2 {
+  font-size: clamp(28px, 3vw, 42px);
+  margin-top: 2px;
+  line-height: 1.0;
+}
+
+/* Scoped under .portfolio-mac so it beats the shared `.portfolio-section
+   p` rule (font-size:17px, specificity 0,1,1) which was overriding the
+   intended 13px and inflating the rail height. */
+.portfolio-mac .mac-blurb {
   font-family: var(--font-body, "Inter", sans-serif);
-  font-size: 14px;
-  color: rgba(26, 23, 20, 0.65);
-  line-height: 1.55;
-  max-width: 380px;
-  margin-top: 18px;
+  font-size: 13px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+  max-width: 280px;
+  margin-top: 12px;
+  margin-left: auto;
+  /* The rail is narrow by design but must still break between words,
+     never mid-word, and never collapse to one-word-per-line. */
+  text-wrap: pretty;
 }
 
 /* HTML overlay on the CRT screen (rendered inside drei <Html />). */
@@ -153,7 +286,7 @@
 }
 
 .mac-desktop-bar {
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-mono, sans-serif);
   font-size: 14px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -192,7 +325,7 @@
 }
 
 .mac-tile-meta {
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-mono, sans-serif);
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -207,138 +340,509 @@
   letter-spacing: -0.005em;
 }
 
-/* Project detail backdrop — dims + blurs the room/canvas behind so
-   the card reads as a deliberate "drawer pulled out" moment rather
-   than a floating popup that materializes in space. */
-.mac-detail-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(20, 16, 12, 0.42);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  z-index: 58;
-  animation: mac-detail-backdrop-in 320ms ease both;
-}
-@keyframes mac-detail-backdrop-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+/* Project detail is now rendered INSIDE the CRT (the camera dollies in
+   and the screen texture swaps to the detail view). The old white side
+   drawer + blurred backdrop are gone.
 
-/* Project detail — full-height drawer sliding in from the right
-   edge of the viewport. Was previously a small floating card that
-   "popped up" mid-screen and read as an embed. The drawer treatment
-   gives the click a real spatial response. */
-.mac-detail {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(560px, 92vw);
-  background: #f8f5ee;
-  border-left: 1px solid rgba(26, 23, 20, 0.10);
-  padding: 80px 56px 56px;
-  box-shadow: -32px 0 80px -24px rgba(0, 0, 0, 0.35);
-  z-index: 60;
-  overflow-y: auto;
-  animation: mac-detail-in 460ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
+   Two thin DOM layers remain so the canvas-drawn detail stays usable:
 
-@keyframes mac-detail-in {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
+   1. .mac-detail-a11y: a visually-hidden but DOM-real region carrying
+      the open project's title/meta/blurb/tags + the REAL clickable
+      live/repo <a> for assistive tech + crawlers (the CRT canvas is
+      invisible to AT). Same clip recipe as .sr-only.
 
-.mac-detail-close {
+   2. .mac-crt-controls: a transparent overlay positioned over the CRT
+      screen face so the canvas-painted "VIEW LIVE →" button + "‹ BACK"
+      hint are actually clickable (real <a> + <button> sitting on top of
+      their painted echoes). */
+.mac-detail-a11y {
   position: absolute;
-  top: 10px;
-  right: 12px;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* The real live/source links inside the a11y region must be reachable
+   by keyboard; surface them on focus like the sr-only nav does. */
+.mac-detail-a11y a:focus-visible {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 70;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 10px 16px;
+  clip: auto;
+  white-space: normal;
+  background: var(--bg-surface);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-card, 14px);
+  font-family: var(--font-mono, sans-serif);
+  font-size: 12px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* CRT controls overlay. The wrapper spans the viewport but is
+   pointer-transparent; only the close + link hotspots inside catch
+   clicks. They are positioned by INLINE px styles (left/top/width/height)
+   computed in Macintosh.tsx from the screen face's live projected
+   on-screen rect; the detail-zoom now lands DEAD-ON/SQUARE, so the
+   hotspots sit exactly over the painted close glyph (title bar, top-left)
+   and the painted "View live" button (panel, bottom-left). The visible
+   faces are painted on the CRT canvas; these DOM elements are
+   transparent-but-clickable, with a focus ring for keyboard users.
+   Sharp corners (no border-radius) to match the rigid modern-OS UI. */
+.mac-crt-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 56;
+  pointer-events: none;
+}
+.mac-crt-close,
+.mac-crt-link {
+  position: absolute;
+  /* Transparent: the CRT canvas paints the visible face; this is the
+     clickable hotspot sitting on top of it. */
+  color: transparent;
   background: transparent;
   border: 0;
-  font-size: 26px;
-  line-height: 1;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  color: rgba(26, 23, 20, 0.6);
+  border-radius: 0; /* sharp corners, rigid OS */
+  padding: 0;
   cursor: pointer;
-  transition: background 160ms ease;
+  pointer-events: auto;
+  font: inherit;
 }
-.mac-detail-close:hover {
-  background: rgba(26, 23, 20, 0.08);
-}
-
-.mac-detail-meta {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--accent, #e87040);
-  margin-bottom: 8px;
+.mac-crt-close:focus-visible,
+.mac-crt-link:focus-visible {
+  /* Draw the keyboard focus ring directly over the painted control. */
+  outline: 2px solid var(--accent, #e87040);
+  outline-offset: 2px;
 }
 
-.mac-detail-title {
-  font-family: "Space Grotesk", system-ui, sans-serif;
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 14px;
+/* NARROW path: no camera detail-zoom (CameraFramer parks the framing and
+   the CRT swaps texture in place), so the invisible-hotspot trick can't
+   reliably sit over the painted labels. The narrow/touch back + live/source
+   controls are instead rendered as VISIBLE, ≥44px buttons inside the
+   .mac-detail-a11y[data-narrow] panel (see the mobile block below). */
+
+/* ── MOBILE PROJECT LIST (narrow only) ─────────────────────────────
+   The real, reliable TAP PATH on touch. The CRT tiles are a 3D-raycast
+   canvas (small, hover-less, fiddly on a phone, invisible to AT), so the
+   narrow path renders this list of large project buttons beneath the Mac.
+   Hidden on desktop (the orbit/dolly cinematic owns project selection
+   there). Each row is a ≥44px touch target with an active (not hover)
+   state, in the cool retro-futurism palette. */
+.mac-project-list {
+  display: none; /* desktop: the 3D tiles + dolly own selection */
 }
 
-.mac-detail-blurb {
-  font-family: "Inter", sans-serif;
-  font-size: 14px;
-  line-height: 1.6;
-  color: rgba(26, 23, 20, 0.85);
-  margin: 0 0 16px;
-}
+/* ── NARROW / MOBILE (≤ 900px) ─────────────────────────────────────
+   The top-right editorial overlay + 3D orbit cinematic only works when
+   there's enough horizontal room for the orbit ring AND a side rail.
+   Below ~900px the side rail collapses to a sliver and the blurb wraps
+   one word per line, while the orbit (hidden on mobile) leaves the
+   canvas blank. So at narrow widths we abandon the overlay entirely
+   and switch to a deliberate VERTICAL STACK:
 
-.mac-detail-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 18px;
-}
-.mac-detail-tag {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  padding: 4px 10px;
-  border: 1px solid rgba(26, 23, 20, 0.18);
-  border-radius: 999px;
-  color: rgba(26, 23, 20, 0.7);
-}
+     ┌──────────────────────────────┐
+     │ 02 · STACK + PROJECTS         │  ← header: normal full-width
+     │ The kit.                      │     flow block, left-aligned,
+     │ Tools orbit the machine…      │     content-width blurb
+     ├──────────────────────────────┤
+     │  ‹ flat tech ticker marquee › │  ← TechStackTicker (mobile)
+     ├──────────────────────────────┤
+     │                              │
+     │        [ 3D Mac, landed ]    │  ← canvas fills the rest; the
+     │         screen on, tiles     │     Mac renders LANDED + facing
+     │                              │     user (no scroll-orbit). Tap
+     └──────────────────────────────┘     tiles to open the work.
 
-.mac-detail-links {
-  display: flex;
-  gap: 16px;
-}
-.mac-detail-links a {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--accent, #e87040);
-  text-decoration: none;
-  border-bottom: 1px solid currentColor;
-  padding-bottom: 2px;
-}
-
-@media (max-width: 768px) {
-  .mac-stage {
-    width: 100%;
+   The section is no longer pinned at these widths (Macintosh.tsx skips
+   the pin ≤ 900px), so the wrapper becomes a normal-flow auto-height
+   column instead of a 100vh overflow:hidden stage. */
+@media (max-width: 900px) {
+  .portfolio-mac {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    /* Restore normal section breathing room (the desktop pin path
+       zeroes this out via the 100vh stage). */
+    padding: 96px 0 64px;
   }
+
+  /* Header is a normal in-flow block at the TOP: full content width,
+     left-aligned, no absolute positioning, no narrow rail. */
   .mac-col {
-    position: absolute;
-    bottom: 5vh;
-    right: 5vw;
-    left: 5vw;
+    position: static;
+    inset: auto;
+    width: auto;
     max-width: none;
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(8px);
-    padding: 14px;
+    /* Match the shared .portfolio-col gutter so the header aligns with
+       every other section's copy on mobile. max() folds in the safe-area
+       inset so copy never slides under a notch in landscape (0px on
+       non-notched devices, so alignment is unchanged there). */
+    padding-block: 0;
+    padding-left: max(6vw, var(--safe-left, 0px));
+    padding-right: max(6vw, var(--safe-right, 0px));
+    text-align: left;
+    background: none;
+    backdrop-filter: none;
+    order: 1;
+  }
+  .portfolio-mac .section-marker {
+    font-size: clamp(64px, 18vw, 104px);
+  }
+  .portfolio-mac h2 {
+    font-size: clamp(32px, 8vw, 48px);
+    margin-top: 4px;
+  }
+  /* Scoped under .portfolio-mac (0,2,0) to beat both `.portfolio-section
+     p` (0,1,1) and the desktop `.portfolio-mac .mac-blurb` rule. */
+  .portfolio-mac .mac-blurb {
+    /* Full content width → normal multi-word wrapping (was a 240px
+       rail forcing one word per line). */
+    max-width: 52ch;
+    margin-left: 0;
+    margin-top: 14px;
+    font-size: 14px;
+  }
+
+  /* Flat ticker sits between the header and the Mac. No scroll-pin
+     gate on mobile, so force it visible (the desktop opacity:0 default
+     relies on data-stage-visible which never flips here). */
+  .mac-ticker-slot {
+    display: block;
+    opacity: 1;
+    order: 2;
+    position: relative;
+    margin: 22px 0 4px;
+    min-height: 60px;
+  }
+  .tech-ticker {
+    position: relative;
+    top: auto;
+  }
+
+  /* Stage becomes a normal-flow block with a real height so the Mac
+     canvas has somewhere to render (the desktop absolute/100vh stage
+     would collapse to 0 height in a flex column). The landed Mac is
+     framed to fill this box. Trimmed 72vh→58vh so the Mac stays large +
+     the CRT tiles legible while the project tap-list below it lands in
+     the same screen; the user sees "here's the Mac, here's how to open
+     a project" without a long scroll. */
+  .mac-stage {
+    position: relative;
+    order: 3;
+    width: 100%;
+    height: min(58vh, 460px);
+    /* On mobile there's no scroll-pin gate driving data-stage-visible,
+       so force the canvas visible. */
+    opacity: 1;
+  }
+
+  /* The visible mobile project list (below) is the touch/keyboard/crawler
+     source of truth on narrow, so suppress the desktop sr-only project nav
+     here to avoid announcing the same projects twice to screen readers. */
+  .portfolio-mac > nav.sr-only {
+    display: none;
+  }
+
+  /* MOBILE PROJECT LIST: the primary touch tap path, directly under the
+     Mac. Each button is a full-width row, comfortably ≥44px, with a clear
+     active (pressed) state instead of hover. touch-action:manipulation
+     kills the 300ms tap delay. */
+  .mac-project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    order: 4;
+    list-style: none;
+    margin: 18px 0 0;
+    padding-block: 0;
+    padding-left: max(6vw, var(--safe-left, 0px));
+    padding-right: max(6vw, var(--safe-right, 0px));
+  }
+  .mac-project-list li {
+    margin: 0;
+  }
+  .mac-project-btn {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    min-height: 60px;
+    padding: 12px 16px;
+    background: var(--bg-surface, #fff);
+    border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
+    border-radius: var(--r-card, 14px);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: var(--ink, #0d0e10);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: border-color 200ms ease, box-shadow 200ms ease,
+      transform 120ms ease, background-color 200ms ease;
+  }
+  /* Touch active state (no hover dependency): clear pressed feedback. */
+  .mac-project-btn:active {
+    transform: scale(0.985);
+    border-color: var(--accent, #e87040);
+    background: var(--accent-tint, rgba(232, 112, 64, 0.1));
+  }
+  .mac-project-btn:focus-visible {
+    outline: 2px solid var(--accent, #e87040);
+    outline-offset: 2px;
+  }
+  /* Pointer/hover devices ≤900px (rare, e.g. small windows) still get a
+     subtle non-layout-shifting hover cue. */
+  @media (hover: hover) {
+    .mac-project-btn:hover {
+      border-color: var(--accent, #e87040);
+      box-shadow: 0 8px 22px -14px rgba(232, 112, 64, 0.5);
+    }
+  }
+  .mac-project-swatch {
+    flex: 0 0 auto;
+    width: 58px;
+    height: 42px;
+    border-radius: 6px;
+    background-size: cover;
+    background-position: center;
+    border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
+  }
+  .mac-project-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .mac-project-meta {
+    font-family: var(--font-mono, sans-serif);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+  }
+  .mac-project-title {
+    font-family: var(--font-display, "Geist", system-ui, sans-serif);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mac-project-open {
+    flex: 0 0 auto;
+    font-family: var(--font-mono, sans-serif);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent, #e87040);
+  }
+
+  /* VISIBLE detail panel on narrow: overrides the desktop sr-only clip.
+     Sits in-flow where the project list was (order 4) so opening a project
+     swaps the list for its detail in the same scroll position. Real,
+     readable DOM text (the in-CRT canvas text is small + un-zoomed on
+     mobile) + large ≥44px BACK / live controls. */
+  .mac-detail-a11y[data-narrow="true"] {
+    position: static;
+    width: auto;
+    height: auto;
+    /* No top margin here; the container is always in the DOM (only its
+       <article> is conditional), so an empty one must add zero space. The
+       spacing lives on the article so it only applies when a project is
+       open. */
+    margin: 0;
+    padding-block: 0;
+    padding-left: max(6vw, var(--safe-left, 0px));
+    padding-right: max(6vw, var(--safe-right, 0px));
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+    order: 4;
+  }
+  .mac-detail-a11y[data-narrow="true"] article {
+    margin-top: 18px;
+    background: var(--bg-surface, #fff);
+    border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
+    border-radius: var(--r-card-lg, 20px);
+    padding: 18px 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .mac-detail-back {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 10px 18px 10px 14px;
+    margin-bottom: 4px;
+    background: transparent;
+    border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
+    border-radius: var(--r-chip, 999px);
+    color: var(--ink, #0d0e10);
+    font-family: var(--font-mono, sans-serif);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: border-color 200ms ease, color 200ms ease,
+      background-color 200ms ease;
+  }
+  .mac-detail-back:active {
+    border-color: var(--accent, #e87040);
+    color: var(--accent, #e87040);
+    background: var(--accent-tint, rgba(232, 112, 64, 0.1));
+  }
+  .mac-detail-back:focus-visible {
+    outline: 2px solid var(--accent, #e87040);
+    outline-offset: 2px;
+  }
+  .mac-detail-a11y[data-narrow="true"] .mac-detail-thumb {
+    display: block;
+    width: 100%;
+    aspect-ratio: 806 / 537;
+    object-fit: cover;
     border-radius: 12px;
+    border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
+    margin: 0 0 4px;
+  }
+  .mac-detail-a11y[data-narrow="true"] .mac-detail-meta {
+    margin: 0;
+    font-family: var(--font-mono, sans-serif);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+  }
+  .mac-detail-a11y[data-narrow="true"] h3 {
+    margin: 0;
+    font-family: var(--font-display, "Geist", system-ui, sans-serif);
+    font-size: clamp(22px, 6vw, 28px);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+    color: var(--ink, #0d0e10);
+  }
+  .mac-detail-a11y[data-narrow="true"] .mac-detail-blurb {
+    margin: 0;
+    font-family: var(--font-body, "Geist", system-ui, sans-serif);
+    /* >=16px body minimum on mobile (was 15px); recruiter-facing copy
+       must clear the readable-body floor. */
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+    text-wrap: pretty;
+  }
+  .mac-detail-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 2px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .mac-detail-tags li {
+    margin: 0;
+    padding: 5px 12px;
+    font-family: var(--font-mono, sans-serif);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+    border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
+    border-radius: var(--r-chip, 999px);
+  }
+  .mac-detail-a11y[data-narrow="true"] .mac-detail-link {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    margin-top: 6px;
+    padding: 11px 22px;
+    background: var(--accent, #e87040);
+    color: var(--bg-surface, #fff);
+    border-radius: var(--r-chip, 999px);
+    font-family: var(--font-mono, sans-serif);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: background-color 200ms ease;
+  }
+  .mac-detail-a11y[data-narrow="true"] .mac-detail-link:active {
+    background: var(--accent-hot, #ff6a2a);
+  }
+  @media (hover: hover) {
+    .mac-detail-a11y[data-narrow="true"] .mac-detail-link:hover {
+      background: var(--accent-hot, #ff6a2a);
+    }
+  }
+  .mac-detail-a11y[data-narrow="true"] .mac-detail-link:focus-visible {
+    /* The visible narrow panel is NOT clipped, so cancel the desktop
+       "surface the focused link as a fixed pill top-left" treatment;
+       just draw a focus ring in place. */
+    position: static;
+    top: auto;
+    left: auto;
+    z-index: auto;
+    width: auto;
+    height: auto;
+    clip: auto;
+    background: var(--accent, #e87040);
+    color: var(--bg-surface, #fff);
+    outline: 2px solid var(--ink, #0d0e10);
+    outline-offset: 2px;
+  }
+}
+
+/* Very narrow phones: give the Mac a touch more vertical room and
+   tighten the header so the blurb never crowds the canvas. */
+@media (max-width: 480px) {
+  .mac-stage {
+    height: min(64vh, 480px);
+  }
+  .portfolio-mac .mac-blurb {
+    font-size: 13px;
+  }
+}
+
+/* ── REDUCED MOTION ───────────────────────────────────────────────
+   Macintosh.tsx skips the GSAP pin + scroll cinematic (orbit/dolly/
+   boot) for reduced-motion users and lands the Mac immediately. The
+   detail view now renders in the CRT (no drawer/backdrop to flatten).
+   The tech-ticker marquee is already paused in its own
+   prefers-reduced-motion block above. */
+@media (prefers-reduced-motion: reduce) {
+  .mac-stage,
+  .mac-ticker-slot {
+    transition: none;
+  }
+  .mac-tile {
+    transition: none;
   }
 }

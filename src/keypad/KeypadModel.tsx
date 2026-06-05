@@ -8,20 +8,20 @@ import * as THREE from "three";
  * dial. Other meshes render unchanged.
  *
  * GLB nodes (confirmed via scripts/dump-glb-nodes.mjs):
- *   x, linkedin, github, pinterest  — social keycaps (clickable)
- *   knob                              — spinnable dial; parent group
+ *   x, linkedin, github, pinterest  - social keycaps (clickable)
+ *   knob                              - spinnable dial; parent group
  *                                       with Cylinder006/Cylinder006_1
  *                                       (brushed-metal body + cat
  *                                       face decal) as children;
  *                                       rotating this node spins
  *                                       both meshes together
- *   frame                             — body + sidebutton (parent
+ *   frame                             - body + sidebutton (parent
  *                                       group with Cube003/Cube003_1
  *                                       child meshes)
- *   Cube006                           — display screen
+ *   Cube006                           - display screen
  *
  * Animations driven from useFrame with fixed-rate damping
- * (per the project's scroll-animations-fixed-rate rule) — no spring
+ * (per the project's scroll-animations-fixed-rate rule): no spring
  * library, no per-frame React re-renders.
  */
 
@@ -31,7 +31,7 @@ useGLTF.preload("/keypad.glb");
  * Smooth the normal attribute by averaging across vertices at the
  * SAME POSITION, without merging vertices or touching UV/position/
  * index data. This is the runtime equivalent of Blender's "Shade
- * Smooth" applied per shared position — solves the case where the
+ * Smooth" applied per shared position: solves the case where the
  * GLB ships with face-normal-per-vertex on chamfer subdivisions
  * (32 of 40 position-clusters on the keypad caps had normals 26°–60°
  * apart, producing the visible triangulation).
@@ -54,25 +54,38 @@ function smoothNormalsAcrossSharedPositions(
   const pos = geom.attributes.position as THREE.BufferAttribute | undefined;
   const norm = geom.attributes.normal as THREE.BufferAttribute | undefined;
   if (!pos || !norm) return { clusters: 0, merged: 0 };
-  // Round each position to the tolerance grid for stable hashing.
-  const round = (n: number) => Math.round(n / posTol) * posTol;
-  const clusters = new Map<string, number[]>();
+  // Round each coordinate to the same 1e-6 grid toFixed(6) used.
+  // OLD: O(n) string alloc — `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`
+  //      per vertex; heavy per-character heap allocation for n ≈ thousands.
+  // NEW: O(1) space per vertex — three integer quantizations, no strings.
+  //      Nested Map is collision-free: (qx,qy,qz) → vertex list maps
+  //      IDENTICALLY to the old string key because both quantize to the
+  //      same 1e-6 grid (Math.round(v/1e-4)*1e-4 then ×1e6 = Math.round
+  //      (v*1e4)*100, but toFixed(6) of that === the integer → no difference
+  //      in grouping). Nested structure avoids any hash-collision risk.
+  const invTol = 1 / posTol; // e.g. 1e4 for default posTol=1e-4
+  const clusters = new Map<number, Map<number, Map<number, number[]>>>();
+  let clusterCount = 0;
   for (let i = 0; i < pos.count; i++) {
-    const k =
-      round(pos.getX(i)).toFixed(6) +
-      "," +
-      round(pos.getY(i)).toFixed(6) +
-      "," +
-      round(pos.getZ(i)).toFixed(6);
-    let arr = clusters.get(k);
-    if (!arr) {
-      arr = [];
-      clusters.set(k, arr);
-    }
+    const qx = Math.round(pos.getX(i) * invTol);
+    const qy = Math.round(pos.getY(i) * invTol);
+    const qz = Math.round(pos.getZ(i) * invTol);
+    let byY = clusters.get(qx);
+    if (!byY) { byY = new Map(); clusters.set(qx, byY); }
+    let byZ = byY.get(qy);
+    if (!byZ) { byZ = new Map(); byY.set(qy, byZ); }
+    let arr = byZ.get(qz);
+    if (!arr) { arr = []; byZ.set(qz, arr); clusterCount++; }
     arr.push(i);
   }
+  // Flatten nested map values into a single iterable for the averaging loop.
+  const clusterValues: number[][] = [];
+  for (const byY of clusters.values())
+    for (const byZ of byY.values())
+      for (const arr of byZ.values())
+        clusterValues.push(arr);
   let merged = 0;
-  for (const verts of clusters.values()) {
+  for (const verts of clusterValues) {
     if (verts.length < 2) continue;
     let ax = 0,
       ay = 0,
@@ -93,15 +106,15 @@ function smoothNormalsAcrossSharedPositions(
     merged++;
   }
   norm.needsUpdate = true;
-  return { clusters: clusters.size, merged };
+  return { clusters: clusterCount, merged };
 }
 
 // TODO(daniel): confirm these handles. Defaulting to the same
-// `danielrltan` slug used for GitHub/LinkedIn — adjust if X or
+// `danielrltan` slug used for GitHub/LinkedIn. Adjust if X or
 // Pinterest use a different username.
 // NOTE: in the source GLB the node named "github" actually carries
 // the LinkedIn icon material, and the node "linkedin" carries the
-// GitHub icon — confirmed by walking child.material.name in the
+// GitHub icon, confirmed by walking child.material.name in the
 // meshInfo probe. Swapping the URL mapping here is the right fix
 // (re-naming nodes in Blender would also work but the user prefers
 // to keep node names where they are). When the cap is clicked we
@@ -159,10 +172,19 @@ interface CapState {
 
 // Fit policy: model's bounding-sphere radius (rotation-invariant)
 // should equal this fraction of the visible camera HALF-HEIGHT at
-// world z=0. Picked empirically — bump down if it reads too tight,
+// world z=0. Picked empirically. Bump down if it reads too tight,
 // up to fill more of the frame. 0.92 puts the model nicely filling
 // the laying-flat view without kissing canvas edges.
 const TARGET_FILL_RATIO = 0.92;
+// PORTRAIT (phones): the fit clamps to the TIGHTER axis, which in
+// portrait is the half-WIDTH, and the bounding SPHERE circumscribes the
+// tilted slab PLUS the protruding dial, so a 0.92 sphere-fit left the
+// actual keypad body reading small with wide side margins (user: "looks
+// kinda small"). Portrait has ample VERTICAL room, so we let the sphere
+// overshoot the width (its corners are empty) and fill a larger fraction
+// The keypad BODY then reads big and fills the frame. Tuned by eye on
+// a ~390px phone; the dial corner still stays clear of the edges.
+const TARGET_FILL_RATIO_PORTRAIT = 1.28;
 
 interface KeypadModelProps {
   /** Called once at mount with an imperative API. Used by parent to
@@ -175,7 +197,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   const { camera, size, gl } = useThree();
 
   // Clone + traverse synchronously so caps & dial are known before
-  // the first render returns — hit-volume meshes need their world
+  // the first render returns. Hit-volume meshes need their world
   // positions on mount.
   const { cloned, recenterOffset, sphereRadius, caps, dial } = useMemo(() => {
     const cl = scene.clone(true);
@@ -183,7 +205,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     let dialObj: THREE.Object3D | null = null;
     // Shading fix: force flatShading off and recompute vertex
     // normals on every mesh. Per the user's instruction this stays
-    // STRICTLY at the geometry/normal level — no subdivision, no
+    // STRICTLY at the geometry/normal level: no subdivision, no
     // UV-merging, no material/roughness/lighting changes. A previous
     // attempt at runtime smoothing interpolated UVs across cap
     // top/side seams and wrecked the icon decals; this version
@@ -201,7 +223,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
         };
       } else if (name === "knob") {
         // Dial / spinnable knob. Parent group containing both the
-        // cylinder body and cat-face decal as child meshes — we
+        // cylinder body and cat-face decal as child meshes. We
         // rotate the parent so both spin together. If the dial node
         // gets renamed again, console will warn and list available
         // node names (see warning block below).
@@ -217,7 +239,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
           stdMat.flatShading = false;
           // Anisotropic filtering on every texture map on the
           // material. Default anisotropy is 1, which makes textures
-          // look fuzzy/dithered when sampled at oblique angles — the
+          // look fuzzy/dithered when sampled at oblique angles. The
           // icon decals on the cap top faces (which sit at ~32° to
           // the camera) hit this hardest. Max anisotropy on modern
           // GPUs is 16; samples the texture along the projected
@@ -244,7 +266,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
         // UVs, or the index buffer. Tried LoopSubdivision earlier on
         // non-textured meshes; it smoothed the brushed-metal body's
         // 90° hard edges into mirror-smooth curves, making the frame
-        // read as chrome/glass instead of brushed metal. Reverted —
+        // read as chrome/glass instead of brushed metal. Reverted:
         // the chamfer normals averaging alone is what we want here.
         smoothNormalsAcrossSharedPositions(m.geometry);
         m.castShadow = true;
@@ -281,7 +303,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
 
   // Camera-aware fit. Re-runs on resize so portrait/landscape both
   // get a sensible scale. Uses visible camera HEIGHT at world z=0
-  // as the target dimension — height is the smaller dim on most
+  // as the target dimension. Height is the smaller dim on most
   // landscape canvases, so fitting the sphere to height-fraction
   // guarantees the model stays inside both axes.
   const fitScale = useMemo(() => {
@@ -293,11 +315,14 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     const distToTarget = pc.position.length();
     const visibleHalfHeight =
       Math.tan(THREE.MathUtils.degToRad(pc.fov / 2)) * distToTarget;
-    // Clamp against width too — on portrait viewports the height
+    // Clamp against width too. On portrait viewports the height
     // isn't the tighter axis.
     const visibleHalfWidth = visibleHalfHeight * (size.width / size.height);
     const tighter = Math.min(visibleHalfHeight, visibleHalfWidth);
-    return (tighter * TARGET_FILL_RATIO) / sphereRadius;
+    // Portrait fills more of the frame (see TARGET_FILL_RATIO_PORTRAIT).
+    const portrait = size.height > size.width;
+    const fill = portrait ? TARGET_FILL_RATIO_PORTRAIT : TARGET_FILL_RATIO;
+    return (tighter * fill) / sphereRadius;
   }, [camera, size.width, size.height, sphereRadius]);
 
   const capsRef = useRef(caps);
@@ -378,7 +403,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   };
   const handleDialClick = (e: any) => {
     e.stopPropagation();
-    // Accumulate velocity — each click ADDS to the existing spin,
+    // Accumulate velocity: each click ADDS to the existing spin,
     // so rapid clicks let the dial reach high speeds while a single
     // click is a gentle nudge. Clamp to ceiling so we don't end up
     // with a strobing dial that visually freezes.

@@ -26,7 +26,7 @@ type CaptureEvent =
 
 interface SignatureJSON {
   capturedAt: string;
-  /** Original capture viewport — informational only; replay uses normalized coords. */
+  /** Original capture viewport (informational only; replay uses normalized coords). */
   captureViewport: { w: number; h: number };
   /** Bounding box of all recorded points, in capture-viewport pixels. */
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
@@ -74,7 +74,7 @@ export function SignatureCapture() {
     resize();
     window.addEventListener("resize", resize);
 
-    // Pre-baked brush, same recipe as the live trail but smaller — at
+    // Pre-baked brush, same recipe as the live trail but smaller. At
     // capture-screen scale the production brush would smear the finer
     // strokes of a real signature into mud.
     const brushSize = BASE_RADIUS * 2 * dpr;
@@ -135,7 +135,7 @@ export function SignatureCapture() {
       const dist = Math.hypot(dx, dy);
       // Step-stamp between last and current for a continuous stroke
       // in the preview. Records every browser-emitted move event for
-      // timing fidelity — only the visual is interpolated.
+      // timing fidelity; only the visual is interpolated.
       const steps = Math.max(1, Math.ceil(dist / STEP_PX));
       ctx.globalCompositeOperation = "source-over";
       for (let i = 1; i <= steps; i++) {

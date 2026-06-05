@@ -14,7 +14,7 @@ import {
 } from "./SceneState";
 
 // Drawer meshes are handled by Drawer.tsx (kinematic slide). They MUST NOT
-// go through DraggableRigidBody — the kinematic translation handler would
+// go through DraggableRigidBody. The kinematic translation handler would
 // be overwritten by the dynamic body sync.
 const DRAWER_NAMES = new Set<string>([
   "th_drawer_1",
@@ -42,7 +42,7 @@ const EXTRA_THROWABLE_NAMES = new Set<string>(["clk_mirror_round"]);
  */
 const TH_NO_PROXIMITY_WAKE = new Set<string>([
   "th_wristrest",
-  // Wall-mounted dome mirror — proximity-wake would let the standing mirror
+  // Wall-mounted dome mirror: proximity-wake would let the standing mirror
   // knock it off its bracket just by being dragged past.
   "clk_mirror_round",
 ]);
@@ -84,15 +84,15 @@ const BOUNDARIES: ReadonlyArray<CuboidSpec> = [
 ];
 
 const HARDCODED_STATICS: ReadonlyArray<{ name: string } & CuboidSpec> = [
-  // Desk surface — thickened from 0.012 → 0.05 half-Y (top still at
+  // Desk surface: thickened from 0.012 to 0.05 half-Y (top still at
   // 1.2369 = 1.1869 + 0.05) so fast tiny props (wristrest, pens, etc.)
   // can't tunnel through the slab between physics steps.
   { name: "desk_surface",     pos: [2.1863, 1.1869, -1.0111],  half: [0.3618, 0.05, 0.8502] },
 
   // ----- Dresser shell -----
   // Thin (thickness 0.02) outer panels + center divider + horizontal shelves
-  // between the three drawer rows. No front face — that side is open so
-  // items can be dropped into open drawer cavities. The drawers themselves
+  // between the three drawer rows. No front face (that side is open so
+  // items can be dropped into open drawer cavities). The drawers themselves
   // (th_drawer_1..6) provide the sliding floor/front of each slot via the
   // kinematic Drawer component.
   { name: "d_top",      pos: [-0.1632, 0.8957, 2.0659], half: [0.881, 0.01, 0.286] },
@@ -111,9 +111,9 @@ const HARDCODED_NAMES = new Set(HARDCODED_STATICS.map((s) => s.name));
 
 /**
  * Static bodies that can start seated desk view. Only the desk itself
- * (and via the allowlist, only its monitor sub-meshes — see
+ * (and via the allowlist, only its monitor sub-meshes, see
  * `matchesDeskFocusPickMesh`). The keyboard frame is no longer a
- * trigger — the monitor is the visual focus and the only thing the
+ * trigger. The monitor is the visual focus and the only thing the
  * user is expected to click to sit down.
  */
 const DESK_FOCUS_STATIC_NAMES = new Set<string>(["desk"]);
@@ -145,7 +145,7 @@ const SKIP_NAMES = new Set<string>([
   "mouse",
 ]);
 
-// Individual key meshes are visual-only — they're reparented to the cloned
+// Individual key meshes are visual-only. They're reparented to the cloned
 // root in useMemo so the keyboard's trimesh collider doesn't include 70+
 // tiny per-key shapes, and then skipped by processNode here.
 const SKIP_PREFIXES: ReadonlyArray<string> = ["key_"];
@@ -302,7 +302,7 @@ const disposedMaterials = new WeakSet<THREE.Material>();
 
 /**
  * Replacing a material via `mesh.material = new ...` orphans the old
- * one — three.js doesn't auto-dispose it, and `useGLTF` won't reclaim
+ * one. three.js doesn't auto-dispose it, and `useGLTF` won't reclaim
  * it either. This frees the GPU resources (program, uniforms) of the
  * material we're swapping out. Safe to call multiple times on the same
  * material thanks to the WeakSet guard.
@@ -348,7 +348,7 @@ function replaceMushroomBulbs(root: THREE.Object3D) {
     if (!obj.name.startsWith("mushroom_bulb")) return;
     const mesh = obj as THREE.Mesh;
     const old = mesh.material;
-    // Was MeshPhysicalMaterial w/ transmission — each transmission material
+    // Was MeshPhysicalMaterial w/ transmission. Each transmission material
     // costs a full extra scene render pass. Standard + transparent fakes the
     // same look at a fraction of the cost. Shared instance keeps the bulb
     // count from spawning N identical materials.
@@ -358,13 +358,13 @@ function replaceMushroomBulbs(root: THREE.Object3D) {
 }
 
 /**
- * Round wall mirror — swaps the default GLB material for a polished
+ * Round wall mirror: swaps the default GLB material for a polished
  * metallic look that doesn't depend on an env map. Tuned values
  * (metalness 0.5 / roughness 0.25 / brighter base color) catch enough
  * direct light from the warm scene lights to read as "reflective"
  * without needing a PMREM-baked environment map (the scene-wide
  * `scene.environment` we tried earlier added a per-pixel cubemap
- * sample to EVERY material in the room, not just the mirror — net
+ * sample to EVERY material in the room, not just the mirror. Net
  * frame-rate loss far outweighed the visual gain).
  */
 function replaceMirrorMaterial(root: THREE.Object3D) {
@@ -410,7 +410,7 @@ function replaceClearGlass(root: THREE.Object3D) {
       if (!m || m.name !== "mat_glass_clear") return m;
       changed = true;
       replaced.push(m);
-      // Same swap as mushroom bulbs — drop the transmission render pass.
+      // Same swap as mushroom bulbs. Drop the transmission render pass.
       // Shared single instance so every clear-glass mesh shares one
       // material UBO / shader program.
       return shared;
@@ -492,7 +492,7 @@ function KeyboardStaticHoverEdges({
 
   // Hover state + shockwave are kept so the click flow (and the
   // possibility of re-introducing a per-mesh effect later) still works,
-  // but the GlowBox has moved to the monitor instead — the keyboard
+  // but the GlowBox has moved to the monitor instead. The keyboard
   // sits flush with the desk and the white outline read as "selected"
   // even when the user wasn't trying to focus it.
   void hover;
@@ -523,13 +523,13 @@ interface MonitorPose {
  * Feature flag: when false, the monitor is a pure visual prop. The
  * room's OS entry path is the scroll-triggered corruption transition
  * (see `CorruptionOverlay.tsx`). Flip to true to restore click-to-zoom
- * for minigames / future use — the rest of the desk-view machinery
+ * for minigames / future use. The rest of the desk-view machinery
  * (`DeskViewController`, `MonitorScreen`) is preserved.
  */
 const MONITOR_CLICK_ENABLED = false;
 
 /**
- * Glow halo around the monitor — telegraphs the monitor as the
+ * Glow halo around the monitor: telegraphs the monitor as the
  * clickable focus surface. AABB read from `clk_monitor_frame`.
  *
  * Behaviour:
@@ -608,7 +608,7 @@ function MonitorGlow({ pose }: { pose: MonitorPose | null }) {
  * above the monitor. Read as "click here" without needing copy. Drei's
  * `<Html>` anchors it to the monitor's world position, so it tracks the
  * monitor through every orbit / pan / zoom. Hidden once the user is
- * seated at the desk — at that point the cue has served its purpose
+ * seated at the desk. At that point the cue has served its purpose
  * and any in-frame HUD just clutters the OS view.
  */
 function MonitorClickHint({ pose }: { pose: MonitorPose | null }) {
@@ -682,7 +682,7 @@ export function Room({ roomGroupRef }: RoomProps) {
 
   const onDeskAreaPointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
-      // Same feature flag as the MonitorGlow handler above —
+      // Same feature flag as the MonitorGlow handler above.
       // disabled while the corruption transition is the OS entry path.
       if (!MONITOR_CLICK_ENABLED) return;
       if (!sceneReadyRef?.current) return;
@@ -695,6 +695,10 @@ export function Room({ roomGroupRef }: RoomProps) {
 
   const mouseMeshRef = useRef<THREE.Object3D | null>(null);
   const pressedKeysRef = useRef<Set<string>>(new Set());
+  // Caps currently mid-lerp (toward pressed OR toward rest). The
+  // per-frame loop iterates ONLY this set; both press and release add
+  // their cap here, and the loop removes a cap once it reaches target.
+  const animatingKeysRef = useRef<Set<string>>(new Set());
   // Independent viewport-pointer tracker. R3F's `state.pointer` stops
   // updating once drei's `<Html>` (the OS) intercepts events, which
   // would freeze the desk mouse-mesh at whatever stale value pointer
@@ -723,14 +727,14 @@ export function Room({ roomGroupRef }: RoomProps) {
       cloned.updateMatrixWorld(true);
 
       // Real shadows: propagate receiveShadow to every mesh inside the
-      // GLB — receiving is essentially free (just sampling the shadow
+      // GLB; receiving is essentially free (just sampling the shadow
       // map in the existing fragment shader).
       //
       // castShadow is GATED: each caster adds a full geometry pass to
       // the depth render of the directional light. Skip casters that
       // contribute no useful silhouette:
       //   - key_* (~70 sub-mm keycaps, occluded by keyboard_frame)
-      //   - mushroom_bulb_* (transparent — alpha doesn't shadow cleanly)
+      //   - mushroom_bulb_* (transparent, alpha doesn't shadow cleanly)
       //   - vinyl_disc (flat, inside record_player housing)
       // Everything structural / large enough to read as shadow keeps
       // castShadow on.
@@ -748,7 +752,7 @@ export function Room({ roomGroupRef }: RoomProps) {
 
       // Snapshot monitor world AABB before processNode reparents
       // anything. Once statics are extracted from the cloned tree this
-      // lookup would return null — and even if it didn't, the bodyPos
+      // lookup would return null. And even if it didn't, the bodyPos
       // offset would no longer match the unmodified world transform.
       let monitorPoseExtracted: MonitorPose | null = null;
       {
@@ -937,7 +941,7 @@ export function Room({ roomGroupRef }: RoomProps) {
 
   }, [visualScene]);
 
-  // Window-level keyboard listeners — only register press state after the
+  // Window-level keyboard listeners: only register press state after the
   // iso transition completes. preventDefault is scoped to keys that have a
   // matching mesh so OrbitControls and dev shortcuts still work.
   useEffect(() => {
@@ -946,7 +950,7 @@ export function Room({ roomGroupRef }: RoomProps) {
     // click), so we swap them here. Spacebar gets a deeper pitch on both.
     const SPACE_RATE = 0.82;
     // The modifier keys themselves set e.ctrlKey / e.metaKey true on their
-    // OWN press event — so a blind `e.ctrlKey || e.metaKey` filter would
+    // OWN press event, so a blind `e.ctrlKey || e.metaKey` filter would
     // reject pressing left-ctrl / left-meta / etc. Allow modifier-code
     // events through; only reject when a *different* key is being chorded.
     const MODIFIER_CODES = new Set<string>([
@@ -960,7 +964,7 @@ export function Room({ roomGroupRef }: RoomProps) {
     const isCombo = (e: KeyboardEvent) =>
       (e.ctrlKey || e.metaKey) && !MODIFIER_CODES.has(e.code);
     // Skip the room keyboard animation when the user is typing into
-    // an OS input — otherwise preventDefault() below swallows the
+    // an OS input; otherwise preventDefault() below swallows the
     // keystroke and the input never gets the character.
     const isTypingTarget = (e: KeyboardEvent): boolean => {
       const el = e.target;
@@ -989,6 +993,8 @@ export function Room({ roomGroupRef }: RoomProps) {
         playOneShot("keyup", vol, rate);
       }
       pressedKeysRef.current.add(meshName);
+      // Wake this cap so the frame loop lerps it down to pressed depth.
+      animatingKeysRef.current.add(meshName);
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (!sceneReadyRef?.current) return;
@@ -999,6 +1005,8 @@ export function Room({ roomGroupRef }: RoomProps) {
       if (!meshName) return;
       e.preventDefault();
       pressedKeysRef.current.delete(meshName);
+      // Wake this cap so the frame loop lerps it back up to rest.
+      animatingKeysRef.current.add(meshName);
       const isSpace = meshName === "key_space";
       const rate = isSpace ? SPACE_RATE : 1;
       const vol = isSpace ? Math.min(1, 0.4 * 2) : 0.4;
@@ -1040,19 +1048,39 @@ export function Room({ roomGroupRef }: RoomProps) {
       );
     }
 
-    // Key meshes — lerp toward rest or rest - PRESS_DEPTH. Since keys live
+    // Key meshes: lerp toward rest or rest - PRESS_DEPTH. Since keys live
     // at the cloned root, position.y is in world space and "down" is fixed.
-    for (const [name, mesh] of keyMeshes) {
-      const restY = keyRestY.get(name);
-      if (restY === undefined) continue;
-      const targetY = pressedKeysRef.current.has(name)
-        ? restY - PRESS_DEPTH
-        : restY;
-      mesh.position.y = THREE.MathUtils.lerp(
-        mesh.position.y,
-        targetY,
-        PRESS_LERP,
-      );
+    // Perf: was O(n) lerps/frame for ALL caps (n~70) every frame even at
+    //   idle; now O(k) where k = caps currently animating (usually 0). A
+    //   cap is added on press/release and removed once it reaches target,
+    //   so a still keyboard does no per-key work. Same lerp factor and
+    //   targets — identical press-down/release-up feel.
+    const animating = animatingKeysRef.current;
+    if (animating.size > 0) {
+      for (const name of animating) {
+        const mesh = keyMeshes.get(name);
+        const restY = keyRestY.get(name);
+        if (!mesh || restY === undefined) {
+          animating.delete(name);
+          continue;
+        }
+        const targetY = pressedKeysRef.current.has(name)
+          ? restY - PRESS_DEPTH
+          : restY;
+        const nextY = THREE.MathUtils.lerp(
+          mesh.position.y,
+          targetY,
+          PRESS_LERP,
+        );
+        // Snap + retire once within sub-micron of target so the set
+        // empties and the loop goes idle.
+        if (Math.abs(nextY - targetY) < 1e-5) {
+          mesh.position.y = targetY;
+          animating.delete(name);
+        } else {
+          mesh.position.y = nextY;
+        }
+      }
     }
   });
 

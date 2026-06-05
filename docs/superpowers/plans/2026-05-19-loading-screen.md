@@ -18,20 +18,20 @@
 ## File Structure
 
 **Create:**
-- `data/scene_manifest.json` — copy of Daniel's Blender manifest, committed to repo (~30 kB).
-- `scripts/bake-wireframes.mjs` — Node ESM script, runs at `predev`/`prebuild`.
-- `public/wireframes.json` — generated artifact, committed.
-- `src/loading/types.ts` — shared types (`WireframeMesh`, `WireframeManifest`, `AssemblyState`).
-- `src/loading/useWireframeManifest.ts` — fetches `/wireframes.json` once, module-level promise cache.
-- `src/loading/useAssemblyProgress.ts` — RAF-driven aggregator of timeline + drei `useProgress` + frame-stability. Emits React state at ~10 Hz.
-- `src/loading/WireframeRoom.tsx` — R3F `<lineSegments>` per manifest entry. Owns its own per-mesh pop-in animation.
-- `src/loading/AssemblyHUD.tsx` — DOM overlay: hairline bar + bytes counter + cycling `resolving · <name>` line.
-- `src/loading/AssemblyController.tsx` — composes the two; gates them on `AssemblyState`; runs the climax handoff.
-- `src/loading/index.ts` — barrel.
+- `data/scene_manifest.json`: copy of Daniel's Blender manifest, committed to repo (~30 kB).
+- `scripts/bake-wireframes.mjs`: Node ESM script, runs at `predev`/`prebuild`.
+- `public/wireframes.json`: generated artifact, committed.
+- `src/loading/types.ts`: shared types (`WireframeMesh`, `WireframeManifest`, `AssemblyState`).
+- `src/loading/useWireframeManifest.ts`: fetches `/wireframes.json` once, module-level promise cache.
+- `src/loading/useAssemblyProgress.ts`: RAF-driven aggregator of timeline + drei `useProgress` + frame-stability. Emits React state at ~10 Hz.
+- `src/loading/WireframeRoom.tsx`: R3F `<lineSegments>` per manifest entry. Owns its own per-mesh pop-in animation.
+- `src/loading/AssemblyHUD.tsx`: DOM overlay: hairline bar + bytes counter + cycling `resolving · <name>` line.
+- `src/loading/AssemblyController.tsx`: composes the two; gates them on `AssemblyState`; runs the climax handoff.
+- `src/loading/index.ts`: barrel.
 
 **Modify:**
-- `src/App.tsx` — remove `LoadingScreen` import + `<LoadingScreen />`; add `<AssemblyController>` wrapping `<AssemblyHUD>` outside the Canvas and `<WireframeRoom>` inside the Canvas (sibling of the loading-Suspense, NOT inside it).
-- `package.json` — add `predev` and `prebuild` scripts.
+- `src/App.tsx`: remove `LoadingScreen` import + `<LoadingScreen />`; add `<AssemblyController>` wrapping `<AssemblyHUD>` outside the Canvas and `<WireframeRoom>` inside the Canvas (sibling of the loading-Suspense, NOT inside it).
+- `package.json`: add `predev` and `prebuild` scripts.
 
 **Delete:**
 - `src/LoadingScreen.tsx` (after verifying nothing else imports it).
@@ -40,7 +40,7 @@
 - `index.html` `#boot-screen` (still bridges the JS-parse gap).
 - `index.css` `html.loading-active .moveable-cursor` rule (controller adds/removes the class).
 - IntroController, Room, MoveableCursor, all post-load behavior.
-- `public/images/cat.svg`, `cat_blink.svg` (still used as favicon — leave them).
+- `public/images/cat.svg`, `cat_blink.svg` (still used as favicon, leave them).
 
 ---
 
@@ -48,7 +48,7 @@
 
 **Files:**
 - Create: `data/scene_manifest.json` (copied from `C:\Users\Daniel\Documents\WEBSITEROOM\scene_manifest.json`)
-- Modify: `.gitignore` (only if `data/` is already excluded — verify first)
+- Modify: `.gitignore` (only if `data/` is already excluded, verify first)
 
 - [ ] **Step 1.1: Copy the manifest into the repo**
 
@@ -60,11 +60,11 @@ cp "C:/Users/Daniel/Documents/WEBSITEROOM/scene_manifest.json" data/scene_manife
 - [ ] **Step 1.2: Verify it's in tracked location and not gitignored**
 
 ```bash
-git check-ignore data/scene_manifest.json && echo "GITIGNORED — fix .gitignore" || echo "OK — tracked"
+git check-ignore data/scene_manifest.json && echo "GITIGNORED - fix .gitignore" || echo "OK - tracked"
 ls -lh data/scene_manifest.json
 ```
 
-Expected: `OK — tracked` and a file size in the tens of kB.
+Expected: `OK - tracked` and a file size in the tens of kB.
 
 - [ ] **Step 1.3: Commit**
 
@@ -331,7 +331,7 @@ export interface WireframeMesh {
   name: string;
   center: [number, number, number];
   half: [number, number, number];
-  /** 1..5 — spatial assembly wave this mesh belongs to. */
+  /** 1..5: spatial assembly wave this mesh belongs to. */
   phase: number;
 }
 
@@ -343,13 +343,13 @@ export interface WireframeManifest {
 }
 
 export interface AssemblyState {
-  /** 0..1 — driven by Date.now() since mount, paused while tab hidden. */
+  /** 0..1: driven by Date.now() since mount, paused while tab hidden. */
   timelinePct: number;
-  /** 0..1 — bytes / total. Stays at 1 once load completes. */
+  /** 0..1: bytes / total. Stays at 1 once load completes. */
   bytePct: number;
-  /** min(timelinePct, bytePct) — what the visible bar shows. */
+  /** min(timelinePct, bytePct): what the visible bar shows. */
   combinedPct: number;
-  /** 1..5 — current spatial phase. Derived from combinedPct via THRESHOLDS. */
+  /** 1..5: current spatial phase. Derived from combinedPct via THRESHOLDS. */
   phase: number;
   /** Total bytes streamed so far (rounded to 0.1 MB for display). */
   bytesMB: number;
@@ -364,7 +364,7 @@ export const STABLE_FRAMES_REQUIRED = 30;
 export const STABLE_FRAME_BUDGET_MS = 22;
 export const CLIMAX_DURATION_MS = 400;
 export const POST_CLIMAX_HUD_FADE_MS = 320;
-/** GLB size in MB — display-only. Real bytes come from useProgress. */
+/** GLB size in MB. Display-only. Real bytes come from useProgress. */
 export const GLB_TOTAL_MB = 27.4;
 /** combinedPct thresholds that unlock each phase. Index = phase - 1. */
 export const PHASE_THRESHOLDS = [0.0, 0.15, 0.4, 0.6, 0.8];
@@ -402,7 +402,7 @@ import type { WireframeManifest } from "./types";
 /**
  * Module-level promise so concurrent consumers share one fetch and
  * remounts (e.g. dev HMR) don't re-fetch. Resolves to `null` on
- * network/parse failure — consumers fall back to a no-wireframe HUD.
+ * network/parse failure; consumers fall back to a no-wireframe HUD.
  */
 let cached: Promise<WireframeManifest | null> | null = null;
 
@@ -544,7 +544,7 @@ export function useAssemblyProgress(): AssemblyState {
         const timelinePct = Math.min(1, elapsed / TIMELINE_FLOOR_MS);
 
         // While drei is loading, progress is the bytes percentage.
-        // Once `active` goes false the load is done — pin to 100.
+        // Once `active` goes false the load is done; pin to 100.
         const driveByte = activeRef.current ? progressRef.current / 100 : 1;
         const bytePct = Math.max(0, Math.min(1, driveByte));
         const combinedPct = Math.min(timelinePct, bytePct);
@@ -591,7 +591,7 @@ export function useAssemblyProgress(): AssemblyState {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-    // State is intentionally not in deps — using refs to avoid resubscribe.
+    // State is intentionally not in deps; using refs to avoid resubscribe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -639,7 +639,7 @@ import {
   PHASE_THRESHOLDS,
 } from "./types";
 
-/** Shared geometry — one unit cube, scaled per mesh via the line's scale. */
+/** Shared geometry: one unit cube, scaled per mesh via the line's scale. */
 const UNIT_BOX = new THREE.BoxGeometry(2, 2, 2);
 const UNIT_EDGES = new THREE.EdgesGeometry(UNIT_BOX);
 
@@ -718,7 +718,7 @@ export function WireframeRoom({ state }: Props) {
     };
   }, [entries]);
 
-  // Per-frame animation driver — reads from `state` via ref to avoid
+  // Per-frame animation driver: reads from `state` via ref to avoid
   // re-running this effect on every state update.
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -788,7 +788,7 @@ Expected: no errors.
 Edit `src/App.tsx`. Just above the existing `<Suspense fallback={null}>` (inside `<SceneStateProvider>`, around line 622), add:
 
 ```tsx
-{/* TEMP smoke test — remove in Task 9 */}
+{/* TEMP smoke test - remove in Task 9 */}
 <WireframeRoom state={{
   timelinePct: 1, bytePct: 1, combinedPct: 1, phase: 5,
   bytesMB: 27.4, climaxReady: false, climaxDone: false,
@@ -811,7 +811,7 @@ Open the URL in browser. Expected:
 - All wireframe AABBs visible in amber, overlaid on the loaded room (since `combinedPct: 1` forces them all visible).
 - Boxes are correctly positioned (each surrounds the real mesh it represents).
 
-**If the wireframes are spatially WRONG (rotated, mirrored, offset):** the Blender→three.js axis conversion in the bake script is incorrect. The likely fix is in `scripts/bake-wireframes.mjs` — swap or negate components in `blenderPosToThree` / `blenderSizeToThree`. Common variants to try:
+**If the wireframes are spatially WRONG (rotated, mirrored, offset):** the Blender→three.js axis conversion in the bake script is incorrect. The likely fix is in `scripts/bake-wireframes.mjs`: swap or negate components in `blenderPosToThree` / `blenderSizeToThree`. Common variants to try:
 - `(x, z, -y)` (current spec, default Blender→Y-up exporter)
 - `(x, z, y)` (no negation)
 - `(-x, z, y)` (mirrored)
@@ -993,7 +993,7 @@ const AssemblyCtx = createContext<AssemblyState | null>(null);
 
 function useAssembly(): AssemblyState {
   const v = useContext(AssemblyCtx);
-  if (!v) throw new Error("AssemblyContext missing — wrap with <AssemblyProvider>");
+  if (!v) throw new Error("AssemblyContext missing; wrap with <AssemblyProvider>");
   return v;
 }
 
@@ -1006,7 +1006,7 @@ function useAssembly(): AssemblyState {
 export function AssemblyProvider({ children }: { children: React.ReactNode }) {
   const state = useAssemblyProgress();
 
-  // Hide the custom MoveableCursor while the HUD is opaque — same
+  // Hide the custom MoveableCursor while the HUD is opaque, same
   // mechanism the old LoadingScreen used. Lifted the moment the climax
   // fade kicks in so the cursor reappears in sync with the room.
   useEffect(() => {
@@ -1031,7 +1031,7 @@ export function AssemblyProvider({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * R3F-side slot — mounts inside the Canvas, as a sibling of the
+ * R3F-side slot: mounts inside the Canvas, as a sibling of the
  * `<Suspense fallback={null}>` that gates the real room. Renders
  * nothing once the climax has fully completed.
  */
@@ -1042,7 +1042,7 @@ export function AssemblyWireframesSlot() {
 }
 
 /**
- * DOM-side slot — mounts outside the Canvas. Renders nothing once
+ * DOM-side slot: mounts outside the Canvas. Renders nothing once
  * the climax fade has completed.
  */
 export function AssemblyHUDSlot() {
@@ -1081,7 +1081,7 @@ In `src/App.tsx`:
    } from "./loading";
    ```
 
-2. Find the `<LoadingScreen />` usage (around line 923 — the only callsite). Delete that line entirely.
+2. Find the `<LoadingScreen />` usage (around line 923, the only callsite). Delete that line entirely.
 
 3. Wrap the entire root `<div>` (the one with `style={{ position: "absolute", inset: 0, background: "#330a05", ... }}` at line 516) in `<AssemblyProvider>`. The new top-level structure becomes:
 
@@ -1106,7 +1106,7 @@ In `src/App.tsx`:
    );
    ```
 
-   The `<AssemblyHUDSlot />` goes near the bottom of the wrapper div, just after the `<MoveableCursor />` line (around line 749) — it's the highest-zIndex thing and should mount last.
+   The `<AssemblyHUDSlot />` goes near the bottom of the wrapper div, just after the `<MoveableCursor />` line (around line 749). It's the highest-zIndex thing and should mount last.
 
 4. Inside the Canvas, add `<AssemblyWireframesSlot />` as a sibling of the existing `<Suspense fallback={null}>` block (NOT inside it). The relevant slice changes from:
 
@@ -1147,7 +1147,7 @@ Open in browser with **devtools network throttling set to Fast 3G** (so the GLB 
 4. When the GLB finishes parsing and 30 stable frames elapse: HUD fades out, wireframes shrink to their centers and fade, real textured room fades in behind them (no flash, no jank).
 5. After the climax: "click to begin" prompt is visible, room is interactive on click.
 
-Test the warm load: refresh the page (GLB is now cached). Same choreography should play in full — the byte counter races to `27.4 / 27.4 MB` in the first ~150 ms, but the wireframe waves still take the full timeline floor.
+Test the warm load: refresh the page (GLB is now cached). Same choreography should play in full. The byte counter races to `27.4 / 27.4 MB` in the first ~150 ms, but the wireframe waves still take the full timeline floor.
 
 - [ ] **Step 9.5: Commit**
 
@@ -1183,7 +1183,7 @@ Then in the `useFrame` body, replace the per-mesh `local` computation with:
 ```typescript
 let local = 0;
 if (reducedMotion) {
-  // Single wave at combinedPct >= 0.3 — no per-mesh stagger, linear opacity.
+  // Single wave at combinedPct >= 0.3, no per-mesh stagger, linear opacity.
   if (s.combinedPct >= 0.3) {
     local = Math.min(1, (s.combinedPct - 0.3) / 0.3);
   }
@@ -1230,7 +1230,7 @@ git commit -m "loading: respect prefers-reduced-motion in wireframe choreography
 git commit -am "loading: delete old LoadingScreen overlay (replaced by self-assembly)"
 ```
 
-(Two separate commits — one for the feature tweak, one for the deletion.)
+(Two separate commits: one for the feature tweak, one for the deletion.)
 
 ---
 
@@ -1255,7 +1255,7 @@ mv public/wireframes.json public/wireframes.json.bak
 
 Then `npm run dev` and refresh. Expected:
 - HUD shows bar + counter + `resolving · scene`. No wireframes.
-- Console shows a 404 for `/wireframes.json` — that's the trade-off; it doesn't break.
+- Console shows a 404 for `/wireframes.json`. That's the trade-off; it doesn't break.
 - After the climax, the real room appears as normal.
 
 - [ ] **Step 11.3: Restore the file**
@@ -1266,7 +1266,7 @@ mv public/wireframes.json.bak public/wireframes.json
 
 - [ ] **Step 11.4: (Optional) silence the 404 in production**
 
-This is intentional — leaving the 404 visible is a useful signal that the bake step was skipped. No commit needed for this task unless visual issues showed up in 11.2.
+This is intentional. Leaving the 404 visible is a useful signal that the bake step was skipped. No commit needed for this task unless visual issues showed up in 11.2.
 
 ---
 
@@ -1297,7 +1297,7 @@ Expected: both succeed. The build's prebuild step re-bakes `wireframes.json`; ve
 git diff -- public/wireframes.json
 ```
 
-Expected: no diff (only `generatedAt` changes, which is fine if it appears in the diff — that's acceptable).
+Expected: no diff (only `generatedAt` changes, which is fine if it appears in the diff; that's acceptable).
 
 - [ ] **Step 12.5: Note any deferred follow-ups**
 
@@ -1307,7 +1307,7 @@ If anything went sideways in 7.4 (axis conversion), 9.4 (climax handoff timing),
 
 ## Self-Review Notes
 
-- **Coverage:** every section of the spec maps to a task — bake script (T2/3), real-progress wiring (T6), wireframe choreography (T7), climax (T7/9), readout (T8), watermark continuity (no task needed — App's existing watermark renders through automatically), edge cases (T10/11), App.tsx integration (T9), cleanup (T10).
-- **Open question from spec** ("commit `wireframes.json` to git vs. emit at build time"): committed path is in the plan — simpler, no surprises in CI.
+- **Coverage:** every section of the spec maps to a task: bake script (T2/3), real-progress wiring (T6), wireframe choreography (T7), climax (T7/9), readout (T8), watermark continuity (no task needed, App's existing watermark renders through automatically), edge cases (T10/11), App.tsx integration (T9), cleanup (T10).
+- **Open question from spec** ("commit `wireframes.json` to git vs. emit at build time"): committed path is in the plan, simpler, no surprises in CI.
 - **No new dependencies.** No vitest, no `@gltf-transform/core`, no anything else. The bake script reads JSON; the runtime uses three.js / R3F already in use.
 - **Verification mode:** no unit tests because the project has none and the failure modes are visual. Each task has a concrete "run X, expect Y" verification step.

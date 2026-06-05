@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { useAudioToggle } from "./useAudioToggle";
+import { useIsMobile } from "./useIsMobile";
 
 interface Props {
   /** Reset the room (snap throwables / draggables back to starting pose). */
@@ -8,16 +9,9 @@ interface Props {
 }
 
 /**
- * Top-right status pill. Shows the section the user is currently
- * looking at, plus the live clock, scroll progress, and audio /
- * reset controls.
- *
- * Section detection is IntersectionObserver-based — observes every
- * `.portfolio-section` and the keypad section, picks whichever one
- * is most prominently in view. This stays accurate as section
- * heights change (e.g., pinned sections grow their pin spacer); the
- * previous scroll-progress-threshold version drifted whenever a
- * section's content grew.
+ * Top-right status pill: active section, live clock, scroll progress,
+ * audio + reset controls. Section detection is IO-based so it stays
+ * accurate as pinned sections grow their pin spacers.
  */
 
 interface SectionEntry {
@@ -27,11 +21,10 @@ interface SectionEntry {
   selector: string;
 }
 
-// Render order from PortfolioSections.tsx — keep this in lockstep
-// when sections are added/removed/renamed.
+// Mirrors PortfolioSections.tsx render order; keep in lockstep.
 const SECTION_REGISTRY: SectionEntry[] = [
   { number: "00", label: "Hero", selector: ".portfolio-section--hero" },
-  { number: "01", label: "About", selector: ".portfolio-section:not([class*='--'])" }, // generic match — falls back via index
+  { number: "01", label: "About", selector: ".portfolio-section:not([class*='--'])" },
   { number: "02", label: "Stack", selector: ".portfolio-mac" },
   { number: "03", label: "Work", selector: ".portfolio-work" },
   { number: "04", label: "Off the clock", selector: ".portfolio-other" },
@@ -46,21 +39,13 @@ function formatClock(d: Date): string {
   return `${hh}:${mm}:${ss}`;
 }
 
-/**
- * Locates each registered section in the DOM. Returns an ordered
- * array (matching SECTION_REGISTRY indices) of nullable elements so
- * we know which slots have a real DOM node and which are still
- * loading.
- */
 function findSectionElements(): Array<{ entry: SectionEntry; el: Element | null }> {
   return SECTION_REGISTRY.map((entry, i) => {
     if (i === 1) {
-      // About is the second `.portfolio-section` (after hero) that
-      // ISN'T one of the special-class sections. Find by index
-      // rather than selector to avoid clashing with the keypad's
-      // own class.
+      // About is the first generic `.portfolio-section` (no special
+      // modifier class); selector-based match would clash with the
+      // keypad's own class.
       const all = Array.from(document.querySelectorAll(".portfolio-section"));
-      // Filter to sections WITHOUT the special-section modifier classes.
       const generic = all.filter(
         (e) =>
           !e.classList.contains("portfolio-section--hero") &&
@@ -77,45 +62,58 @@ function findSectionElements(): Array<{ entry: SectionEntry; el: Element | null 
 }
 
 export function StatusBar({ onReset }: Props) {
+  const isMobile = useIsMobile();
   const [activeIdx, setActiveIdx] = useState(0);
   const [now, setNow] = useState(() => new Date());
-  const [progressPct, setProgressPct] = useState(0);
+  // Progress % is written directly into the span via ref, keeping the
+  // StatusBar tree from reconciling on every scroll frame.
+  const progressLabelRef = useRef<HTMLSpanElement>(null);
   const audio = useAudioToggle();
 
+  // OLD: the 1s setNow interval ran always, re-rendering the whole StatusBar
+  // every second even on mobile where the clock isn't rendered (wasted render
+  // per second). NEW: gated behind !isMobile, so mobile has zero clock-driven
+  // re-renders; desktop clock behaviour is unchanged.
   useEffect(() => {
+    if (isMobile) return;
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [isMobile]);
 
-  // IntersectionObserver-based active-section detection. We observe
-  // each registered section and recompute the active one whenever an
-  // intersection changes. The active section is the LAST one in
-  // document order whose center is at or above the viewport center
-  // — i.e. the deepest-scrolled-into section.
+  // Active section = deepest one whose top has passed 45% of viewport.
+  // OLD: every IO callback looped ALL ~7 sections calling live
+  // getBoundingClientRect() (forced synchronous layout per crossing), built
+  // an unread visibleRatios Map, and called setActiveIdx unconditionally
+  // (re-render on every threshold crossing even when the index was unchanged).
+  // NEW: read entry.boundingClientRect.top straight off the IO entries (no
+  // forced layout), cache per-target tops across calls, and setState only
+  // when the derived index changes (ref-guarded) — re-render solely on a
+  // genuine active-section change.
   useEffect(() => {
     const found = findSectionElements();
-    const visibleRatios = new Map<Element, number>();
+    // Latest observed top per target; IO only reports targets that changed,
+    // so we persist the rest from prior callbacks.
+    const tops = new Map<Element, number>();
+    let lastActiveIdx = -1;
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          visibleRatios.set(entry.target, entry.intersectionRatio);
+          tops.set(entry.target, entry.boundingClientRect.top);
         }
-        // Determine the active section by finding the deepest one
-        // whose top is at or above 50% of the viewport.
         const vh = window.innerHeight || 1;
         let bestIdx = 0;
         for (let i = 0; i < found.length; i++) {
           const el = found[i]!.el;
           if (!el) continue;
-          const r = el.getBoundingClientRect();
-          // "Active" = the section whose top edge has passed the
-          // viewport's upper third. Index-of-deepest wins.
-          if (r.top <= vh * 0.45) bestIdx = i;
+          const top = tops.get(el);
+          if (top === undefined) continue;
+          if (top <= vh * 0.45) bestIdx = i;
         }
-        setActiveIdx(bestIdx);
+        if (bestIdx !== lastActiveIdx) {
+          lastActiveIdx = bestIdx;
+          setActiveIdx(bestIdx);
+        }
       },
-      // Slightly inset rootMargin so the boundaries land where the
-      // user perceives the section change (not at the very edge).
       { threshold: [0, 0.25, 0.5, 0.75, 1] },
     );
     for (const f of found) {
@@ -124,16 +122,19 @@ export function StatusBar({ onReset }: Props) {
     return () => io.disconnect();
   }, []);
 
-  // Scroll-progress percent for the right side of the pill — keep
-  // the existing display, just decouple from section detection.
   useEffect(() => {
     let raf = 0;
+    let lastPct = -1;
     const update = () => {
       const max = Math.max(
         1,
         document.documentElement.scrollHeight - window.innerHeight,
       );
-      setProgressPct(Math.round((window.scrollY / max) * 100));
+      const pct = Math.round((window.scrollY / max) * 100);
+      if (pct === lastPct) return;
+      lastPct = pct;
+      const el = progressLabelRef.current;
+      if (el) el.textContent = String(pct).padStart(3, "0") + "%";
     };
     const onScroll = () => {
       cancelAnimationFrame(raf);
@@ -151,34 +152,117 @@ export function StatusBar({ onReset }: Props) {
 
   const active = SECTION_REGISTRY[activeIdx] ?? SECTION_REGISTRY[0]!;
 
+  // Mobile: compact info pill with section number + label + scroll %, and
+  // the live clock and the reset/mute buttons dropped. Those controls
+  // live in RoomHUD's labeled bottom-left pills on mobile (single source
+  // of truth, no duplicate top-right buttons crowding the notch). The
+  // pill anchors top-right with safe-area insets and a smaller min-width
+  // so it never overflows a 360px viewport or collides with the cat mark.
+  if (isMobile) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          top: "calc(14px + env(safe-area-inset-top, 0px))",
+          right: "calc(14px + env(safe-area-inset-right, 0px))",
+          // Cap width so a long label ("Bits and pieces") wraps/ellipsizes
+          // rather than pushing the pill off-screen or into the cat mark.
+          maxWidth: "min(62vw, 240px)",
+          zIndex: 40,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "8px 14px",
+          background: "rgba(238, 240, 243, 0.82)",
+          backdropFilter: "blur(10px) saturate(120%)",
+          WebkitBackdropFilter: "blur(10px) saturate(120%)",
+          border: "1px solid var(--ink-hairline)",
+          borderRadius: 999,
+          boxShadow:
+            "0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 8px 24px -16px rgba(13, 14, 16, 0.25)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 10.5,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: "var(--ink)",
+          fontWeight: 600,
+          userSelect: "none",
+        }}
+      >
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            minWidth: 0,
+          }}
+        >
+          <span
+            style={{
+              color: "var(--accent)",
+              fontVariantNumeric: "tabular-nums",
+              flex: "0 0 auto",
+            }}
+          >
+            {active.number}
+          </span>
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {active.label}
+          </span>
+        </span>
+        <span style={{ opacity: 0.25, flex: "0 0 auto" }}>·</span>
+        <span
+          ref={progressLabelRef}
+          style={{
+            fontVariantNumeric: "tabular-nums",
+            opacity: 0.65,
+            flex: "0 0 auto",
+          }}
+        >
+          000%
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
         position: "fixed",
-        top: 18,
+        // Shares baseline with the brand cat chip in RoomHUD and the
+        // hero eyebrow so all top-row chrome reads as one editorial
+        // top-bar (TOP_STRIP_TOP = 20, ~40px tall).
+        top: 20,
         right: 22,
         zIndex: 40,
         display: "inline-flex",
         alignItems: "center",
         gap: 14,
-        padding: "6px 6px 6px 14px",
-        background: "rgba(255, 255, 255, 0.72)",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
-        border: "1px solid rgba(26, 23, 20, 0.10)",
+        padding: "6px 6px 6px 16px",
+        background: "rgba(238, 240, 243, 0.82)",
+        backdropFilter: "blur(10px) saturate(120%)",
+        WebkitBackdropFilter: "blur(10px) saturate(120%)",
+        border: "1px solid var(--ink-hairline)",
         borderRadius: 999,
+        boxShadow:
+          "0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 8px 24px -16px rgba(13, 14, 16, 0.25)",
         fontFamily: "var(--font-mono)",
         fontSize: 10.5,
         letterSpacing: "0.18em",
         textTransform: "uppercase",
-        color: "var(--wrapper-ink)",
+        color: "var(--ink)",
         fontWeight: 600,
         userSelect: "none",
       }}
     >
-      {/* Fixed-min-width section slot so the pill doesn't visibly
-          resize as the label changes between short ("HERO") and
-          longer ("OFF THE CLOCK", "BITS AND PIECES"). */}
+      {/* Fixed min-width so the pill doesn't visibly resize between
+          "HERO" and "BITS AND PIECES". */}
       <span
         style={{
           display: "inline-flex",
@@ -202,8 +286,11 @@ export function StatusBar({ onReset }: Props) {
         {formatClock(now)}
       </span>
       <span style={{ opacity: 0.25 }}>·</span>
-      <span style={{ fontVariantNumeric: "tabular-nums", opacity: 0.65 }}>
-        {String(progressPct).padStart(3, "0")}%
+      <span
+        ref={progressLabelRef}
+        style={{ fontVariantNumeric: "tabular-nums", opacity: 0.65 }}
+      >
+        000%
       </span>
       <button
         type="button"
@@ -238,11 +325,11 @@ function iconButtonStyle(active: boolean): React.CSSProperties {
     width: 28,
     height: 28,
     borderRadius: 999,
-    border: "1px solid rgba(26, 23, 20, 0.12)",
+    border: "1px solid var(--ink-hairline)",
     background: active
-      ? "rgba(232, 112, 64, 0.14)"
-      : "rgba(26, 23, 20, 0.04)",
-    color: active ? "var(--accent)" : "var(--wrapper-ink)",
+      ? "var(--accent-tint)"
+      : "rgba(13, 14, 16, 0.04)",
+    color: active ? "var(--accent)" : "var(--ink)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",

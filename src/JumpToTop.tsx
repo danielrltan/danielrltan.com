@@ -1,16 +1,40 @@
+import { useEffect, useState } from "react";
 import { ArrowUp } from "lucide-react";
-import { useScrollProgress } from "./useScrollProgress";
 
-/**
- * Persistent "jump to top" pill anchored bottom-left of the
- * viewport. Visible once the user has scrolled past the hero so it
- * doesn't clutter the landing.
- */
+/** Persistent jump-to-top pill, bottom-right. Visible after the hero. */
 const SHOW_AT_PROGRESS = 0.08;
 
 export function JumpToTop() {
-  const progress = useScrollProgress();
-  const visible = progress >= SHOW_AT_PROGRESS;
+  // OLD: consumed useScrollProgress()'s continuous 0..1 value, so the button
+  // re-rendered on every scroll frame the float changed (~per frame).
+  // NEW: own rAF/scroll handler computes only the boolean and setState's
+  // solely when it flips — at most 2 re-renders for the whole page scroll.
+  // Mirrors useScrollProgress's progress = scrollY / max(1, scrollHeight - innerHeight).
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      const max = Math.max(
+        1,
+        document.documentElement.scrollHeight - window.innerHeight,
+      );
+      const progress = Math.max(0, Math.min(1, window.scrollY / max));
+      const next = progress >= SHOW_AT_PROGRESS;
+      setVisible((prev) => (prev === next ? prev : next));
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
 
   return (
     <button
@@ -20,21 +44,26 @@ export function JumpToTop() {
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
       style={{
         position: "fixed",
-        right: 22,
-        bottom: 22,
+        // Safe-area aware bottom-right so the button clears the home
+        // indicator / rounded corner on phones (viewport-fit=cover).
+        right: "max(18px, env(safe-area-inset-right, 0px) + 14px)",
+        bottom: "max(18px, env(safe-area-inset-bottom, 0px) + 14px)",
         zIndex: 35,
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        width: 38,
-        height: 38,
+        // 44×44 minimum touch target (was 38×38, below the tap floor).
+        width: 44,
+        height: 44,
         padding: 0,
-        background: "rgba(255, 255, 255, 0.72)",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
-        border: "1px solid rgba(21, 23, 26, 0.10)",
+        background: "rgba(238, 240, 243, 0.82)",
+        backdropFilter: "blur(10px) saturate(120%)",
+        WebkitBackdropFilter: "blur(10px) saturate(120%)",
+        border: "1px solid var(--ink-hairline)",
         borderRadius: 999,
-        color: "var(--wrapper-ink)",
+        boxShadow:
+          "0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 8px 24px -16px rgba(13, 14, 16, 0.25)",
+        color: "var(--ink)",
         cursor: "pointer",
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(8px)",

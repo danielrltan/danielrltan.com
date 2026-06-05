@@ -104,7 +104,7 @@ const NAME_CLIP_OVERRIDES: Record<string, "tap" | "cat"> = {
 // Per-clip volume ceiling on top of the speed-scaled envelope.
 const CLIP_VOLUME_TRIM: Record<"tap" | "cat", number> = {
   tap: 1.0,
-  cat: 0.7, // cat plush mew — toned down so it doesn't overpower the tap mix
+  cat: 0.7, // cat plush mew: toned down so it doesn't overpower the tap mix
 };
 
 interface BodyEntry {
@@ -113,6 +113,12 @@ interface BodyEntry {
   activate: () => void;
 }
 const bodyRegistry = new Map<string, BodyEntry>();
+// O(1) guard: proximity scan is only useful when ≥1 body is already
+// activated (it checks distance to activated neighbours). Skipping the
+// scan when this counter is 0 avoids the O(n²) loop entirely until the
+// first body wakes. Incremented in activateImpl; decremented on unmount
+// if that body was activated.
+let activatedBodyCount = 0;
 
 export function DraggableRigidBody({
   name,
@@ -127,7 +133,7 @@ export function DraggableRigidBody({
     half[2] < TINY_THRESHOLD;
   const rb = useRef<RapierRigidBody | null>(null);
   const dragging = useRef(false);
-  // Activation drives the JSX `type` / `gravityScale` props directly —
+  // Activation drives the JSX `type` / `gravityScale` props directly.
   // @react-three/rapier re-applies the `type` prop on every render, so
   // an imperative `setBodyType` would get clobbered by the next render
   // (which is what just broke drag). React is the single driver. The
@@ -209,16 +215,17 @@ export function DraggableRigidBody({
     playTap(speed);
   };
 
-  // Single activation path — flips the ref synchronously so `useFrame`
+  // Single activation path: flips the ref synchronously so `useFrame`
   // / pointer handlers see `activatedRef.current === true` immediately,
   // and schedules the React render that drives the JSX `type` /
   // `gravityScale` flip. The mass adjustment lands in the `useEffect`
   // below, AFTER react-three/rapier has propagated the new type to the
-  // underlying Rapier body — otherwise we'd be setting mass on a body
+  // underlying Rapier body; otherwise we'd be setting mass on a body
   // that's about to be re-init'd.
   const activateImpl = () => {
     if (activatedRef.current) return;
     activatedRef.current = true;
+    activatedBodyCount++; // O(1) — keeps guard counter in sync
     setActivated(true);
   };
 
@@ -230,7 +237,7 @@ export function DraggableRigidBody({
 
   // Mass adjustment runs after the type flip commits. Tiny props like
   // pens / dice come in under MIN_MASS and feel weightless without
-  // this bump — applied imperatively because there's no Rapier prop
+  // this bump. Applied imperatively because there's no Rapier prop
   // for "minimum mass". Safe here because by the time this effect runs
   // the body is already dynamic.
   useEffect(() => {
@@ -241,7 +248,7 @@ export function DraggableRigidBody({
     }
   }, [activated]);
 
-  // Keyed by a stable per-instance id rather than `name` — `name` is
+  // Keyed by a stable per-instance id rather than `name`. `name` is
   // taken from a GLB mesh name and is guaranteed unique today, but a
   // future duplicate-name mesh would silently clobber the earlier
   // registration and then its unmount would delete the wrong entry.
@@ -255,9 +262,12 @@ export function DraggableRigidBody({
     });
     return () => {
       bodyRegistry.delete(registryId);
+      // Undo the counter increment so the guard stays accurate across
+      // hot-reloads and conditional mounts/unmounts.
+      if (activatedRef.current) activatedBodyCount--;
     };
     // `registryId` is stable for the lifetime of the component, and
-    // `activateImpl` closes over stable refs only — safe deps.
+    // `activateImpl` closes over stable refs only; safe deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registryId]);
 
@@ -266,10 +276,10 @@ export function DraggableRigidBody({
   useFrame((_, dt) => {
     if (!rb.current) return;
 
-    // Read the ref, not the prior React state — the ref is updated
+    // Read the ref, not the prior React state. The ref is updated
     // synchronously by `activateImpl`, the state was one render behind.
     if (!activatedRef.current) {
-      // Support-raycast auto-activation removed — it was the trigger that
+      // Support-raycast auto-activation removed. It was the trigger that
       // made pegboard / wall-hung items fall on load (those items have
       // nothing directly below them so the downward ray always misses).
       // Bodies now only wake on pointer click or proximity to an already
@@ -282,18 +292,24 @@ export function DraggableRigidBody({
       checkAccum.current = 0;
 
       if (proximityActivate) {
-        const pos = rb.current.translation();
-        for (const [otherId, entry] of bodyRegistry) {
-          if (otherId === registryId) continue;
-          if (!entry.isActivated()) continue;
-          const otherPos = entry.getPosition();
-          if (!otherPos) continue;
-          const dx = pos.x - otherPos.x;
-          const dy = pos.y - otherPos.y;
-          const dz = pos.z - otherPos.z;
-          if (dx * dx + dy * dy + dz * dz < PROXIMITY_SQ) {
-            activateNow();
-            return;
+        // OLD: O(n²) — every non-activated body scanned all n registry
+        //      entries each tick (throttled ~5 Hz), even with 0 activated.
+        // NEW: O(1) guard + O(n) inner — skip entirely when no activated
+        //      body exists; inner loop unchanged when guard passes.
+        if (activatedBodyCount > 0) {
+          const pos = rb.current.translation();
+          for (const [otherId, entry] of bodyRegistry) {
+            if (otherId === registryId) continue;
+            if (!entry.isActivated()) continue;
+            const otherPos = entry.getPosition();
+            if (!otherPos) continue;
+            const dx = pos.x - otherPos.x;
+            const dy = pos.y - otherPos.y;
+            const dz = pos.z - otherPos.z;
+            if (dx * dx + dy * dy + dz * dz < PROXIMITY_SQ) {
+              activateNow();
+              return;
+            }
           }
         }
       }
@@ -465,7 +481,7 @@ export function DraggableRigidBody({
       ref={rb}
       name={name}
       // React-driven body type. @react-three/rapier re-applies these
-      // props on every render — imperative `setBodyType` / `setGravityScale`
+      // props on every render; imperative `setBodyType` / `setGravityScale`
       // calls get clobbered on the next commit, so they MUST flow
       // through React state (`activated`). The mass adjustment that
       // can't be expressed as a prop lives in `useEffect([activated])`.

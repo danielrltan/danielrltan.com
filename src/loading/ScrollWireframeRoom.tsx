@@ -5,32 +5,18 @@ import { useWireframeManifest } from "./useWireframeManifest";
 import { PHASE_THRESHOLDS } from "./types";
 
 /**
- * Scroll-driven wireframe overlay. Resurrects the orange-print
- * loading-screen wireframe assembly from pre-curiosity-cabinet
- * versions of the site (git history, commit 671bdda's
- * WireframeRoom.tsx), repurposed to be driven by SCROLL POSITION
- * inside the About section rather than by loading state.
- *
- * As the user scrolls through About, the white-wireframe AABB boxes
- * for every mesh in the room manifest assemble (scale up + fade in)
- * one phase at a time. The result is an annotation layer that draws
- * itself over the real solid-rendered room — like a blueprint
- * snapping into place behind a finished photograph.
- *
- * The cover dome from the original WireframeRoom is gone — that
- * existed to hide the streaming-in real room during loading. Now the
- * real room is already loaded, so we just paint the wireframes on
- * top of it.
+ * Scroll-driven wireframe overlay. As the user scrolls through About,
+ * the wireframe AABBs for every mesh in the room manifest assemble +
+ * disassemble one phase at a time, a "spec sheet annotation" layer
+ * over the rendered room. A cream cover dome (pinned to the camera,
+ * BackSide) hides the real room during the wireframe-only beat so
+ * the assembly reads as the thing doing the work; both layers swap
+ * out together at pin 0.50.
  */
 
 const UNIT_BOX = new THREE.BoxGeometry(2, 2, 2);
 const UNIT_EDGES = new THREE.EdgesGeometry(UNIT_BOX);
 
-// Orange wireframes over the cream-lit room. The previous loading
-// version used white wireframes on an orange dome — inverted here
-// so the wireframes still read as the "spec sheet annotation" but
-// against the room (which is warm cream / walnut), not the orange
-// loading backdrop.
 const WIREFRAME_COLOR = new THREE.Color("#e87040");
 
 function hashName(s: string): number {
@@ -50,7 +36,7 @@ interface LineEntry {
 }
 
 interface Props {
-  /** 0..1 — scroll progress through the About section. Provided
+  /** 0..1: scroll progress through the About section. Provided
    *  via ref so per-frame reads don't trigger re-renders. */
   progressRef: React.MutableRefObject<number>;
 }
@@ -67,6 +53,12 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
   const coverRef = useRef<THREE.Mesh>(null);
   const coverMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const { camera } = useThree();
+  // Previous-frame env value for the per-mesh early-out.
+  // When env transitions INTO 0 we do one final pass to zero all meshes,
+  // then skip the O(n) loop every subsequent frame until env changes.
+  // OLD: O(n) per-mesh loop every frame regardless of wireframe visibility.
+  // NEW: O(1) per frame when env===0 and was already 0 last frame.
+  const prevEnvRef = useRef<number>(-1);
 
   const entries = useMemo<LineEntry[]>(() => {
     if (!manifest) return [];
@@ -80,6 +72,12 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
         depthWrite: false,
       });
       const mesh = new THREE.LineSegments(UNIT_EDGES, material);
+      // Disable frustum culling: three culls using the unit-cube geometry's
+      // bounding sphere (radius √3) scaled by max(scale.xyz). With initial
+      // scale (0,0,0) and easeOutBack producing tiny intermediate scales,
+      // edge-of-room meshes (curtains at z≈-2, walls at ±2.25) get false-
+      // culled before they can ramp up. 75 line objects is a trivial budget.
+      mesh.frustumCulled = false;
       mesh.renderOrder = 999;
       mesh.position.set(m.center[0], m.center[1], m.center[2]);
       mesh.scale.set(0, 0, 0);
@@ -114,97 +112,87 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
   // About pin so wireframes assemble (0→1) during the entry beat
   // and fade back out as the user approaches the Mac handoff.
   useFrame(() => {
-    // Pin the cover dome to the camera so the camera is always
-    // inside it (BackSide material → renders only the inner face).
+    // Cover-dome must always track the camera, even when wireframes are gone.
     if (coverRef.current) {
       coverRef.current.position.copy(camera.position);
     }
     if (entries.length === 0 && !coverMatRef.current) return;
     const p = progressRef.current;
-    // HARD SWAP envelope. User feedback iterated through:
-    //   - crossfade: 'both layers visible at same time = messy'
-    //   - sequential gap: 'janky empty viewport between them'
-    //   - soft dome fade: 'i can see it wtf' (intermediate cream wash)
-    //
-    // Now: wireframes assemble cleanly during pin 0.00-0.30, hold at
-    // full opacity through 0.30-0.50, then BOTH wireframes AND the
-    // cover dome cut to 0 instantly at pin 0.50. The room (which
-    // has been hidden by the opaque dome the whole time) is suddenly
-    // revealed. One frame, no in-between mush.
-    //
-    // Short ramp-down at 0.50-0.52 (just 2% of pin) instead of true
-    // hard cut so it doesn't STROBE — but the fade is too fast to
-    // visually register as a separate "transition state."
+    // Wireframes assemble 0.00→0.30, hold 0.30→0.48, then crossfade
+    // out 0.48→0.56 while the cover dome reveals the room behind it
+    // with a longer fade (0.50→0.62). The previous 2%-pin cut from
+    // 0.50→0.52 read as an instant swap; widening the dome fade to
+    // ~12% of pin gives the room a gentle fade-in instead of a pop.
     let env: number;
     if (p < 0.30) {
       env = p / 0.30;
-    } else if (p < 0.50) {
+    } else if (p < 0.48) {
       env = 1;
-    } else if (p < 0.52) {
-      env = 1 - (p - 0.50) / 0.02;
+    } else if (p < 0.56) {
+      env = 1 - (p - 0.48) / 0.08;
     } else {
       env = 0;
     }
-    // Cover dome opacity is INDEPENDENT of the wireframe envelope.
-    // The dome must be fully opaque from the moment About begins
-    // (pin > 0) so the room never flashes through during the
-    // wireframe-assemble ramp. User saw: 'i still see the room for
-    // a split second before wireframe' — that was because the dome
-    // opacity was bound to env, so during the 0→1 wireframe
-    // assemble (pin 0..0.30) the dome was also at 0→1 and the room
-    // showed through it.
-    //
-    // Now: dome = 1 the entire pin 0.00-0.50 window, then matches
-    // the wireframe envelope for the 0.50-0.52 hard-swap exit.
+    // Dome holds fully opaque until 0.50, then fades out over the
+    // 0.50→0.62 window. Room appearance is driven entirely by this
+    // ramp, softer and more cinematic than the old hard cut.
     let domeOpacity: number;
     if (p < 0.50) {
       domeOpacity = 1;
-    } else if (p < 0.52) {
-      domeOpacity = 1 - (p - 0.50) / 0.02;
+    } else if (p < 0.62) {
+      // easeInOutCubic for a gentle in-and-out fade instead of linear.
+      const t = (p - 0.50) / 0.12;
+      const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      domeOpacity = 1 - eased;
     } else {
       domeOpacity = 0;
     }
     if (coverMatRef.current) {
       coverMatRef.current.opacity = domeOpacity;
     }
+
+    const prevEnv = prevEnvRef.current;
+    prevEnvRef.current = env;
+
+    // Early-out: when env is 0 and was already 0 last frame, all meshes
+    // are already invisible — skip the O(n) per-mesh loop entirely.
+    // On the transition frame (prevEnv > 0 but env === 0) we fall through
+    // once so the meshes are zeroed out, then subsequent frames are free.
+    if (env === 0 && prevEnv === 0) return;
+
     for (const e of entries) {
       const { mesh, material } = e;
-      // Per-mesh local progress, gated by phase threshold. This is
-      // the original assembly wave — chairs come in first, books
-      // later — but driven by the scroll-derived `p` instead of
-      // loading combinedPct.
       let local = 0;
       if (p >= e.phaseEnd) local = 1;
       else if (p > e.phaseStart) {
         const t = (p - e.phaseStart) / (e.phaseEnd - e.phaseStart);
         local = easeOutBack(t);
       }
-      // Final visibility = assembly progress × envelope.
       const visible = local * env;
-      // Bumped 0.75 → 1.0 — the 0.75 cap was making the orange
-      // wireframes read as a barely-visible ghost over the cream
-      // room. At full opacity the spec-sheet annotation feel reads
-      // immediately, then yields back to the solid room as `env`
-      // ramps down.
       material.opacity = visible;
+      // Scale is driven by `local` (per-mesh assemble), NOT `visible`.
+      // During the EXIT window `env` ramps 1→0 while `local` holds at 1
+      // (p >= phaseEnd), so the wireframe FADES AWAY IN PLACE at full
+      // scale instead of redundantly shrinking back out; it already
+      // "maximized in" to load the room, so minimizing out again read
+      // as a repeat. Entry still pops in (local carries the easeOutBack).
       const [sx, sy, sz] = mesh.userData.targetScale as [number, number, number];
-      mesh.scale.set(sx * visible, sy * visible, sz * visible);
+      mesh.scale.set(sx * local, sy * local, sz * local);
       mesh.visible = visible > 0.001;
     }
   });
 
   return (
     <group ref={groupRef}>
-      {/* Cover dome pinned to the camera. While wireframes are
-          active, this dome's cream-colored interior face hides the
-          real room from the camera. Opacity tracks the wireframe
-          envelope so the room is revealed via a smooth dome-fade
-          rather than a popping group.visible toggle. */}
+      {/* Cover dome: cool-white BackSide sphere pinned to the camera
+          so the camera is always inside it. Color matches `--bg-page`
+          so the dome reads as a continuation of the page wrapper, not
+          a foreign warm cream. */}
       <mesh ref={coverRef} renderOrder={500} frustumCulled={false}>
         <sphereGeometry args={[20, 16, 12]} />
         <meshBasicMaterial
           ref={coverMatRef}
-          color="#f4f1ea"
+          color="#eef0f3"
           side={THREE.BackSide}
           transparent
           opacity={1}

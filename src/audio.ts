@@ -3,12 +3,12 @@
  * so rapid retriggers (e.g. typing) don't cut their own tail. The ambient
  * room tone is a single looping element.
  *
- * No Web Audio API here on purpose — `createMediaElementSource` makes
+ * No Web Audio API here on purpose: `createMediaElementSource` makes
  * Chrome show the "tab is sharing content" capture indicator, which reads
  * as sketchy on a portfolio. That means we lose the ability to amplify
  * beyond `HTMLAudioElement.volume = 1.0`, so per-call volumes are tuned
  * to be loud enough at native scale (and `MASTER_GAIN` just scales the
- * quieter calls upward — it can't exceed 1.0).
+ * quieter calls upward; it can't exceed 1.0).
  *
  * Browser autoplay policy rejects `.play()` until the first user gesture,
  * so every call is `.catch`-swallowed; the first interaction unlocks the
@@ -41,7 +41,7 @@ const POOL_SIZE = 6;
 const pools = new Map<ClipName, HTMLAudioElement[]>();
 
 /**
- * Linear multiplier applied to every requested volume. Caps at 1.0 — this
+ * Linear multiplier applied to every requested volume. Caps at 1.0: this
  * is just here so call sites can pass conservative numbers and have them
  * scaled up to the element's ceiling without each site having to fight
  * with the maximum.
@@ -77,7 +77,7 @@ export function playOneShot(
     // Some browsers throw if currentTime is set before metadata loads; ignore.
   }
   a.volume = Math.max(0, Math.min(1, volume * MASTER_GAIN));
-  // playbackRate < 1 lowers pitch (and slows the clip slightly — fine for
+  // playbackRate < 1 lowers pitch (and slows the clip slightly, fine for
   // sub-second SFX). Used for the spacebar keydown/keyup tone.
   a.playbackRate = playbackRate;
   a.play().catch(() => {});
@@ -96,7 +96,7 @@ const TAP_SPEED_FULL = 6.0; // m/s where volume saturates
 
 /**
  * Collision tap. `speed` is the magnitude of the rigid body's `linvel()`
- * at the moment of contact — not relative manifold velocity. Caller is
+ * at the moment of contact, not relative manifold velocity. Caller is
  * expected to invoke this only from `onCollisionEnter` (never `Contact
  * Force` or `IntersectionEnter`).
  */
@@ -111,7 +111,7 @@ export function playTap(speed: number): void {
   try {
     tapElement.currentTime = 0;
   } catch {
-    /* metadata not ready — ignore */
+    /* metadata not ready; ignore */
   }
 
   const vol = Math.min(speed / TAP_SPEED_FULL, 1);

@@ -12,7 +12,7 @@ interface Props {
   /**
    * Optional ref whose `.current` should be set to `1` on click. The
    * component decays it back to `0` over ~285ms and adds it on top of
-   * the smooth intensity — the visual "shockwave" click feedback.
+   * the smooth intensity (the visual "shockwave" click feedback).
    */
   shockwaveRef?: RefObject<number>;
   /**
@@ -35,7 +35,7 @@ interface Props {
   idlePulseRate?: number;
 }
 
-// Tuning constants — shared across every glow so they breathe in sync.
+// Tuning constants, shared across every glow so they breathe in sync.
 const BASE_INTENSITY = 0.6;
 const HOVER_BONUS = 1;
 const HOVER_PULSE_DEPTH = .5;
@@ -59,7 +59,7 @@ export function GlowBox({
   idlePulseDepth = 0,
   idlePulseRate = PULSE_RATE,
 }: Props) {
-  // Read each frame — these refs flip without re-rendering, so a render-time
+  // Read each frame: these refs flip without re-rendering, so a render-time
   // boolean would stay stale (glow staying visible after entering desk view).
   const sceneReadyRef = useSceneReadyRef();
   const deskViewActiveRef = useDeskViewActiveRef();

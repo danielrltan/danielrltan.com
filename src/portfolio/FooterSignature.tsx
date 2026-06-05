@@ -5,12 +5,16 @@ import { useEffect, useRef } from "react";
  * (signature.json) into a small canvas that lives INSIDE the
  * footer column, scaled to fit. Independent from the fullscreen
  * SignatureCanvas + SignatureReplay pair that used to live at the
- * hero — this version doesn't need the global brush registry, it
+ * hero; this version doesn't need the global brush registry, it
  * paints directly into its own ctx with its own projection.
  *
  * Trigger: once the canvas's IntersectionObserver fires, the
- * stroke replays from t=0 over ~1.6s. No fade afterwards — the
+ * stroke replays from t=0 over ~1.6s. No fade afterwards: the
  * signature stays painted as a sign-off element.
+ *
+ * Accessibility: the canvas is aria-hidden (purely decorative). Under
+ * prefers-reduced-motion the replay is skipped entirely and the final
+ * static signature is painted in a single pass; no animation.
  */
 
 interface NormalizedEvent {
@@ -55,12 +59,15 @@ export function FooterSignature({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const reducedMotion =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    let w = wrap.clientWidth;
+    let w = Math.max(1, wrap.clientWidth);
     let h = height;
 
     const setupCanvas = () => {
-      w = wrap.clientWidth;
+      w = Math.max(1, wrap.clientWidth);
       h = height;
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
@@ -104,17 +111,16 @@ export function FooterSignature({
 
     let cancelled = false;
     let raf = 0;
+    // Cache the fetched gesture so resize/orientation changes can REPAINT
+    // the signature instead of leaving the freshly-cleared canvas blank
+    // (the IntersectionObserver disconnects after its first fire, so it
+    // can't re-trigger a replay; without this, any resize wiped the
+    // signature permanently).
+    let cachedSig: SignatureJSON | null = null;
+    let hasPlayed = false;
 
-    const start = async () => {
-      let sig: SignatureJSON | null = null;
-      try {
-        const r = await fetch("/signature.json");
-        if (!r.ok) return;
-        sig = (await r.json()) as SignatureJSON;
-      } catch {
-        return;
-      }
-      if (!sig || cancelled) return;
+    const render = (sig: SignatureJSON, animated: boolean) => {
+      ctx.clearRect(0, 0, w, h);
 
       // Project the normalised gesture into our small canvas while
       // preserving the gesture's natural aspect ratio. Fit-contain
@@ -130,7 +136,7 @@ export function FooterSignature({
       // sides gives the stamps clearance without re-centering the
       // signature.
       //
-      // Same logic vertically — h * 0.7 clamp instead of 0.84 leaves
+      // Same logic vertically: h * 0.7 clamp instead of 0.84 leaves
       // brush headroom top + bottom.
       const bounds = sig.bounds ?? { minX: 0, minY: 0, maxX: 1000, maxY: 300 };
       const aspect =
@@ -148,41 +154,56 @@ export function FooterSignature({
       const projectX = (nx: number) => x0 + nx * targetW;
       const projectY = (ny: number) => y0 + ny * targetH;
 
-      const startWallMs = performance.now();
       let nextIdx = 0;
       let lastX: number | null = null;
       let lastY: number | null = null;
 
+      // Draw a single recorded event, advancing the pen state. Shared
+      // by the animated replay and the reduced-motion single-pass draw.
+      const drawEvent = (ev: NormalizedEvent) => {
+        const px = projectX(ev.nx);
+        const py = projectY(ev.ny);
+        if (ev.type === "down") {
+          lastX = px;
+          lastY = py;
+          stamp(px, py);
+        } else if (ev.type === "move") {
+          if (lastX != null && lastY != null) {
+            const dx = px - lastX;
+            const dy = py - lastY;
+            const dist = Math.hypot(dx, dy);
+            const steps = Math.max(1, Math.ceil(dist / STEP_PX));
+            for (let i = 1; i <= steps; i++) {
+              const t = i / steps;
+              stamp(lastX + dx * t, lastY + dy * t);
+            }
+          } else {
+            stamp(px, py);
+          }
+          lastX = px;
+          lastY = py;
+        } else {
+          lastX = null;
+          lastY = null;
+        }
+      };
+
+      // prefers-reduced-motion: paint the finished signature in one
+      // pass: no replay, no rAF, identical end-state. The non-animated
+      // path (reduced motion OR a post-replay resize repaint) draws every
+      // event in one synchronous pass.
+      if (reducedMotion || !animated) {
+        for (const ev of sig.events) drawEvent(ev);
+        return;
+      }
+
+      cancelAnimationFrame(raf);
+      const startWallMs = performance.now();
       const tick = () => {
-        if (cancelled || !sig) return;
+        if (cancelled) return;
         const elapsed = (performance.now() - startWallMs) * speed;
         while (nextIdx < sig.events.length && sig.events[nextIdx]!.t <= elapsed) {
-          const ev = sig.events[nextIdx]!;
-          const px = projectX(ev.nx);
-          const py = projectY(ev.ny);
-          if (ev.type === "down") {
-            lastX = px;
-            lastY = py;
-            stamp(px, py);
-          } else if (ev.type === "move") {
-            if (lastX != null && lastY != null) {
-              const dx = px - lastX;
-              const dy = py - lastY;
-              const dist = Math.hypot(dx, dy);
-              const steps = Math.max(1, Math.ceil(dist / STEP_PX));
-              for (let i = 1; i <= steps; i++) {
-                const t = i / steps;
-                stamp(lastX + dx * t, lastY + dy * t);
-              }
-            } else {
-              stamp(px, py);
-            }
-            lastX = px;
-            lastY = py;
-          } else {
-            lastX = null;
-            lastY = null;
-          }
+          drawEvent(sig.events[nextIdx]!);
           nextIdx++;
         }
         if (nextIdx < sig.events.length) {
@@ -192,13 +213,34 @@ export function FooterSignature({
       raf = requestAnimationFrame(tick);
     };
 
-    // Trigger replay when the wrap scrolls into view.
+    // Fetch + cache the gesture, then render. The first render animates
+    // (the IntersectionObserver fired); later resize-driven renders are
+    // static so they never re-trigger the draw-on animation.
+    const ensureRendered = async (animated: boolean) => {
+      if (!cachedSig) {
+        try {
+          const r = await fetch("/signature.json");
+          if (!r.ok) return;
+          cachedSig = (await r.json()) as SignatureJSON;
+        } catch {
+          return;
+        }
+      }
+      if (!cachedSig || cancelled) return;
+      // Once the signature has played (or under reduced motion) every
+      // subsequent paint is static: only the very first in-view paint
+      // gets the draw-on animation.
+      render(cachedSig, animated && !hasPlayed && !reducedMotion);
+      hasPlayed = true;
+    };
+
+    // Trigger the animated replay when the wrap scrolls into view.
     const obs = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
           if (e.isIntersecting) {
             obs.disconnect();
-            start();
+            void ensureRendered(true);
             break;
           }
         }
@@ -207,7 +249,14 @@ export function FooterSignature({
     );
     obs.observe(wrap);
 
-    const onResize = () => setupCanvas();
+    // Resize must REPAINT, not just clear. setupCanvas() resizes + clears
+    // the buffer; if the signature was already drawn, re-render its final
+    // static state at the new size so a resize/orientation change never
+    // leaves it blank.
+    const onResize = () => {
+      setupCanvas();
+      if (cachedSig) void ensureRendered(false);
+    };
     window.addEventListener("resize", onResize);
 
     return () => {

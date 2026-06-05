@@ -94,7 +94,7 @@
 
 <h2>Brush comparison: pick which one is right</h2>
 <p class="intro">
-  Move your cursor inside each box. Each demo uses a different brush mechanic — same amber color (#ff7842), same brush radius, same cream background, same stamp gradient. Only the alpha / fade / blur behavior differs.
+  Move your cursor inside each box. Each demo uses a different brush mechanic: same amber color (#ff7842), same brush radius, same cream background, same stamp gradient. Only the alpha / fade / blur behavior differs.
 </p>
 
 <div class="controls">
@@ -122,7 +122,7 @@
   <!-- C: cursor mechanic, freeze after -->
   <div class="demo">
     <div class="demo-title">C · cursor mechanic frozen</div>
-    <div class="demo-sub">Same as A — but click "freeze" below to halt the fade where it is. Whatever's on canvas stays. This is what I'd ship if you confirm.</div>
+    <div class="demo-sub">Same as A, but click "freeze" below to halt the fade where it is. Whatever's on canvas stays. This is what I'd ship if you confirm.</div>
     <div class="canvas-wrap"><canvas id="cv-c"></canvas></div>
     <div class="demo-foot"><button onclick="window.toggleFreezeC()" id="freeze-c" style="background:#ff7842;color:#161311;border:0;padding:3px 10px;border-radius:999px;font-family:'JetBrains Mono',monospace;font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;font-weight:600;">Freeze</button><span id="freeze-c-state">fade ON</span></div>
   </div>
@@ -135,14 +135,14 @@
     <div class="option" data-choice="a" onclick="toggleSelect(this)">
       <div class="letter">A</div>
       <div class="content">
-        <h3>Demo A — cursor live, never freeze</h3>
+        <h3>Demo A: cursor live, never freeze</h3>
         <p>Signature draws but never stops fading. Eventually disappears.</p>
       </div>
     </div>
     <div class="option" data-choice="c" onclick="toggleSelect(this)">
       <div class="letter">C</div>
       <div class="content">
-        <h3>Demo C — cursor mechanic, freeze after replay</h3>
+        <h3>Demo C: cursor mechanic, freeze after replay</h3>
         <p>Looks like cursor while drawing, freezes at that look.</p>
       </div>
     </div>

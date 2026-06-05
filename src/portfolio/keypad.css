@@ -1,8 +1,9 @@
-/* Keypad section — full-width band that breaks out of the right-
+/* Keypad section: full-width band that breaks out of the right-
    column layout used by every other portfolio section. The keypad
-   is the entire stage; no copy, no card chrome. The section sits
-   over the rest of the page on its own near-white backdrop so it
-   reads as a distinct register from the cream-toned room above. */
+   is the entire stage; no copy, no card chrome. Background uses the
+   site's cool page token so it stays cohesive with the rest of the
+   palette (was #f3f3f3, a flat neutral grey that read muddy/warm
+   against the cool --bg-page #eef0f3 everywhere else). */
 
 .keypad-section {
   /* Section is exactly one viewport tall in its un-pinned form.
@@ -14,7 +15,7 @@
   display: block;
   height: 100vh;
   padding: 0;
-  background: #f3f3f3;
+  background: var(--bg-page);
   position: relative;
 }
 
@@ -27,18 +28,18 @@
    of the other canvas here"). Painting the spacer the same cream as
    the section makes the transition read as one continuous band. */
 .pin-spacer:has(> .keypad-section) {
-  background: #f3f3f3;
+  background: var(--bg-page);
 }
 
-/* Kill the odd-row warm orange gradient — keypad wants its cool
-   grey to read uninterrupted. */
+/* Kill the odd-row warm orange gradient; keypad wants the cool
+   page tone to read uninterrupted. */
 .keypad-section:nth-of-type(odd) {
-  background: #f3f3f3;
+  background: var(--bg-page);
 }
 
 .keypad-stage {
   /* Fills the section's box. ScrollTrigger's pin uses position:fixed
-     on the section itself during the pin range — `position: sticky`
+     on the section itself during the pin range; `position: sticky`
      here would fight it (sticky on a fixed ancestor degrades to
      relative and the stage would scroll away while the section is
      pinned). Relative + 100% sizing is the right layer-neutral default. */
@@ -70,7 +71,7 @@
 }
 
 /* Visually-hidden semantic content for screen readers / SEO. The
-   standard sr-only recipe — DOM-real and focusable, off-screen. */
+   standard sr-only recipe: DOM-real and focusable, off-screen. */
 .keypad-section .sr-only {
   position: absolute;
   width: 1px;
@@ -83,15 +84,32 @@
   border: 0;
 }
 
-/* Mobile — keep the section full-viewport but a bit shorter so it
+/* Mobile: keep the section full-viewport but a bit shorter so it
    doesn't feel like dead space below a phone fold. */
 @media (max-width: 768px) {
   .keypad-section {
+    /* svh (small viewport height) so the band is stable across the
+       mobile URL-bar collapse; `vh` jumps when the bar hides/shows,
+       which would resize the canvas mid-scroll. Falls back to vh on
+       engines without svh support. */
     height: 80vh;
+    height: 80svh;
     min-height: 520px;
+    /* Pure-canvas full-bleed band; nothing here should ever push
+       horizontal scroll on a 360px phone. */
+    overflow-x: clip;
   }
   .keypad-stage {
     height: 100%;
     min-height: 520px;
+    width: 100%;
+  }
+  /* Let a vertical finger-drag that lands on the keypad canvas scroll
+     the page (the pin is removed on mobile, so this band is in normal
+     flow). The global `canvas { touch-action: none }` would otherwise
+     swallow the drag and feel like the page is stuck on the keypad.
+     pan-y still lets single taps through to the social caps / dial. */
+  .keypad-canvas-wrapper > canvas {
+    touch-action: pan-y;
   }
 }

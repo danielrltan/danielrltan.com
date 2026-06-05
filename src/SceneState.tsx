@@ -51,7 +51,7 @@ export function SceneStateProvider({
 
 /**
  * Returns a ref whose `.current` is true once the intro is complete.
- * Returns `undefined` outside a provider — callers should treat that as
+ * Returns `undefined` outside a provider; callers should treat that as
  * "not ready" (no provider = pre-mount, gating still appropriate).
  */
 export function useSceneReadyRef(): RefObject<boolean> | undefined {
@@ -72,15 +72,4 @@ export function useStartDeskView(): () => void {
  */
 export function useDeskViewActiveRef(): RefObject<boolean> | undefined {
   return useContext(SceneStateContext)?.deskViewActiveRef;
-}
-
-const noopSetDesk = (_v: boolean) => {};
-/**
- * React-state setter for desk-view transitions. Called by DeskViewController
- * when the toDesk / fromDesk lerp finishes. Anything that needs to *render*
- * differently when seated (vs anything that just *reads* state in event
- * handlers) should subscribe via this so it actually re-renders.
- */
-export function useSetDeskViewActive(): (v: boolean) => void {
-  return useContext(SceneStateContext)?.setDeskViewActive ?? noopSetDesk;
 }

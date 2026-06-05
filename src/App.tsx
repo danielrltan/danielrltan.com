@@ -1,8 +1,5 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import Lenis from "lenis";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Canvas } from "@react-three/fiber";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { Physics } from "@react-three/rapier";
@@ -22,235 +19,172 @@ import { MoveableCursor } from "./MoveableCursor";
 import { JumpToTop } from "./JumpToTop";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
-import { SignatureCapture } from "./SignatureCapture";
-// Signature canvas + replay now live in the Footer (see
-// src/portfolio/Footer.tsx). The hero scene is on a clean white-grey
-// plane — the signature acts as a sign-off in the footer instead of
-// a hero-band texture.
-import {
-  AssemblyProvider,
-  AssemblyHUDSlot,
-  AssemblyWireframesSlot,
-} from "./loading";
+// Dev-only signature capture tool (reachable only via ?sign=1). Lazy so its
+// code never ships in the main bundle for normal visitors.
+const SignatureCapture = lazy(() =>
+  import("./SignatureCapture").then((m) => ({ default: m.SignatureCapture })),
+);
+import { AssemblyProvider } from "./loading";
 import { HeroSignature } from "./hero/HeroSignature";
 import { ScrollWireframeRoom } from "./loading/ScrollWireframeRoom";
 import { ScrollCamera } from "./ScrollCamera";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
-import { useScrollProgress } from "./useScrollProgress";
 import { useIsMobile } from "./useIsMobile";
 import { StatusBar } from "./StatusBar";
 import { ScrollRail } from "./ScrollRail";
 
-// Canvas shrink window — tightened so the room is at 50vw BEFORE the
-// about-section content enters the viewport. Previous window (0.06 →
-// 0.14) left the canvas at ~73vw at scroll progress 0.10, which is
-// where the about marker was already rendering — the section number
-// landed on top of the bed/chair and read as broken layout.
-const SHRINK_AT = 0.015;
-const SHRINK_DONE = 0.07;
-const PINNED_WIDTH_VW = 50;
-// Mobile: canvas takes the FULL viewport during hero (was 55vh — felt
-// like a tiny preview thumbnail rather than a hero scene). Fade is
-// driven by raw scroll-pixels relative to the viewport height so the
-// canvas dissolves as the user scrolls past the first screen and About
-// enters the frame. Pre-2026-05: tied to total scrollProgress, which
-// broke when total page height changed.
-const MOBILE_FADE_START_VH = 0.55; // start fading at 55% of viewport scrolled
-const MOBILE_FADE_END_VH = 1.0;    // fully gone once past one viewport
+// Mobile hero canvas fades over scroll-pixels relative to viewport
+// height so total page height changes don't shift the window.
+const MOBILE_FADE_START_VH = 0.55;
+const MOBILE_FADE_END_VH = 1.0;
 
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
-}
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-/**
- * Hero (3D signature) fade — returns 1 while the user is at the top
- * of the page and ramps to 0 as they scroll past the first viewport.
- * The signature lives in `position: fixed` so this is the only way
- * to "leave it behind" as the user scrolls into About.
- *
- * scrollY-based for the same reason as `useMobileHeroFade`: page
- * height changes shouldn't shift these breakpoints.
- */
-const HERO_FADE_START_VH = 0.45;
-const HERO_FADE_END_VH = 0.9;
-function useHeroFade(): number {
-  const [t, setT] = useState(1);
-  useEffect(() => {
-    let raf = 0;
-    const update = () => {
-      const vh = window.innerHeight || 1;
-      const ratio = window.scrollY / vh;
-      const fade = clamp01(
-        (ratio - HERO_FADE_START_VH) /
-          (HERO_FADE_END_VH - HERO_FADE_START_VH),
-      );
-      setT(1 - fade);
-    };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
-  return t;
-}
-
-/**
- * Room canvas fade — visible only during the About section.
- *   < 0.9vh scrolled : hidden  (Hero)
- *   0.9 .. 1.3vh     : fading in
- *   1.3 .. 1.55vh    : visible (About)
- *   1.55 .. 1.85vh   : fading out
- *   > 1.85vh         : hidden  (all subsequent sections)
- *
- * Fade-out tightened so the room is FULLY GONE before the Macintosh
- * section (which starts pinning at ~2.0vh on a 900px viewport)
- * enters the viewport. Earlier tuning had the room at ~90% opacity
- * during Mac entry, which made the two 3D scenes overlap visually
- * and read as a broken transition. Now there's a clean ~0.3vh gap
- * between "room fully invisible" and "Mac fully pinned" — the
- * SectionGate curtain (see App JSX) fills that gap with a deliberate
- * typographic moment.
- */
-// Hard-swap point: at pin 0.50 the wireframe envelope + cover dome
-// drop to 0 within 2% of pin range, and the room is revealed.
-//
-// The room must stay visible for the ENTIRE remainder of the About
-// pin so the panel-slide-in beat (pin 0.68-0.78) and the content
-// reveal beat (pin 0.78-1.00) both have the room as their backdrop.
-// About pin = 1700px = ~1.89vh starting at vh 1.0, ending at vh
-// ~2.89. Room fade-out window pushed to 2.80-2.95 so the room stays
-// fully visible through panel + content reveal and only fades as
-// About releases into Mac.
+// Hero wrapper opacity: held high through the disassembly so the
+// inner transform pipeline (mask-erode, ring contract, scan-band)
+// drives the visible motion; the wrapper only fades after the
+// disassembly has done its work. Quiet final fade 0.85→1.05vh.
+const HERO_FADE_START_VH = 0.85;
+const HERO_FADE_END_VH = 1.05;
+// Disassembly transition window: the hero composition decomposes
+// (mask-erode + scale-recede on wordmark, contract + dissolve on ring)
+// from 0.30vh to ~0.95vh, then a thin orange scan-band sweeps the
+// viewport from 0.85vh→1.05vh at the handoff to the wireframe beat.
+// Decoupled from --hero-opacity so the wrapper can hold opacity:1
+// while the inner transforms do the work. Pure CSS, zero per-frame JS.
+const HERO_DISSOLVE_START_VH = 0.30;
+const HERO_DISSOLVE_END_VH = 1.00;
 const ROOM_FADE_IN_START_VH = 1.50;
 const ROOM_FADE_IN_END_VH = 1.58;
 const ROOM_FADE_OUT_START_VH = 2.80;
 const ROOM_FADE_OUT_END_VH = 2.95;
-/**
- * Wireframe-canvas-visibility hook — returns 1 while the wireframe
- * envelope (defined in ScrollWireframeRoom) is active, 0 otherwise.
- * Used to keep the room canvas wrapper from going opacity 0 during
- * the wireframe-only beat (where roomOpacity itself is still 0).
- *
- * Anchored to the same scrollY/vh thresholds:
- *   0.9vh    : wireframe pin start
- *   1.615vh  : wireframe envelope returns to 0
- */
-function useWireframeCanvasFade(): number {
-  const [t, setT] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    const update = () => {
-      const vh = window.innerHeight || 1;
-      const ratio = window.scrollY / vh;
-      // Visible from 0.9vh to 1.615vh, with a soft 0.02vh fade at
-      // each edge so the canvas doesn't flick on/off if scroll
-      // happens to land on the boundary.
-      const on = ratio >= 0.88 && ratio <= 1.64;
-      setT(on ? 1 : 0);
-    };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
-  return t;
-}
-
-function useRoomFade(): number {
-  const [t, setT] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    const update = () => {
-      const vh = window.innerHeight || 1;
-      const ratio = window.scrollY / vh;
-      const fadeIn = clamp01(
-        (ratio - ROOM_FADE_IN_START_VH) /
-          (ROOM_FADE_IN_END_VH - ROOM_FADE_IN_START_VH),
-      );
-      const fadeOut = clamp01(
-        (ratio - ROOM_FADE_OUT_START_VH) /
-          (ROOM_FADE_OUT_END_VH - ROOM_FADE_OUT_START_VH),
-      );
-      setT(fadeIn * (1 - fadeOut));
-    };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
-  return t;
-}
+const WIREFRAME_VISIBLE_START_VH = 0.88;
+const WIREFRAME_VISIBLE_END_VH = 1.64;
+const ABOUT_PROGRESS_START_VH = 0.9;
+const ABOUT_PROGRESS_END_VH = 2.20;
+// Content opacity ramp window (page scroll fraction).
+const CONTENT_FADE_START = 0.07;
+const CONTENT_FADE_END = 0.105;
 
 /**
- * Mobile hero fade — returns 0 while the user is in the hero
- * viewport, ramps to 1 as they scroll past the first screen.
- *
- * Computed from `window.scrollY / window.innerHeight` (not the
- * normalised `scrollProgress`) because the page total height changes
- * as sections grow/shrink — a percentage-of-page fade would shift
- * around. Anchoring to the viewport height means "one screen scrolled
- * = canvas fully gone", which is the intent.
- *
- * No-ops when isMobile is false so desktop pays nothing.
+ * Single rAF-coalesced scroll listener. Writes ALL derived
+ * fade/progress values to CSS variables on documentElement AND to
+ * refs. R3F consumers read the refs in their per-frame loops; DOM
+ * elements bind opacity to `var(--*-opacity)`. App.tsx never
+ * re-renders on scroll. The prior version had five setState-backed
+ * hooks reconciling the whole Canvas tree per scroll frame.
  */
-function useMobileHeroFade(isMobile: boolean): number {
-  const [t, setT] = useState(0);
-  useEffect(() => {
-    if (!isMobile) {
-      setT(0);
-      return;
-    }
-    let raf = 0;
-    const update = () => {
-      const vh = window.innerHeight || 1;
-      const ratio = window.scrollY / vh;
-      const next = clamp01(
-        (ratio - MOBILE_FADE_START_VH) /
-          (MOBILE_FADE_END_VH - MOBILE_FADE_START_VH),
-      );
-      setT(next);
-    };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      cancelAnimationFrame(raf);
-    };
-  }, [isMobile]);
-  return t;
+function installScrollChoreography(): {
+  aboutProgressRef: React.MutableRefObject<number>;
+  roomCanvasFadeRef: React.MutableRefObject<number>;
+  scrollProgressRef: React.MutableRefObject<number>;
+} {
+  const aboutProgressRef: React.MutableRefObject<number> = { current: 0 };
+  const roomCanvasFadeRef: React.MutableRefObject<number> = { current: 0 };
+  const scrollProgressRef: React.MutableRefObject<number> = { current: 0 };
+
+  if (typeof window === "undefined") {
+    return { aboutProgressRef, roomCanvasFadeRef, scrollProgressRef };
+  }
+
+  const root = document.documentElement;
+  const isMobileQuery = window.matchMedia("(max-width: 720px)");
+
+  const update = () => {
+    const vh = window.innerHeight || 1;
+    const ratio = window.scrollY / vh;
+    const scrollMax = Math.max(
+      1,
+      document.documentElement.scrollHeight - window.innerHeight,
+    );
+    const scrollProgress = clamp01(window.scrollY / scrollMax);
+    scrollProgressRef.current = scrollProgress;
+
+    // Hero opacity (3D signature): 1 at top, fades to 0 as user
+    // scrolls past first viewport.
+    const heroFade = clamp01(
+      (ratio - HERO_FADE_START_VH) /
+        (HERO_FADE_END_VH - HERO_FADE_START_VH),
+    );
+    const heroOpacity = 1 - heroFade;
+
+    // Disassembly progress (0..1): drives the wordmark mask-erode,
+    // ring contraction, and scan-band sweep. Linear across the
+    // dissolve window; CSS does the easing per-element via
+    // calc() pipelines tuned to feel staggered (wordmark front-loaded
+    // 0.0→0.7, ring tightens 0.4→0.85, scan-band 0.78→1.0).
+    const heroToAbout = clamp01(
+      (ratio - HERO_DISSOLVE_START_VH) /
+        (HERO_DISSOLVE_END_VH - HERO_DISSOLVE_START_VH),
+    );
+
+    // Room fade window: visible only during About.
+    const fadeIn = clamp01(
+      (ratio - ROOM_FADE_IN_START_VH) /
+        (ROOM_FADE_IN_END_VH - ROOM_FADE_IN_START_VH),
+    );
+    const fadeOut = clamp01(
+      (ratio - ROOM_FADE_OUT_START_VH) /
+        (ROOM_FADE_OUT_END_VH - ROOM_FADE_OUT_START_VH),
+    );
+    const roomOpacity = fadeIn * (1 - fadeOut);
+
+    // Wireframe canvas-visibility window: keeps the canvas
+    // wrapper opaque during wireframe-assemble beat (where
+    // roomOpacity itself is still 0).
+    const wireframeOn =
+      ratio >= WIREFRAME_VISIBLE_START_VH && ratio <= WIREFRAME_VISIBLE_END_VH
+        ? 1
+        : 0;
+    const canvasOpacity = Math.max(roomOpacity, wireframeOn);
+    roomCanvasFadeRef.current = canvasOpacity;
+
+    // Mobile hero canvas fade: 0 in hero, ramps to 1 after.
+    const mobileFade = clamp01(
+      (ratio - MOBILE_FADE_START_VH) /
+        (MOBILE_FADE_END_VH - MOBILE_FADE_START_VH),
+    );
+    const mobileCanvasOpacity = 1 - mobileFade;
+
+    // About progress (consumed by ScrollWireframeRoom per frame).
+    const aboutSpan = ABOUT_PROGRESS_END_VH - ABOUT_PROGRESS_START_VH;
+    aboutProgressRef.current = clamp01(
+      (ratio - ABOUT_PROGRESS_START_VH) / aboutSpan,
+    );
+
+    const contentOpacity = clamp01(
+      (scrollProgress - CONTENT_FADE_START) /
+        (CONTENT_FADE_END - CONTENT_FADE_START),
+    );
+
+    const isMobile = isMobileQuery.matches;
+    const finalCanvasOpacity = (isMobile ? mobileCanvasOpacity : 1) * canvasOpacity;
+    const canvasInteractive =
+      finalCanvasOpacity < 0.05 ? "none" : "auto";
+
+    root.style.setProperty("--hero-opacity", heroOpacity.toFixed(3));
+    root.style.setProperty("--hero-to-about", heroToAbout.toFixed(3));
+    root.style.setProperty("--canvas-opacity", finalCanvasOpacity.toFixed(3));
+    root.style.setProperty("--canvas-pointer-events", canvasInteractive);
+    root.style.setProperty(
+      "--content-opacity",
+      isMobile ? "1" : contentOpacity.toFixed(3),
+    );
+  };
+
+  let raf = 0;
+  const onScroll = () => {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(update);
+  };
+
+  update();
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll, { passive: true });
+
+  return { aboutProgressRef, roomCanvasFadeRef, scrollProgressRef };
 }
 
 export default function App() {
@@ -258,7 +192,11 @@ export default function App() {
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("sign") === "1"
   ) {
-    return <SignatureCapture />;
+    return (
+      <Suspense fallback={null}>
+        <SignatureCapture />
+      </Suspense>
+    );
   }
 
   const roomGroupRef = useRef<THREE.Group | null>(null);
@@ -270,62 +208,34 @@ export default function App() {
   const [transitionStarted, setTransitionStarted] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
   // Set once Room finishes loading (post-Suspense). Drives the signature
-  // replay independently of the intro tilt — the signature should play
+  // replay independently of the intro tilt; the signature should play
   // automatically when the room appears, not wait for a user gesture.
   const [roomLoaded, setRoomLoaded] = useState(false);
   const [moveableHover, setMoveableHover] = useState(false);
   const [roomResetKey, setRoomResetKey] = useState(0);
-  const scrollProgress = useScrollProgress();
+  // PERF: true once the room has scrolled fully out of view (past the
+  // About beat). Drives BOTH the Rapier <Physics paused> prop AND the
+  // room canvas frameloop so the entire room pipeline truly idles while
+  // the user is on Mac / Work / Other / etc. See RoomFrameloopGate.
+  const [roomAsleep, setRoomAsleep] = useState(false);
   const isMobile = useIsMobile();
 
-  // About-pin scroll progress (0..1). Used to drive the scroll-driven
-  // wireframe overlay inside the room canvas — wireframes assemble
-  // as the user scrolls into About, peak mid-pin, fade back out as
-  // the user approaches the Mac handoff. Updated by a scroll
-  // listener below; consumed by <ScrollWireframeRoom> via ref.
-  const aboutProgressRef = useRef(0);
-  useEffect(() => {
-    let raf = 0;
-    const ABOUT_START_VH = 0.9;  // matches room fade-in start
-    const ABOUT_END_VH = 2.20;   // matches room fade-out end
-    const update = () => {
-      const vh = window.innerHeight || 1;
-      const ratio = window.scrollY / vh;
-      const span = ABOUT_END_VH - ABOUT_START_VH;
-      const p = (ratio - ABOUT_START_VH) / span;
-      aboutProgressRef.current = Math.max(0, Math.min(1, p));
-    };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
+  const scrollChoreoRef = useRef<ReturnType<typeof installScrollChoreography> | null>(null);
+  if (scrollChoreoRef.current === null) {
+    scrollChoreoRef.current = installScrollChoreography();
+  }
+  const aboutProgressRef = scrollChoreoRef.current.aboutProgressRef;
+  const scrollProgressRef = scrollChoreoRef.current.scrollProgressRef;
 
   const startTransition = useCallback(() => {
     if (transitionStarted) return;
     setTransitionStarted(true);
     track("intro_started");
-    // Audio no longer auto-starts here — it's gated behind the
-    // explicit mute toggle in RoomHUD which defaults to OFF.
   }, [transitionStarted]);
 
-  // Lenis smooth scroll is owned by src/portfolio/Keypad.tsx
-  // (module-scope `ensureLenis()` singleton — it pre-dates this file
-  // and was already wired to ScrollTrigger.update + gsap.ticker).
-  // Initializing a SECOND Lenis here meant TWO smooth-scroll engines
-  // were both trying to drive window.scrollY, both calling
-  // ScrollTrigger.update, both adding to gsap.ticker — they fought
-  // over the scroll value and the keypad section's drop-in trigger
-  // never received clean monotonic progress, so the keypad failed
-  // to render on first scroll. Single source of truth restored.
+  // Lenis smooth scroll is owned by src/portfolio/Keypad.tsx via a
+  // module-scope singleton (initializing a second one here would have
+  // two scroll engines fighting over window.scrollY).
 
   const completeTransition = useCallback(() => {
     sceneReadyRef.current = true;
@@ -339,13 +249,9 @@ export default function App() {
     setRoomResetKey((k) => k + 1);
   }, []);
 
-  /* Listen for keypad cursor-hover signals. The keypad section lives
-   * in its OWN Canvas (outside the room's SceneStateProvider scope)
-   * so it can't call setMoveableHover via context. It dispatches a
-   * window-level `keypad-cursor-hover` CustomEvent on every cap /
-   * dial / sidebtn pointer enter/leave; we mirror that into the
-   * shared moveableHover state so the orange ring goes "hot" the
-   * same way it does for room-scene draggables. */
+  /* Keypad canvas lives outside the room's SceneStateProvider scope,
+   * so it dispatches a window `keypad-cursor-hover` CustomEvent and
+   * we mirror it into shared moveableHover state. */
   useEffect(() => {
     const onKeypadHover = (e: Event) => {
       const ev = e as CustomEvent<{ hot: boolean }>;
@@ -356,38 +262,13 @@ export default function App() {
       window.removeEventListener("keypad-cursor-hover", onKeypadHover);
   }, []);
 
-  /* First scroll / wheel / touch input triggers the intro tilt. No
-   * more "click to begin" gate — the natural impulse on a portfolio
-   * page is to scroll, so we use that as the start signal. Keydown
-   * was previously also a trigger (so any key press could "enter"
-   * the page); removed because it was firing on incidental key
-   * presses (DevTools shortcuts, browser hotkeys) before the user
-   * had actually decided to engage.
-   *
-   * Gated on `html.loading-active`: while the wireframe assembly is
-   * still painting, ANY of these events would kick off the intro
-   * tilt — moving the camera into the room behind the wireframes
-   * before the user can see the loaded scene. That made the loading
-   * screen feel "clickable" (scroll/touch/wheel all started the
-   * intro). Once `loading-active` is removed (climaxDone fires),
-   * the first input fires the intro normally.
-   *
-   * We drop `{ once: true }` here so the listener survives an
-   * event that arrives during loading — otherwise the first stray
-   * wheel/scroll during loading consumes the registration and the
-   * user's real scroll once loading completes does nothing. */
+  /* First meaningful scroll (after the room is loaded and past
+   * loading-active) triggers the intro. Gated on scrollY crossing
+   * 0.75vh so the intro dolly begins when the user is actually
+   * looking at the room, not at scrollY ≈ 0 where the canvas is
+   * still faded out. */
   useEffect(() => {
     if (transitionStarted) return;
-    // FIX: was firing on the first wheel/touch/scroll input — which
-    // happens at scrollY ≈ 0, where the room canvas is still at
-    // opacity 0 (ROOM_FADE_IN_START_VH = 0.9). The 1.5s intro dolly
-    // played behind an invisible canvas; by the time the user
-    // scrolled into the room's visibility window the camera was
-    // already at END pose. Net effect: cinematic reveal never read.
-    //
-    // Now gates on scrollY crossing 0.75vh (just before fade-in
-    // starts at 0.9vh) AND on `roomLoaded` so the dolly only begins
-    // when the user is actually looking at the room.
     const check = () => {
       if (transitionStarted) return;
       if (document.documentElement.classList.contains("loading-active")) return;
@@ -400,6 +281,32 @@ export default function App() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, [transitionStarted, startTransition, roomLoaded]);
+
+  /* Warm the lazy section-scene chunks (Macintosh / Hobbies / Keypad) during
+   * idle time once the room is loaded, so they're cached well before the user
+   * scrolls down to them. Without this prefetch the React.lazy split would
+   * risk a blank scene on a fast first scroll-past. These import specifiers
+   * resolve to the same modules the section wrappers lazy-load, so Rollup
+   * serves one shared chunk per scene (no duplicate fetch). */
+  useEffect(() => {
+    if (!roomLoaded) return;
+    const warm = () => {
+      void import("./macintosh/MacintoshScene");
+      void import("./other/HobbiesScene");
+      void import("./keypad/KeypadScene");
+    };
+    const ric = (
+      window as unknown as {
+        requestIdleCallback?: (cb: () => void) => number;
+      }
+    ).requestIdleCallback;
+    if (typeof ric === "function") {
+      ric(warm);
+    } else {
+      const t = setTimeout(warm, 1500);
+      return () => clearTimeout(t);
+    }
+  }, [roomLoaded]);
 
   useEffect(() => {
     if (!sceneReady) return;
@@ -424,72 +331,6 @@ export default function App() {
   const noopSetDeskViewActive = useCallback(() => {}, []);
   const noopStartDeskView = useCallback(() => {}, []);
 
-  const shrinkT = clamp01(
-    (scrollProgress - SHRINK_AT) / (SHRINK_DONE - SHRINK_AT),
-  );
-  // overlayWidthVw was driving the canvas-overlay-panel (now removed
-  // — see deletion above with full-width room change). Kept the
-  // shrinkT calculation since other things still reference it.
-  void lerp;
-  void PINNED_WIDTH_VW;
-  // Content opacity — sections (everything below hero) only fade in
-  // AFTER the overlay panel has fully covered the right half. Earlier
-  // tuning started the fade at shrinkT 0.7 (overlay only ~70% wide),
-  // which let the section marker + heading appear over the still-
-  // visible room geometry. Now we wait for the shrink to complete
-  // (shrinkT === 1, i.e. scrollProgress >= SHRINK_DONE), then fade
-  // content in over the next ~3.5% of scroll.
-  const CONTENT_FADE_LENGTH = 0.035;
-  const contentOpacity = clamp01(
-    (scrollProgress - SHRINK_DONE) / CONTENT_FADE_LENGTH,
-  );
-  // Mobile: canvas occupies the full viewport during hero and fades
-  // out as the user scrolls past the first screen. Computed from raw
-  // window.scrollY / innerHeight rather than scrollProgress so the
-  // fade is locked to "one screen scrolled", not a percentage of total
-  // page (which changes as sections grow/shrink).
-  const mobileFadeT = useMobileHeroFade(isMobile);
-  const mobileCanvasOpacity = 1 - mobileFadeT;
-
-  // Room/Hero scroll choreography under the new curiosity-cabinet
-  // design (see docs/superpowers/specs/2026-05-21-portfolio-redesign-
-  // design.md):
-  //   - Hero (3D signature) is visible at viewport top (scrollProgress
-  //     0..HERO_END), then fades out as the user scrolls.
-  //   - Room is HIDDEN during Hero, fades in over the About section,
-  //     and fades back out when the user scrolls past About.
-  // Thresholds are scrollY-based (in viewport units) rather than
-  // scrollProgress-based so they survive page-height changes from
-  // section content growing/shrinking. ROOM_VISIBLE_START is "Hero
-  // ends" and ROOM_VISIBLE_END is "About ends." Tuned empirically;
-  // bump if either section gets taller.
-  const heroOpacity = useHeroFade();
-  const roomOpacity = useRoomFade();
-  // Canvas-wrapper opacity must include the WIREFRAME window too —
-  // otherwise the canvas is invisible during scroll 0.9..1.615vh
-  // (wireframes assembling) because roomOpacity is still 0 there.
-  // Wireframe phase spans 0.9..1.615vh on a 900px viewport.
-  const canvasOpacity = Math.max(roomOpacity, useWireframeCanvasFade());
-
-  // Publish content opacity as a CSS variable on the document root so
-  // every non-hero section's .portfolio-col can read it without
-  // prop-drilling.
-  useEffect(() => {
-    const value = isMobile ? "1" : String(contentOpacity);
-    document.documentElement.style.setProperty("--content-opacity", value);
-  }, [contentOpacity, isMobile]);
-
-  // (Page scroll-to-top on load is now handled SYNCHRONOUSLY in
-  //  src/main.tsx, before React mounts. Running it in a useEffect
-  //  here was too late — the browser had already restored scroll
-  //  by the time the effect fired, and useScrollProgress + Lenis
-  //  had latched onto that non-zero starting position.)
-
-  // (loading-active class is managed by AssemblyController based on
-  //  climaxDone — the proper source of truth. App-level toggle removed
-  //  to stop the two effects from fighting and causing chrome
-  //  contrast flicker.)
-
   return (
     <AssemblyProvider>
       <div
@@ -507,34 +348,11 @@ export default function App() {
           setMoveableHover(false);
         }}
       >
-        {/* Right-side overlay panel that grows from 0 to (100-PINNED)vw
-            as the user scrolls. Sits ABOVE the canvas and OPAQUE in
-            wrapper-bg colour so it visually "covers" the right portion
-            of the (always full-width) canvas. The portfolio sections
-            then render on top of this overlay. Replaces the previous
-            approach of resizing the Canvas wrapper width on scroll —
-            that forced Three.js to recompute renderer.setSize +
-            projection matrix every frame, which is the source of the
-            visible scroll snap. */}
-        {/* (Old 2D RiceDotsBg removed — rice dots now live on the
-            3D GroundPlane with the cursor dissolve baked into the
-            shader. Having both layered together caused the "old rice
-            fading in occasionally" visual bug.) */}
-
-        {/* The canvas-overlay-panel (50vw cream rectangle that visually
-            shrunk the room to a half-viewport) is now gone. User
-            asked: "you don't have to stick with the half/half
-            layout." Room fills the full viewport during About; the
-            section content overlays editorially on top instead of
-            being relegated to a right-half column. See
-            .portfolio-about CSS for the new overlay positioning. */}
-        {/* Hero signature — covers full viewport. Visible at scroll top,
-            fades out as the user enters About. Positioned BELOW the
-            HUD (z-index 9999) and ABOVE the room canvas (z-index 0)
-            so the loading-state orange paints around it via the wrapper
-            bg and the 3D version sits in front of the soon-to-fade-in
-            room. */}
+        {/* Hero signature: fixed full viewport. Sits between the room
+            canvas (z 0) and the HUD (z 9999). Opacity driven by
+            --hero-opacity from the consolidated scroll listener. */}
         <div
+          className="scroll-layer--hero"
           style={{
             position: "fixed",
             top: 0,
@@ -542,7 +360,6 @@ export default function App() {
             width: "100vw",
             height: "100vh",
             pointerEvents: "none",
-            opacity: heroOpacity,
             transition: "opacity 200ms linear",
             zIndex: 2,
           }}
@@ -550,74 +367,57 @@ export default function App() {
           <HeroSignature />
         </div>
         <div
+          className="scroll-layer--canvas"
           style={{
             position: "fixed",
             top: 0,
             left: 0,
-            // Canvas wrapper is now ALWAYS full-width (or full mobile
-            // band). The right portion is visually covered by the
-            // overlay panel above. This stops Three.js from running
-            // its internal resize observer on every scroll frame.
             width: "100vw",
-            // Mobile hero: full-viewport canvas (was 55vh, which made
-            // the room read as a tiny preview). Combined with the
-            // scroll-pixel-based fade in useMobileHeroFade, the room
-            // dissolves cleanly as the user scrolls into About.
             height: "100vh",
-            // Room is now ONLY visible during the About section (per
-            // the curiosity-cabinet redesign). roomOpacity is 0 during
-            // Hero, fades to 1 through About, fades back to 0 as the
-            // user scrolls into Skills/Macintosh.
-            opacity: (isMobile ? mobileCanvasOpacity : 1) * canvasOpacity,
-            pointerEvents:
-              (isMobile && mobileCanvasOpacity < 0.05) || canvasOpacity < 0.05
-                ? "none"
-                : "auto",
             zIndex: 0,
           }}
         >
           <Canvas
             camera={{
-              // Was START_POS/START_FOV — kicked off the 1.5s dolly
-              // intro on transitionStarted. User feedback: the dolly
-              // was "unnecessary." Camera now starts at the final
-              // canonical pose, IntroController is a no-op tilt
-              // resetter, no zoom-in animation.
               position: [END_POS.x, END_POS.y, END_POS.z],
               fov: END_FOV,
-              // Near 1, far 300 to accommodate the near-orthographic
-              // camera distance (END_POS at 100,100,100 → ~173 from
-              // origin + scrollwireframe dome at radius 20 around
-              // camera + room geometry extent). Was 180 which clipped
-              // the room at the very edge of the far plane.
+              // Far 300 accommodates the near-ortho camera distance
+              // (~173 from origin) + the wireframe cover dome (radius
+              // 20 around camera) + room geometry extent.
               near: 1,
               far: 300,
             }}
-            // High-DPR screens already supersample — MSAA on top is
-            // redundant cost. Pin DPR to 1.25 on mobile (cuts fragment
-            // shader work nearly in half on 3× phones) and disable AA
-            // when DPR is high enough that the extra sampling buys
-            // nothing visually.
-            dpr={isMobile ? [1, 1.25] : [1, 1.5]}
+            // R3F-managed shadow map. Setting gl.shadowMap.enabled in
+            // onCreated alone is unreliable. R3F runs its own shadow
+            // setup pipeline after onCreated and explicitly disables
+            // the shadow map when no `shadows` prop is passed, which
+            // is why room geometry was casting nothing on the ground
+            // plane. PCF (not PCFSoft) keeps the per-pixel cost down
+            // while still giving us a legible directional-light cast
+            // shadow under the room.
+            shadows={{ type: THREE.PCFShadowMap }}
+            // PERF: cap DPR by device class. Desktop caps at 1.25 (on
+            // 2-3× retina the room canvas was rendering at 1.5×, ~44%
+            // more fragment-shader work for little gain. The room is
+            // matte under iso projection). MOBILE caps at a flat 1.0:
+            // phone GPUs are markedly weaker and this is a multi-WebGL,
+            // GSAP-pinned page, so rendering the always-on room at native
+            // 1× (vs 1.25× on a 3× screen = ~56% fewer fragments) is the
+            // single biggest mobile GPU win and keeps the scroll smooth.
+            // MSAA still on when DPR < 1.5.
+            dpr={isMobile ? [1, 1] : [1, 1.25]}
             gl={{
               antialias: (typeof window !== "undefined"
                 ? window.devicePixelRatio < 1.5
                 : true),
               alpha: true,
               toneMapping: THREE.ACESFilmicToneMapping,
-              // Exposure lifted 0.8 → 1.0 so the scene reads brighter
-              // and less moody — combined with the cooler/brighter
-              // light colours in Lighting.tsx, removes the sunset
-              // cast that made the room feel like dusk.
               toneMappingExposure: 1.0,
               powerPreference: "high-performance",
-              // Z-fighting fix: with the iso camera composing many
-              // nearly-coplanar surfaces (mirror against wall, cat on
-              // bed, ContactShadow above plane), the standard 24-bit
-              // depth buffer doesn't have enough precision spread over
-              // the scene depth range. Logarithmic depth gives ~64-bit
-              // equivalent precision distribution. GroundPlane.tsx's
-              // custom ShaderMaterial includes the matching
+              // Z-fighting fix: many nearly-coplanar surfaces (mirror
+              // against wall, cat on bed) under the iso camera need
+              // more depth precision than the default 24-bit buffer
+              // provides. GroundPlane's ShaderMaterial mirrors the
               // logdepthbuf chunks so its sort order stays consistent.
               logarithmicDepthBuffer: true,
             }}
@@ -626,19 +426,23 @@ export default function App() {
               (
                 gl as unknown as { useLegacyLights?: boolean }
               ).useLegacyLights = false;
-              // Real shadow maps enabled — Lighting.tsx's directional
-              // light casts onto the room (per-mesh castShadow set in
-              // Room.tsx). drei ContactShadows still provides the soft
-              // contact halo under the room. ShaderMaterial planes
-              // don't natively receiveShadow, so the plane stays clean
-              // (procedural dots). PCFShadowMap (not PCFSoft) — the
-              // soft variant takes 9 samples per fragment for the
-              // penumbra; we trade that for cheaper hard-edged PCF
-              // since shadow blur is already provided by ContactShadows.
-              gl.shadowMap.enabled = true;
-              gl.shadowMap.type = THREE.PCFShadowMap;
               cameraRef.current = camera as THREE.PerspectiveCamera;
               camera.lookAt(END_LOOK_AT);
+              // PERF (single biggest win): freeze the shadow map. The room
+              // is a STATIC iso scene. The directional light, the room
+              // geometry, and every shadow caster sit still 99% of the
+              // time. With three's default `shadowMap.autoUpdate = true`
+              // the renderer re-rendered the ENTIRE caster set (~140 meshes)
+              // into the light's depth texture on EVERY frame, a full
+              // extra scene pass that roughly DOUBLED the room canvas's
+              // draw calls (measured 276/frame; ~138 of those were the
+              // redundant shadow pass). Turning autoUpdate OFF and only
+              // re-arming `needsUpdate` while something actually moves
+              // (intro settle + active drag/throw, see ShadowGate) keeps
+              // the baked shadow on screen while halving the per-frame cost
+              // of the heaviest, always-on canvas on the page.
+              gl.shadowMap.autoUpdate = false;
+              gl.shadowMap.needsUpdate = true;
             }}
           >
             <SceneStateProvider
@@ -650,26 +454,38 @@ export default function App() {
                 startDeskView: noopStartDeskView,
               }}
             >
-              <AssemblyWireframesSlot />
               <Suspense fallback={null}>
                 <RoomLoadedSignal onLoaded={() => setRoomLoaded(true)} />
+                {/* PERF: the room canvas is only ever visible during the
+                    hero intro + About beat (scroll ratio < ~3vh). Past
+                    that its wrapper opacity is pinned 0, yet R3F's
+                    default frameloop="always" kept rendering the full
+                    Room scene + Rapier physics + OrbitControls +
+                    ScrollWireframeRoom every frame behind the invisible
+                    layer, capping the WHOLE page at ~15fps from About
+                    onward (the Mac/projects section inherited this floor
+                    and then stacked its own canvas on top, which is why
+                    it read as "incredibly laggy"). This gate flips the
+                    room canvas to frameloop="never" once the room has
+                    scrolled out, freeing the budget for the Mac scene.
+                    It re-wakes (and invalidates) the instant the user
+                    scrolls back up. */}
+                <RoomFrameloopGate onSleepChange={setRoomAsleep} />
+                <ShadowGate roomAsleep={roomAsleep} resetKey={roomResetKey} />
                 <Lighting />
                 <GroundPlane />
-                {/* Shadow catcher. The GroundPlane uses a custom
-                    ShaderMaterial that doesn't include three.js's
-                    shadowmap chunks, so it can't natively receive
-                    shadows from the directional light. Drei's
-                    ContactShadows (a fake depth-capture approach)
-                    failed to render at all in this scene — likely a
-                    drei version / orthocam frustum quirk. This is
-                    the classic shadow-catcher pattern instead: a
-                    transparent plane sitting just above the
-                    GroundPlane that ONLY draws the shadow regions
-                    via `shadowMaterial`. Non-shadowed pixels stay
-                    transparent so the rice-dot ground beneath shows
-                    through unchanged. Driven by the real
-                    directionalLight in Lighting.tsx (castShadow +
-                    shadow camera ±3.2). */}
+                {/* Shadow catcher: the GroundPlane's custom
+                    ShaderMaterial doesn't include three's shadowmap
+                    chunks, so this transparent plane draws the shadow
+                    regions via shadowMaterial without occluding the
+                    rice-dot ground beneath. Driven by Lighting's
+                    directionalLight (castShadow + ±2.6 shadow cam).
+                    Opacity bumped 0.28 → 0.55 + color set to the
+                    design-system ink (#0d0e10) so the cast reads as
+                    a punchy, cool-ink shadow rather than a faint band.
+                    `color` on shadowMaterial sets the tinted shadow
+                    pixel; combined with the higher opacity this gives
+                    a hard-edged TE/industrial product-shot feel. */}
                 <mesh
                   position={[0, 0.005, 0]}
                   rotation={[-Math.PI / 2, 0, 0]}
@@ -677,13 +493,22 @@ export default function App() {
                   renderOrder={1}
                 >
                   <planeGeometry args={[20, 20]} />
-                  <shadowMaterial transparent opacity={0.28} />
+                  <shadowMaterial
+                    transparent
+                    opacity={0.55}
+                    color="#0d0e10"
+                  />
                 </mesh>
                 {/* Mobile: keep the Physics provider mounted (Room's
-                    <RigidBody>s require it) but pause the sim — near-zero
-                    CPU, and drag/throw on touch is awkward anyway. */}
+                    <RigidBody>s require it) but pause the sim. PERF: also
+                    pause once the room is asleep (scrolled out): a
+                    running Rapier step calls invalidate() every frame,
+                    which is what kept the room canvas rendering at full
+                    rate behind the invisible layer even under
+                    frameloop="demand". Pausing it lets the demand loop
+                    actually idle on Mac / Work / Other. */}
                 <Physics
-                  paused={isMobile}
+                  paused={isMobile || roomAsleep}
                   gravity={[0, -9.81, 0]}
                   timeStep={1 / 60}
                   numSolverIterations={3}
@@ -691,19 +516,11 @@ export default function App() {
                   allowedLinearError={0.0025}
                   contactNaturalFrequency={22}
                 >
-                  {/* Room visibility is now handled by the
-                      ScrollWireframeRoom's cover dome — an opaque
-                      cream sphere pinned to the camera that hides
-                      the room during the wireframe-only beat and
-                      fades in lockstep with the wireframes. The
-                      Room itself stays mounted + visible always
-                      (no group.visible toggle, no pop-in seam). */}
+                  {/* Room stays mounted + visible always; the
+                      ScrollWireframeRoom cover dome handles the
+                      wireframe-only beat so there's no pop-in seam. */}
                   <Room key={roomResetKey} roomGroupRef={roomGroupRef} />
                 </Physics>
-                {/* Scroll-driven wireframe annotation layer. Reads
-                    aboutProgressRef per frame, draws orange line-
-                    segment AABBs over the room that assemble +
-                    disassemble with scroll. */}
                 <ScrollWireframeRoom progressRef={aboutProgressRef} />
                 <IntroController
                   cameraRef={cameraRef}
@@ -740,7 +557,7 @@ export default function App() {
                     <ScrollCamera
                       cameraRef={cameraRef}
                       controlsRef={controlsRef}
-                      progress={scrollProgress}
+                      progressRef={scrollProgressRef}
                     />
                   </>
                 )}
@@ -754,19 +571,17 @@ export default function App() {
 
         <PortfolioSections />
 
-        <RoomHUD
-          onReset={resetRoom}
-          visible={true}
-          interactive={sceneReady}
-        />
+        <RoomHUD visible={true} />
 
-        <AssemblyHUDSlot />
-
-        {/* TE-spec-sheet flourishes — only after the room loads. */}
-        {sceneReady && !isMobile && (
+        {/* TE-spec-sheet flourishes: only after the room loads.
+            StatusBar (compact section/progress pill on mobile) and
+            JumpToTop render on every breakpoint; ScrollRail stays
+            desktop-only (the edge rail has no room next to the home
+            indicator / narrow gutters on phones). */}
+        {sceneReady && (
           <>
             <StatusBar onReset={resetRoom} />
-            <ScrollRail />
+            {!isMobile && <ScrollRail />}
             <JumpToTop />
           </>
         )}
@@ -777,11 +592,170 @@ export default function App() {
 
 /** Renders nothing; just calls onLoaded once it mounts. Because it's a
  *  child of <Suspense> alongside <Room>, it only mounts after the GLB
- *  has streamed in and Room's useGLTF has resolved — which is what we
+ *  has streamed in and Room's useGLTF has resolved, which is what we
  *  want for "the room is on screen now, play the signature." */
 function RoomLoadedSignal({ onLoaded }: { onLoaded: () => void }) {
   useEffect(() => {
     onLoaded();
   }, [onLoaded]);
+  return null;
+}
+
+// Scroll ratio (scrollY / innerHeight) past which the room is fully
+// faded out and never seen again on the way down. ROOM_FADE_OUT_END_VH
+// is 2.95; the +0.25vh margin keeps the room live just past the end of
+// its fade-out so the final faded frames still render, then the loop
+// quiets for every section below (Mac, Work, Other, …).
+const ROOM_SLEEP_RATIO = ROOM_FADE_OUT_END_VH + 0.25;
+
+/**
+ * PERF gate for the always-on room canvas. Watches the scroll ratio via
+ * a passive listener (no per-frame work of its own) and, once the room
+ * has scrolled fully out (past the About beat), puts the whole room
+ * pipeline to sleep:
+ *
+ *   1. `setFrameloop("never")` halts R3F's automatic render loop.
+ *   2. `onSleepChange(true)` pauses Rapier <Physics>. This step is what
+ *      makes (1) stick. A running Rapier sim calls `invalidate()` every
+ *      frame, which re-renders the canvas even under "never"/"demand".
+ *      Pausing it removes the only continuous invalidator, so the loop
+ *      genuinely idles.
+ *
+ * Together they stop the room scene draw (~150 draw calls/frame), the
+ * physics step, OrbitControls damping, and the ScrollCamera /
+ * ScrollWireframeRoom useFrames while the user is on Mac / Work / Other.
+ * That recovers the budget the Mac/projects section was starved of. On
+ * the wake edge it restores "always", invalidates one frame, and
+ * un-pauses physics so scrolling back up resumes seamlessly.
+ */
+function RoomFrameloopGate({
+  onSleepChange,
+}: {
+  onSleepChange: (asleep: boolean) => void;
+}) {
+  const setFrameloop = useThree((s) => s.setFrameloop);
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    let asleep = false;
+    let raf = 0;
+    const apply = () => {
+      const ratio = window.scrollY / Math.max(1, window.innerHeight);
+      const shouldSleep = ratio > ROOM_SLEEP_RATIO;
+      if (shouldSleep && !asleep) {
+        asleep = true;
+        setFrameloop("never");
+        onSleepChange(true);
+      } else if (!shouldSleep && asleep) {
+        asleep = false;
+        setFrameloop("always");
+        onSleepChange(false);
+        invalidate();
+      }
+    };
+    const onScroll = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(apply);
+    };
+    apply();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [setFrameloop, invalidate, onSleepChange]);
+  return null;
+}
+
+// How long (seconds) to keep re-rendering the shadow map after an
+// interaction begins. Long enough to cover a drag gesture plus the
+// dragged/thrown body settling back to rest (REST_LINEAR_DAMPING in
+// DraggableRigidBody brings bodies to a stop in well under this).
+const SHADOW_REARM_SECONDS = 3.0;
+// Initial settle window after the room first mounts: covers the intro
+// hand-off and the first physics steps so the baked shadow reflects the
+// final resting pose of every body, not frame 0.
+const SHADOW_INITIAL_SECONDS = 2.5;
+
+/**
+ * PERF gate for the directional-light shadow map. `gl.shadowMap.autoUpdate`
+ * is forced OFF in onCreated; this component is the ONLY thing that
+ * re-arms `gl.shadowMap.needsUpdate`, and only while something can
+ * actually change the cast shadow:
+ *
+ *   1. For SHADOW_INITIAL_SECONDS after mount / reset: the scene is
+ *      settling (intro hand-off + first physics steps).
+ *   2. For SHADOW_REARM_SECONDS after any pointerdown on the room canvas
+ *      (the only way a user moves a draggable / throwable caster).
+ *   3. One frame when the room wakes from sleep (scroll back up) so the
+ *      baked shadow is current after any off-screen physics drift.
+ *
+ * Outside those windows the shadow map is frozen: the baked depth texture
+ * keeps drawing the existing cast shadow, but the ~140-mesh shadow render
+ * pass is skipped entirely. This is the single largest per-frame win on
+ * the always-on room canvas. `needsUpdate` is a one-shot flag (three
+ * clears it after the next render), so we set it every frame inside an
+ * active window rather than once.
+ */
+function ShadowGate({
+  roomAsleep,
+  resetKey,
+}: {
+  roomAsleep: boolean;
+  resetKey: number;
+}) {
+  const gl = useThree((s) => s.gl);
+  const invalidate = useThree((s) => s.invalidate);
+  // Timestamp (performance.now ms) until which the shadow keeps updating.
+  const activeUntilRef = useRef(0);
+
+  // DEV-only perf probe handle: lets instrumentation read/toggle the
+  // room renderer's shadow state to A/B the autoUpdate cost. Tree-shaken
+  // in prod builds (import.meta.env.DEV is statically false there).
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      const win = window as unknown as {
+        __roomGL?: THREE.WebGLRenderer;
+        __roomScene?: THREE.Scene;
+        __roomCam?: THREE.Camera;
+      };
+      win.__roomGL = gl;
+      win.__roomScene = scene;
+      win.__roomCam = camera;
+    }
+  }, [gl, scene, camera]);
+
+  // Initial settle window: re-armed whenever the room is (re)mounted or
+  // reset, and whenever it wakes from sleep so a scroll-back repaints a
+  // correct shadow.
+  useEffect(() => {
+    if (roomAsleep) return;
+    activeUntilRef.current = Math.max(
+      activeUntilRef.current,
+      performance.now() + SHADOW_INITIAL_SECONDS * 1000,
+    );
+    gl.shadowMap.needsUpdate = true;
+    invalidate();
+  }, [gl, invalidate, roomAsleep, resetKey]);
+
+  // Any pointerdown on the room canvas may begin a drag/throw; re-arm.
+  useEffect(() => {
+    const el = gl.domElement;
+    const rearm = () => {
+      activeUntilRef.current = performance.now() + SHADOW_REARM_SECONDS * 1000;
+    };
+    el.addEventListener("pointerdown", rearm, { passive: true });
+    return () => el.removeEventListener("pointerdown", rearm);
+  }, [gl]);
+
+  useFrame(() => {
+    if (performance.now() <= activeUntilRef.current) {
+      gl.shadowMap.needsUpdate = true;
+    }
+  });
+
   return null;
 }

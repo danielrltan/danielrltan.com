@@ -33,7 +33,7 @@ pnpm-debug.log*
 # Local AI tool state / personal config
 .claude
 
-# Playwright MCP scratch (page-*.yml snapshots, console-*.log) — these
+# Playwright MCP scratch (page-*.yml snapshots, console-*.log); these
 # are generated each time playwright drives the page during dev /
 # debugging and should never be committed.
 .playwright-mcp/

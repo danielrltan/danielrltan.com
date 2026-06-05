@@ -86,7 +86,7 @@ export function useAssemblyProgress(): AssemblyState {
         const timelinePct = Math.min(1, elapsed / TIMELINE_FLOOR_MS);
 
         // While drei is loading, progress is the bytes percentage.
-        // Once `active` goes false the load is done — pin to 100.
+        // Once `active` goes false the load is done; pin to 100.
         const driveByte = activeRef.current ? progressRef.current / 100 : 1;
         const bytePct = Math.max(0, Math.min(1, driveByte));
         const combinedPct = Math.min(timelinePct, bytePct);
@@ -127,13 +127,20 @@ export function useAssemblyProgress(): AssemblyState {
             climaxDone,
           });
         }
+
+        // Terminal early-out: once climaxDone is committed the loading
+        // choreography is complete and all computed values are stable.
+        // Allow this final tick to flush the terminal state, then stop.
+        // OLD: unconditional reschedule every frame indefinitely.
+        // NEW: O(0) rAF cost post-climax; loop runs only for loading duration.
+        if (climaxDone) return;
       }
 
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-    // State is intentionally not in deps — using refs to avoid resubscribe.
+    // State is intentionally not in deps; using refs to avoid resubscribe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

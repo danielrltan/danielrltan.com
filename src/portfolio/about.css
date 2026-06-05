@@ -1,4 +1,4 @@
-/* About section — GSAP-pinned theatrical reveal.
+/* About section: GSAP-pinned theatrical reveal.
    The canvas-overlay-panel that previously hid the right half of
    the room is gone (per user's "break the half/half layout"
    feedback). Room canvas now fills the full viewport behind the
@@ -35,7 +35,7 @@
   transform: translateY(0);
 }
 .about-floating-num {
-  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-family: var(--font-mono, sans-serif);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.22em;
@@ -47,18 +47,18 @@
 }
 .about-floating-label {
   font-family: var(--font-display, "Geist", "Inter", sans-serif);
-  /* Bumped up — the floating wordmark is now the section's editorial
+  /* Bumped up: the floating wordmark is now the section's editorial
      anchor (the panel's redundant 'About.' H2 has been removed),
      so this needs the typographic weight to carry the moment. */
   font-size: clamp(64px, 9vw, 128px);
   font-weight: 700;
   letter-spacing: -0.035em;
   line-height: 0.9;
-  color: var(--wrapper-ink, #1a1714);
+  color: var(--wrapper-ink, #0d0e10);
 }
 
 /* Override the default `.portfolio-col` 50vw-right-margin so the
-   About text can use the full viewport — but pinned to the right
+   About text can use the full viewport, but pinned to the right
    third with a slight backdrop-blur so it reads cleanly on top of
    the visible room behind. The content forms a sidebar-ish editorial
    panel rather than an opaque half-column. */
@@ -71,20 +71,20 @@
   display: flex;
   flex-direction: column;
   will-change: transform, opacity;
-  /* Solid wrapper-bg panel with a sharp left edge — no gradient
+  /* Solid wrapper-bg panel with a sharp left edge, no gradient
      fade-in. User's note on the previous gradient: "looks like a
      shitty gradient, you can do better." Editorial newsprint-style
      side panel: clean hard edge, light grain via a subtle pseudo-
      element noise, a thin orange spine rule for editorial structure. */
-  background: var(--wrapper-bg, #f4f1ea);
-  border-left: 1px solid rgba(26, 23, 20, 0.08);
+  background: var(--wrapper-bg, #eef0f3);
+  border-left: 1px solid rgba(13, 14, 16, 0.08);
   padding-left: 42px;
   padding-right: 42px;
   box-sizing: border-box;
   position: relative;
 }
 
-/* Thin orange spine on the left edge — picks up the brand accent
+/* Thin orange spine on the left edge: picks up the brand accent
    and reads as a deliberate editorial mark (folio rule) instead of
    a fade-in gradient. */
 .portfolio-about .about-col::before {
@@ -95,7 +95,7 @@
   bottom: 9vh;
   width: 2px;
   background: var(--accent, #e87040);
-  /* Tapered ends — masks the rule to fade out at top + bottom so it
+  /* Tapered ends: masks the rule to fade out at top + bottom so it
      doesn't read as a clinical border. */
   mask-image: linear-gradient(
     to bottom,
@@ -113,7 +113,7 @@
   );
 }
 
-/* Paper grain over the panel — very subtle, ~3% opacity speckled
+/* Paper grain over the panel: very subtle, ~3% opacity speckled
    noise. Sells the "newsprint sheet" feel against the flat cream. */
 .portfolio-about .about-col::after {
   content: "";
@@ -122,7 +122,7 @@
   pointer-events: none;
   background-image: radial-gradient(
     circle at center,
-    rgba(26, 23, 20, 0.12) 0.5px,
+    rgba(13, 14, 16, 0.12) 0.5px,
     transparent 1px
   );
   background-size: 4px 4px;
@@ -138,19 +138,34 @@
   z-index: 1;
 }
 
-/* .about-h removed — the panel no longer renders an H2 since the
-   floating 'Daniel.' wordmark carries that role. */
+/* DOM-real <h2> for assistive tech + SEO. Visually hidden because the
+   floating "About." wordmark (aria-hidden) carries the heading
+   visually; this is the standard sr-only recipe, off-screen but
+   present in the accessibility tree and focusable scroll targets. */
+.about-sr-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
-/* Lede paragraph — reveals at the start of the pin. */
+/* Lede paragraph: reveals at the start of the pin. */
 .about-lede {
   font-family: var(--font-display, "Geist", "Inter", sans-serif);
   font-size: clamp(20px, 2.1vw, 28px);
   line-height: 1.35;
   font-weight: 400;
   letter-spacing: -0.015em;
-  color: var(--wrapper-ink, #1a1714);
+  color: var(--wrapper-ink, #0d0e10);
   margin: 0 0 36px;
   max-width: 540px;
+  /* Avoid ragged orphans on the narrow editorial measure. */
+  text-wrap: pretty;
   opacity: 0;
   transform: translateY(14px);
   transition:
@@ -166,21 +181,24 @@
   font-weight: 600;
 }
 
+/* Description list of key/value rows. Reset the UA <dl> margin so it
+   doesn't add a phantom gap below the lede. */
 .about-grid {
   display: flex;
   flex-direction: column;
   gap: 0;
   max-width: 520px;
+  margin: 0;
 }
 
-/* Per-row reveal — each row at its own pin-progress threshold. */
+/* Per-row reveal: each row at its own pin-progress threshold. */
 .about-row {
   display: grid;
   grid-template-columns: 96px 1fr;
   gap: 22px;
   align-items: baseline;
   padding: 14px 0;
-  border-bottom: 1px solid rgba(26, 23, 20, 0.08);
+  border-bottom: 1px solid rgba(13, 14, 16, 0.08);
   opacity: 0;
   transform: translateX(16px);
   transition:
@@ -196,11 +214,15 @@
 }
 
 .about-label {
-  font-family: var(--font-mono, "JetBrains Mono", monospace);
-  font-size: 10px;
-  letter-spacing: 0.22em;
+  font-family: var(--font-mono, sans-serif);
+  /* 10px mono caps at 0.45 alpha failed contrast (~3:1) and was below
+     the design-system floor for muted text. Use the canonical muted
+     ink token (0.62 alpha ≈ 4.7:1 on the panel bg) and nudge the size
+     to 11px so the tracked caps stay legible. */
+  font-size: 11px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(26, 23, 20, 0.45);
+  color: var(--ink-muted, rgba(13, 14, 16, 0.62));
   font-weight: 600;
 }
 
@@ -208,10 +230,12 @@
   font-family: var(--font-body, "Inter", sans-serif);
   font-size: 15px;
   line-height: 1.45;
-  color: var(--wrapper-ink, #1a1714);
+  color: var(--wrapper-ink, #0d0e10);
+  /* Reset UA <dd> indent. */
+  margin: 0;
 }
 
-/* Sign-off line — last beat, points the user toward the next
+/* Sign-off line: last beat, points the user toward the next
    section. */
 .about-sign {
   margin-top: 32px;
@@ -235,15 +259,43 @@
   background: var(--accent, #e87040);
 }
 .about-sign-text {
-  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-family: var(--font-mono, sans-serif);
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(26, 23, 20, 0.55);
+  /* 0.55 → muted token (0.62) to clear the 4.5:1 floor on the panel. */
+  color: var(--ink-muted, rgba(13, 14, 16, 0.62));
 }
 
-@media (max-width: 900px) {
-  .about-col {
+/* Links inside the rows (Windscribe, mailto). They inherit the accent
+   colour + underline from .portfolio-section a, but that base rule has
+   no focus ring and only an opacity hover; too weak for an actionable
+   target. Give them a clear pointer, a hot-accent hover, and a visible
+   keyboard focus ring that meets the a11y checklist. */
+.portfolio-about .about-value a {
+  cursor: pointer;
+  border-radius: 2px;
+  transition:
+    color var(--t-fast, 180ms) ease,
+    opacity var(--t-fast, 180ms) ease;
+}
+.portfolio-about .about-value a:hover {
+  color: var(--accent-hot, #ff6a2a);
+  opacity: 1;
+}
+.portfolio-about .about-value a:focus-visible {
+  outline: 2px solid var(--accent, #e87040);
+  outline-offset: 3px;
+  opacity: 1;
+}
+
+/* Tablet (≤900px): the 42vw pinned-right panel collapses to ~157px on a
+   phone (illegible). Between 720–900px give it room and centre it. */
+@media (max-width: 900px) and (min-width: 721px) {
+  .portfolio-about .about-col {
+    width: min(560px, 70vw);
+    margin-right: auto;
+    margin-left: auto;
     padding-top: 6vh;
   }
   .about-lede {
@@ -252,5 +304,197 @@
   .about-row {
     grid-template-columns: 80px 1fr;
     gap: 16px;
+  }
+  /* Tablets (e.g. iPad portrait at 768px) are touch devices too, so the
+     row links need the same ≥44px hit area as phones. The desktop base
+     rule only sets cursor/radius; mirror the phone touch-target treatment
+     here so a finger lands cleanly on the Broadridge / mailto links. */
+  .portfolio-about .about-value a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 4px 6px;
+    margin: -4px -6px;
+    gap: 8px;
+  }
+}
+
+/* ----------------------------------------------------------------------
+   MOBILE BUILD-OUT (<=720px): portrait phones.
+
+   IMPORTANT (flagged to the room/App owner): on mobile the room canvas is
+   faded fully out during the About beat (App.tsx installScrollChoreography
+   ramps --canvas-opacity 1→0 over 0.55→1.0vh on phones and never restores
+   it). So there is NO room visible behind About on a phone; the backdrop
+   is flat --bg-page. The desktop "editorial text over the live room"
+   concept can't apply here, so mobile presents About as a clean, fully
+   self-contained readable section on the page ground: the "About."
+   wordmark heads the section, then the lede, key/value rows, and sign-off
+   stack full-width beneath it.
+
+   The pin/scrub is KEPT (it's structural + the reveal choreography is
+   GPU-cheap with physics paused on mobile). About.tsx switches the slide
+   axis to a short translateY rise and pulls the reveal beats earlier/
+   tighter for this breakpoint so a thumb-scrub lands the whole block
+   without a long drip. The resting layout is top-anchored (header → body)
+   rather than the desktop bottom-of-viewport rail. */
+@media (max-width: 720px) {
+  .portfolio-about {
+    /* svh tracks the visible viewport under mobile browser chrome. */
+    height: 100svh;
+  }
+
+  .portfolio-about .about-col {
+    width: 100%;
+    margin: 0;
+    min-height: 100svh;
+    /* Top-anchored editorial flow (no room to reveal above). */
+    justify-content: flex-start;
+    padding-left: 24px;
+    padding-right: 24px;
+    /* Clear the wordmark header that sits at the top of the section, and
+       the top-left brand-cat HUD. Bottom padding clears the home
+       indicator + the bottom-left reset/audio HUD pills (~14px up). */
+    padding-top: calc(132px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    border-left: none;
+    /* Flat page ground: clean + legible, matches the design system. */
+    background: var(--bg-page, #eef0f3);
+  }
+  /* Spine rule + paper grain were tuned for the desktop rail; drop them. */
+  .portfolio-about .about-col::before,
+  .portfolio-about .about-col::after {
+    display: none;
+  }
+
+  /* Floating "About." wordmark: becomes the section header at the top,
+     above the stacked body. Anchored top, clear of the top-left brand-cat
+     HUD (~14px). z-index keeps it above the rising panel during the slide
+     so the header never flickers behind the body. */
+  .about-floating-eyebrow {
+    bottom: auto;
+    top: calc(54px + env(safe-area-inset-top, 0px));
+    left: 24px;
+    right: 24px;
+    gap: 12px;
+    z-index: 5;
+  }
+  .about-floating-label {
+    /* Portrait-safe: the desktop clamp floor (64px) could clip on a 360px
+       viewport. vw-led clamp fills the narrow width without overflowing. */
+    font-size: clamp(46px, 15vw, 72px);
+    line-height: 0.95;
+  }
+
+  /* The big dot marker ("01") duplicates the wordmark's "01" and eats
+     vertical room on the tight card; hide it. The mono index line
+     ("01 / 06 · About") stays: it adds the "/ 06" progress wayfinding and
+     now has clean space below the wordmark header. */
+  .portfolio-about .section-marker {
+    display: none;
+  }
+  .portfolio-about .about-col .section-index {
+    margin-bottom: 16px;
+  }
+
+  /* Scoped under .portfolio-about so it outranks the shared
+     `.portfolio-section p { font-size:17px }` rule (which otherwise wins on
+     specificity and pins the lede to 17px). Keeps the lede ≥18px on phones. */
+  .portfolio-about .about-lede {
+    font-size: clamp(18px, 5vw, 22px);
+    line-height: 1.4;
+    margin: 0 0 24px;
+    /* Full measure on the narrow card; let it use the column width. */
+    max-width: none;
+  }
+
+  .about-grid {
+    max-width: none;
+  }
+
+  .about-row {
+    /* Stack label over value on the narrowest phones so the value gets
+       the full width and never truncates a link/email. */
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 12px 0;
+  }
+
+  .about-label {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+  }
+
+  .about-value {
+    /* ≥16px avoids iOS tap-zoom + clears the mobile body-text floor. */
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  /* Links: ≥44px touch targets with breathing room. Inline-flex turns
+     the anchor into a comfortably-tall hit area without disturbing the
+     dd text flow; negative inline margin keeps the visible text aligned
+     to the row's left edge while the padding grows the tap box. */
+  .portfolio-about .about-value a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 4px 6px;
+    margin: -4px -6px;
+    /* 8px gap between adjacent tappable links if a value ever holds two. */
+    gap: 8px;
+  }
+
+  .about-sign {
+    margin-top: 24px;
+  }
+}
+
+/* Smallest phones (<=360px, e.g. 360x640): trim padding + type so the
+   card never forces horizontal scroll or clips the wordmark. The shorter
+   640px height also means less vertical room, so tighten the header gap. */
+@media (max-width: 360px) {
+  .portfolio-about .about-col {
+    padding-left: 18px;
+    padding-right: 18px;
+    padding-top: calc(120px + env(safe-area-inset-top, 0px));
+  }
+  .about-floating-eyebrow {
+    left: 18px;
+    right: 18px;
+  }
+  .about-floating-label {
+    font-size: clamp(42px, 15vw, 60px);
+  }
+  /* Scoped to match the ≤720px `.portfolio-about .about-lede` rule's
+     specificity (0,2,0); the bare `.about-lede` selector (0,1,0) lost to
+     it, so the 360px margin trim never applied. */
+  .portfolio-about .about-lede {
+    margin-bottom: 20px;
+  }
+}
+
+/* prefers-reduced-motion: the pin still scrolls (structural) but the
+   panel slide, row stagger, lede rise, sign-off, and floating wordmark
+   must not animate. The JS already force-reveals every beat and snaps
+   the panel in; here we neutralise the CSS transitions so the change is
+   instantaneous and the content is fully visible at rest. */
+@media (prefers-reduced-motion: reduce) {
+  .about-floating-eyebrow,
+  .about-lede,
+  .about-row,
+  .about-sign {
+    transition: none !important;
+  }
+  .about-floating-eyebrow,
+  .about-floating-eyebrow.is-visible,
+  .about-lede,
+  .about-lede.is-revealed,
+  .about-row,
+  .about-row.is-revealed,
+  .about-sign,
+  .about-sign.is-revealed {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }

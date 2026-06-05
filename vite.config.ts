@@ -10,15 +10,20 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
-        // Split heavy vendor groups into their own chunks so:
-        //   1. The first paint only parses what the room needs (three+r3f).
-        //   2. The OS bundle (postprocessing + OS UI) loads in parallel and
-        //      is cached separately across deploys that don't touch them.
+        // Split heavy vendor groups into their own chunks so the first paint
+        // only parses what the room+hero need (three+r3f), and large libs are
+        // cached separately across deploys that don't touch them. Order
+        // matters: the drei rule must precede the generic @react-three rule,
+        // or drei would fall into the "three" chunk.
         manualChunks: (id) => {
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("@react-three/rapier") || id.includes("@dimforge"))
             return "rapier";
-          if (id.includes("postprocessing")) return "post";
+          // drei is large and is referenced by the lazy section scenes; its
+          // own chunk lets the browser cache it independently of three core.
+          if (id.includes("@react-three/drei")) return "drei";
+          // gsap/ScrollTrigger drives the section pins only (not first paint).
+          if (id.includes("gsap")) return "gsap";
           if (
             id.includes("@react-three") ||
             id.includes("three-stdlib") ||

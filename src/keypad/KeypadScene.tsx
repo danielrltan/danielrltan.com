@@ -6,7 +6,7 @@ import { KeypadModel, type KeypadModelApi } from "./KeypadModel";
 import { RiceBlob } from "./RiceBlob";
 import { useIsMobile } from "../useIsMobile";
 
-// Tuning mode — pass ?tune=keypad in the URL to enable OrbitControls
+// Tuning mode: pass ?tune=keypad in the URL to enable OrbitControls
 // + a live values HUD so you can drag the keypad to the orientation
 // you want, then copy the values back into CAMERA_POS / BASE_TILT_Y.
 const TUNE_MODE =
@@ -24,12 +24,12 @@ const TUNE_MODE =
  *     <KeypadModel/> the gltf + click/hover/spin logic
  *
  * Parallax:
- *   Desktop — cursor offset from canvas center drives ±8° tilt
+ *   Desktop: cursor offset from canvas center drives ±8° tilt
  *             around X and Y. Lerped each frame.
- *   Mobile  — no cursor; slow auto-rotate around Y at ~1 rev / 40s.
+ *   Mobile: no cursor; slow auto-rotate around Y at ~1 rev / 40s.
  */
 
-// Camera + model orientation — dialed in via the ?tune=keypad
+// Camera + model orientation: dialed in via the ?tune=keypad
 // playground. Drag the gizmo to tweak; the HUD shows the live values.
 // Combined: camera looks down at ~45° from front-left, model tilted
 // forward + twisted + slight roll → 3/4 "laying on a desk" view
@@ -45,32 +45,54 @@ const PARALLAX_X = THREE.MathUtils.degToRad(15);
 const PARALLAX_Y = THREE.MathUtils.degToRad(15);
 const PARALLAX_LERP_RATE = 6;
 
-// Auto-rotate sweep on mobile — radians per second.
-const AUTOROTATE_SPEED = (Math.PI * 2) / 40;
+// prefers-reduced-motion: read once at module load. When set, the idle
+// float below is fully disabled (the keypad holds a dead-still pose).
+const PREFERS_REDUCED_MOTION =
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Idle float: once the keypad has LANDED it drifts with a gentle
+// vertical bob + a barely-there pitch/roll sway so it reads as
+// "suspended in the scene, alive" rather than dead-still. Time-driven
+// (a clamped-dt accumulator, never scroll-bound), eased IN by the drop
+// progress so it only begins after the landing, and frozen entirely
+// under prefers-reduced-motion. Deliberately NO yaw drift: a yaw
+// oscillation would read like the auto-spin that was just removed.
+// Co-prime-ish periods keep the three axes from beating into lockstep.
+const FLOAT_BOB_PERIOD = 5.0; // s per rise+fall cycle (calm float)
+const FLOAT_BOB_AMP = 0.12; // world units of vertical travel
+const FLOAT_PITCH_PERIOD = 6.7;
+const FLOAT_PITCH_AMP = THREE.MathUtils.degToRad(1.8);
+const FLOAT_ROLL_PERIOD = 8.3;
+const FLOAT_ROLL_AMP = THREE.MathUtils.degToRad(1.3);
 
 // Drop-in effect: model translates from this Y offset (well above
 // the visible camera frame) down to 0 as sectionProgress goes 0 → 1.
-// Picked empirically — needs to be larger than the visible frustum
+// Picked empirically. Needs to be larger than the visible frustum
 // half-height at the lookAt distance so the model is genuinely
 // off-screen at progress=0, not just clipped.
 const DROP_HEIGHT = 6;
 // Total time the drop-in animation takes, in milliseconds. The drop
 // is driven by elapsed time since Keypad.tsx's onEnter ScrollTrigger
-// stamped `dropStartTimeRef` — NOT by scroll progress — so the pace
+// stamped `dropStartTimeRef` (NOT by scroll progress), so the pace
 // is identical regardless of how fast the user scrolls into the
 // section.
 //
 // 700ms targets the "slightly faster than scroll rate" feel: at a
 // typical user scroll rate of ~1500px/s, the 800px entry distance
 // from "section first appears" to "section's top hits viewport top"
-// takes ~500ms. A 700ms drop runs a hair slower than that — so the
+// takes ~500ms. A 700ms drop runs a hair slower than that, so the
 // keypad is mid-landing as the user scrolls past where it should be
 // and finishes landing just as the pin engages. Reads as
 // "animated drop in sync with my scroll" rather than "I scroll,
 // then it animates" or "I scroll, then it slowly plays out."
 // easeOutCubic still applies inside this 700ms so the landing feels
 // soft despite the shorter duration.
-const DROP_DURATION_MS = 700;
+// DROP_DURATION_MS preserved as a doc anchor for the 700ms target;
+// the drop ramp is now driven from Keypad.tsx via pinProgressRef.
+const _DROP_DURATION_MS = 700;
+void _DROP_DURATION_MS;
 
 interface CursorState {
   // 0..1 across the canvas (top-left origin to match HTML conventions).
@@ -100,12 +122,38 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
   // SceneContents component (parallax driver).
   const cursorRef = useRef<CursorState>({ x: 0.5, y: 0.5, active: false });
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // PERF: visibility ref so useFrame inside SceneContents can short-
+  // circuit while the section is off-screen. The keypad sits at the
+  // bottom of the page. For most of the scroll it's not visible and
+  // a full WebGL submit per frame is wasted. canvasInvalidateRef
+  // pokes the demand loop alive on the visible-edge transition.
+  const visibleRef = useRef<boolean>(false);
+  const canvasInvalidateRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const next = entry.isIntersecting;
+          const was = visibleRef.current;
+          visibleRef.current = next;
+          if (next && !was && canvasInvalidateRef.current) {
+            canvasInvalidateRef.current();
+          }
+        }
+      },
+      { rootMargin: "25% 0px 25% 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
     if (isMobile) return;
     // Face-tracking math is VIEWPORT-relative (per spec) so the
     // model keeps tracking even when the cursor leaves the keypad
-    // canvas — listener lives on document, not the canvas wrapper.
+    // canvas; listener lives on document, not the canvas wrapper.
     // The RiceBlob (which IS canvas-local) reads the same ref and
     // uses .active for its on/off.
     const onMove = (e: PointerEvent) => {
@@ -156,16 +204,30 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
     <div ref={wrapperRef} className="keypad-canvas-wrapper">
       <Canvas
         camera={{ position: CAMERA_POS, fov: 32, near: 0.1, far: 50 }}
-        dpr={isMobile ? [1, 1.25] : [1, 1.5]}
+        // PERF (mobile): the RiceBlob is a full-screen fragment-heavy
+        // shader (per-pixel noise + three glow blobs) that runs every
+        // visible frame. Fragment cost scales with the rendered pixel
+        // count, so on a 3x-DPR phone even a 1.25 cap means ~1.6x the
+        // work of DPR 1. The backdrop is a soft gradient + soft grain,
+        // supersampling buys almost no perceptible sharpness there, so
+        // pin mobile to DPR 1. Desktop keeps [1, 1.5] for crisp caps.
+        dpr={isMobile ? 1 : [1, 1.5]}
+        // PERF: demand frame loop. SceneContents.useFrame calls
+        // invalidate() while visible, and short-circuits while off-
+        // screen so no WebGL submit happens until the user scrolls
+        // toward the bottom of the page.
+        frameloop="demand"
         gl={{
           antialias: true,
           alpha: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,
+          powerPreference: "high-performance",
         }}
-        onCreated={({ gl }) => {
+        onCreated={({ gl, invalidate }) => {
           gl.outputColorSpace = THREE.SRGBColorSpace;
           gl.setClearColor(0x000000, 0);
+          canvasInvalidateRef.current = invalidate;
         }}
       >
         <SceneContents
@@ -175,6 +237,7 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
           glowOpacityRef={glowOpacityRef}
           tuneStateRef={tuneStateRef}
           transformMode={transformMode}
+          visibleRef={visibleRef}
         />
       </Canvas>
       {TUNE_MODE && (
@@ -226,7 +289,7 @@ function TuneHud({
         background: "rgba(20, 20, 20, 0.86)",
         color: "#f3f3f3",
         padding: "14px 18px",
-        fontFamily: "ui-monospace, SFMono-Regular, monospace",
+        fontFamily: "var(--font-mono)",
         fontSize: 12,
         lineHeight: 1.55,
         borderRadius: 6,
@@ -275,6 +338,7 @@ function SceneContents({
   glowOpacityRef,
   tuneStateRef,
   transformMode,
+  visibleRef,
 }: {
   cursorRef: React.MutableRefObject<CursorState>;
   isMobile: boolean;
@@ -282,39 +346,43 @@ function SceneContents({
   glowOpacityRef?: React.MutableRefObject<number>;
   tuneStateRef: React.MutableRefObject<TuneState>;
   transformMode: TuneTransformMode;
+  visibleRef: React.MutableRefObject<boolean>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   // Track the group as REACT STATE too (not just ref) so the
-  // TransformControls JSX can re-render once the group has mounted —
+  // TransformControls JSX can re-render once the group has mounted;
   // useRef updates don't trigger renders.
   const [groupNode, setGroupNode] = useState<THREE.Group | null>(null);
   const tiltState = useRef({ x: 0, y: 0 });
-  const autoRotateY = useRef(0);
-  // Drop-in animation state — initialized to DROP_HEIGHT so the
+  // Drop-in animation state: initialized to DROP_HEIGHT so the
   // model starts off-screen above on first frame, then lerps down
   // as the user scrolls into the section.
   const dropY = useRef(DROP_HEIGHT);
+  // Monotonic float clock (clamped-dt accumulator) so the idle bob/sway
+  // advances smoothly and never pops when the demand-loop canvas resumes
+  // after being scrolled off-screen (a raw clock delta could jump).
+  const floatTimeRef = useRef(0);
   // Captured from KeypadModel via onReady callback. Used to fire an
   // automatic dial spin during the drop-in so the knob is mid-rotation
-  // when the keypad lands — feels like the device "shakes off" the
+  // when the keypad lands, feels like the device "shakes off" the
   // fall before settling. The dial's existing DIAL_DAMP decay ends
   // the spin naturally over the back half of the drop.
   const kickDialRef = useRef<((v: number) => void) | null>(null);
   const hasAutoSpunRef = useRef(false);
-  const { camera } = useThree();
-  // Fit is now self-contained inside KeypadModel — it computes its
+  const { camera, invalidate } = useThree();
+  // Fit is now self-contained inside KeypadModel. It computes its
   // own bounding-sphere-based scale against the camera frustum, so
   // the wrapping group here only handles ORIENTATION (base tilt +
   // parallax), not sizing.
 
-  // Neutral lighting — clean product-shot studio. Mostly white
+  // Neutral lighting: clean product-shot studio. Mostly white
   // with a hint of warmth on the dial accent so the cat-face icon
   // sits in a soft glow rather than reading as a flat texture.
   // Scheme:
   //   - neutral ambient (paper-white, no tint either direction)
   //   - pure-white KEY from upper-right (casts shadow)
   //   - soft white FILL from lower-left (lifts shadow side)
-  //   - barely-warm dial accent (very subtle — sells emissive
+  //   - barely-warm dial accent (very subtle, sells emissive
   //     without coloring the palette)
   // No cyan, no blue, no magenta, no saturated kickers.
   const lightsKey = useMemo(() => new THREE.Vector3(4, 5, 3), []);
@@ -328,10 +396,16 @@ function SceneContents({
   useFrame((_, dt) => {
     const g = groupRef.current;
     if (!g) return;
+    // PERF: skip per-frame work when off-screen. The keypad section
+    // is at the bottom of the page. For most of the scroll lifetime
+    // the user isn't anywhere near it, and useFrame was running every
+    // tick on a faded canvas.
+    if (!TUNE_MODE && visibleRef.current === false) return;
+    invalidate();
 
     // Tune mode: skip drop-in + parallax + auto-rotate. Camera is
     // driven by OrbitControls; model rotation/position is driven by
-    // TransformControls (gizmo) — DON'T overwrite either in this
+    // TransformControls (gizmo). DON'T overwrite either in this
     // branch. Write current state into the shared ref so the HUD
     // can display it.
     if (TUNE_MODE) {
@@ -345,7 +419,7 @@ function SceneContents({
 
     // Drop-in: model falls from DROP_HEIGHT above the frame to 0
     // (resting) over a FIXED DURATION, regardless of scroll speed.
-    // This is the "guided story" pacing — the user can't speed up or
+    // This is the "guided story" pacing: the user can't speed up or
     // slow down the drop by scrolling faster or slower, so the
     // landing always feels deliberate.
     //
@@ -363,6 +437,26 @@ function SceneContents({
     g.position.y = (1 - eased) * DROP_HEIGHT;
     dropY.current = g.position.y;
 
+    // Idle float: gentle bob + sway, faded in by the drop `eased` (so
+    // it only starts once landed) and off under reduced motion. Applied
+    // to BOTH the touch (static) and desktop (cursor-tracked) paths below
+    // so the keypad always feels alive once it has landed. The bob is
+    // added to position here; the pitch/roll sway is applied per-path
+    // alongside the base/tracked rotation.
+    floatTimeRef.current += Math.min(dt, 0.05);
+    const ft = floatTimeRef.current;
+    const floatGate = PREFERS_REDUCED_MOTION ? 0 : eased;
+    const floatPitch =
+      Math.sin((ft / FLOAT_PITCH_PERIOD) * Math.PI * 2) *
+      FLOAT_PITCH_AMP *
+      floatGate;
+    const floatRoll =
+      Math.sin((ft / FLOAT_ROLL_PERIOD) * Math.PI * 2) *
+      FLOAT_ROLL_AMP *
+      floatGate;
+    g.position.y +=
+      Math.sin((ft / FLOAT_BOB_PERIOD) * Math.PI * 2) * FLOAT_BOB_AMP * floatGate;
+
     // Auto-spin the dial mid-drop. Fires ONCE at local >= 0.3 so the
     // dial is mid-rotation when the keypad lands. KeypadModel's
     // DIAL_DAMP decays it naturally over the remaining drop frames,
@@ -379,10 +473,15 @@ function SceneContents({
     }
 
     if (isMobile) {
-      autoRotateY.current += dt * AUTOROTATE_SPEED;
-      g.rotation.x = BASE_TILT_X;
-      g.rotation.y = BASE_TILT_Y + autoRotateY.current;
-      g.rotation.z = BASE_TILT_Z;
+      // Hold the desktop resting pose (the 3/4 "laying on a desk" view)
+      // instead of a continuous Y spin. Matches how the keypad sits on
+      // desktop when the cursor is inactive. Touch has no cursor, so
+      // there is no face-tracking parallax; this static base tilt IS the
+      // desktop look at rest. The idle float (bob on position above +
+      // pitch/roll sway here) keeps it gently alive in place.
+      g.rotation.x = BASE_TILT_X + floatPitch;
+      g.rotation.y = BASE_TILT_Y;
+      g.rotation.z = BASE_TILT_Z + floatRoll;
       return;
     }
 
@@ -405,16 +504,20 @@ function SceneContents({
     const k = 1 - Math.exp(-dt * PARALLAX_LERP_RATE);
     tiltState.current.x += (targetX - tiltState.current.x) * k;
     tiltState.current.y += (targetY - tiltState.current.y) * k;
-    g.rotation.x = tiltState.current.x;
+    // Cursor-tracked tilt + the idle float sway riding on top, so the
+    // keypad keeps a gentle life even when the cursor is still.
+    g.rotation.x = tiltState.current.x + floatPitch;
     g.rotation.y = tiltState.current.y;
-    g.rotation.z = BASE_TILT_Z;
+    g.rotation.z = BASE_TILT_Z + floatRoll;
   });
 
   return (
     <>
       <RiceBlob cursorRef={cursorRef} glowOpacityRef={glowOpacityRef} />
-      {/* Neutral paper-white ambient. */}
-      <ambientLight intensity={0.5} color="#f4f3f0" />
+      {/* Cool paper-white ambient (was #f4f3f0 warm), which cast a
+          warm/muddy tint that clashed with the site's cool palette.
+          #f4f5f7 keeps the same brightness but reads cool/neutral. */}
+      <ambientLight intensity={0.5} color="#f4f5f7" />
       {/* Pure-white KEY from upper-right with shadow. */}
       <directionalLight
         position={[lightsKey.x, lightsKey.y, lightsKey.z]}
@@ -422,7 +525,7 @@ function SceneContents({
         color="#ffffff"
         castShadow
       />
-      {/* Soft white fill from lower-left — lifts shadow side, no
+      {/* Soft white fill from lower-left, lifts shadow side, no
           color cast. */}
       <directionalLight
         position={[lightsFill.x, lightsFill.y, lightsFill.z]}

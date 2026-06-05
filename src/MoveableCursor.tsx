@@ -5,7 +5,7 @@ interface Props {
   hot: boolean;
 }
 
-// Parallax tuning — drift the center dot in the direction of motion so a
+// Parallax tuning: drift the center dot in the direction of motion so a
 // fast flick has trail; small jitter from a steady hand stays at center.
 const TRAIL_STRENGTH = 5;
 const TRAIL_MAX_PX = 5;
@@ -14,7 +14,7 @@ const TARGET_DECAY = 0;
 
 /**
  * White ring + dot cursor for the *room* zone only. Visibility is
- * controlled by the parent — this component is unmounted entirely when
+ * controlled by the parent. This component is unmounted entirely when
  * the desk view is active (so the OS gets the native system cursor).
  * No per-event DOM-target detection here; that approach was fragile
  * against drei's `<Html>` portal restructuring.
@@ -81,7 +81,7 @@ export function MoveableCursor({ hot }: Props) {
       frame = requestAnimationFrame(tick);
     };
 
-    // Click reaction — adds .moveable-cursor--click for ~180ms on
+    // Click reaction: adds .moveable-cursor--click for ~180ms on
     // any pointer-down. The class drives a CSS keyframe that
     // pulses the ring (briefly shrinks then settles) so the cursor
     // visibly reacts to clicks instead of just staying expanded.
@@ -94,7 +94,7 @@ export function MoveableCursor({ hot }: Props) {
       rootEl.classList.add("moveable-cursor--click");
     };
     const onPointerUp = () => {
-      // Let the keyframe finish — animationend cleans the class up.
+      // Let the keyframe finish; animationend cleans the class up.
     };
     const onAnimEnd = (e: AnimationEvent) => {
       if (e.animationName === "moveable-cursor-click") {

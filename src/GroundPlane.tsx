@@ -6,7 +6,7 @@ import { useAssembly } from "./loading/AssemblyController";
 /**
  * Ground plane the room sits on. Procedural rice-dot grid rendered
  * directly in the fragment shader (no baked texture) so the dots are
- * pixel-sharp at every camera distance — a texture-based version
+ * pixel-sharp at every camera distance. A texture-based version
  * always reads as blurry because GPU mipmapping smooths sub-pixel
  * dots into ovals.
  *
@@ -22,21 +22,30 @@ import { useAssembly } from "./loading/AssemblyController";
  */
 
 const PLANE_SIZE = 60;
-// Procedural grid scale — denser grid for finer, more "rice"-like
+// Procedural grid scale: denser grid for finer, more "rice"-like
 // appearance. 300 dots over 60 units → 5 dots/unit.
 const GRID_COUNT = 300;
 // Dot radius as a fraction of one grid cell (cells go 0..1, dot
-// centered in cell). Smaller dots — feel like grains, not pebbles.
+// centered in cell). Smaller dots feel like grains, not pebbles.
 const DOT_RADIUS = 0.055;
-// Radial fade from plane center — tightened: smaller dense center,
+// Radial fade from plane center: tightened, smaller dense center,
 // faster falloff so dots feel concentrated under the room rather
 // than uniformly across the plane.
 const FADE_INNER = 0.05;
 const FADE_OUTER = 0.22;
-// Cursor dissolve — smaller hole.
+// Cursor dissolve: smaller hole.
 const DISSOLVE_RADIUS = 0.02;
 const DISSOLVE_FEATHER = 0.02;
 const DISSOLVE_LERP_RATE = 9.0;
+
+// The ground mesh is rendered at position [0,0,0] with rotation
+// [-PI/2, 0, 0] on a flat planeGeometry (local normal +Z). Rotating
+// -PI/2 about X maps that normal to world +Y with no Y offset, so the
+// visible surface is exactly the world plane y=0, normal up. We can
+// therefore intersect the cursor ray against an analytic plane instead
+// of raycasting the mesh — math-equivalent, allocation-free.
+const _groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _hit = new THREE.Vector3();
 
 // Custom ShaderMaterial: three.js only auto-injects the logdepthbuf
 // chunks into its built-in materials, so to keep this plane in the
@@ -85,7 +94,7 @@ const FRAGMENT = /* glsl */ `
     float r = distance(vUv, vec2(0.5));
     float fade = 1.0 - smoothstep(uFadeInner, uFadeOuter, r);
 
-    // Radial EXPANSION — only show dots whose distance from center
+    // Radial EXPANSION: only show dots whose distance from center
     // is within the current expansion frontier. uExpansion ramps
     // from 0 (no dots) → 1 (all dots up to FADE_OUTER visible) over
     // the post-climax animation. Small smoothstep band at the
@@ -93,7 +102,7 @@ const FRAGMENT = /* glsl */ `
     float frontier = uExpansion * uFadeOuter;
     float reveal = 1.0 - smoothstep(frontier, frontier + 0.025, r);
 
-    // Cursor dissolve — removes dots in a blob around mouseUV.
+    // Cursor dissolve: removes dots in a blob around mouseUV.
     float md = distance(vUv, uMouseUV);
     float dissolve = 1.0 - smoothstep(
       uDissolveRadius - uDissolveFeather,
@@ -103,7 +112,7 @@ const FRAGMENT = /* glsl */ `
 
     // Combine: dot presence × radial fade × radial reveal × inverse
     // dissolve. Alpha multiplier kept low (0.14) so the perceived
-    // plane tone reads as a light paper-cream — higher values push
+    // plane tone reads as a light paper-cream; higher values push
     // the mix toward uDot and the surface starts reading as muddy.
     float a = dotMask * fade * reveal * (1.0 - dissolve) * 0.25;
 
@@ -129,16 +138,12 @@ export function GroundPlane() {
       uFadeOuter: { value: FADE_OUTER },
       uDissolveRadius: { value: DISSOLVE_RADIUS },
       uDissolveFeather: { value: DISSOLVE_FEATHER },
-      // uBg lifted slightly above --wrapper-bg so the plane reads as
-      // a brighter, paper-toned surface that the room sits on. uDot
-      // is a warm walnut rather than a cool near-black — alpha-mixed
-      // against the bright bg it produces a paper-cream tone instead
-      // of muddy slate. Earlier draft had uBg = "#0" which Three.js
-      // rejects as invalid hex (logs a warning each render and falls
-      // back to black) — the plane then went solid dark once
-      // uOpacity ramped up. Spelled out fully now to keep it stable.
-      uBg: { value: new THREE.Color("#f4f3f0") },
-      uDot: { value: new THREE.Color("#3d342a") },
+      // uBg lifted slightly above --bg-page so the plane reads as a
+      // brighter cool-paper surface that the room sits on. uDot is a
+      // near-ink cool grey; alpha-mixed against the bright bg it
+      // produces a clean paper tone, no warm walnut cast.
+      uBg: { value: new THREE.Color("#f3f4f6") },
+      uDot: { value: new THREE.Color("#2a2c30") },
     }),
     [],
   );
@@ -175,17 +180,14 @@ export function GroundPlane() {
     const mesh = meshRef.current;
     if (!mat || !mesh) return;
 
-    // Material is fully opaque once it's on screen — the reveal is
+    // Material is fully opaque once it's on screen. The reveal is
     // driven by uExpansion, not opacity.
     mat.uniforms.uOpacity.value = 1;
 
-    // Radial expansion: starts at climaxReady (the moment the orange
-    // cover dome STARTS fading out), runs concurrently with the dome
-    // fade. The rice grains radiate outward through the dissolving
-    // orange — reads as the final beat of the orange-print loading
+    // Radial expansion starts when the orange cover dome begins
+    // fading out (climaxReady): rice grains radiate through the
+    // dissolving orange, reading as the final beat of the loading
     // animation rather than something that happens afterwards.
-    // ease-out cubic over ~900ms — by the time the dome is fully
-    // gone the rice has just settled.
     const EXPANSION_DURATION_MS = 7000;
     if (assembly.climaxReady) {
       if (expansionStartedRef.current == null) {
@@ -203,7 +205,11 @@ export function GroundPlane() {
       mat.uniforms.uExpansion.value = 0;
     }
 
-    // Raycast mouse → world point on plane → UV.
+    // Cursor ray → world point on the y=0 plane → UV.
+    // Perf: was O(mesh) BVH-less mesh raycast + per-frame Vector3/
+    //   intersection allocs each frame; now O(1) analytic ray↔plane
+    //   intersection reusing module-scope scratch (_groundPlane, _hit).
+    //   Math-equivalent for an axis-aligned y=0 plane.
     if (mousePx.current.x < -1000) {
       targetUV.set(-1, -1);
     } else {
@@ -212,9 +218,8 @@ export function GroundPlane() {
         -(mousePx.current.y / size.height) * 2 + 1,
       );
       raycaster.setFromCamera(tmpNdc, camera);
-      const hits = raycaster.intersectObject(mesh, false);
-      if (hits.length > 0) {
-        const p = hits[0]!.point;
+      const p = raycaster.ray.intersectPlane(_groundPlane, _hit);
+      if (p) {
         targetUV.set(
           (p.x + PLANE_SIZE / 2) / PLANE_SIZE,
           1 - (p.z + PLANE_SIZE / 2) / PLANE_SIZE,
@@ -224,7 +229,7 @@ export function GroundPlane() {
       }
     }
 
-    // Damped lerp toward the target UV — sharp cursor motion still
+    // Damped lerp toward the target UV. Sharp cursor motion still
     // results in a flowing dissolve trail rather than a teleporting
     // hole. Fixed-rate per-frame damping (memory: scroll/cursor
     // animations must be fixed-rate, never raw scroll-bound).

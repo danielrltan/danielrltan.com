@@ -1,6 +1,6 @@
 // scripts/bake-wireframes.mjs
 //
-// Reads public/room.glb directly (NOT the Blender scene manifest —
+// Reads public/room.glb directly (NOT the Blender scene manifest;
 // that file stores Blender pivot positions, which aren't always the
 // AABB centers of the resulting meshes, so wireframes computed from it
 // drift by up to half a mesh's dimension). Walks the glTF node tree,
@@ -13,13 +13,13 @@
 // that way), so no axis conversion is needed.
 //
 // Runs at `predev` and `prebuild`. The committed JSON file is the
-// source of truth at runtime — no GLB parsing happens in the browser.
+// source of truth at runtime; no GLB parsing happens in the browser.
 //
 // Implementation note: uses three.js's Matrix4 / Vector3 / Quaternion /
 // Box3 as math primitives. Those modules don't touch the DOM and work
 // in pure Node ESM, so this stays a zero-new-dependency script.
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, statSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Box3, Matrix4, Quaternion, Vector3 } from "three";
@@ -27,6 +27,7 @@ import { Box3, Matrix4, Quaternion, Vector3 } from "three";
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../..");
 const SRC = resolve(REPO_ROOT, "public/room.glb");
 const DST = resolve(REPO_ROOT, "public/wireframes.json");
+const SCRIPT = fileURLToPath(import.meta.url);
 
 // ----- Phase classification -------------------------------------------------
 
@@ -113,7 +114,7 @@ function shouldSkip(name) {
   return SKIP_PREFIXES.some((p) => name.startsWith(p));
 }
 
-// ----- GLB reader (header + JSON chunk only — we don't need the binary) -----
+// ----- GLB reader (header + JSON chunk only; we don't need the binary) -----
 
 const GLTF_MAGIC = 0x46546c67; // "glTF"
 const JSON_CHUNK_TYPE = 0x4e4f534a; // "JSON"
@@ -195,6 +196,20 @@ function round(v) {
 }
 
 function main() {
+  // Freshness check: skip re-baking when the manifest is newer than
+  // BOTH the GLB and this script. Runs on every `predev` / `prebuild`
+  // so the GLB-walking work (~200ms typical) is skipped if nothing
+  // upstream actually changed.
+  if (existsSync(DST) && existsSync(SRC)) {
+    const dstMs = statSync(DST).mtimeMs;
+    const srcMs = statSync(SRC).mtimeMs;
+    const scriptMs = existsSync(SCRIPT) ? statSync(SCRIPT).mtimeMs : 0;
+    if (dstMs >= srcMs && dstMs >= scriptMs) {
+      console.log(`Wireframes manifest up to date (${DST})`);
+      return;
+    }
+  }
+
   const gltf = readGLBJson(SRC);
   const scene = gltf.scenes?.[gltf.scene ?? 0];
   if (!scene || !Array.isArray(scene.nodes)) {

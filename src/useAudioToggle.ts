@@ -3,7 +3,7 @@ import { startAmbience, stopAmbience } from "./audio";
 
 /**
  * Shared audio on/off state. Module-level so the StatusBar icon and
- * the RoomHUD pill stay in sync — they're two views on the same
+ * the RoomHUD pill stay in sync: they're two views on the same
  * setting, not independent toggles.
  */
 let audioOn = false;

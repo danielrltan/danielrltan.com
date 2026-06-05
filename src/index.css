@@ -1,4 +1,4 @@
-/* Offbit (Power Type™) — local font files at /public/fonts/offbit/.
+/* Offbit (Power Type™): local font files at /public/fonts/offbit/.
    Three families: solid (Offbit), dotted (Offbit Dot), and the
    striped/stencil 101 variant (Offbit 101). */
 @font-face {
@@ -44,95 +44,191 @@
   font-display: swap;
 }
 
+/* ===================================================================
+ * DESIGN SYSTEM (READ FIRST, applies to every UI surface)
+ * ===================================================================
+ *
+ * Vibe: retro-futurism. Apple/IBM mid-80s industrial design swatches,
+ * Teenage Engineering spec sheets, NASA program documentation. Crisp,
+ * slightly cold, technical. **Cool white surfaces, near-black ink,
+ * signature orange accent.** That is the whole palette.
+ *
+ * HARD RULES
+ * ----------
+ *   1. NO warm cream backgrounds. Ever. If you see #f4f1ea, #f8f6f3,
+ *      #fbf8f4, #f8f5ee, #f4dec0, #fff8ec, etc., it's a bug. Replace
+ *      with var(--bg-page) or var(--bg-surface).
+ *   2. Use the tokens, not raw hex. New UI must pull from var(--*)
+ *      below. Raw hex is only acceptable when extending the system on
+ *      purpose (and then add a token).
+ *   3. Ink alphas: use the cool stack, rgba(13, 14, 16, ...). The old
+ *      rgba(26, 23, 20, ...) (walnut) and rgba(21, 23, 26, ...) are
+ *      legacy; convert when you see them.
+ *   4. Orange (#e87040) is the ONLY chromatic colour in UI. No teals,
+ *      purples, secondary accents. White + ink + orange. Period.
+ *
+ * TOKENS (defined below in :root)
+ * -------------------------------
+ *   Surfaces: --bg-page #eef0f3, --bg-surface #ffffff,
+ *             --bg-elevated #f7f8fa, --bg-deep #d8dade
+ *   Ink:      --ink #0d0e10, --ink-muted, --ink-faint, --ink-hairline
+ *   Accent:   --accent #e87040, --accent-hot #ff6a2a, --accent-tint
+ *   Type:     --font-display / --font-body / --font-mono Geist,
+ *             --font-dot Offbit Dot, --font-pixel Offbit
+ *   Sizes:    --fs-mono 11, --fs-meta 13, --fs-body 16,
+ *             --fs-lead 20→28, --fs-h2 48→108, --fs-h1 72→220
+ *   Space:    --space-1..9 (4, 8, 12, 16, 24, 32, 48, 64, 96)
+ *   Radii:    --r-chip 999px, --r-card 14px, --r-card-lg 20px
+ *   Motion:   --ease-out, --ease-soft; --t-fast 180, --t-base 280,
+ *             --t-slow 540
+ *
+ * COMPONENT NORMS
+ * ---------------
+ *   Chip/pill: cool-white rgba(238,240,243,0.82), blur(10) sat(120),
+ *              ink-hairline border, soft cool shadow, --r-chip.
+ *   Card:      --bg-surface (or --bg-elevated for secondary), 1px
+ *              ink-hairline border, sharp corners (TE/industrial) or
+ *              --r-card for newer surfaces.
+ *   Button:    border + color = --accent, transparent bg; on hover bg
+ *              fills accent, color goes white. Mono 11px 0.18em
+ *              uppercase 600.
+ *
+ * LOADING SCREEN
+ * --------------
+ *   html.loading-active paints the wrapper var(--accent) so the
+ *   orange cover-dome has no gap. Cool palette resumes when
+ *   loading-active drops.
+ *
+ * Found a deviation? Fix it. Add a one-line comment with what you
+ * replaced. The user explicitly rejected warm cream as the top issue.
+ * ===================================================================*/
+
 :root {
   color-scheme: dark;
 
   /* ------------------------------------------------------------------
-   * Typography — font families
-   * Single source of truth across the room shell, loading screen,
-   * boot sequence, and the desktop OS. Adding a face here propagates
-   * everywhere via `var(--font-*)`.
+   * Type: single source of truth via `var(--font-*)`.
+   * Offbit Dot/Offbit: local Power Type files for hero + display.
+   * Geist: industrial-modern grotesque (headings + body).
+   * --font-mono is Geist too (no monospace face); HUD labels, tech
+   * tags and readouts use it with tabular-nums for column alignment.
    * ----------------------------------------------------------------*/
-  /* Font pairing — retro-futurism with orange/white aesthetic.
-   * - Doto: pixel-dot display face for the hero name + select brand
-   *   moments. The dots ARE the design statement. Loud, distinctive,
-   *   sparing use only — never body type.
-   * - Geist (Vercel): industrial-modern grotesque, clean and refined.
-   *   Headings + body. Distinctive without being loud — pairs well
-   *   with the Offbit display face and the Teenage-Engineering-style
-   *   spec-sheet labels.
-   * - JetBrains Mono: tech tags, file paths, HUD micro-labels. */
-  /* Offbit Dot first (real Power Type font, local files), then mono. */
-  --font-dot: "Offbit Dot", "JetBrains Mono", monospace;
-  /* Solid Offbit variant for headings/buttons that want the retro
-   * feel without the pixel-dot rendering. */
-  --font-pixel: "Offbit", "JetBrains Mono", monospace;
+  --font-dot: "Offbit Dot", monospace;
+  --font-pixel: "Offbit", monospace;
   --font-display:
     "Geist", system-ui, -apple-system, sans-serif;
   --font-body:
     "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono:
-    "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo,
-    Consolas, monospace;
+    "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  /* ------------------------------------------------------------------
-   * Typography — HUD type scale
-   * Only the sizes/tracking actually used by the system labels (loading
-   * caption, click-to-begin, hint banner, boot-sequence rows). Window
-   * content uses freeform sizes since each window is its own world.
-   * ----------------------------------------------------------------*/
-  --text-xs: 10px;       /* microcopy, status sub-rows */
-  --text-sm: 11px;       /* in-OS hint banner */
-  --text-base: 12px;     /* canonical HUD label (loading, click-to-begin) */
+  /* HUD micro-scale (loading caption, hint banner, boot-sequence). */
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-base: 12px;
+  --tracking-wide: 2px;
+  --tracking-wider: 3px;
+  --tracking-widest: 4px;
 
-  --tracking-wide: 2px;    /* hint banner */
-  --tracking-wider: 3px;   /* secondary HUD */
-  --tracking-widest: 4px;  /* canonical HUD label */
-
-  /* ------------------------------------------------------------------
-   * HUD palette
-   * The pre-room overlay (boot-screen → LoadingScreen → click-to-begin)
-   * shares the warm amber. The in-OS overlay (hint banner) uses cream
-   * to read against the warm cream OS chrome. `*-soft` variants are
-   * the same hue at low alpha for text-shadow glows.
-   * ----------------------------------------------------------------*/
+  /* HUD palette: used by the loading/boot overlay. */
   --hud-amber: #ffb077;
   --hud-amber-soft: rgba(255, 176, 119, 0.2);
   --hud-cream: #f0e0d0;
 
-  /* ------------------------------------------------------------------
-   * Wrapper palette (post-redesign)
-   * Cream surround + dark walnut for legible labels against it. Used
-   * by anything that sits on top of the cream wrapper / aurora bg
-   * (click-to-begin, MoveableCursor, RoomHUD, scroll prompt, hint
-   * banner — basically everything outside the warm-lit room interior).
-   * ----------------------------------------------------------------*/
-  /* Portfolio palette — cool industrial light-grey with orange
-   * accents. Shifted from warm cream (#f8f6f3) → cool grey
-   * (#ecedef) to match the product-photography aesthetic of the
-   * reference (clean white-grey backdrop with baked shadows + soft
-   * gradients). Ink slightly cooler to match. Orange accent stays. */
-  --wrapper-bg: #ecedef;
-  --wrapper-bg-soft: #f4f5f7;        /* near-white */
-  /* Was #d9dbdf (slight cool-blue tint that read as a "blueish
-     gradient" — even though it's a solid color, the blue cast +
-     adjacency to the lighter wrapper-bg created a perceptual
-     gradient between sections). Shifted to a NEUTRAL grey with
-     equal R/G/B so the footer / keypad-section reads as plain
-     warm-neutral grey, not blue-tinted. */
-  --wrapper-bg-deep: #d6d4d2;
-  --wrapper-ink: #15171a;            /* cool near-black */
-  --wrapper-ink-soft: rgba(21, 23, 26, 0.6);
-  --wrapper-ink-faint: rgba(21, 23, 26, 0.12);
-  --accent: #e87040;                  /* orange accent (links, tags, highlights) */
-  --accent-soft: rgba(232, 112, 64, 0.12);
+  /* -- Surfaces ------------------------------------------------------ */
+  --bg-page: #eef0f3;                /* cool off-white wrapper */
+  --bg-surface: #ffffff;             /* pure white cards / panels */
+  --bg-elevated: #f7f8fa;            /* slight elevation tint */
+  --bg-deep: #d8dade;                /* deeper cool grey (footer) */
+
+  /* -- Ink (cool near-black) ---------------------------------------- */
+  --ink: #0d0e10;
+  --ink-muted: rgba(13, 14, 16, 0.62);
+  --ink-faint: rgba(13, 14, 16, 0.32);
+  --ink-hairline: rgba(13, 14, 16, 0.10);
+
+  /* -- Accent (orange: only chromatic colour in UI) ---------------- */
+  --accent: #e87040;
+  --accent-hot: #ff6a2a;
+  --accent-tint: rgba(232, 112, 64, 0.10);
+  --accent-soft: rgba(232, 112, 64, 0.12);  /* legacy alias */
+  /* Accent darkened toward ink for SMALL text that must pass WCAG AA.
+     Base --accent (#e87040) on --bg-page is only ~2.64:1, fine for
+     large/bold display, fails 4.5:1 for small text. This mix lands
+     ~5:1 and stays on-palette (accent toward ink, no new hue). Use it
+     for accent-colored labels/eyebrows/numerals at body size. */
+  --accent-text: color-mix(in srgb, var(--accent) 66%, var(--ink));
+
+  /* -- Spacing scale ------------------------------------------------ */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+
+  /* -- Radii -------------------------------------------------------- */
+  --r-chip: 999px;
+  --r-card: 14px;
+  --r-card-lg: 20px;
+
+  /* -- Motion easings + durations -------------------------------- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t-fast: 180ms;
+  --t-base: 280ms;
+  --t-slow: 540ms;
+
+  /* Editorial type scale (separate from `--text-*` HUD micro-scale). */
+  --fs-mono: 11px;
+  --fs-meta: 13px;
+  --fs-body: 16px;
+  --fs-lead: clamp(20px, 2.1vw, 28px);
+  --fs-h2: clamp(48px, 7.5vw, 108px);
+  --fs-h1: clamp(72px, 13vw, 220px);
+
+  /* Legacy aliases: prefer the `--bg-*` / `--ink-*` tokens above in
+     new CSS. Kept so existing call-sites keep working. */
+  --wrapper-bg: var(--bg-page);
+  --wrapper-bg-soft: var(--bg-elevated);
+  --wrapper-bg-deep: var(--bg-deep);
+  --wrapper-ink: var(--ink);
+  --wrapper-ink-soft: var(--ink-muted);
+  --wrapper-ink-faint: var(--ink-hairline);
+
+  /* Defaults for scroll-choreography vars (overwritten on every
+     scroll-rAF by installScrollChoreography() in App.tsx).
+     --hero-to-about (0..1) drives the awwwards-style hero→about
+     disassembly: wordmark dissolves via a vertical mask-image erode,
+     ring contracts + intensifies, then a thin orange scan-band sweeps
+     across the viewport at the handoff. See hero-composition.css for
+     the per-element pipelines. */
+  --hero-opacity: 1;
+  --hero-to-about: 0;
+  --canvas-opacity: 0;
+  --canvas-pointer-events: none;
+  --content-opacity: 0;
+}
+
+/* Scroll-driven layers (hero signature canvas, room canvas wrapper)
+   consume CSS variables instead of receiving opacity via React state
+   on every scroll frame. Keeps App.tsx from re-rendering on scroll. */
+.scroll-layer--hero {
+  opacity: var(--hero-opacity, 1);
+}
+.scroll-layer--canvas {
+  opacity: var(--canvas-opacity, 0);
+  pointer-events: var(--canvas-pointer-events, none);
 }
 
 * {
   box-sizing: border-box;
 }
 
-/* Disable text + image selection globally — including inside the
+/* Disable text + image selection globally, including inside the
    monitor OS. The site is an experience, not a document; selection
    highlights only get triggered by accident (e.g. double-click on a
    widget label) and break the polish. Inputs / textareas / contenteditable
@@ -162,7 +258,7 @@ textarea,
   user-select: text;
 }
 
-/* Thin white chevron drifting down + fading away above the monitor —
+/* Thin white chevron drifting down + fading away above the monitor.
    non-verbal "click here" hint. The keyframe drives the drop + fade
    pulse; outer wrapper handles show/hide via opacity. See
    `MonitorClickHint` in Room.tsx for the 3D anchor. */
@@ -190,15 +286,12 @@ body,
   margin: 0;
   padding: 0;
   width: 100%;
-  /* Solid wrapper-bg. Previously a 3-stop vertical gradient (soft →
-     bg → deep) — read as overworked / vibecoded. Plain cool grey is
-     cleaner and lets section bgs speak. */
-  background: var(--wrapper-bg);
+  background: var(--bg-page);
   font-family: var(--font-body);
-  color: var(--wrapper-ink);
+  color: var(--ink);
 }
 
-/* Subtle film grain — a tiny SVG noise overlay across the entire
+/* Subtle film grain: a tiny SVG noise overlay across the entire
    wrapper bg. Adds material warmth and a hint of analog texture
    without overwhelming the page. Only ~3% opacity. */
 body::before {
@@ -212,43 +305,45 @@ body::before {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.85 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-/* REC dot pulse — used by the StatusBar live indicator. */
+/* REC dot pulse: used by the StatusBar live indicator. */
 @keyframes status-rec-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.35; }
 }
 html, body { min-height: 100%; }
 /* Horizontal scroll should never appear; vertical scroll drives the
-   portfolio. */
-html { overflow-x: hidden; overflow-y: auto; }
-body { overflow-x: hidden; }
+   portfolio. `clip` (vs `hidden`) kills any horizontal overflow WITHOUT
+   creating a scroll container, so position:sticky / fixed chrome and
+   the GSAP pins keep working, and there's no stray sideways scrollbar
+   from a sub-pixel-wide section. Vertical stays scrollable.
+   overscroll-behavior-y: contain stops mobile pull-to-refresh and
+   scroll-chaining into parent/overlay surfaces. text-size-adjust pins
+   iOS Safari from auto-inflating body text on rotate. */
+html {
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body {
+  overflow-x: clip;
+  overscroll-behavior-y: contain;
+}
 
-/* App wrapper background. The wrapper-bg is what shows behind the
-   3D canvas + section content. During loading we want it to match
-   the orange cover dome (#e87040, set on body via index.html) so
-   there's no white-grey flash between #boot-screen being removed
-   and the cover dome painting. The transition smooths the post-
-   loading shift. main.tsx adds html.loading-active synchronously
-   before React mounts so this rule applies on the very first paint. */
+/* During loading the wrapper paints orange so there's no white flash
+   between #boot-screen removal and the cover-dome painting.
+   main.tsx adds html.loading-active synchronously before React mounts. */
 .app-wrapper {
-  background: var(--wrapper-bg);
+  background: var(--bg-page);
   transition: background 350ms ease;
 }
 html.loading-active .app-wrapper {
-  background: #e87040;
+  background: var(--accent);
 }
 
-/* (Removed: html { scroll-snap-type: y proximity } and the keypad's
-   scroll-snap-align rule. They paired together to give the keypad
-   an OS-level snap, but the keypad now uses GSAP ScrollTrigger pin
-   for the dwell — see src/portfolio/Keypad.tsx. Native snap fights
-   ScrollTrigger's `scrub: true` because the snap-stop forces a
-   non-monotonic scroll position that ScrollTrigger interprets as
-   a reversal mid-pin.) */
-
-/* Hide the native scrollbar. The custom ScrollRail on the right
-   edge is the only scroll indicator — the OS scrollbar duplicates
-   it and breaks the editorial feel. */
+/* Hide native scrollbars. ScrollRail on the right edge is the only
+   scroll indicator. */
 html {
   scrollbar-width: none;        /* Firefox */
   -ms-overflow-style: none;     /* IE / old Edge */
@@ -273,17 +368,10 @@ html.loading-active .moveable-cursor {
   display: none;
 }
 
-/* Lock the page completely during loading so the user can't scroll,
-   touch-pan, pinch-zoom, or otherwise interact with anything behind
-   the loading screen. The AssemblyHUD already blocks pointer events
-   via `pointer-events: auto` on a full-viewport overlay, but window-
-   level wheel/touchstart/scroll listeners bypass DOM hit-testing
-   entirely — those events still fire and would start the intro
-   tilt + page scroll while the wireframes were still painting.
-   `overflow: hidden` on the html scroller kills the scroll axis;
-   `touch-action: none` on body suppresses native pan/pinch gestures.
-   The window-level listeners in App.tsx ALSO check `loading-active`
-   and bail before firing startTransition, belt-and-braces. */
+/* Lock the page during loading. Window-level wheel/touch listeners
+   bypass DOM hit-testing so we need both overflow:hidden AND
+   touch-action:none. App.tsx's input handlers ALSO check
+   loading-active before firing the intro, belt-and-braces. */
 html.loading-active,
 html.loading-active body {
   overflow: hidden;
@@ -291,28 +379,9 @@ html.loading-active body {
   overscroll-behavior: none;
 }
 
-/* The right-side overlay panel that paints over the canvas during the
-   scroll-driven 100vw→50vw transition has no business appearing during
-   the orange-print loading sequence. If any non-zero scrollProgress
-   leaks through (browser-restored scroll position before our manual
-   reset effect runs, or any other path), the overlay would slice the
-   loading screen into "orange on the left, wrapper-grey on the right"
-   — exactly the visual bug the user reported. Hiding it outright while
-   loading-active is on is simpler than trying to gate scrollProgress
-   to zero across every possible entry path. */
-html.loading-active .canvas-overlay-panel {
-  display: none !important;
-}
-
-/* Loading state — hero brand mark, blinking cat, and scroll hint
-   stay hidden during loading (the orange-print sequence is the
-   only brand moment; chrome doesn't compete with it). When the
-   climax completes and `loading-active` is removed from <html>,
-   these elements fade in via a ONE-SHOT keyframe animation. Using
-   an animation (not a transition) means scroll-driven inline
-   opacity updates on .hero-mark / .scroll-hint don't inherit the
-   transition timing — those still feel instant after the initial
-   fade-in completes. */
+/* During loading the chrome stays hidden, then fades in via a
+   ONE-SHOT keyframe (not a transition) so subsequent scroll-driven
+   inline opacity updates don't inherit the transition timing. */
 @keyframes hero-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -329,21 +398,13 @@ html.loading-active .scroll-hint {
   opacity: 0 !important;
   pointer-events: none !important;
 }
-/* Status bar + scroll rail are hidden behind the sceneReady gate
-   already (they're conditionally rendered, not just opacity-toggled),
-   so they don't need a transition rule here. Keep the display:none
-   safety so no stragglers slip onto the orange screen. */
 html.loading-active .status-bar,
 html.loading-active .scroll-rail {
   display: none !important;
 }
-/* (Previously inverted the brand cat to white during loading.
-   Removed — the filter transition flashed/flickered on every blink
-   tick because the cat is two stacked <img> elements whose opacity
-   is toggled rapidly. Letting the cat stay orange on orange is
-   the lesser evil.) */
 
-/* Custom pointer after the intro — see MoveableCursor.tsx */
+/* Custom pointer (see MoveableCursor.tsx). JS toggles opacity for the
+   room/OS cursor-mode swap. */
 .moveable-cursor {
   position: fixed;
   left: 0;
@@ -353,9 +414,6 @@ html.loading-active .scroll-rail {
   height: 30px;
   pointer-events: none;
   will-change: transform, opacity;
-  /* Fades out smoothly when the pointer enters the OS (`data-os-root`)
-     so the cursor mode swap between room (custom) and PC (system) doesn't
-     pop. The JS toggles `opacity: 0/1` on the element. */
   transition: opacity 0.18s ease;
 }
 
@@ -363,24 +421,18 @@ html.loading-active .scroll-rail {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  /* Orange ring, no outline shadow. */
   border: 1.5px solid var(--accent);
   transition:
     transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
     opacity 0.2s ease;
 }
 
-/*
- * Wrapper is parallax-shifted by JS via the --dot-x / --dot-y custom props,
- * so the inner dot's own `transform: scale(...)` for the hot state doesn't
- * fight with the parallax translate.
- */
+/* Wrapper is parallax-shifted by JS via --dot-x/--dot-y; the inner
+   dot's own scale for the hot state doesn't fight with the translate. */
 .moveable-cursor__dot-shift {
   position: absolute;
   left: 50%;
   top: 50%;
-  /* Idle dot halved (was 7px). Tighter, more precise feel against
-     the expanded ring. */
   width: 3.5px;
   height: 3.5px;
   margin: -1.75px 0 0 -1.75px;
@@ -389,11 +441,10 @@ html.loading-active .scroll-rail {
 }
 
 .moveable-cursor__dot {
-  display: block; /* span is inline by default — width/height would be ignored */
+  display: block; /* span is inline by default; w/h would be ignored */
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  /* Orange center dot (was rgba(255,255,255,0.95)). */
   background: var(--accent);
   transition:
     transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
@@ -406,18 +457,10 @@ html.loading-active .scroll-rail {
 }
 
 .moveable-cursor--hot .moveable-cursor__dot {
-  /* Dot stays the same size in the hot state — only the ring
-     expands. Was scale(0.45) which shrank the already-tiny idle dot
-     to almost nothing. */
   transform: scale(1);
   opacity: 1;
 }
 
-/* Click reaction — keyframe pulse on the ring + dot. User noted the
-   v1 inner-dot animation hit 2.4x scale which read 'way too big.'
-   Toned down to a subtle ring-shrink + small dot bump:
-     ring: scale 0.78 at peak (was 0.55)
-     dot:  scale 1.35 at peak (was 2.4) */
 .moveable-cursor--click .moveable-cursor__ring {
   animation: moveable-cursor-click 220ms cubic-bezier(0.2, 0.7, 0.3, 1.2);
 }
@@ -435,13 +478,8 @@ html.loading-active .scroll-rail {
   100% { transform: scale(1); opacity: 1; }
 }
 
-/* ---------------------------------------------------------------- */
-/* Glass HUD buttons — shared reactivity for the floating pill /
-/* icon-only buttons (StatusBar reset + mute, JumpToTop, etc.).
-/* Inline styles in those components were missing :hover / :active,
-/* which read as a dead UI even though the click worked. This adds
-/* a subtle lift on hover + press scale.
-/* ---------------------------------------------------------------- */
+/* Glass HUD buttons: hover/active reactivity for inline-styled
+   icon buttons (StatusBar reset + mute, JumpToTop). */
 .hud-btn {
   transition:
     background 0.18s ease,
@@ -451,7 +489,7 @@ html.loading-active .scroll-rail {
     box-shadow 0.18s ease;
 }
 .hud-btn:hover {
-  background: rgba(232, 112, 64, 0.12) !important;
+  background: var(--accent-tint) !important;
   border-color: rgba(232, 112, 64, 0.55) !important;
   color: var(--accent) !important;
   box-shadow: 0 4px 14px -8px rgba(232, 112, 64, 0.55);
@@ -462,4 +500,89 @@ html.loading-active .scroll-rail {
 .hud-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ===================================================================
+ * GLOBAL UTILITIES + A11Y SAFETY NETS (added in the pro-max sweep)
+ * ===================================================================*/
+
+/* Single global screen-reader-only utility. Sections previously
+   redefined this recipe locally (Keypad, About, Hero, Mac); they can
+   migrate to this class. DOM-real + focusable-safe, off-screen. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* sr-only that becomes visible on focus (skip-link / hidden-control
+   reveal, for keyboard users tabbing onto otherwise-hidden controls. */
+.sr-only-focusable:focus,
+.sr-only-focusable:focus-visible {
+  position: fixed;
+  width: auto;
+  height: auto;
+  margin: 0;
+  clip: auto;
+  overflow: visible;
+  white-space: normal;
+}
+
+/* Global keyboard focus ring for in-section links. Section content
+   links (.portfolio-section a) had no :focus-visible state; keyboard
+   users got no indication of focus. One accent ring, everywhere. */
+.portfolio-section a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* Reduced-motion global safety net. Individual sections handle their
+   own scroll choreography (the heavy GSAP/Lenis work can't be killed
+   by CSS alone (those have JS matchMedia paths), but this catches any
+   stray CSS transition/animation a section forgot to gate. Near-zero
+   durations rather than 0 so state still settles without a visible
+   tween. Honors the user's motion preference site-wide. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ===================================================================
+ * GLOBAL MOBILE FOUNDATION (<=768px, matches useIsMobile breakpoint)
+ * ===================================================================
+ * Touch-first chrome rules. Design tokens are untouched; this only
+ * adds mobile ergonomics: a 16px body-text floor (iOS zooms any input
+ * under 16px on focus, and sub-16px body copy fails WCAG comfort on
+ * small screens), and safe-area helper custom-properties consumed by
+ * the fixed chrome (StatusBar / RoomHUD / JumpToTop) so notch + home-
+ * indicator insets are respected. viewport-fit=cover in index.html is
+ * what unlocks env(safe-area-inset-*). */
+:root {
+  /* Resolve to 0 on devices/browsers without notches. Inline styles in
+     the HUD components add these via calc() so they degrade gracefully. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+@media (max-width: 768px) {
+  /* Body-text floor: guarantee ≥16px base on phones so iOS doesn't
+     auto-zoom and copy stays legible. Sections set their own type, but
+     the document default must never drop below 16px on mobile. */
+  body {
+    font-size: max(16px, var(--fs-body));
+  }
 }

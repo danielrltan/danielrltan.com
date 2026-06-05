@@ -6,7 +6,7 @@ import "./index.css";
 // Mark <html> as loading-active BEFORE React mounts. Without this,
 // there's a one-frame window between (a) the inline `#boot-screen`
 // being removed by AssemblyController on mount, and (b) the cover
-// dome inside the canvas painting orange — during which the App
+// dome inside the canvas painting orange, during which the App
 // wrapper's wrapper-bg (cool grey) shows through, reading as a
 // white flash. With the class set synchronously, the CSS keeps the
 // wrapper orange until climaxDone fires.
@@ -21,7 +21,7 @@ document.documentElement.classList.add("loading-active");
 // non-zero scrollY, and any Lenis initialization down the tree would
 // later sync to whatever the browser left in the scroller. Setting
 // `scrollRestoration = "manual"` here also covers the very first
-// load of a session — when scrollRestoration is set in a useEffect,
+// load of a session: when scrollRestoration is set in a useEffect,
 // the FIRST refresh of the session still gets the browser's
 // auto-restore because the manual flag doesn't exist yet at that
 // point in the navigation lifecycle.
@@ -29,7 +29,7 @@ document.documentElement.classList.add("loading-active");
 // auto-restores the user's prior scroll position on refresh. GSAP
 // ScrollTrigger (used in src/portfolio/Keypad.tsx) flips this property
 // to "auto" during its internal `_clearScrollMemory` / refresh cycles
-// — and whichever value happens to be the LAST one set wins for the
+// Whichever value happens to be the LAST one set wins for the
 // next reload. Setting it once at boot isn't enough; we override the
 // property's setter so any attempt to flip it to "auto" is silently
 // coerced back to "manual". GSAP doesn't actually depend on the value

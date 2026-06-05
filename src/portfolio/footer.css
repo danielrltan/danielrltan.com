@@ -1,4 +1,4 @@
-/* Footer — full-width band at the bottom of the page. Holds the
+/* Footer: full-width band at the bottom of the page. Holds the
    jump-link grid, colophon, copyright, and the signature replay
    (renders fixed-position over the viewport while the footer is in
    view; IntersectionObserver fires the replay once).
@@ -6,14 +6,18 @@
 
 .portfolio-footer {
   position: relative;
-  /* Solid wrapper-bg-deep (was a 2-stop vertical gradient down to
-     #c8cacf — felt overdesigned). Separation from the keypad section
-     comes from the 1px walnut hairline on top. */
-  background: var(--wrapper-bg-deep);
-  border-top: 1px solid rgba(21, 23, 26, 0.12);
+  /* Solid bg-deep (was a 2-stop vertical gradient down to #c8cacf;
+     felt overdesigned). Separation from the keypad section comes from
+     the 1px ink hairline on top. */
+  background: var(--bg-deep);
+  border-top: 1px solid var(--ink-hairline);
   padding: 96px 6vw 48px;
   margin-top: 0;
   z-index: 5;
+  /* CRITICAL: the parent <main> sets pointer-events:none so the 3D
+     canvas stays interactive. Without this the footer's links and
+     jump buttons are un-clickable AND un-focusable. Re-enable here. */
+  pointer-events: auto;
 }
 
 .footer-inner {
@@ -30,13 +34,18 @@
 }
 
 .footer-col-label {
+  /* Was an <div>; now an <h3> for landmark structure; strip UA
+     heading margins/size so the visual treatment is unchanged. */
+  margin: 0 0 22px 0;
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.28em;
   text-transform: uppercase;
-  color: var(--accent);
+  /* Base --accent (#e87040) on the bg-deep band is < 2.6:1, fails AA
+     for this 10.5px label. --accent-text is the on-palette darkened
+     orange that clears 4.5:1. */
+  color: var(--accent-text);
   font-weight: 600;
-  margin-bottom: 22px;
 }
 
 /* Elsewhere column carries the signature canvas above its label.
@@ -57,9 +66,9 @@
   max-width: 100%;
   overflow: hidden;
 }
-/* Push the label+nav block to the bottom of the elsewhere column
-   so its last item (Resume) aligns vertically with the last item
-   of the index column (Socials). */
+/* Push the label+nav block to the bottom of the elsewhere column so
+   its last link (Résumé) aligns vertically with the index column's
+   last link (Elsewhere / 06). */
 .footer-col-elsewhere .footer-col-label {
   margin-top: auto;
 }
@@ -74,10 +83,14 @@
   display: inline-flex;
   align-items: baseline;
   gap: 14px;
-  padding: 6px 0;
+  /* Slight horizontal padding so the focus ring + hover offset have
+     breathing room and the hit target is comfortable. */
+  padding: 6px 6px;
+  margin-left: -6px;
   background: transparent;
   border: 0;
-  color: var(--wrapper-ink);
+  border-radius: 4px;
+  color: var(--ink);
   font-family: var(--font-display);
   font-size: 17px;
   font-weight: 500;
@@ -85,34 +98,50 @@
   cursor: pointer;
   text-decoration: none;
   width: max-content;
-  transition: color 0.15s ease;
+  transition: color var(--t-fast, 0.15s) var(--ease-out, ease),
+    transform var(--t-fast, 0.15s) var(--ease-out, ease);
 }
 .footer-link:hover {
-  color: var(--accent);
+  color: var(--accent-hot);
+  /* Editorial nudge toward the glyph: purely transform, no layout
+     shift, and disabled under prefers-reduced-motion (global block). */
+  transform: translateX(3px);
+}
+/* Visible keyboard focus ring (was entirely absent; links had zero
+   focus indicator). Accent ring + tint backplate reads clearly on the
+   bg-deep band without relying on colour alone. */
+.footer-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  color: var(--accent-text);
 }
 .footer-link-num {
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.18em;
-  color: var(--wrapper-ink-soft);
+  color: var(--ink-muted);
   font-weight: 500;
   min-width: 18px;
 }
-.footer-link:hover .footer-link-num {
-  color: var(--accent);
+.footer-link:hover .footer-link-num,
+.footer-link:focus-visible .footer-link-num {
+  color: var(--accent-text);
 }
 
+/* Colophon is now a real description list (<dl> of <dt>/<dd> pairs)
+   for correct key→value semantics. UA margins reset below. */
 .footer-meta {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
+  margin: 0;
 }
 .footer-meta > div {
   display: grid;
   grid-template-columns: 90px 1fr;
   gap: 16px;
   align-items: baseline;
-  border-bottom: 1px dotted rgba(21, 23, 26, 0.10);
+  border-bottom: 1px dotted var(--ink-hairline);
   padding-bottom: 10px;
 }
 .footer-meta > div:last-child {
@@ -123,13 +152,14 @@
   font-size: 10.5px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--wrapper-ink-soft);
+  color: var(--ink-muted);
   font-weight: 600;
 }
 .footer-meta-val {
+  margin: 0; /* reset UA <dd> indent */
   font-family: var(--font-body);
   font-size: 14px;
-  color: var(--wrapper-ink);
+  color: var(--ink);
   letter-spacing: -0.01em;
 }
 
@@ -138,35 +168,104 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-top: 1px solid rgba(21, 23, 26, 0.10);
+  gap: 16px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--ink-hairline);
   padding-top: 28px;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--wrapper-ink-soft);
+  color: var(--ink-muted);
   font-weight: 500;
 }
 .footer-copy {
-  color: var(--wrapper-ink);
+  color: var(--ink);
 }
 .footer-mark {
-  opacity: 0.7;
+  /* Was opacity:0.7 stacked on the muted ink (~0.43 effective alpha)
+     which dropped below AA on the bg-deep band. Use --ink-muted
+     directly; it is the AA-safe muted token. */
+  color: var(--ink-muted);
+}
+
+/* Intermediate: keep Colophon's wider column but tighten the gap so
+   the three columns don't crowd between ~769–1024px. */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .footer-grid {
+    gap: 40px;
+  }
 }
 
 @media (max-width: 768px) {
   .portfolio-footer {
-    padding: 72px 6vw 36px;
+    /* Bottom pad must clear BOTH the home-indicator inset AND the fixed
+       HUD pills: the reset/sound pills (bottom-left) + jump-to-top
+       (bottom-right) sit ~14px up and are 44px tall, i.e. a ~58px chrome
+       strip across the bottom. The footer is the terminal section where
+       scroll STOPS, so its copyright row was left resting BEHIND those
+       pills (the "MADE WITH ORANGE CRAYON" tagline was clipped). 80px +
+       inset leaves a comfortable margin above the chrome. */
+    padding: 72px 6vw calc(80px + env(safe-area-inset-bottom, 0px));
     margin-top: 48px;
   }
   .footer-grid {
+    /* Multi-column footer collapses to a single stacked column on
+       phones. 1fr keeps each column full-width so nothing forces a
+       horizontal scroll. */
     grid-template-columns: 1fr;
     gap: 40px;
     margin-bottom: 56px;
   }
+  /* In the stacked layout there is no shared cell height to align
+     bottoms against, so the bottom-anchoring margin is moot; reset it
+     so the Elsewhere label sits directly under its signature. */
+  .footer-col-elsewhere .footer-col-label {
+    margin-top: 0;
+  }
+
+  /* TOUCH TARGETS: on desktop the jump-link buttons + elsewhere links
+     render ~34px tall (6px padding + ~22px line-box), BELOW the 44px
+     touch floor. Bump to a full 44px min-height with vertical padding
+     so the whole cell is tappable, and centre the label vertically.
+     The .footer-nav `gap: 8px` already gives the required ≥8px spacing
+     between adjacent targets. */
+  .footer-link {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    /* baseline alignment collapses the line box on a multi-line flex
+       item; switch to center so num + label sit mid-target. */
+    align-items: center;
+  }
+
   .footer-bottom {
     flex-direction: column;
+    align-items: center;
     gap: 12px;
     text-align: center;
+  }
+}
+
+/* Narrow phones (360×640 and below): tighten the outer padding a touch
+   so the stacked columns keep comfortable margins without crowding,
+   and keep the 44px touch floor intact. */
+@media (max-width: 400px) {
+  .portfolio-footer {
+    /* Same HUD-pill clearance as the ≤768 block (see note there). */
+    padding: 64px 5vw calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+  .footer-grid {
+    gap: 36px;
+  }
+}
+
+/* Reduced motion: drop the hover translate so no element shifts for
+   users who opt out of motion. (Transitions are already neutralised by
+   the global reduced-motion reset in index.css; this kills the static
+   transform target too.) */
+@media (prefers-reduced-motion: reduce) {
+  .footer-link:hover {
+    transform: none;
   }
 }

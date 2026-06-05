@@ -9,7 +9,7 @@ automatically. Filenames the CSS expects:
 - `OffbitDot-Regular.{woff2,woff,otf}`
 - `OffbitDot-Bold.{woff2,woff,otf}`
 
-If your downloaded filenames differ, rename them to match — or
+If your downloaded filenames differ, rename them to match, or
 update the `src:` paths in `src/index.css` accordingly.
 
 If multiple formats aren't available, any one of woff2 / woff /

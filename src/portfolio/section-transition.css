@@ -1,11 +1,11 @@
-/* Bridge between BitsAndPieces and Keypad — single-row marquee.
+/* Bridge between BitsAndPieces and Keypad: single-row marquee.
    Pure CSS animation. z-index 0 so the pinned Keypad floats above
    when its pin engages. */
 
 .section-transition {
   position: relative;
   width: 100vw;
-  /* Bridge downsized by 1.2x per user feedback — 35vh → 29vh,
+  /* Bridge downsized by 1.2x per user feedback: 35vh to 29vh,
      240px → 200px. Text scales the same factor below. */
   height: 29vh;
   min-height: 200px;
@@ -13,8 +13,8 @@
   align-items: center;
   overflow: hidden;
   background: var(--wrapper-bg);
-  border-top: 1px solid rgba(21, 23, 26, 0.07);
-  border-bottom: 1px solid rgba(21, 23, 26, 0.07);
+  border-top: 1px solid rgba(13, 14, 16, 0.07);
+  border-bottom: 1px solid rgba(13, 14, 16, 0.07);
   z-index: 0;
 }
 

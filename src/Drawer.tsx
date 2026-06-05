@@ -12,7 +12,7 @@ import { playOneShot } from "./audio";
 export interface DrawerData {
   uuid: string;
   name: string;
-  /** Drawer's authored world position — body sits here when fully closed. */
+  /** Drawer's authored world position: body sits here when fully closed. */
   bodyPos: [number, number, number];
   meshLocalPos: [number, number, number];
   meshLocalQuat: [number, number, number, number];
@@ -46,13 +46,13 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
   // Snap state.
   const snapping = useRef(false);
   const targetZ = useRef(closedZ);
-  // Last settled endpoint — used to play the open/close sfx only on actual
+  // Last settled endpoint, used to play the open/close sfx only on actual
   // state changes (not on every release that re-confirms the same side).
   const lastSettledZ = useRef(closedZ);
   // Set on pointer down when the drawer is currently closed; cleared once
   // the drawer has actually moved far enough for the open sfx to fire.
   const pendingOpenSfx = useRef(false);
-  // First-motion threshold — how far the drawer must move out of "closed"
+  // First-motion threshold: how far the drawer must move out of "closed"
   // before the open sound triggers. Stops a stray click from playing it.
   const OPEN_SFX_TRIGGER_DELTA = 0.01;
 
@@ -89,7 +89,7 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
         openZ,
         closedZ,
       );
-      // First-motion open sfx — fires the moment a closed drawer is pulled
+      // First-motion open sfx: fires the moment a closed drawer is pulled
       // out far enough to count as a real drag (not a stray click).
       if (
         pendingOpenSfx.current &&
@@ -193,7 +193,7 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
       name={drawer.name}
       type="kinematicPosition"
       position={drawer.bodyPos}
-      // trimesh (not hull) — a convex hull fills the drawer's open top into
+      // trimesh (not hull): a convex hull fills the drawer's open top into
       // a solid box; the trimesh keeps each face as the collider so items
       // can fall into the drawer cavity when it's pulled out.
       colliders="trimesh"

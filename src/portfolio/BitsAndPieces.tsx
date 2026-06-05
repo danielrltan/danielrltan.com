@@ -1,26 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import "./sections.css";
 import "./bits-and-pieces.css";
 
 /**
- * Bits and Pieces — the "extras" / accomplishments section, rebuilt
- * as a full-bleed pinned editorial spread.
- *
- * Layout (full viewport width — breaks out of portfolio-col):
- *   1. A pinned hero band with three giant kinetic numbers
- *      (grants $, wins, leadership roles) that count up as the user
- *      scrolls into the section.
- *   2. A category-word marquee (`HACKATHON · COMPETITION · GRANT
- *      · LEADERSHIP · SCHOLARSHIP`) that ticker-slides as a
- *      scroll-driven background layer.
- *   3. An asymmetric masonry of accomplishment cards. Cards reveal
- *      with directional stagger as the pinned scroll progresses;
- *      featured items (hackathon finalist, 1st-place wins) get
- *      larger cards.
- *
- * Replaces the prior right-column 3-card grid. The previous version
- * was visually cramped and read as generic — this one uses scale,
- * asymmetry, and motion to give the section editorial energy.
+ * Bits and Pieces: full-bleed accomplishments spread. Stats band
+ * (count-up numbers), a category marquee that ticks with scroll, and
+ * an asymmetric masonry of cards (featured items take more space).
+ * Cards reveal via IntersectionObserver as they enter viewport.
  */
 
 type Category =
@@ -33,7 +19,7 @@ type Category =
 interface Entry {
   category: Category;
   title: string;
-  /** Pulled-out metric — printed huge in the card's "stat slot". */
+  /** Pulled-out metric: printed huge in the card's "stat slot". */
   metric?: string;
   /** Optional smaller secondary metric (e.g. "Top 50 / 2000+"). */
   context?: string;
@@ -87,17 +73,17 @@ const ENTRIES: Entry[] = [
   {
     category: "Scholarship",
     title: "Western Scholarship of Distinction",
-    metric: "Awarded",
+    metric: "$3,500",
   },
   {
     category: "Scholarship",
     title: "National Merit Scholarship",
-    metric: "Awarded",
+    metric: "$2,000",
   },
   {
     category: "Scholarship",
     title: "Chris Binns-Smith Memorial",
-    metric: "Awarded",
+    metric: "$5,000",
   },
   {
     category: "Leadership",
@@ -117,7 +103,13 @@ const ENTRIES: Entry[] = [
   },
 ];
 
-const TOTAL_GRANTS_USD = 6000; // $3000 + $500 + $2500
+// $3000 (Ontario Summer Company grant) + $500 (WFN Odyssey) + $2500 (TRREB)
+// + $3500 (Western Scholarship of Distinction) + $2000 (National Merit)
+// + $5000 (Chris Binns-Smith Memorial) = $16,500 total. Scholarships were
+// previously labelled "Awarded" with no dollar figure and excluded from the
+// stat: they had real amounts on the resume, so they're now itemised on
+// each card AND rolled into the headline number.
+const TOTAL_GRANTS_USD = 16500;
 const TOTAL_WINS = ENTRIES.filter(
   (e) => e.category === "Hackathon" || e.category === "Competition",
 ).length;
@@ -135,43 +127,42 @@ interface CountUpProps {
 }
 
 /**
- * Per-card reveal — each card watches itself via IntersectionObserver
- * and adds `is-revealed` when it enters viewport. Latched (one-shot)
- * so scrolling back up doesn't replay the reveal.
+ * Per-card reveal tile. Reveal state is driven by the PARENT's shared
+ * IntersectionObserver (passed in as `revealed` prop) rather than each
+ * tile creating its own observer. This eliminates 12 separate IO instances.
+ * OLD: O(n) observers (one per tile). NEW: O(1) — single shared observer.
  */
 function BpTile({
   entry,
   index,
   direction,
+  revealed,
+  tileRef,
 }: {
   entry: Entry;
   index: number;
   direction: "left" | "right";
+  revealed: boolean;
+  tileRef: (el: HTMLLIElement | null) => void;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [revealed, setRevealed] = useState(false);
-  useEffect(() => {
-    if (revealed) return;
-    const el = ref.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setRevealed(true);
-            io.disconnect();
-            return;
-          }
-        }
-      },
-      { rootMargin: "0px 0px -10% 0px" },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [revealed]);
+
+  // Single accessible label per card so a screen reader announces the
+  // whole accomplishment as one unit ("Hackathon. Hack The 6ix.
+  // Finalist, Top finalist · 400+.") rather than four disconnected
+  // fragments. Visual sub-elements are aria-hidden below.
+  const label = [
+    entry.category,
+    entry.title,
+    entry.metric,
+    entry.context,
+    entry.blurb,
+  ]
+    .filter(Boolean)
+    .join(". ");
+
   return (
-    <article
-      ref={ref as unknown as React.RefObject<HTMLDivElement>}
+    <li
+      ref={tileRef}
       className={[
         "bp-tile",
         `bp-tile--${entry.category.toLowerCase()}`,
@@ -185,19 +176,45 @@ function BpTile({
         transitionDelay: `${(index % 6) * 60}ms`,
       }}
     >
-      <div className="bp-tile-cat">{entry.category}</div>
-      <h3 className="bp-tile-title">{entry.title}</h3>
-      {entry.metric && <div className="bp-tile-metric">{entry.metric}</div>}
-      {entry.context && <div className="bp-tile-context">{entry.context}</div>}
-      {entry.blurb && <p className="bp-tile-blurb">{entry.blurb}</p>}
-    </article>
+      <article className="bp-tile-inner" aria-label={label}>
+        <span className="bp-tile-cat" aria-hidden>
+          {entry.category}
+        </span>
+        <h3 className="bp-tile-title" aria-hidden>
+          {entry.title}
+        </h3>
+        {entry.metric && (
+          <span className="bp-tile-metric" aria-hidden>
+            {entry.metric}
+          </span>
+        )}
+        {entry.context && (
+          <span className="bp-tile-context" aria-hidden>
+            {entry.context}
+          </span>
+        )}
+        {entry.blurb && (
+          <p className="bp-tile-blurb" aria-hidden>
+            {entry.blurb}
+          </p>
+        )}
+      </article>
+    </li>
   );
 }
 
 function CountUp({ to, active, format = (n) => `${n}` }: CountUpProps) {
-  const [n, setN] = useState(0);
+  const reduceMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  // Reduced motion: skip the tween, render the final value immediately.
+  const [n, setN] = useState(reduceMotion ? to : 0);
   useEffect(() => {
     if (!active) return;
+    if (reduceMotion) {
+      setN(to);
+      return;
+    }
     let raf = 0;
     const start = performance.now();
     const dur = 1100;
@@ -209,8 +226,13 @@ function CountUp({ to, active, format = (n) => `${n}` }: CountUpProps) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [to, active]);
-  return <>{format(n)}</>;
+  }, [to, active, reduceMotion]);
+  // The animating digits are aria-hidden: a live count-up would spam
+  // the SR with intermediate numbers. The static final value is exposed
+  // via aria-label on the stat (see markup below).
+  return (
+    <span aria-hidden>{format(n)}</span>
+  );
 }
 
 export function BitsAndPieces() {
@@ -218,18 +240,63 @@ export function BitsAndPieces() {
   const marqueeRef = useRef<HTMLDivElement>(null);
   const [statsActive, setStatsActive] = useState(false);
 
-  // Section is NO LONGER pinned — previously a GSAP pin tried to fit
-  // 12 cards into a single 100vh viewport, which cut off the bottom
-  // half. Now it's a regular tall section: cards reveal as they
-  // enter viewport (IntersectionObserver per card, no global pin),
-  // and the marquee shifts based on the section's own scroll
-  // progress against the viewport.
+  // ONE shared IntersectionObserver for all tile reveal latches.
+  // OLD: 12 observers (one per BpTile), each created + torn down independently.
+  // NEW: O(1) observers total; per-tile cost is one observe() call, one unobserve().
+  const [revealedSet, setRevealedSet] = useState<ReadonlySet<number>>(new Set());
+  const tileEls = useRef<(HTMLLIElement | null)[]>([]);
+  const sharedIoRef = useRef<IntersectionObserver | null>(null);
+
+  // Stable ref-callback factory so tile elements register into tileEls by index.
+  // useCallback with a stable closure prevents React from recreating the
+  // callback identity on each parent render (which would unmount/remount
+  // the ref every cycle and re-observe already-revealed tiles).
+  const makeTileRef = useCallback(
+    (i: number) => (el: HTMLLIElement | null) => {
+      tileEls.current[i] = el;
+      if (el && sharedIoRef.current) sharedIoRef.current.observe(el);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    // Same rootMargin as the old per-tile observer.
+    const io = new IntersectionObserver(
+      (entries) => {
+        let changed = false;
+        const next = new Set(revealedSet);
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const idx = tileEls.current.indexOf(entry.target as HTMLLIElement);
+            if (idx !== -1 && !next.has(idx)) {
+              next.add(idx);
+              changed = true;
+              io.unobserve(entry.target);
+            }
+          }
+        }
+        if (changed) setRevealedSet(next);
+      },
+      { rootMargin: "0px 0px -10% 0px" },
+    );
+    sharedIoRef.current = io;
+    // Observe any tile elements already mounted (handles StrictMode double-mount).
+    for (const el of tileEls.current) {
+      if (el) io.observe(el);
+    }
+    return () => {
+      io.disconnect();
+      sharedIoRef.current = null;
+    };
+    // revealedSet intentionally excluded: we mutate via the closure copy `next`
+    // and only call setRevealedSet when something genuinely changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
 
-    // IntersectionObserver to trigger the stats count-up once the
-    // section first enters viewport.
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -244,16 +311,22 @@ export function BitsAndPieces() {
     );
     io.observe(el);
 
-    // Marquee — track the section's vertical scroll progress with
-    // the viewport and slide horizontally. rAF-paced so it doesn't
-    // reconcile React; we write transform directly via ref.
+    // Marquee slides horizontally driven by the section's vertical
+    // scroll progress against the viewport. rAF-paced, direct
+    // transform write: no React reconcile per scroll tick.
+    // Honour prefers-reduced-motion: skip the scroll listener entirely
+    // so the decorative strip stays static.
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (reduceMotion) {
+      return () => io.disconnect();
+    }
+
     let raf = 0;
     const update = () => {
       const r = el.getBoundingClientRect();
       const vh = window.innerHeight || 1;
-      // section-progress = how far the section has scrolled past
-      // viewport bottom toward viewport top. 0 = just entered, 1 =
-      // about to leave.
       const p = (vh - r.top) / (vh + r.height);
       const clamped = Math.max(0, Math.min(1, p));
       if (marqueeRef.current) {
@@ -277,9 +350,6 @@ export function BitsAndPieces() {
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-bp">
-      {/* Faint giant category marquee sliding behind everything else
-          as the user scrolls. Adds editorial texture without
-          competing for attention. */}
       <div className="bp-marquee" aria-hidden>
         <div ref={marqueeRef} className="bp-marquee-strip">
           {Array.from({ length: 3 }).map((_, k) => (
@@ -299,39 +369,51 @@ export function BitsAndPieces() {
           </span>
           <h2 className="bp-title">The trophy wall.</h2>
           <p className="bp-blurb">
-            The extras — awards, grants, leadership, scholarships.
+            The extras: awards, grants, leadership, scholarships.
             What the timeline above doesn&rsquo;t have room for.
           </p>
         </header>
 
-        <div className="bp-stats">
-          <div className="bp-stat">
-            <span className="bp-stat-num">
+        {/* Summary metrics as a definition list: the animated digits
+            are aria-hidden (see CountUp), so each stat carries a static
+            aria-label with the final value for assistive tech. */}
+        <dl className="bp-stats">
+          <div
+            className="bp-stat"
+            aria-label={`${formatMoney(TOTAL_GRANTS_USD)} in awards and funding`}
+          >
+            <dd className="bp-stat-num">
               <CountUp
                 to={TOTAL_GRANTS_USD}
                 active={statsActive}
                 format={formatMoney}
               />
-            </span>
-            <span className="bp-stat-label">in grants & prizes</span>
+            </dd>
+            <dt className="bp-stat-label">in awards &amp; funding</dt>
           </div>
           <div className="bp-stat-rule" aria-hidden />
-          <div className="bp-stat">
-            <span className="bp-stat-num">
+          <div
+            className="bp-stat"
+            aria-label={`${TOTAL_WINS} competition placements`}
+          >
+            <dd className="bp-stat-num">
               <CountUp to={TOTAL_WINS} active={statsActive} />
-            </span>
-            <span className="bp-stat-label">competition placements</span>
+            </dd>
+            <dt className="bp-stat-label">competition placements</dt>
           </div>
           <div className="bp-stat-rule" aria-hidden />
-          <div className="bp-stat">
-            <span className="bp-stat-num">
+          <div
+            className="bp-stat"
+            aria-label={`${TOTAL_LEADERSHIP} leadership roles`}
+          >
+            <dd className="bp-stat-num">
               <CountUp to={TOTAL_LEADERSHIP} active={statsActive} />
-            </span>
-            <span className="bp-stat-label">leadership roles</span>
+            </dd>
+            <dt className="bp-stat-label">leadership roles</dt>
           </div>
-        </div>
+        </dl>
 
-        <div className="bp-grid">
+        <ul className="bp-grid" aria-label="Awards, grants, scholarships and leadership roles">
           {ENTRIES.map((e, i) => {
             const direction = i % 2 === 0 ? "left" : "right";
             return (
@@ -340,10 +422,12 @@ export function BitsAndPieces() {
                 entry={e}
                 index={i}
                 direction={direction}
+                revealed={revealedSet.has(i)}
+                tileRef={makeTileRef(i)}
               />
             );
           })}
-        </div>
+        </ul>
       </div>
     </section>
   );

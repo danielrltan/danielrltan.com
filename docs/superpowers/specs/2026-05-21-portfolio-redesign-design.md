@@ -1,8 +1,8 @@
-# Portfolio Redesign — Curiosity Cabinet
+# Portfolio Redesign: Curiosity Cabinet
 
 ## Concept
 
-Every section is a different *object*. The connecting tissue is Daniel, not a unified world. The user is "walking through a curiosity cabinet" of things he made — each one is its own self-contained interactive moment. The room (currently the centerpiece) gets demoted to a single beat (About) so each other section can have its own visual identity.
+Every section is a different *object*. The connecting tissue is Daniel, not a unified world. The user is "walking through a curiosity cabinet" of things he made, each one its own self-contained interactive moment. The room (currently the centerpiece) gets demoted to a single beat (About) so each other section can have its own visual identity.
 
 ## Section inventory
 
@@ -20,7 +20,7 @@ Every section is a different *object*. The connecting tissue is Daniel, not a un
 
 ## Section designs
 
-### 1. Hero — 3D signature
+### 1. Hero: 3D signature
 
 **State machine:**
 
@@ -30,19 +30,19 @@ Every section is a different *object*. The connecting tissue is Daniel, not a un
    - signature animation has completed,
    - all assets (`/room.glb` etc.) have loaded,
    - a few stable frames have passed.
-4. **Transition**: signature expands to its final hero size (centered) and morphs from 2D SVG strokes to 3D extruded geometry — each stroke becomes a tube along its path. Orange background fades to wrapper-bg cream.
+4. **Transition**: signature expands to its final hero size (centered) and morphs from 2D SVG strokes to 3D extruded geometry, where each stroke becomes a tube along its path. Orange background fades to wrapper-bg cream.
 5. **Resting**: signature stays drawn. Cursor parallax tilts it ±~5° around X/Y. A point light tracks the cursor (projected to a plane at the signature's depth), sweeping highlights across the metallic-style material.
 
-**Re-entry**: scrolling back to the top from elsewhere doesn't redraw the signature — it's already there.
+**Re-entry**: scrolling back to the top from elsewhere doesn't redraw the signature. It's already there.
 
 **Technical notes:**
 
 - Signature stroke data is already captured in `public/signature.json`.
 - 2D draw-in uses the existing `paint.ts` / `SignatureReplay.tsx` machinery, scaled and re-positioned.
-- 3D version: convert each stroke's polyline into a `THREE.CatmullRomCurve3`, render with `THREE.TubeGeometry` — radius proportional to the original stroke width. Material: `MeshStandardMaterial` with metalness ~0.6, roughness ~0.3, orange-tinted base color.
+- 3D version: convert each stroke's polyline into a `THREE.CatmullRomCurve3`, render with `THREE.TubeGeometry` (radius proportional to the original stroke width). Material: `MeshStandardMaterial` with metalness ~0.6, roughness ~0.3, orange-tinted base color.
 - Cursor light: a `PointLight` whose world position is the cursor's screen-to-world projection at the signature's z-plane.
 
-### 2. About — Room (cleanup)
+### 2. About: Room (cleanup)
 
 Remove from `src/loading/`:
 - `WireframeRoom.tsx` (the wireframe-assembly cover dome + line meshes)
@@ -52,7 +52,7 @@ Keep `useAssemblyProgress` since the hero needs an "are we ready?" signal, but s
 
 The Room itself in `src/Room.tsx` is unchanged. About-section content (right-column copy) is unchanged.
 
-### 3. Skills + Projects — Macintosh
+### 3. Skills + Projects: Macintosh
 
 One scroll-pinned section (similar mechanism to Keypad):
 
@@ -69,7 +69,7 @@ One scroll-pinned section (similar mechanism to Keypad):
 | 0.50 – 0.75 | Logos pixel-disintegrate (each logo dissolves into ~30 tiny cubes that drift apart and fade out). |
 | 0.75 – 1.00 | Mac sits with desktop visible. Cursor parallax on the whole rig. User can click project tiles → side card expands (overlay HTML). |
 
-**3D Macintosh**: built programmatically with primitives. Box body, slightly tapered, glass-front rectangle for screen, small base, classic single floppy slot. Orange power LED. ~10 polys total — keeps the file size negligible (no GLB).
+**3D Macintosh**: built programmatically with primitives. Box body, slightly tapered, glass-front rectangle for screen, small base, classic single floppy slot. Orange power LED. ~10 polys total, keeping the file size negligible (no GLB).
 
 **Logos**: simple text-on-plane sprites (`React`, `TypeScript`, `Three.js`, `Blender`, `Figma`, `Rapier`, `GSAP`, `Vite`) arranged in a horizontal ring around the Mac. Each logo is a `BoxGeometry` with rounded corners and text texture, ~0.6 world units across.
 
@@ -79,7 +79,7 @@ One scroll-pinned section (similar mechanism to Keypad):
 
 **Side card**: a fixed-position HTML panel sliding in from the right with project case study (title, description, screenshot, links). Closed via X or ESC.
 
-### 4. Work — HTML timeline
+### 4. Work: HTML timeline
 
 Pure HTML section, scroll-driven via `IntersectionObserver` + CSS animations:
 
@@ -94,7 +94,7 @@ Pure HTML section, scroll-driven via `IntersectionObserver` + CSS animations:
 
 No 3D, no Three.js for this section. Pure CSS + IntersectionObserver.
 
-### 5. Photos — 3D carousel
+### 5. Photos: 3D carousel
 
 3D scene in its own R3F Canvas (like the keypad).
 
@@ -108,12 +108,12 @@ No 3D, no Three.js for this section. Pure CSS + IntersectionObserver.
 
 Placeholder content: a `/public/images/photos/` directory with stand-in photos until real ones are added.
 
-### 6. Other — Desk + photo trains
+### 6. Other: Desk + photo trains
 
 Single section with two layers in the same viewport:
 
 **3D layer (bottom 50% of viewport)**:
-- 3D desk model (built programmatically — box + legs, light wood texture).
+- 3D desk model (built programmatically: box + legs, light wood texture).
 - 5-7 small objects on the desk surface: camera, basketball, headphones, books, coffee mug, etc.
 - Each object is hoverable (cursor changes, slight scale-up).
 - Click an object → an HTML tooltip appears anchored to the object's screen position, with 1-2 sentence hobby description. Click outside to dismiss.
@@ -124,12 +124,12 @@ Single section with two layers in the same viewport:
 - Row 1 → scrolls left-to-right at speed 1.
 - Row 2 → scrolls right-to-left at speed 0.8.
 - Row 3 → scrolls left-to-right at speed 1.2.
-- The horizontal scroll position of each row is driven by the user's vertical scroll position within the section (not autoplay) — this is the "indication of scrolling" the user wants.
+- The horizontal scroll position of each row is driven by the user's vertical scroll position within the section (not autoplay). This is the "indication of scrolling" the user wants.
 - Photos are achievements/screenshots/fun moments. Small (~80-120px tall), many per row.
 
 Section background: continuous (no hard divider between the two layers).
 
-### 7. Contact — Keypad
+### 7. Contact: Keypad
 
 Unchanged from current state.
 
@@ -138,7 +138,7 @@ Unchanged from current state.
 - **Loading is now the Hero**. The current `WireframeRoom.tsx` + `AssemblyController` orange-print sequence is replaced. `AssemblyProvider` stays as a thin "are assets loaded?" context but no longer drives wireframe assembly.
 - **`SectionTransition`** (the marquee bridge) stays between Other and Contact.
 - **Implementation order**: Hero (foundation) → About cleanup → Work (quick HTML win) → Photos → Other → Skills+Projects (most complex). Each milestone independently testable.
-- **Performance budget**: each section's own scene/canvas is OK (we already have two — Room + Keypad). Adding two more (Hero signature + Photo carousel + Other desk + Macintosh) means 5-6 simultaneous canvases. Mitigation: lazy-mount each section's canvas via `IntersectionObserver` (same pattern Keypad already uses).
+- **Performance budget**: each section's own scene/canvas is OK (we already have two: Room + Keypad). Adding two more (Hero signature + Photo carousel + Other desk + Macintosh) means 5-6 simultaneous canvases. Mitigation: lazy-mount each section's canvas via `IntersectionObserver` (same pattern Keypad already uses).
 - **Mobile**: each section degrades sensibly. 3D effects keep but lower DPR. Photo trains may simplify to fewer rows. Hero signature stays 3D but parallax disabled (no cursor on mobile).
 
 ## Out of scope
@@ -146,4 +146,4 @@ Unchanged from current state.
 - Replacing the room model
 - Restyling the right-column portfolio copy
 - New navigation (sections are still scroll-based)
-- Mobile-specific UX redesign — sections degrade automatically, not bespoke mobile layouts
+- Mobile-specific UX redesign (sections degrade automatically, not bespoke mobile layouts)

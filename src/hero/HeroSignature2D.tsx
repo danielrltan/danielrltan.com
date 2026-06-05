@@ -4,7 +4,7 @@ import { type SignatureData, eventsToStrokes } from "./signatureGeometry";
 /**
  * 2D canvas that draws the captured signature stroke-by-stroke in
  * WHITE against the orange loading background. This is the loading
- * screen's visible state — it replaces the wireframe assembly.
+ * screen's visible state; it replaces the wireframe assembly.
  *
  * Unlike the footer SignatureCanvas (which paints amber on the room
  * scene), this one is dedicated to the hero loading sequence:
@@ -24,13 +24,16 @@ interface Props {
   speedMultiplier?: number;
   /** Visible opacity (parent controls the crossfade out). */
   opacity: number;
+  /** Stacking order. High (5) while drawing/crossfading so the ink
+   *  paints over the composition; low (1) once settled so the
+   *  persistent ghost sits behind the wordmark. */
+  zIndex?: number;
 }
 
-// White, ~half the footer's 60px brush radius (per user direction
-// "keep stroke half thinness of what we have now").
+// White on the orange loading backdrop.
 const STROKE_COLOR = "#ffffff";
 const BRUSH_RADIUS = 14;
-// Single stamp pass — no soft fade halo, no glow. The signature is
+// Single stamp pass: no soft fade halo, no glow. The signature is
 // already on a saturated orange background; over-blurring the stroke
 // makes the gesture look like a smudge rather than a confident mark.
 const STAMP_ALPHA = 0.95;
@@ -39,16 +42,29 @@ const STEP_PX = 4;
 // Target signature size as a fraction of viewport width. The 3D hero
 // will expand from this baseline to a larger ratio during the
 // transition, so the 2D draw should land at the "compact" size.
+// On narrow portrait phones 0.45vw is tiny + lost on the orange scrim,
+// so widen it there (see resolveWidthRatio) while still guarding the
+// drawn rect against horizontal/vertical overflow below.
 const TARGET_WIDTH_RATIO = 0.45;
+const TARGET_WIDTH_RATIO_PORTRAIT = 0.72;
 // Vertical center of the loading signature, as a fraction of viewport
 // height from the top.
 const TARGET_VERTICAL_CENTER = 0.5;
+
+// Pick the width ratio for the current viewport. Portrait phones (tall,
+// narrow) get the larger ratio so the gesture reads at a comfortable
+// size; everything else keeps the compact desktop ratio.
+function resolveWidthRatio(vw: number, vh: number): number {
+  const isPortraitPhone = vw <= 540 && vh >= vw;
+  return isPortraitPhone ? TARGET_WIDTH_RATIO_PORTRAIT : TARGET_WIDTH_RATIO;
+}
 
 export function HeroSignature2D({
   data,
   onComplete,
   speedMultiplier = 1.6,
   opacity,
+  zIndex = 5,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -58,7 +74,11 @@ export function HeroSignature2D({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // PERF: cap DPR at 1.5 (was 2). The signature is a single-pass
+    // ink stroke; at 1.5× the antialiased edges already read crisp,
+    // and on 3× retina the 2× cap was allocating a 5760×3240 backing
+    // buffer (75MB GPU mem) for a low-opacity persistent background.
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     const resize = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
@@ -107,10 +127,39 @@ export function HeroSignature2D({
     // Compute target rect in CSS pixels.
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    // Event coords (nx, ny) are ALREADY normalized to [0,1] WITHIN the
+    // signature's bounding box. SignatureCapture stores them as
+    // `(clientX - bounds.minX) / boundsWidth`. The `bounds` field is in
+    // ORIGINAL CAPTURE-VIEWPORT PIXELS (e.g. minX = 137 px, maxX = 1472 px),
+    // useful only for deriving the signature's native aspect ratio.
+    //
+    // So the correct mapping is just `p.x * targetW` / `p.y * targetH`,
+    // offset by (x0, y0). Subtracting bounds.minX (a pixel value) from
+    // p.x (a [0,1] value), as a previous revision did, pushed every
+    // stroke ~137 units negative, collapsing the entire signature into
+    // a single pixel in the top-left corner of the viewport.
     const captureW = data.bounds ? data.bounds.maxX - data.bounds.minX : 1;
-    const captureH = data.bounds ? data.bounds.maxY - data.bounds.minY : 0.3;
-    const aspect = captureW / Math.max(1, captureH);
-    const targetW = vw * TARGET_WIDTH_RATIO;
+    const captureH = data.bounds ? data.bounds.maxY - data.bounds.minY : 1;
+    // Aspect-ratio guard: if bounds are degenerate (single point or
+    // missing), fall back to the natural ~16:9 signature aspect so we
+    // don't divide by zero or render a zero-height target rect.
+    const aspect =
+      captureW > 0 && captureH > 0 ? captureW / captureH : 16 / 9;
+    // Width ratio adapts to viewport: on a narrow portrait phone the
+    // 0.45 desktop ratio renders a timid ~175px gesture dwarfed by the
+    // giant wordmark. Widen it toward 0.72 of the viewport on phones so
+    // the persistent signature still reads as a confident background
+    // mark the wordmark "loads around", while staying centered (same
+    // anchor as desktop) so the loading→settled position never jumps.
+    const widthRatio = resolveWidthRatio(vw, vh);
+    let targetW = vw * widthRatio;
+    // Overflow guard: never let the signature's drawn rect exceed the
+    // viewport on either axis. The portrait width-ratio (0.72) is safe
+    // for the captured signature's wide aspect, but clamp height to a
+    // generous fraction of vh (and back-derive width) so a future, more
+    // square capture can't draw the gesture past the top/bottom edges.
+    const MAX_H = vh * 0.7;
+    if (targetW / aspect > MAX_H) targetW = MAX_H * aspect;
     const targetH = targetW / aspect;
     const x0 = (vw - targetW) / 2;
     const y0 = vh * TARGET_VERTICAL_CENTER - targetH / 2;
@@ -127,7 +176,7 @@ export function HeroSignature2D({
     let lastY: number | null = null;
     let completed = false;
 
-    // Flatten strokes back into ordered events for simple playback —
+    // Flatten strokes back into ordered events for simple playback;
     // gives us the same draw cadence as the footer's SignatureReplay
     // without forking the whole code path.
     type FlatEv = { type: "down" | "move" | "up"; t: number; x: number; y: number };
@@ -146,31 +195,53 @@ export function HeroSignature2D({
       flat.push({ type: "up", t: last.t, x: 0, y: 0 });
     }
 
+    // Stamp one flattened event (shared by the timed playback and the
+    // reduced-motion one-shot path).
+    const drawEvent = (ev: FlatEv) => {
+      if (ev.type === "down") {
+        stamp(ev.x, ev.y);
+        lastX = ev.x;
+        lastY = ev.y;
+      } else if (ev.type === "move" && lastX != null && lastY != null) {
+        const dx = ev.x - lastX;
+        const dy = ev.y - lastY;
+        const dist = Math.hypot(dx, dy);
+        const steps = Math.max(1, Math.ceil(dist / STEP_PX));
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          stamp(lastX + dx * t, lastY + dy * t);
+        }
+        lastX = ev.x;
+        lastY = ev.y;
+      } else if (ev.type === "up") {
+        lastX = null;
+        lastY = null;
+      }
+    };
+
+    // Reduced motion: skip the stroke-by-stroke animation. Paint the
+    // whole signature in one synchronous pass and signal completion so
+    // the loading→composition handoff still fires. (The progressive
+    // pen-draw IS the motion here; honour the preference by landing it
+    // fully formed instead.)
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (reducedMotion) {
+      for (const ev of flat) drawEvent(ev);
+      completed = true;
+      onComplete();
+      return () => {
+        window.removeEventListener("resize", resize);
+      };
+    }
+
     const tick = () => {
       if (completed) return;
       if (startWall === 0) startWall = performance.now();
       const elapsedRecorded = (performance.now() - startWall) * speedMultiplier;
       while (lastEventIdx < flat.length && flat[lastEventIdx]!.t <= elapsedRecorded) {
-        const ev = flat[lastEventIdx]!;
-        if (ev.type === "down") {
-          stamp(ev.x, ev.y);
-          lastX = ev.x;
-          lastY = ev.y;
-        } else if (ev.type === "move" && lastX != null && lastY != null) {
-          const dx = ev.x - lastX;
-          const dy = ev.y - lastY;
-          const dist = Math.hypot(dx, dy);
-          const steps = Math.max(1, Math.ceil(dist / STEP_PX));
-          for (let i = 1; i <= steps; i++) {
-            const t = i / steps;
-            stamp(lastX + dx * t, lastY + dy * t);
-          }
-          lastX = ev.x;
-          lastY = ev.y;
-        } else if (ev.type === "up") {
-          lastX = null;
-          lastY = null;
-        }
+        drawEvent(flat[lastEventIdx]!);
         lastEventIdx++;
       }
       if (
@@ -190,7 +261,7 @@ export function HeroSignature2D({
       window.removeEventListener("resize", resize);
     };
     // We intentionally re-run only on data change. Speed multiplier
-    // changes after first render are ignored — first-paint timing
+    // changes after first render are ignored; first-paint timing
     // determines the loading sequence pace.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
@@ -205,7 +276,7 @@ export function HeroSignature2D({
         left: 0,
         width: "100vw",
         height: "100vh",
-        zIndex: 5,
+        zIndex,
         pointerEvents: "none",
         opacity,
         transition: "opacity 480ms ease",

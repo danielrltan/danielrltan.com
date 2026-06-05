@@ -1,13 +1,9 @@
 import "./section-transition.css";
 
 /**
- * Bridge between BitsAndPieces and Keypad — simple single-row
- * horizontal pixel-font marquee. User asked to revert to the
- * v1 design after rejecting the two-row variant.
- *
- * Pure CSS animation (no scroll binding), so it can't fight with
- * the pinned Keypad below. z-index 0 so the pinned Keypad floats
- * above this band when its pin engages.
+ * Bridge between BitsAndPieces and Keypad: single-row pixel-font
+ * marquee. Pure CSS animation so it can't fight with the pinned
+ * Keypad below; z-index 0 so the pinned Keypad floats above.
  */
 export function SectionTransition() {
   const phrase = (

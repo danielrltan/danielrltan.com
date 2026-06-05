@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 /**
- * The cat mascot with an organic, irregularly-paced blink — extracted
+ * The cat mascot with an organic, irregularly-paced blink, extracted
  * from `LoadingScreen` so the top-left brand mark can reuse the same
  * behaviour. Open frame is `cat.svg` (eye cutouts), closed frame is
  * `cat_blink.svg` (same silhouette, eyes filled in). Both images
@@ -9,7 +9,7 @@ import { useEffect, useRef } from "react";
  * network race waiting for the closed asset to fetch.
  *
  * Blink pacing is intentionally irregular: random gap between
- * sequences, occasional quick double-blink — reads as alive rather
+ * sequences, occasional quick double-blink. Reads as alive rather
  * than a placeholder loop. Visuals are driven through refs
  * (`element.style.opacity = ...`) instead of React state so blinks
  * stay snappy even when the main thread is busy.
