@@ -5,10 +5,12 @@ import {
   type AssemblyState,
   CLIMAX_DURATION_MS,
   GLB_TOTAL_MB,
+  HARD_CEILING_MS,
   PHASE_THRESHOLDS,
   POST_CLIMAX_HUD_FADE_MS,
   STABLE_FRAMES_REQUIRED,
   STABLE_FRAME_BUDGET_MS,
+  STABLE_WAIT_TIMEOUT_MS,
   TIMELINE_FLOOR_MS,
 } from "./types";
 
@@ -51,6 +53,10 @@ export function useAssemblyProgress(): AssemblyState {
   const lastClimaxReadyRef = useRef(false);
   const lastClimaxDoneRef = useRef(false);
   const climaxStartRef = useRef<number | null>(null);
+  // Wall-clock (performance.now) at which the hard prerequisites (timeline
+  // + assets) first became true. Used to bound the wait for smooth frames
+  // so weak hardware can't be trapped on the loading screen forever.
+  const assetsReadyAtRef = useRef<number | null>(null);
 
   // Pause timeline while tab is hidden. Bytes keep accumulating in
   // the background fetch; only the choreography pauses.
@@ -92,11 +98,35 @@ export function useAssemblyProgress(): AssemblyState {
         const combinedPct = Math.min(timelinePct, bytePct);
         const phase = derivePhase(combinedPct);
 
-        const climaxReady =
+        // Hard prerequisites: the minimum timeline elapsed AND all asset
+        // bytes streamed in. These are NOT hardware-sensitive (time always
+        // advances; bytes arrive over the network regardless of CPU).
+        const assetsReady =
           timelinePct >= 1 &&
           !activeRef.current &&
-          progressRef.current >= 100 &&
-          stableFramesRef.current >= STABLE_FRAMES_REQUIRED;
+          progressRef.current >= 100;
+        if (assetsReady && assetsReadyAtRef.current == null) {
+          assetsReadyAtRef.current = now;
+        }
+
+        // Smoothness gate: PREFER 30 consecutive sub-22ms frames so the
+        // room reveals without jank — but bound the wait. On weak hardware
+        // the always-on room canvas may never sustain 30 stable frames, so
+        // after STABLE_WAIT_TIMEOUT_MS of assets-ready time we proceed
+        // anyway rather than trap the visitor (the original hang: the
+        // counter perpetually reset to 0 and climaxReady never fired).
+        const smoothEnough =
+          stableFramesRef.current >= STABLE_FRAMES_REQUIRED ||
+          (assetsReadyAtRef.current != null &&
+            now - assetsReadyAtRef.current >= STABLE_WAIT_TIMEOUT_MS);
+
+        // Absolute failsafe (defense in depth): never hold the loader past
+        // HARD_CEILING_MS of wall-clock loading, whatever stalls (a
+        // silently-failed asset so drei.active never clears, untracked
+        // physics wasm, a lost WebGL context). Last-resort backstop.
+        const hardCeiling = elapsed >= HARD_CEILING_MS;
+
+        const climaxReady = (assetsReady && smoothEnough) || hardCeiling;
 
         if (climaxReady && climaxStartRef.current == null) {
           climaxStartRef.current = now;
