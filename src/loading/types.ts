@@ -35,6 +35,20 @@ export interface AssemblyState {
 export const TIMELINE_FLOOR_MS = 2400;
 export const STABLE_FRAMES_REQUIRED = 30;
 export const STABLE_FRAME_BUDGET_MS = 22;
+/** Max time to keep waiting for STABLE_FRAMES_REQUIRED smooth frames AFTER
+ *  assets + the timeline floor are satisfied. The "30 smooth frames" gate
+ *  is a reveal-without-jank *preference*; on weak hardware the always-on
+ *  room canvas (shadows + physics) may never sustain 30 consecutive
+ *  sub-22ms frames, which would trap the visitor on the loading screen
+ *  forever. Once assets are ready we give smoothness this long to settle,
+ *  then proceed regardless. */
+export const STABLE_WAIT_TIMEOUT_MS = 3000;
+/** Absolute failsafe: never hold the loading screen past this much
+ *  wall-clock loading time, no matter what stalls (a silently-failed
+ *  asset so drei.active never clears, untracked physics wasm, a lost
+ *  WebGL context). Healthy loads finish in ~3-4s, far under this; this is
+ *  a last-resort backstop so a visitor is never stuck indefinitely. */
+export const HARD_CEILING_MS = 15000;
 export const CLIMAX_DURATION_MS = 400;
 export const POST_CLIMAX_HUD_FADE_MS = 320;
 /** GLB size in MB: display-only. Real bytes come from useProgress. */
