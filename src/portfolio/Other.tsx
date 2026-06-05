@@ -8,25 +8,38 @@ import "./other.css";
 const HobbiesScene = lazy(() =>
   import("../other/HobbiesScene").then((m) => ({ default: m.HobbiesScene })),
 );
+import { OtherPhotoTrains } from "../other/OtherPhotoTrains";
 
 gsap.registerPlugin(ScrollTrigger);
 
 /**
- * "Off the clock": a single-beat CURATED HOBBY REEL inside one pin.
+ * "Off the clock": TWO BEATS inside a single pin.
  *
- *   The 3D HobbiesScene takes the full viewport. A restrained editorial
- *   label (mono index + display name) floats in the bottom-left. A dot
- *   strip at the bottom conveys position through the reel and doubles as
- *   a keyboard-operable jump-nav.
+ *   Beat A (pin 0.00 → 0.50): PHOTO TRAIN STACK
+ *     Three horizontal rows of photo cards stacked vertically. Each
+ *     row scrolls horizontally at its own controlled rate (lerp toward
+ *     a scroll-derived target, never directly bound to scrollProgress
+ *     (see CLAUDE.md memory rule "Scroll animations must be fixed-
+ *     rate"). Adjacent rows scroll opposite directions so the layered
+ *     motion reads as parallax. The old "3D rotating drums" design
+ *     (PhotoCarousels) was deleted at the user's request: "i dont
+ *     really think a big ass photo card is necessary. focus should be
+ *     the floating objects."
  *
- * NOTE: this section used to open with a "Beat A" photo-train stack
- * (the "Flashes" photo reel) that crossfaded into the hobby reel. That
- * gallery was placeholder-only (flat colour cards, no real photos) and
- * was removed at the user's request so the page ships without an
- * unfinished section. The reel now fills the whole pin. (The trains
- * component + its CSS still exist on a local branch for future work.)
+ *   Beat B (pin 0.55 → 1.00): CURATED HOBBY REEL
+ *     The 3D HobbiesScene takes the full viewport. A restrained
+ *     editorial label (mono index + display name + 1-line poetic
+ *     quote) floats in the bottom-left. A dot strip at the bottom
+ *     conveys position through the reel. The old photo plate / index
+ *     badge / corner ticks / offset shadow have been removed: the
+ *     3D scene is unambiguously the focus.
  *
- * HobbiesScene is lazy-mounted and stays mounted across the whole pin.
+ * The two beats live in the same pinned section so the user reads
+ * them as one chapter. A short handoff window (0.48 → 0.55) crossfades
+ * the train stack out and the curated stage in.
+ *
+ * HobbiesScene stays mounted across the whole pin; it just hides
+ * visually during Beat A and reveals at Beat B.
  */
 
 interface Hobby {
@@ -89,28 +102,62 @@ const HOBBIES: Hobby[] = [
   },
 ];
 
-// Single beat inside the pin. With the photo-train beat removed the reel
-// owns the whole pin, so we trim the duration (was 5000 across two beats)
-// and let the reel cycle span almost the entire scroll.
-const PIN_DURATION_PX = 3200;
+// Twelve photo-train placeholders. Vocabulary inherited from the
+// original trains commit (f92a48f) plus a small palette refresh so the
+// rows feel cohesive with the rest of the site.
+const TRAIN_PHOTOS = [
+  { color: "#2a1f1a", label: "Taekwondo" },
+  { color: "#1a1714", label: "Piano" },
+  { color: "#262120", label: "Keys" },
+  { color: "#5a3a1f", label: "Cars" },
+  { color: "#a8c4d0", label: "Skiing" },
+  { color: "#e87040", label: "Design" },
+  { color: "#3d4a52", label: "Travel" },
+  { color: "#c08c6c", label: "Crocheting" },
+  { color: "#3a2418", label: "Fashion" },
+  { color: "#d4a574", label: "Coffee" },
+  { color: "#7a4f30", label: "Photography" },
+  { color: "#1f1a17", label: "Books" },
+];
+
+// Two beats inside the pin. Trains are lighter than the old drum
+// scene (no per-frame 3D math, no preserve-3d transforms), so we trim
+// the pin slightly: 5600 → 5000.
+const PIN_DURATION_PX = 5000;
 
 // Beat windows, expressed as fractions of the pin progress.
-//   [0.00, 0.10]  header land
-//   [0.10, 0.94]  reel scrub (hobby reel cycles)
-//   [0.94, 1.00]  outro pad
-const HEAD_END = 0.10;    // header end
-const REEL_START = 0.10;  // reel start
-const REEL_END = 0.94;
+//   [0.00, 0.04]  Beat A header land
+//   [0.04, 0.48]  Beat A scrub (trains glide)
+//   [0.48, 0.55]  Beat A → Beat B handoff (crossfade)
+//   [0.55, 0.62]  Beat B header land
+//   [0.62, 0.96]  Beat B scrub (hobby reel cycles)
+//   [0.96, 1.00]  outro pad
+const BEAT_A_HEAD_END = 0.04;
+const BEAT_A_REEL_START = 0.04;
+const BEAT_A_REEL_END = 0.48;
+const HANDOFF_START = 0.48;
+const HANDOFF_END = 0.55;
+const HEAD_END = 0.62;     // Beat B header end
+const REEL_START = 0.62;   // Beat B reel start
+const REEL_END = 0.96;
 
 const TUNE_MODE =
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).get("tune") === "other";
 
+// In TUNE_MODE, "gallery" parks Beat A mid-rotation so the trains are
+// visible for design tweaking. Default tune mode parks the curated
+// reel.
+const TUNE_BEAT =
+  typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("beat")
+    : null;
+
 // Optional tune-mode pin progress in [0, 1]. When set, the section
 // runs onUpdate at this fixed progress instead of using ScrollTrigger
 // used by verification / Playwright to park at exact pin positions
-// without driving Lenis. e.g. ?tune=other&pinp=0.65 → roughly the
-// Workstation slot.
+// without driving Lenis. e.g. ?tune=other&pinp=0.65 → Beat B,
+// roughly Workstation slot.
 const TUNE_PINP_RAW =
   typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("pinp")
@@ -120,9 +167,10 @@ const TUNE_PINP = TUNE_PINP_RAW !== null ? Number(TUNE_PINP_RAW) : null;
 // Honoured by the prefers-reduced-motion fallback: when set we skip the
 // pin/scrub entirely, drop the scroll-jack, and lay the section out as a
 // static, fully legible chapter (visible header + accessible hobby list +
-// the 3D scene parked on the first hobby: no bob/dolly, no scrub). Read
-// once at mount; stable for the page lifetime. Same pattern as Work /
-// Macintosh. TUNE_MODE overrides so the verification harness can park.
+// the 3D scene parked on the first hobby: no bob/dolly, no beat
+// crossfade, no train slide). Read once at mount; stable for the page
+// lifetime. Same pattern as Work / Macintosh. TUNE_MODE overrides so the
+// verification harness can still park beats.
 const PREFERS_REDUCED_MOTION =
   typeof window !== "undefined" &&
   typeof window.matchMedia === "function" &&
@@ -214,6 +262,30 @@ export function Other() {
   // label + caption is shown). We don't need to re-render React on
   // every fractional change: only when the integer flips.
   const [activeIndex, setActiveIndex] = useState(TUNE_MODE ? 2 : 0);
+  // Beat A state: train progress 0..1 + visibility opacity.
+  const [beatAProgress, setBeatAProgress] = useState(
+    TUNE_BEAT === "gallery" ? 0.5 : 0
+  );
+  const [beatAOpacity, setBeatAOpacity] = useState(
+    TUNE_BEAT === "gallery" ? 1 : 0
+  );
+  // Beat A header reveal: fades up at the start of Beat A.
+  const [beatAHead, setBeatAHead] = useState(
+    TUNE_BEAT === "gallery" ? 1 : 0
+  );
+  // Beat B (curated reel) stage opacity: fades in at the handoff,
+  // out only at the very end.
+  //
+  // BUGFIX (beat bleed): this used to initialise to 1 in non-gallery
+  // tune mode AND in production. Because `.other-curated` is absolutely
+  // positioned on top of the train stack, a starting opacity of 1 meant
+  // the 3D HobbiesScene was fully visible from first paint until the
+  // first ScrollTrigger onUpdate gated it back to 0, and the user saw the
+  // floating interest objects for a few seconds during the photo beat
+  // before the transition. The scene MUST start hidden (opacity 0) and
+  // only fade in at the handoff window; onUpdate / ?pinp then drives it.
+  // (gallery tune mode also wants it hidden, so this is now always 0.)
+  const [beatBOpacity, setBeatBOpacity] = useState(0);
   // Per-slot crossfade: used by the floating editorial label to
   // animate in/out as each hobby focuses. Ref since this is a per-
   // frame style write, not a React re-render trigger.
@@ -257,17 +329,29 @@ export function Other() {
       activeIdxRef.current = 2;
       setHeadProgress(1);
       setActiveIndex(2);
+      // Default tune mode (?tune=other with no ?beat / ?pinp) parks the
+      // curated reel: reveal Beat B + hide Beat A. (beatBOpacity now
+      // defaults to 0 to kill the production beat-bleed, so we opt the
+      // reel back in here. ?pinp / ?beat=gallery override this below.)
+      if (TUNE_BEAT !== "gallery" && TUNE_PINP === null) {
+        setBeatBOpacity(1);
+      }
       return;
     }
     const el = sectionRef.current;
     if (!el) return;
 
     // prefers-reduced-motion: no pin, no scrub, no scroll-jack. Reveal
-    // the section statically (header up, 3D scene parked on hobby 0). The
-    // accessible hobby list + the visible dot strip remain operable; the
-    // reel just doesn't auto-advance. The section reads in one screen.
+    // BOTH beats statically (header up, photo train rack visible but not
+    // sliding, 3D scene parked on hobby 0). The accessible hobby list +
+    // the visible dot strip remain operable; the reel just doesn't
+    // auto-advance. The section reads top-to-bottom in one screen.
     if (PREFERS_REDUCED_MOTION) {
+      setBeatAHead(1);
+      setBeatAProgress(0.5); // neutral train frame
+      setBeatAOpacity(1);
       setHeadProgress(1);
+      setBeatBOpacity(1);
       focusRef.current = 0;
       activeIdxRef.current = 0;
       setActiveIndex(0);
@@ -290,8 +374,29 @@ export function Other() {
       onUpdate: (self) => {
         const p = self.progress;
 
-        // Header land across [0, HEAD_END].
-        setHeadProgress(smoothstep(0, HEAD_END, p));
+        // -------- Beat A: photo train stack --------
+        // Header lands across [0, BEAT_A_HEAD_END].
+        setBeatAHead(smoothstep(0, BEAT_A_HEAD_END, p));
+        // Train progress 0..1 across [BEAT_A_REEL_START, BEAT_A_REEL_END].
+        const aT = Math.max(
+          0,
+          Math.min(1, (p - BEAT_A_REEL_START) / (BEAT_A_REEL_END - BEAT_A_REEL_START))
+        );
+        setBeatAProgress(aT);
+        // Train rack opacity: fade in across the first 10% of Beat A,
+        // hold visible, then fade out during the handoff window.
+        const aFadeIn = smoothstep(0, 0.10, aT);
+        const aFadeOut = 1 - smoothstep(HANDOFF_START, HANDOFF_END, p);
+        setBeatAOpacity(Math.min(aFadeIn, aFadeOut));
+
+        // -------- Beat B: curated reel --------
+        // Header land: staggered beats across [HANDOFF_END, HEAD_END]
+        const h = smoothstep(HANDOFF_END, HEAD_END, p);
+        setHeadProgress(h);
+        // Beat B stage opacity: appears at handoff, holds through the
+        // end of the pin.
+        const bIn = smoothstep(HANDOFF_START, HANDOFF_END, p);
+        setBeatBOpacity(bIn);
         // Reel index: map [REEL_START, REEL_END] -> continuous [0, N-1].
         // NOTE: the continuous focus value now spans the *centres* of the
         // slots: progress 0 → hobby 0 fully centred, progress 1 → hobby
@@ -366,7 +471,19 @@ export function Other() {
   useEffect(() => {
     if (!TUNE_MODE || TUNE_PINP === null) return;
     const p = Math.max(0, Math.min(1, TUNE_PINP));
-    setHeadProgress(smoothstep(0, HEAD_END, p));
+    setBeatAHead(smoothstep(0, BEAT_A_HEAD_END, p));
+    const aT = Math.max(
+      0,
+      Math.min(1, (p - BEAT_A_REEL_START) / (BEAT_A_REEL_END - BEAT_A_REEL_START))
+    );
+    setBeatAProgress(aT);
+    const aFadeIn = smoothstep(0, 0.10, aT);
+    const aFadeOut = 1 - smoothstep(HANDOFF_START, HANDOFF_END, p);
+    setBeatAOpacity(Math.min(aFadeIn, aFadeOut));
+    const h = smoothstep(HANDOFF_END, HEAD_END, p);
+    setHeadProgress(h);
+    const bIn = smoothstep(HANDOFF_START, HANDOFF_END, p);
+    setBeatBOpacity(bIn);
     const t = Math.max(0, Math.min(1, (p - REEL_START) / (REEL_END - REEL_START)));
     const fractional = t * (HOBBIES.length - 1);
     focusRef.current = fractional;
@@ -413,8 +530,73 @@ export function Other() {
         ))}
       </ul>
 
-      {/* ===================== CURATED REEL ===================== */}
-      <div className="other-curated">
+      {/* ===================== BEAT A: PHOTO TRAIN STACK =====================
+          The whole train rack is a DECORATIVE placeholder, flat colour
+          cards (no real photos yet), no information a screen reader needs.
+          aria-hidden so AT skips straight from the sr-only interests list
+          to the curated reel's operable controls. When real photos land
+          here, give each card a real <img alt> and drop this attribute. */}
+      <div
+        className="other-gallery"
+        aria-hidden="true"
+        style={
+          {
+            opacity: beatAOpacity,
+            pointerEvents: beatAOpacity > 0.5 ? "auto" : "none",
+          } as React.CSSProperties
+        }
+      >
+        <header
+          className="other-gallery-header"
+          style={
+            {
+              "--gh-eye": String(smoothstep(0, 0.40, beatAHead)),
+              "--gh-title": String(smoothstep(0.25, 0.75, beatAHead)),
+              "--gh-sub": String(smoothstep(0.55, 1.0, beatAHead)),
+            } as React.CSSProperties
+          }
+        >
+          <div className="other-gallery-eyebrow">
+            <span className="other-gallery-num">04</span>
+            <span className="other-gallery-label">
+              <span className="other-gallery-divider" aria-hidden>·</span>
+              <span className="other-gallery-tag">Photo reel</span>
+            </span>
+          </div>
+          <h2 className="other-gallery-title">
+            Flashes<span className="other-gallery-title-period">.</span>
+          </h2>
+        </header>
+
+        {/* Train rack: three horizontal rows, alternating directions. */}
+        <div className="other-trains-wrap">
+          <OtherPhotoTrains
+            photos={TRAIN_PHOTOS}
+            progress={beatAProgress}
+          />
+        </div>
+
+        {/* Bottom HUD: handoff hint to the curated reel beat. The
+            "% SCRUB" progress readout was removed (no UX value on a
+            scroll-driven reel). */}
+        <div className="other-gallery-foot">
+          <div className="other-gallery-next">
+            <span>02 / Curated reel</span>
+            <span className="other-gallery-next-arrow" aria-hidden>↓</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ===================== BEAT B: CURATED REEL ===================== */}
+      <div
+        className="other-curated"
+        style={
+          {
+            opacity: beatBOpacity,
+            pointerEvents: beatBOpacity > 0.5 ? "auto" : "none",
+          } as React.CSSProperties
+        }
+      >
         {/* Persistent editorial header: kept at the top per design
             spec: "KEEP the section header at the top (04: OFF THE
             CLOCK + Things I love.)". */}
