@@ -145,6 +145,14 @@ function RingScene({
   // Tracks the offscreen→onscreen edge so the first resumed frame forces a
   // fresh ascii.render() (no stale-frame flash when scrolling back up).
   const wasOffscreenRef = useRef(true);
+  // Last dimensions actually applied via ascii.setSize. setSize is NOT
+  // cheap: it rebuilds the glyph-table DOM (innerHTML) and clears the
+  // readback canvas, which painted a visible one-frame jump every time
+  // the ring resumed from offscreen (the "ring glitches around when I
+  // scroll back up" bug: each offscreen boundary crossing forced a
+  // mid-frame rebuild at an UNCHANGED size). Cache lets the resume path
+  // skip the rebuild unless the container truly resized while asleep.
+  const asciiSizeRef = useRef({ w: 0, h: 0 });
   // Resting orientation (the scene's tilt). The entrance rotates the tilt
   // group from 0 (face-on, facing the camera) to these over the reveal.
   const TILT_X = (38 * Math.PI) / 180;
@@ -349,6 +357,10 @@ function RingScene({
 
     // Initial sizing.
     ascii.setSize(container.clientWidth, container.clientHeight);
+    asciiSizeRef.current = {
+      w: container.clientWidth,
+      h: container.clientHeight,
+    };
 
     return () => {
       if (dom.parentNode === container) container.removeChild(dom);
@@ -364,6 +376,7 @@ function RingScene({
     const ascii = asciiRef.current;
     if (!ascii) return;
     ascii.setSize(size.width, size.height);
+    asciiSizeRef.current = { w: size.width, h: size.height };
   }, [size.width, size.height]);
 
   // ---------------------------------------------------------------
@@ -435,14 +448,21 @@ function RingScene({
     const dt = Math.min(0.05, now - lastTRef.current);
     lastTRef.current = now;
 
-    // On re-entry from off-screen the AsciiEffect <td> table is still sized
-    // to the rect cached while the container was hidden, so the first resume
-    // frame renders off-center until R3F's size effect re-fires. Re-measure
-    // the LIVE container now so the resume render is correctly centered.
+    // On re-entry from off-screen, re-measure the LIVE container and
+    // resize ONLY if it actually changed while the ring was asleep
+    // (e.g. a window resize mid-page). The unconditional setSize that
+    // used to live here rebuilt the glyph-table DOM + cleared the
+    // readback canvas on EVERY boundary crossing, which is what made
+    // the ring visibly glitch/jump when scrolling back up to the hero.
     if (wasOffscreenRef.current) {
       const container = gl.domElement.parentElement;
       if (container && container.clientWidth > 0 && container.clientHeight > 0) {
-        ascii.setSize(container.clientWidth, container.clientHeight);
+        const cw = container.clientWidth;
+        const ch = container.clientHeight;
+        if (cw !== asciiSizeRef.current.w || ch !== asciiSizeRef.current.h) {
+          ascii.setSize(cw, ch);
+          asciiSizeRef.current = { w: cw, h: ch };
+        }
       }
     }
 
