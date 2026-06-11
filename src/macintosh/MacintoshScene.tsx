@@ -654,6 +654,61 @@ function ensureUppercase(text: string): string {
  * implementation; only the position/rotation choreography is new).
  * ──────────────────────────────────────────────────────────────── */
 
+/**
+ * CRT post shader for the screen overlay: scanlines, a slow upward
+ * refresh band, corner vignette, and a faint flicker, all time-driven
+ * in GLSL. Doing this in the material (instead of painting into the
+ * canvas texture) means the effects move EVERY frame without a single
+ * CanvasTexture re-upload; the UI texture keeps its repaint-on-change
+ * regime. uOpacity replaces MeshBasicMaterial.opacity for the boot
+ * power-on ramp. `colorspace_fragment` is mandatory: custom shaders
+ * bypass three's output encoding, and without it the screen renders
+ * dark/wrong under ColorManagement (see project rule).
+ */
+function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uMap: { value: map },
+      uOpacity: { value: 0 },
+      uTime: { value: 0 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D uMap;
+      uniform float uOpacity;
+      uniform float uTime;
+      varying vec2 vUv;
+      void main() {
+        vec3 col = texture2D(uMap, vUv).rgb;
+        // Scanlines: ~210 lines across the face, drifting slowly so
+        // they read as live raster rather than a static texture.
+        float scan = 0.94 + 0.06 * sin(vUv.y * 210.0 * 6.2832 + uTime * 1.5);
+        // Refresh band: a soft bright bar rolling upward every ~7s.
+        float roll = fract(vUv.y + uTime * 0.14);
+        float band = 1.0 + 0.05 * exp(-pow((roll - 0.5) * 9.0, 2.0));
+        // Corner vignette: tube glass falloff.
+        float d = distance(vUv, vec2(0.5));
+        float vig = 1.0 - 0.16 * smoothstep(0.34, 0.72, d);
+        // Faint supply flicker (sub-2%, two incommensurate sines so it
+        // never reads as a loop).
+        float flick = 1.0 + 0.012 * sin(uTime * 47.0) * sin(uTime * 13.7);
+        gl_FragColor = vec4(col * scan * band * vig * flick, uOpacity);
+        #include <colorspace_fragment>
+      }
+    `,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+}
+
 function MacBody({
   screenTexture,
   overlayMatRef,
@@ -661,11 +716,11 @@ function MacBody({
 }: {
   screenTexture: THREE.Texture;
   // Scene hands down a ref it owns so the overlay's material can be
-  // driven (opacity gating) from the parent useFrame loop. The
-  // overlay is created asynchronously inside an effect once the GLB
+  // driven (opacity gating + CRT clock) from the parent useFrame loop.
+  // The overlay is created asynchronously inside an effect once the GLB
   // clone is ready; this ref is null until that point, and the
   // parent loop guards against it.
-  overlayMatRef: React.MutableRefObject<THREE.MeshBasicMaterial | null>;
+  overlayMatRef: React.MutableRefObject<THREE.ShaderMaterial | null>;
   // Populated with the screen face geometry (mesh + local center +
   // local outward normal + aspect) once the overlay is built, so the
   // detail-zoom camera can aim dead-on down the live world normal.
@@ -798,25 +853,15 @@ function MacBody({
     const faceH = sortedAxes[1]!;
     const overlayGeo = new THREE.PlaneGeometry(faceW, faceH);
 
-    // Overlay starts FULLY TRANSPARENT (opacity=0). The parent useFrame
-    // loop reads pin progress and ramps opacity → 1 across the CRT
+    // Overlay starts FULLY TRANSPARENT (uOpacity=0). The parent useFrame
+    // loop reads pin progress and ramps uOpacity → 1 across the CRT
     // boot window (THRESHOLDS.bootStart..bootEnd). During the float +
     // orbit beats the overlay is invisible, so the underlying black
     // screen mesh ("#080808") reads through as an inert dark CRT face;
     // i.e. "the Mac is OFF". The screen lights up only when the Mac
-    // lands. `transparent:true` is non-negotiable here; without it,
-    // three.js ignores opacity entirely and the overlay would always
-    // paint the boot canvas over the inert glass.
-    const overlayMat = new THREE.MeshBasicMaterial({
-      map: screenTexture,
-      color: "#ffffff",
-      toneMapped: false,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0,
-      depthTest: false,
-      depthWrite: false,
-    });
+    // lands. The material is the CRT post shader (scanlines / roll /
+    // vignette / flicker) so the picture reads as a live tube.
+    const overlayMat = makeCrtScreenMaterial(screenTexture);
     const overlay = new THREE.Mesh(overlayGeo, overlayMat);
     overlay.position.copy(center);
     const nudge = Math.max(size.length() * 0.01, 0.01);
@@ -860,9 +905,8 @@ function MacBody({
   useEffect(() => {
     const overlay = screenOverlayRef.current;
     if (!overlay) return;
-    const mat = overlay.material as THREE.MeshBasicMaterial;
-    mat.map = screenTexture;
-    mat.needsUpdate = true;
+    const mat = overlay.material as THREE.ShaderMaterial;
+    mat.uniforms.uMap!.value = screenTexture;
   }, [screenTexture]);
 
   if (!clone) return null;
@@ -1432,6 +1476,72 @@ function wrapText(
   return lines;
 }
 
+/**
+ * Spinning ASCII torus for the boot screen: the classic donut.c
+ * projection, rendered as text rows straight into the CRT canvas (no
+ * second WebGL context; VT323 is monospace so rows align). Spin is
+ * driven by bootProgress, i.e. scrubbed by the pin like everything
+ * else in this section, so it needs no extra repaint loop: every
+ * bootProgress step (~30Hz while scrolling) re-poses the torus.
+ */
+const DONUT_LUMA = ".,-~:;=!*#%@";
+function drawBootDonut(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  bootProgress: number,
+) {
+  const COLS = 48;
+  const ROWS = 20;
+  // Two-axis spin across the boot window (~1.5 turns + a tumble).
+  const A = 1.1 + bootProgress * 9.0;
+  const B = 0.6 + bootProgress * 4.5;
+
+  const buf: string[] = new Array(COLS * ROWS).fill(" ");
+  const zbuf: number[] = new Array(COLS * ROWS).fill(0);
+  const R1 = 1, R2 = 2, K2 = 5;
+  const K1 = (COLS * K2 * 3) / (8 * (R1 + R2));
+  const cosA = Math.cos(A), sinA = Math.sin(A);
+  const cosB = Math.cos(B), sinB = Math.sin(B);
+  for (let th = 0; th < Math.PI * 2; th += 0.07) {
+    const cosT = Math.cos(th), sinT = Math.sin(th);
+    for (let ph = 0; ph < Math.PI * 2; ph += 0.03) {
+      const cosP = Math.cos(ph), sinP = Math.sin(ph);
+      const circleX = R2 + R1 * cosT;
+      const circleY = R1 * sinT;
+      const x = circleX * (cosB * cosP + sinA * sinB * sinP) - circleY * cosA * sinB;
+      const y = circleX * (sinB * cosP - sinA * cosB * sinP) + circleY * cosA * cosB;
+      const z = K2 + cosA * circleX * sinP + circleY * sinA;
+      const ooz = 1 / z;
+      const xp = Math.floor(COLS / 2 + K1 * ooz * x);
+      const yp = Math.floor(ROWS / 2 - K1 * 0.5 * ooz * y);
+      if (xp < 0 || xp >= COLS || yp < 0 || yp >= ROWS) continue;
+      const idx = xp + yp * COLS;
+      if (ooz <= zbuf[idx]!) continue;
+      const lum =
+        cosP * cosT * sinB - cosA * cosT * sinP - sinA * sinT +
+        cosB * (cosA * sinT - cosT * sinA * sinP);
+      zbuf[idx] = ooz;
+      const li = Math.max(0, Math.floor(lum * 8));
+      buf[idx] = DONUT_LUMA[Math.min(li, DONUT_LUMA.length - 1)]!;
+    }
+  }
+
+  // Centered in the area below the type-in lines.
+  const fontSize = Math.max(14, Math.round(h * 0.034));
+  ctx.font = `${fontSize}px ${PIXEL_FONT}`;
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+  const cw = ctx.measureText("M").width;
+  const lineH = Math.round(fontSize * 0.92);
+  const x0 = Math.round((w - COLS * cw) / 2);
+  const y0 = Math.round(170 + (h - 170 - ROWS * lineH) / 2);
+  ctx.fillStyle = CRT_ACCENT;
+  for (let r = 0; r < ROWS; r++) {
+    ctx.fillText(buf.slice(r * COLS, (r + 1) * COLS).join(""), x0, y0 + r * lineH);
+  }
+}
+
 function drawScreen(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -1441,22 +1551,23 @@ function drawScreen(
   hoverIndex: number | null,
 ) {
   // RIGID MODERN-OS desktop, matches drawProjectDetail's language: dark
-  // cool CRT ground, cool-white text, orange accent, SHARP corners, clean
-  // Geist for tile titles (mono only for the system header). No scanlines.
+  // cool CRT ground, cool-white text, orange accent, SHARP corners.
+  // (Scanlines/vignette/roll live in the screen overlay's CRT shader,
+  // NOT in this canvas: shader effects animate per frame without
+  // re-uploading the texture.)
   ctx.fillStyle = CRT_BASE;
   ctx.fillRect(0, 0, w, h);
 
   const showDesktop = bootProgress >= 0.95;
   if (!showDesktop) {
-    // Boot voice: a touch of personality over the generic placeholder.
-    // A version string with build date, a self-aware "mounting" line, and
-    // a sign-off that reads as a person behind the machine rather than a
-    // canned READY. Still pure typed-in mono; the char-count typing math
-    // below is unchanged.
+    // Boot voice: version string, mount line, READY. The "(it works
+    // this time)" quip that shipped with the taste sweep was cut per
+    // user (reads as the machine apologizing); the pixel type on the
+    // CRT carries the personality on its own.
     const lines = [
       "DANIEL_OS v2.6",
       "mounting projects.dir ... ok",
-      "READY. (it works this time)",
+      "READY.",
     ];
     const totalChars = lines.reduce((s, l) => s + l.length, 0);
     const charsToShow = Math.floor(bootProgress * totalChars * 1.25);
@@ -1473,6 +1584,7 @@ function drawScreen(
       ctx.fillText(line.slice(0, take), 40, y);
       y += 42;
     }
+    drawBootDonut(ctx, w, h, bootProgress);
     return;
   }
 
@@ -1749,8 +1861,10 @@ function Scene({
   const shadowLightRef = useRef<THREE.DirectionalLight>(null);
   // Overlay material handle written by MacBody once the GLB has been
   // cloned + traversed and the screen-overlay plane exists. Until then
-  // this is null; the useFrame loop short-circuits.
-  const overlayMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
+  // this is null; the useFrame loop short-circuits. (CRT post shader:
+  // the loop drives uOpacity for the boot ramp and uTime for the
+  // moving scanlines/roll/flicker.)
+  const overlayMatRef = useRef<THREE.ShaderMaterial | null>(null);
   // Live screen face geometry (mesh + local center/normal + aspect),
   // written by MacBody once the overlay exists. The detail-zoom camera
   // reads it to aim dead-on down the screen's world normal.
@@ -2103,10 +2217,14 @@ function Scene({
     // overlay only adds the picture on top of it.
     const mat = overlayMatRef.current;
     if (mat) {
-      // Cheap guard against re-uploading the same value every frame.
-      if (Math.abs(mat.opacity - newBoot) > 0.005) {
-        mat.opacity = newBoot;
+      // Cheap guard against re-writing the same value every frame.
+      if (Math.abs((mat.uniforms.uOpacity!.value as number) - newBoot) > 0.005) {
+        mat.uniforms.uOpacity!.value = newBoot;
       }
+      // CRT clock: drives the scanline drift / refresh roll / flicker.
+      // Ticks only while this scene's frameloop runs (i.e. while the
+      // section is on screen), so the effects pause for free off-screen.
+      mat.uniforms.uTime!.value = performance.now() / 1000;
     }
   });
 
