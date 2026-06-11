@@ -81,6 +81,17 @@ export function HeroAsciiRing({
   return (
     <div className="hero-ascii-ring" aria-hidden>
       <Canvas
+        // CRITICAL: measure layout size (offsetWidth), NOT the
+        // transformed bounding box. The hero composition scales up to
+        // 3x during the dive-out; R3F's default measurement uses
+        // getBoundingClientRect, which INCLUDES that ancestor scale, so
+        // the canvas "resized" to ~3x mid-dive and again on the way
+        // back. Each resize rebuilt the AsciiEffect glyph table
+        // (43k -> 149k chars, measured) in full view: the "ring
+        // glitches around when scrolling back up" bug. offsetSize keeps
+        // the canvas pinned to the untransformed 130vw box and stops
+        // the renderer allocating a ~7000px-wide backing buffer per dive.
+        resize={{ offsetSize: true }}
         gl={{
           antialias: true,
           alpha: true,
