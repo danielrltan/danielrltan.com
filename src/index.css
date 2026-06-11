@@ -75,12 +75,15 @@
  *   Accent:   --accent #e87040, --accent-hot #ff6a2a, --accent-tint
  *   Type:     --font-display / --font-body / --font-mono Geist,
  *             --font-dot Offbit Dot, --font-pixel Offbit
- *   Sizes:    --fs-mono 11, --fs-meta 13, --fs-body 16,
- *             --fs-lead 20→28, --fs-h2 48→108, --fs-h1 72→220
- *   Space:    --space-1..9 (4, 8, 12, 16, 24, 32, 48, 64, 96)
+ *   Sizes:    --fs-mono 11, --fs-meta 13, --fs-sub 14, --fs-body 16,
+ *             --fs-body-lg 17, --fs-lead 20→28, --fs-h2 48→108,
+ *             --fs-h1 72→220
+ *   Space:    --space-1..9 (4, 8, 12, 16, 24, 32, 48, 64, 96) +
+ *             --space-4h 20 (mid step in the 16→24 gap)
  *   Radii:    --r-chip 999px, --r-card 14px, --r-card-lg 20px
- *   Motion:   --ease-out, --ease-soft; --t-fast 180, --t-base 280,
- *             --t-slow 540
+ *   Motion:   --ease-out, --ease-soft, --ease-entrance, --ease-bounce;
+ *             --t-fast 180, --t-base 280, --t-med 400, --t-slow 540;
+ *             --stagger 60 (per-item reveal step)
  *
  * COMPONENT NORMS
  * ---------------
@@ -158,12 +161,29 @@
      ~5:1 and stays on-palette (accent toward ink, no new hue). Use it
      for accent-colored labels/eyebrows/numerals at body size. */
   --accent-text: color-mix(in srgb, var(--accent) 66%, var(--ink));
+  /* LARGE-text accent: WCAG only requires 3:1 for large/bold display text
+     (>=24px, or >=18.7px bold), so the small-text --accent-text (~5:1) is
+     overkill there and reads as a muddy dark orange. This lighter mix lands
+     ~3.4:1 — passes the large-text bar with margin while staying visibly,
+     on-brand orange. Use ONLY for big display numbers/metrics, never body. */
+  --accent-text-lg: color-mix(in srgb, var(--accent) 85%, var(--ink));
 
-  /* -- Spacing scale ------------------------------------------------ */
+  /* -- Spacing scale ------------------------------------------------
+   * 4px progression. --space-4h (20px) breaks up the first LOOSE gap
+   * (16→24 is 1.5×); the tighter 12→16 step gets no token (snap, don't
+   * splinter). Snap guidance for orphan spacing values:
+   *   • 10px       → --space-2 (8) or --space-3 (12)
+   *   • 14px       → --space-4 (16) or --space-3 (12); pick by rhythm
+   *   • 18px       → --space-4h (20)
+   *   • 20/22px    → --space-4h (20)
+   *   • 26/28px    → --space-5 (24) or --space-6 (32)
+   *   • 36px       → --space-6 (32) or --space-7 (48)
+   *   • 56px       → --space-7 (48) or --space-8 (64) */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-4h: 20px; /* mid step, breaks the loose 16→24 gap */
   --space-5: 24px;
   --space-6: 32px;
   --space-7: 48px;
@@ -175,17 +195,48 @@
   --r-card: 14px;
   --r-card-lg: 20px;
 
-  /* -- Motion easings + durations -------------------------------- */
+  /* -- Motion easings + durations -----------------------------------
+   * Coherent motion spine. Four duration steps + a stagger unit, four
+   * named easings. Sections reference these verbatim instead of minting
+   * ad-hoc ms/curves. Snap guidance for existing call-sites:
+   *   • 200ms        → --t-fast   (≈imperceptible, do not reserve)
+   *   • 320/360/380  → --t-med    (or --t-base if it reads brisk)
+   *   • 420/440/480/520 → --t-med (or --t-slow for the longest reveals)
+   *   • cubic-bezier(0.2, 0.7, 0.2, 1)  is already --ease-soft (reuse it)
+   *   • cubic-bezier(0.22, 0.61, 0.36, 1) → --ease-entrance
+   *   • cubic-bezier(0.34, 1.56, 0.64, 1) → --ease-bounce
+   * The cursor's bespoke 0.34,1.4,0.64,1 stays inline (intentionally
+   * distinct, see .moveable-cursor__ring). Long ambient loops (38s/42s
+   * drifts, infinite pulses) are NOT motion-spine values and stay literal.
+   * --t-med fills the 280→540 gap (a 1.93× jump, 26 ad-hoc uses). */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-entrance: cubic-bezier(0.22, 0.61, 0.36, 1); /* gentle reveal in/up */
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);   /* overshoot pop */
   --t-fast: 180ms;
   --t-base: 280ms;
+  --t-med: 400ms;   /* mid reveal step (closes the 280→540 gap) */
   --t-slow: 540ms;
+  --stagger: 60ms;  /* per-item reveal step: item-i delay = i * --stagger */
 
-  /* Editorial type scale (separate from `--text-*` HUD micro-scale). */
+  /* Editorial type scale (separate from `--text-*` HUD micro-scale).
+   * --fs-sub closes the 13→16 gap (14px, the densest mid-range orphan,
+   * 7 uses). --fs-body-lg is the existing 17px body voice used by
+   * `.portfolio-section p` — tokenized at its CURRENT value so adopting
+   * it changes nothing visually. Snap guidance for orphan sizes:
+   *   • 9px/9.5px  → --text-xs (10px) [HUD micro] or --fs-mono if editorial
+   *   • 10.5px     → --text-sm (11px) / --fs-mono
+   *   • 12/12.5px  → --text-base (12px)
+   *   • 14px       → --fs-sub
+   *   • 15px       → --fs-sub (14) or --fs-body (16); pick by context
+   *   • 17px       → --fs-body-lg  (do NOT snap to --fs-body: that's a
+   *                  −1px sitewide body change, a deliberate non-edit)
+   *   • 18px       → --fs-body (16) or --fs-lead floor; context call */
   --fs-mono: 11px;
   --fs-meta: 13px;
+  --fs-sub: 14px;   /* dense 13→16 mid-range step */
   --fs-body: 16px;
+  --fs-body-lg: 17px; /* editorial body voice (current .portfolio-section p) */
   --fs-lead: clamp(20px, 2.1vw, 28px);
   --fs-h2: clamp(48px, 7.5vw, 108px);
   --fs-h1: clamp(72px, 13vw, 220px);
@@ -422,6 +473,7 @@ html.loading-active .scroll-rail {
   inset: 0;
   border-radius: 50%;
   border: 1.5px solid var(--accent);
+  /* Custom overshoot for interactive cursor focus state (0.22s for snappy feel) — intentionally distinct from --ease-soft/--ease-out */
   transition:
     transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
     opacity 0.2s ease;

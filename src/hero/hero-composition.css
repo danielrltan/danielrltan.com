@@ -144,21 +144,14 @@
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 0;
-  opacity: 0;
-  /* ENTRANCE CHOREOGRAPHY: signature stays anchored from the loading
-     phase; wordmark / ring / meta animate IN AROUND it with staggered
-     delays so the composition reads as assembling around the
-     persistent signature, not landing on top of it.
-       wordmark fill : 0.40s delay
-       ring          : 0.60s delay  ← this rule
-       meta row      : 0.80s delay
-     All settle within ~1.2s of phase=transition. */
-  animation: hero-ring-fade-in 1200ms var(--ease-soft) both;
-  animation-delay: 0.6s;
-}
-@keyframes hero-ring-fade-in {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
-  to   { opacity: 0.55; transform: translate(-50%, -50%) scale(1); }
+  /* Resting opacity. The ring's reveal is now JS-driven (HeroAsciiRing's
+     entrance: crossfade-in face-on → tilt → spin-up, gated on
+     phase=settled), via the AsciiEffect DOM opacity, so the old CSS
+     fade-in here (which fought the entrance + played under the
+     composition's own 0→1 fade) is removed. The glyph DOM starts at
+     opacity 0 and JS fades it in, so the wrap can sit at its resting
+     0.55. */
+  opacity: 0.55;
 }
 
 .hero-ascii-ring {
@@ -252,7 +245,7 @@
   line-height: 0.84;
   font-family: var(--font-display);
   font-weight: 800;
-  letter-spacing: -0.058em;
+  letter-spacing: -0.082em;
   font-size: clamp(96px, 17vw, 280px);
   text-transform: uppercase;
   user-select: none;
@@ -297,12 +290,11 @@
 }
 .hero-mega-char {
   display: inline-block;
-  /* Letter-spacing tightens on hover. Per-char so each can carry its
-     own transition-delay set inline. */
-  transition:
-    letter-spacing 380ms var(--ease-soft),
-    transform 380ms var(--ease-soft);
+  /* Inhale tracking: the per-letter translate3d + scale is written every
+     frame by the rAF spring in HeroSignature. NO CSS transition on
+     transform — it would fight the spring and smear the motion. */
   transform-origin: 50% 60%;
+  will-change: transform;
 }
 
 /* Outline ghost: HIDDEN.
@@ -316,112 +308,11 @@
   display: none;
 }
 
-/* Matrix proximity grid: wordmark hover overlay.
-   ──────────────────────────────────────────────────────────────────
-   Sits absolutely over .hero-mega-fill, sized 100%/100% so the box
-   matches the parent line exactly. The matrix renders the SAME per-
-   character span structure as the fill (kerning matches glyph-for-
-   glyph; rendering as one plain string drifted horizontally vs. the
-   fill).
-
-   `background-clip: text` clips a SOLID white fill to the matrix's own
-   glyph shapes. Matrix glyphs are color:transparent so only the clipped
-   fill paints through, tracing each letter.
-
-   The GRID + the cursor proximity both live in the MASK, not the
-   background. Three mask layers composited with `mask-composite:
-   intersect`:
-     A (grid-vertical)   repeating-linear-gradient → opaque 14px columns
-     B (grid-horizontal) repeating-linear-gradient → opaque 14px rows
-     C (proximity)       radial-gradient at the cursor (--mx / --my)
-   Visible region = A ∩ B ∩ C → only the 14×14 SQUARE CELLS (A∩B) that
-   are also within ~200px of the pointer (C) paint white. Distinct
-   squares, not a smooth blob.
-
-   Why not the old crossed-gradient background + background-blend:
-   multiply trick? The bands are WHITE now (orange gave no contrast over
-   the orange wordmark), and white × white under multiply = white
-   everywhere → the grid collapses to a solid fill and the radial mask
-   reveals it as a glow. Moving the grid into the mask sidesteps the
-   blend-mode entirely.
-
-   --mhover (0/1, written from React via rAF) drives a 240ms opacity
-   transition so the matrix fades out on pointerleave. */
-.hero-mega-matrix {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 3;
-  pointer-events: none;
-  display: inline-block;
-  font: inherit;
-  font-weight: inherit;
-  letter-spacing: inherit;
-  line-height: inherit;
-  text-transform: inherit;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  /* SOLID white fill (as a gradient, NOT `background-color`, because Chromium's
-     `background-clip:text` leaks background-color onto the full box).
-     White over the orange wordmark = crisp retro-monitor reveal. */
-  background-color: transparent;
-  background-image: linear-gradient(
-    rgba(255, 255, 255, 0.96),
-    rgba(255, 255, 255, 0.96)
-  );
-  -webkit-background-clip: text;
-          background-clip: text;
-  /* Mask layers A (vertical grid) ∩ B (horizontal grid) ∩ C (cursor
-     proximity). A∩B carves the box into 14×14 lit cells with a 2px
-     gutter (16px pitch); C limits the lit cells to a ~200px disc that
-     follows the cursor, feathering at the edge.
-     Layer order: C is listed FIRST so the standard `mask-composite:
-     intersect` (which composites each layer with the accumulation of
-     the ones before it) and the WebKit `source-in` chain both resolve
-     to A∩B∩C. */
-  -webkit-mask-image:
-    radial-gradient(
-      circle 200px at var(--mx, -9999px) var(--my, -9999px),
-      #000 0%, #000 30%, rgba(0, 0, 0, 0.5) 60%, transparent 100%
-    ),
-    repeating-linear-gradient(to right,  #000 0 14px, transparent 14px 16px),
-    repeating-linear-gradient(to bottom, #000 0 14px, transparent 14px 16px);
-          mask-image:
-    radial-gradient(
-      circle 200px at var(--mx, -9999px) var(--my, -9999px),
-      #000 0%, #000 30%, rgba(0, 0, 0, 0.5) 60%, transparent 100%
-    ),
-    repeating-linear-gradient(to right,  #000 0 14px, transparent 14px 16px),
-    repeating-linear-gradient(to bottom, #000 0 14px, transparent 14px 16px);
-  /* The radial layer is sized/positioned by its own gradient; the two
-     repeating grid layers tile from the box origin. no-repeat on the
-     radial keeps it a single disc; the grid layers repeat. */
-  -webkit-mask-repeat: no-repeat, repeat, repeat;
-          mask-repeat: no-repeat, repeat, repeat;
-  /* WebKit legacy keyword chain: source-in intersects each layer with
-     the composite of the layers AFTER it (bottom-up), so the net result
-     is grid-v ∩ grid-h ∩ radial. Standard spec uses `intersect` and is
-     applied per-layer with the accumulation BEFORE it; both land on
-     the same A∩B∩C set here. */
-  -webkit-mask-composite: source-in, source-in;
-          mask-composite: intersect;
-  opacity: 0;
-  transition: opacity 240ms var(--ease-soft);
-  will-change: opacity, mask-image;
-}
-
-.hero-mega-matrix-char {
-  display: inline-block;
-  transition: letter-spacing 380ms var(--ease-soft);
-}
-.hero-mega-wordmark:hover .hero-mega-matrix-char {
-  letter-spacing: -0.012em;
-}
-.hero-mega-line .hero-mega-matrix {
-  opacity: calc(var(--mhover, 0) * 1);
-}
+/* The white "matrix" proximity-grid overlay was removed: white-on-orange
+   (and earlier white-on-white) read as a muddy haze rather than a reveal.
+   The wordmark's hover affordance is now the per-letter inhale-tracking
+   spring (see .hero-mega-char + HeroSignature's rAF loop), which keeps
+   the accent colour and just spreads the glyphs toward the cursor. */
 
 @keyframes hero-mega-in {
   from { opacity: 0; transform: translateY(48px) scale(0.96); }
@@ -430,25 +321,14 @@
 /* hero-mega-outline-in keyframe removed: the outline ghost is
    display:none (see .hero-mega-outline) so nothing consumed it. */
 
-.hero-mega-wordmark:hover .hero-mega-char {
-  letter-spacing: -0.012em;
-}
-
 @media (hover: none), (pointer: coarse) {
-  .hero-mega-matrix {
-    display: none;
-  }
   /* Touch has no hover, so the wordmark needs no pointer affordance;
      it's pure display type. Drop pointer-events so a vertical swipe over
      the full-height wordmark wrapper scrolls the page instead of being
-     swallowed by the matrix hit-area (which is gated off on touch). */
+     swallowed by the hit-area. (The inhale rAF also bails on coarse
+     pointers, so the glyphs stay at rest.) */
   .hero-mega-wordmark {
     pointer-events: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .hero-mega-matrix {
-    transition-duration: 0ms;
   }
 }
 
@@ -617,8 +497,7 @@
   font-size: 13px;
   line-height: 1;
   color: var(--accent);
-  text-shadow: 0 0 10px rgba(232, 112, 64, 0.45);
-  animation: hero-scroll-bob 2.2s ease-in-out infinite;
+  animation: hero-scroll-bob 2.2s var(--ease-soft) infinite;
   flex-shrink: 0;
 }
 .hero-scroll-label {

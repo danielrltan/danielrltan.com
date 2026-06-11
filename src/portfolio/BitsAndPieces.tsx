@@ -33,7 +33,7 @@ const ENTRIES: Entry[] = [
     category: "Hackathon",
     title: "Hack The 6ix",
     metric: "Finalist",
-    context: "Top finalist · 400+",
+    context: "Top 1% · 400+",
     blurb: "Revamp universal BMS for second-life EV modules.",
     featured: true,
   },
@@ -63,6 +63,11 @@ const ENTRIES: Entry[] = [
     metric: "2nd",
     context: "$2,500",
     blurb: "Toronto Regional Real Estate Board student competition.",
+    // Promoted to the hero slot vacated by VP of Design: already carries a
+    // verified metric ("2nd") + context ("$2,500"), so the span-3 treatment
+    // is informationally earned and keeps three full hero cards (cf. Hack
+    // The 6ix, WFN Odyssey).
+    featured: true,
   },
   {
     category: "Grant",
@@ -93,13 +98,20 @@ const ENTRIES: Entry[] = [
   {
     category: "Leadership",
     title: "VP of Design",
+    // De-featured: this was featured:true with NO metric/context, so the
+    // span-3 hero slot rendered visually overstuffed but informationally
+    // empty next to Hack The 6ix ("Finalist" / "Top 1% · 400+") and WFN
+    // Odyssey ("1st" / "$500"). A leadership role has no honest pulled-out
+    // metric (the résumé lists only the title + org), and inventing one
+    // ("Co-Founder" etc.) would be worse than an empty slot — so it drops
+    // to a regular card. The freed hero slot moves to TRREB 2024 below,
+    // which already carries a verified metric + context. Copy unchanged.
     blurb: "Western Founders Network.",
-    featured: true,
   },
   {
     category: "Leadership",
-    title: "Director of Outreach",
-    blurb: "Tech for Social Impact.",
+    title: "VP of Marketing",
+    blurb: "Tethos.",
   },
 ];
 
@@ -134,14 +146,17 @@ interface CountUpProps {
  */
 function BpTile({
   entry,
-  index,
   direction,
+  delaySteps,
   revealed,
   tileRef,
 }: {
   entry: Entry;
-  index: number;
   direction: "left" | "right";
+  /** Per-card reveal-stagger step count (visual reading order, 0-based).
+      Delay resolves to calc(var(--stagger) * delaySteps) so it rides the
+      shared motion-spine token instead of a hardcoded ms value. */
+  delaySteps: number;
   revealed: boolean;
   tileRef: (el: HTMLLIElement | null) => void;
 }) {
@@ -173,7 +188,12 @@ function BpTile({
         .filter(Boolean)
         .join(" ")}
       style={{
-        transitionDelay: `${(index % 6) * 60}ms`,
+        // Stagger rides the --stagger spine token. delaySteps is the card's
+        // VISUAL reading-order position (row-then-column), recomputed from the
+        // resolved grid in the parent — so the reveal sweeps in screen order
+        // even though grid-auto-flow:dense + span-3 featured cards make the
+        // visual order diverge from DOM order.
+        transitionDelay: `calc(var(--stagger) * ${delaySteps})`,
       }}
     >
       <article className="bp-tile-inner" aria-label={label}>
@@ -235,6 +255,14 @@ function CountUp({ to, active, format = (n) => `${n}` }: CountUpProps) {
   );
 }
 
+/** Per-card reveal choreography derived from the RESOLVED grid layout
+    (not DOM index). `direction` is the edge the card sweeps in from;
+    `delaySteps` is its visual reading-order position (× --stagger). */
+interface TileChoreo {
+  direction: "left" | "right";
+  delaySteps: number;
+}
+
 export function BitsAndPieces() {
   const sectionRef = useRef<HTMLElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
@@ -246,6 +274,17 @@ export function BitsAndPieces() {
   const [revealedSet, setRevealedSet] = useState<ReadonlySet<number>>(new Set());
   const tileEls = useRef<(HTMLLIElement | null)[]>([]);
   const sharedIoRef = useRef<IntersectionObserver | null>(null);
+
+  // Reveal choreography per tile, keyed by DOM index. Defaults to a sane
+  // DOM-order sweep (alternating edges, sequential stagger) so the first
+  // paint is never un-choreographed; the layout effect below replaces it
+  // with grid-position-aware values once the resolved layout is readable.
+  const [choreo, setChoreo] = useState<readonly TileChoreo[]>(() =>
+    ENTRIES.map((_, i) => ({
+      direction: i % 2 === 0 ? "left" : "right",
+      delaySteps: i % 6,
+    })),
+  );
 
   // Stable ref-callback factory so tile elements register into tileEls by index.
   // useCallback with a stable closure prevents React from recreating the
@@ -293,6 +332,66 @@ export function BitsAndPieces() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Recompute reveal direction + stagger from the RESOLVED layout GEOMETRY,
+  // so the sweep follows on-screen position rather than DOM order. With
+  // grid-auto-flow:dense and span-3 featured cards the two diverge: a card
+  // late in the DOM can pack into an early visual slot.
+  //
+  // NB: we measure with getBoundingClientRect(), NOT getComputedStyle()'s
+  // gridColumnStart/gridRowStart — for AUTO-PLACED grid items the latter
+  // returns the specified track string ("span 2"/"span 3"/"auto"), never the
+  // browser-resolved line, so it can't tell us where a card actually landed.
+  // The rect gives us real pixel x/y. We bucket cards into visual rows by
+  // rounded top (subpixel jitter would otherwise split one row in two),
+  // order by row-then-x for the stagger, and pick the sweep edge from which
+  // half of the grid's width the card's center sits in. Re-runs on resize
+  // (breakpoints change the column count, hence the packing).
+  useEffect(() => {
+    const computeChoreo = () => {
+      const placements = tileEls.current
+        .map((el, i) => {
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { i, centerX: r.left + r.width / 2, rowKey: Math.round(r.top) };
+        })
+        .filter((p): p is { i: number; centerX: number; rowKey: number } => p !== null);
+      if (placements.length === 0) return;
+      // Grid horizontal center from the spread of tile centers (no extra ref
+      // needed): cards left of it sweep in from the left, the rest from right.
+      const minX = placements.reduce((m, p) => Math.min(m, p.centerX), Infinity);
+      const maxX = placements.reduce((m, p) => Math.max(m, p.centerX), -Infinity);
+      const centerX = (minX + maxX) / 2;
+      // Visual reading order → stagger step: sort a copy by row then x.
+      const ordered = [...placements].sort((a, b) =>
+        a.rowKey !== b.rowKey ? a.rowKey - b.rowKey : a.centerX - b.centerX,
+      );
+      const stepByIndex = new Map<number, number>();
+      ordered.forEach((p, order) => stepByIndex.set(p.i, order % 6));
+      const next: TileChoreo[] = ENTRIES.map((_, i) => ({
+        // Single-column breakpoints collapse minX===maxX===centerX; "<" is
+        // false for all, so every card sweeps from the right — fine for a
+        // 1-col stack where there is no left/right axis to honour.
+        direction: (placements.find((p) => p.i === i)?.centerX ?? centerX) < centerX
+          ? "left"
+          : "right",
+        delaySteps: stepByIndex.get(i) ?? i % 6,
+      }));
+      setChoreo(next);
+    };
+
+    // Defer one frame so the grid has resolved before we read it.
+    let raf = requestAnimationFrame(computeChoreo);
+    const onResize = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(computeChoreo);
+    };
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
+
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
@@ -324,7 +423,14 @@ export function BitsAndPieces() {
     }
 
     let raf = 0;
+    // Only do the per-scroll-frame rect read + transform write while the
+    // section is near the viewport. The marquee sits near the bottom of the
+    // page, so for most of the scroll it was reading getBoundingClientRect
+    // every frame for nothing. A persistent observer gates it; entering the
+    // viewport schedules one refresh so the transform is never stale.
+    let marqueeVisible = false;
     const update = () => {
+      if (!marqueeVisible) return;
       const r = el.getBoundingClientRect();
       const vh = window.innerHeight || 1;
       const p = (vh - r.top) / (vh + r.height);
@@ -337,11 +443,20 @@ export function BitsAndPieces() {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(update);
     };
-    update();
+    const visIo = new IntersectionObserver(
+      (entries) => {
+        const wasVisible = marqueeVisible;
+        for (const entry of entries) marqueeVisible = entry.isIntersecting;
+        if (marqueeVisible && !wasVisible) onScroll();
+      },
+      { rootMargin: "25% 0px 25% 0px" },
+    );
+    visIo.observe(el);
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
     return () => {
       io.disconnect();
+      visIo.disconnect();
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
       cancelAnimationFrame(raf);
@@ -367,7 +482,7 @@ export function BitsAndPieces() {
           <span className="section-index bp-index">
             05 / 06 &middot; Bits and pieces
           </span>
-          <h2 className="bp-title">The trophy wall.</h2>
+          <h2 className="bp-title">The trophy wall</h2>
           <p className="bp-blurb">
             The extras: awards, grants, leadership, scholarships.
             What the timeline above doesn&rsquo;t have room for.
@@ -415,13 +530,13 @@ export function BitsAndPieces() {
 
         <ul className="bp-grid" aria-label="Awards, grants, scholarships and leadership roles">
           {ENTRIES.map((e, i) => {
-            const direction = i % 2 === 0 ? "left" : "right";
+            const c = choreo[i] ?? { direction: "left" as const, delaySteps: 0 };
             return (
               <BpTile
                 key={i}
                 entry={e}
-                index={i}
-                direction={direction}
+                direction={c.direction}
+                delaySteps={c.delaySteps}
                 revealed={revealedSet.has(i)}
                 tileRef={makeTileRef(i)}
               />

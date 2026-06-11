@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { HeroSignature2D } from "./HeroSignature2D";
 import { HeroAsciiRing } from "./HeroAsciiRing";
+import { HeroIgnition } from "./HeroIgnition";
 import { type SignatureData } from "./signatureGeometry";
 import { useAssembly } from "../loading";
 import "./hero-composition.css";
@@ -85,136 +86,181 @@ export function HeroSignature() {
     { text: "TAN", className: "hero-mega-line hero-mega-line-2" },
   ];
 
-  // Matrix / squared-gradient proximity hover.
+  // Inhale tracking: per-letter proximity spread.
   //
-  // Each `.hero-mega-line` gets its own matrix overlay (a span clipped
-  // to the line's text via background-clip:text) and its own --mx/--my
-  // CSS variables: coordinates expressed RELATIVE TO THAT LINE's
-  // bounding rect. A radial-gradient mask centered at (--mx, --my)
-  // reveals only the cells within ~170px of the pointer; outside that
-  // radius the overlay fades to transparent and the black ink fill
-  // underneath shows through.
+  // Replaces the old white "matrix" spotlight (white-on-white over the
+  // orange wordmark read as a muddy haze). Now each GLYPH is pushed
+  // outward from its line's horizontal centre, the push scaled by how
+  // close the cursor is (2D proximity) plus a small global hover bias,
+  // with a subtle weight-lift scale. Letters keep the accent colour.
   //
-  // Per-line (not per-wordmark) coordinates because the mask is sized
-  // to the LINE box; a single wordmark-level var would land off-mask
-  // on the second line.
-  //
-  // Pointermove never calls setState. The handler captures the event
-  // into refs and schedules ONE rAF that writes --mx / --my / --mhover
-  // directly to each line element. --mhover (0/1) drives a 240ms CSS
-  // opacity transition so the matrix fades out on pointerleave.
-  // Touch / coarse pointers skip the listener entirely (CSS also gates
-  // the overlay via @media (hover: none)).
+  // A spring-eased rAF loop lerps each glyph's current offset toward its
+  // target; the loop self-stops once everything is hovering-off AND
+  // settled to rest. Pointer handlers only update the target/pointer —
+  // never setState. Touch / coarse pointers and reduced-motion skip it.
   const wordmarkRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const wrap = wordmarkRef.current;
     if (!wrap) return;
     const coarse = window.matchMedia("(hover: none), (pointer: coarse)").matches;
     if (coarse) return;
-    // Reduced motion: skip the matrix spotlight entirely. The CSS also
-    // zeroes the matrix transition, but the rAF tracking loop is the
-    // motion itself; don't run it at all for these users.
     const reducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
     if (reducedMotion) return;
 
-    const lines = Array.from(
-      wrap.querySelectorAll<HTMLElement>(".hero-mega-line"),
+    const textEl = wrap.querySelector<HTMLElement>(".hero-mega-text");
+    const lineEls = Array.from(
+      wrap.querySelectorAll<HTMLElement>(".hero-mega-fill"),
     );
-    if (lines.length === 0) return;
+    if (!textEl || lineEls.length === 0) return;
+
+    type Glyph = {
+      el: HTMLElement;
+      dir: number; // signed distance from line centre: <0 left, >0 right
+      cx: number; // cached REST centre x (client coords)
+      cy: number; // cached REST centre y (client coords)
+      cur: number; // current x offset (px)
+      tgt: number; // target x offset (px)
+      sCur: number; // current scale
+      sTgt: number; // target scale
+    };
+    const glyphs: Glyph[] = [];
+    lineEls.forEach((lineEl) => {
+      const chars = Array.from(
+        lineEl.querySelectorAll<HTMLElement>(".hero-mega-char"),
+      );
+      const center = (chars.length - 1) / 2;
+      chars.forEach((el, idx) => {
+        glyphs.push({
+          el,
+          dir: idx - center,
+          cx: 0,
+          cy: 0,
+          cur: 0,
+          tgt: 0,
+          sCur: 1,
+          sTgt: 1,
+        });
+      });
+    });
+    if (glyphs.length === 0) return;
+
+    // Magnitudes scale with the live (clamped/responsive) font size so
+    // the spread reads the same from mobile clamp floor to 280px ceiling.
+    let MAX_PUSH = 24;
+    let BASE_PUSH = 9;
+    let SIGMA = 170;
+    const readFont = () => {
+      const fs = parseFloat(getComputedStyle(textEl).fontSize) || 200;
+      MAX_PUSH = fs * 0.11; // peak outward shove at the cursor
+      BASE_PUSH = fs * 0.04; // gentle global airy bias while hovering
+      SIGMA = fs * 0.85; // proximity falloff radius
+    };
+    readFont();
 
     let rafId = 0;
-    // Target pos (latest pointer event) vs current pos (lerped toward
-    // target each frame). Decoupling them gives the spotlight inertia
-    // so it TRAILS the cursor fluidly instead of snapping. LERP_K
-    // controls how quickly the spotlight catches up; 0.18 reads as
-    // "responsive but viscous".
-    let targetX = 0;
-    let targetY = 0;
-    let curX = -9999;
-    let curY = -9999;
-    let pendingActive = false;
-    const LERP_K = 0.18;
+    let pointerX = 0;
+    let pointerY = 0;
+    let hovering = false;
 
-    // PERF: cache each line's bounding rect (top-left in client coords).
-    // Previously this was read via getBoundingClientRect INSIDE the rAF
-    // tick, forcing layout every frame across all lines; major scroll
-    // jank source. The wordmark is fixed-positioned and its lines only
-    // resize on window resize / scroll (the composition translates
-    // during the hero→about dive). Recompute the cache on those events
-    // (rAF-debounced) and just read from the cache during the hover
-    // tick.
-    const rects: Array<{ left: number; top: number }> = new Array(lines.length);
+    // PERF: cache each glyph's REST centre. getBoundingClientRect inside
+    // the rAF tick would force layout every frame across every letter.
+    // The measured centre includes any transform we've applied, so we
+    // subtract the current offset to recover the rest position — keeps
+    // the proximity field stable instead of drifting with the spread.
     let rectsRaf = 0;
     const refreshRects = () => {
       rectsRaf = 0;
-      for (let i = 0; i < lines.length; i++) {
-        const r = lines[i]!.getBoundingClientRect();
-        rects[i] = { left: r.left, top: r.top };
+      for (const g of glyphs) {
+        const r = g.el.getBoundingClientRect();
+        g.cx = r.left + r.width / 2 - g.cur;
+        g.cy = r.top + r.height / 2;
       }
     };
     refreshRects();
     const scheduleRects = () => {
       if (rectsRaf !== 0) return;
-      rectsRaf = window.requestAnimationFrame(refreshRects);
+      rectsRaf = window.requestAnimationFrame(() => {
+        readFont();
+        refreshRects();
+      });
+    };
+
+    const computeTargets = () => {
+      for (const g of glyphs) {
+        if (!hovering) {
+          g.tgt = 0;
+          g.sTgt = 1;
+          continue;
+        }
+        const dx = g.cx - pointerX;
+        const dy = g.cy - pointerY;
+        const prox = Math.exp(-(dx * dx + dy * dy) / (2 * SIGMA * SIGMA));
+        const push = BASE_PUSH + prox * MAX_PUSH;
+        g.tgt = g.dir * push;
+        g.sTgt = 1 + prox * 0.05;
+      }
     };
 
     const tick = () => {
-      curX += (targetX - curX) * LERP_K;
-      curY += (targetY - curY) * LERP_K;
-      const hover = pendingActive ? "1" : "0";
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i]!;
-        const r = rects[i];
-        if (!r) continue;
-        line.style.setProperty("--mx", `${curX - r.left}px`);
-        line.style.setProperty("--my", `${curY - r.top}px`);
-        line.style.setProperty("--mhover", hover);
+      let moving = false;
+      for (const g of glyphs) {
+        g.cur += (g.tgt - g.cur) * 0.16;
+        g.sCur += (g.sTgt - g.sCur) * 0.16;
+        if (
+          Math.abs(g.tgt - g.cur) > 0.05 ||
+          Math.abs(g.sTgt - g.sCur) > 0.001
+        ) {
+          moving = true;
+        }
+        g.el.style.transform = `translate3d(${g.cur.toFixed(2)}px,0,0) scale(${g.sCur.toFixed(3)})`;
       }
-      // Keep ticking while the cursor is hovering OR while we're still
-      // settling (within 0.5px of target). Once both are quiet, stop.
-      const settled =
-        Math.abs(targetX - curX) < 0.5 && Math.abs(targetY - curY) < 0.5;
-      if (pendingActive || !settled) {
+      if (moving || hovering) {
         rafId = window.requestAnimationFrame(tick);
       } else {
+        // Settle to exact rest so transforms don't linger at sub-px values.
+        for (const g of glyphs) {
+          g.cur = 0;
+          g.sCur = 1;
+          g.el.style.transform = "translate3d(0,0,0) scale(1)";
+        }
         rafId = 0;
       }
     };
     const schedule = () => {
-      if (rafId !== 0) return;
-      rafId = window.requestAnimationFrame(tick);
+      if (rafId === 0) rafId = window.requestAnimationFrame(tick);
     };
+
     const onMove = (e: PointerEvent) => {
-      targetX = e.clientX;
-      targetY = e.clientY;
-      pendingActive = true;
+      pointerX = e.clientX;
+      pointerY = e.clientY;
+      hovering = true;
+      computeTargets();
       schedule();
     };
     const onEnter = (e: PointerEvent) => {
-      // Snap current to target on enter so the spotlight appears AT
-      // the cursor rather than drifting in from off-screen. Also
-      // re-cache rects in case the composition just shifted (the
-      // hero-to-about dive moves the wordmark vertically).
+      // Re-cache in case the composition just shifted (hero→about dive
+      // moves the wordmark vertically) and read pointer immediately.
       refreshRects();
-      targetX = e.clientX;
-      targetY = e.clientY;
-      curX = e.clientX;
-      curY = e.clientY;
-      pendingActive = true;
+      pointerX = e.clientX;
+      pointerY = e.clientY;
+      hovering = true;
+      computeTargets();
       schedule();
     };
     const onLeave = () => {
-      pendingActive = false;
+      hovering = false;
+      for (const g of glyphs) {
+        g.tgt = 0;
+        g.sTgt = 1;
+      }
       schedule();
     };
 
     wrap.addEventListener("pointermove", onMove);
     wrap.addEventListener("pointerenter", onEnter);
     wrap.addEventListener("pointerleave", onLeave);
-    // Refresh cache (rAF-debounced) on resize + scroll, since the dive-
-    // in transform shifts the wordmark vertically as the user scrolls.
     window.addEventListener("resize", scheduleRects, { passive: true });
     window.addEventListener("scroll", scheduleRects, { passive: true });
     return () => {
@@ -239,7 +285,7 @@ export function HeroSignature() {
         />
       )}
       <div
-        className={`hero-composition${compositionVisible ? " is-visible" : ""}`}
+        className={`hero-composition${compositionVisible ? " is-visible" : ""}${phase === "settled" ? " is-settled" : ""}`}
         aria-hidden={!compositionVisible}
       >
         {/* Real accessible heading. The wordmark below is built from
@@ -252,6 +298,12 @@ export function HeroSignature() {
           <HeroAsciiRing color="#e87040" spinDuration={26} />
         </div>
 
+        {/* One-shot ASCII blast on load, centred on the ring; the ring then
+            crossfades in over it and tilts into the scene. Sibling of the
+            ring-wrap (not inside it) so it isn't dimmed by the wrap's own
+            fade-in. */}
+        <HeroIgnition />
+
 
         <div className="hero-mega-wordmark" ref={wordmarkRef}>
           <div className="hero-mega-text" aria-hidden>
@@ -259,28 +311,12 @@ export function HeroSignature() {
               <span key={line.text} className={line.className} data-text={line.text}>
                 <span className="hero-mega-fill" aria-hidden>
                   {line.text.split("").map((ch, i) => (
-                    <span
-                      key={i}
-                      className="hero-mega-char"
-                      style={{ transitionDelay: `${i * 22}ms` }}
-                    >
+                    <span key={i} className="hero-mega-char">
                       {ch}
                     </span>
                   ))}
                 </span>
                 <span className="hero-mega-outline" aria-hidden>{line.text}</span>
-                {/* Matrix overlay must mirror the fill's per-character
-                    span structure: browsers kern adjacent glyphs
-                    differently in spans vs. a contiguous string, so a
-                    plain-text matrix drifts horizontally vs. the
-                    fill. Same span structure = pixel-perfect overlay. */}
-                <span className="hero-mega-matrix" aria-hidden>
-                  {line.text.split("").map((ch, i) => (
-                    <span key={i} className="hero-mega-matrix-char">
-                      {ch}
-                    </span>
-                  ))}
-                </span>
               </span>
             ))}
           </div>

@@ -58,6 +58,7 @@ export function IntroController({
   }, [transitionStarted, onComplete]);
 
   useFrame(() => {
+    if (phase.current !== "pre") return;
     const group = roomGroupRef.current;
     if (!group) return;
     group.rotation.set(0, 0, 0);

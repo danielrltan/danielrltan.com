@@ -309,6 +309,16 @@ export function Keypad() {
       </div>
 
       <div className="keypad-stage">
+        {/* Lightweight visual hint behind the 3D canvas: a faint
+            editorial label so the section isn't a blank stage if WebGL
+            fails/disabled, and a quiet cue that the glyphs are
+            interactive. pointer-events:none + aria-hidden keep it purely
+            decorative — the real links live in the .sr-only block above,
+            and this never intercepts a click meant for the dial/caps. */}
+        <div className="keypad-hint" aria-hidden="true">
+          <span className="keypad-hint-eyebrow">06 — Elsewhere</span>
+          <span className="keypad-hint-cue">Tap a glyph to connect</span>
+        </div>
         {mounted ? (
           <Suspense fallback={<div className="keypad-placeholder" />}>
             <KeypadScene

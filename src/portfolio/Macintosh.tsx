@@ -13,7 +13,7 @@ const MacintoshScene = lazy(() =>
   })),
 );
 import { TechStackTicker } from "../macintosh/TechStackTicker";
-import { MAC_PROJECTS, type MacProject } from "../macintosh/projects";
+import { MAC_PROJECTS, liveLinkLabel, type MacProject } from "../macintosh/projects";
 import { useMacNarrow } from "../macintosh/useMacNarrow";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -47,9 +47,16 @@ function usePrefersReducedMotion() {
  */
 
 // Three-beat choreography needs breathing room: STACK (0.00→0.22),
-// ORBIT (0.22→0.55), LAND+EXPLORE (0.55→1.00). Bumped from 1800 to
-// 2600px so each beat gets ~870px of scroll budget on a 900vh device.
-const PIN_DURATION_PX = 2600;
+// ORBIT (0.22→0.55), LAND+EXPLORE (0.55→1.00).
+// Bumped 1800 → 2600 → 6200px. The big jump is the "scroll lock": at
+// 2600px a hard mouse/trackpad flick has enough momentum to scroll the
+// whole pin in one gesture and shoot out the bottom before the snap can
+// engage (once the scroll leaves the pinned range there's nothing to
+// snap to). At 6200px a single flick can't clear it — you land INSIDE
+// the pin, where the snap then settles you onto the booted CRT. So the
+// effective "threshold" to get past the projects section is now ~2.4×
+// higher.
+const PIN_DURATION_PX = 6200;
 
 // ?tune=mac skips the pin so OrbitControls inside MacintoshScene can
 // drive the camera freely for re-framing.
@@ -213,8 +220,30 @@ export function Macintosh() {
       end: `+=${PIN_DURATION_PX}`,
       pin: true,
       pinSpacing: true,
-      scrub: true,
+      // Rate-limit: numeric scrub (~1s catch-up lerp) instead of scrub:true
+      // (instant 1:1) so a flick eases through the boot/orbit/land cinematic
+      // instead of teleporting; the snap below still settles on release.
+      scrub: 1,
       anticipatePin: 1,
+      // Snap & settle on the landed CRT. Beats: STACK 0.00→0.22,
+      // ORBIT 0.22→0.55, LAND+EXPLORE 0.55→1.00. snapTo catches the
+      // scroll once it settles: only the very start (<0.18, barely into
+      // the stack) rests at the stacked entry pose; past that it eases
+      // all the way to ~0.9 — the fully-booted, tiles-live CRT with a
+      // little buffer before the 1.0 release. The low escape threshold
+      // means a flick that lands ANYWHERE meaningfully inside the pin
+      // gets pulled onto the screen rather than bouncing back to the
+      // stack. Combined with the long PIN_DURATION (a flick can't clear
+      // the pin in one gesture), this is the "scroll lock". Snap fires
+      // after wheel/touch velocity drops (delay), so a deliberate,
+      // sustained scroll still plays the full cinematic and carries on
+      // through the release.
+      snap: {
+        snapTo: (value) => (value < 0.18 ? 0 : 0.9),
+        duration: { min: 0.3, max: 0.8 },
+        delay: 0.04,
+        ease: "power2.inOut",
+      },
       onUpdate: (self) => {
         pinProgressRef.current = self.progress;
       },
@@ -397,17 +426,7 @@ export function Macintosh() {
       <div className="portfolio-col mac-col">
         <span className="section-marker">02</span>
         <span className="section-index">02 / 06 &middot; Stack + Projects</span>
-        <h2>The kit.</h2>
-        <p className="mac-blurb">
-          {/* Copy adapts to the interaction model: desktop gets the
-              scroll-driven orbit cinematic; narrow viewports + reduced-
-              motion get a landed Mac whose tiles are tapped/clicked
-              directly (no orbit, no scroll beat), so the desktop
-              "scroll to land it" line would be a lie there. */}
-          {staticLanded
-            ? "The stack runs the screen. Open a tile to read the work."
-            : "Tools orbit the machine. Scroll to land it, click tiles to open the work."}
-        </p>
+        <h2>The kit</h2>
       </div>
       {/* Detail region. The open project is drawn into the CRT <canvas>
           texture, which is invisible to assistive tech, so the project's
@@ -474,7 +493,7 @@ export function Macintosh() {
                 target="_blank"
                 rel="noreferrer"
               >
-                View live <span aria-hidden="true">→</span>
+                {liveLinkLabel(selected.liveHref)} <span aria-hidden="true">→</span>
               </a>
             )}
             {selected.repoHref && (
@@ -545,7 +564,7 @@ export function Macintosh() {
                 target="_blank"
                 rel="noreferrer"
               >
-                {selected.liveHref ? "View live" : "Source"}
+                {selected.liveHref ? liveLinkLabel(selected.liveHref) : "Source"}
               </a>
             )}
           </div>

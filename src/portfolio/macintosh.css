@@ -66,7 +66,7 @@
      user scrolls toward the Macintosh section; see Macintosh.tsx's
      STAGE_REVEAL_VH gate. */
   opacity: 0;
-  transition: opacity 320ms ease;
+  transition: opacity var(--t-med) var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1));
 }
 .mac-stage[data-stage-visible="true"] {
   opacity: 1;
@@ -121,7 +121,7 @@
 .mac-ticker-slot {
   display: none;
   opacity: 0;
-  transition: opacity 320ms ease;
+  transition: opacity var(--t-med) var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1));
   pointer-events: none;
 }
 .mac-ticker-slot[data-stage-visible="true"] {
@@ -242,8 +242,7 @@
 }
 .mac-col .section-marker,
 .mac-col .section-index,
-.mac-col h2,
-.mac-col .mac-blurb {
+.mac-col h2 {
   pointer-events: auto;
 }
 
@@ -257,22 +256,6 @@
   font-size: clamp(28px, 3vw, 42px);
   margin-top: 2px;
   line-height: 1.0;
-}
-
-/* Scoped under .portfolio-mac so it beats the shared `.portfolio-section
-   p` rule (font-size:17px, specificity 0,1,1) which was overriding the
-   intended 13px and inflating the rail height. */
-.portfolio-mac .mac-blurb {
-  font-family: var(--font-body, "Inter", sans-serif);
-  font-size: 13px;
-  color: var(--ink-muted);
-  line-height: 1.5;
-  max-width: 280px;
-  margin-top: 12px;
-  margin-left: auto;
-  /* The rail is narrow by design but must still break between words,
-     never mid-word, and never collapse to one-word-per-line. */
-  text-wrap: pretty;
 }
 
 /* HTML overlay on the CRT screen (rendered inside drei <Html />). */
@@ -316,12 +299,32 @@
   flex-direction: column;
   justify-content: flex-end;
   font: inherit;
-  transition: transform 200ms ease, box-shadow 200ms ease;
+  transition: transform var(--t-fast) var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1));
   overflow: hidden;
+}
+/* Signature hover cue: a thin orange accent line slides down the LEFT
+   edge of the tile — the interface "ticks" the focused item the way a
+   spec-sheet marks a row. Replaces the generic translateY+drop-shadow
+   so the kit reads as having a POV, not a default card hover. The edge
+   line is a ::before that scales from the top on hover (transform-only,
+   no layout shift). */
+.mac-tile::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent, #e87040);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform var(--t-fast) var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1));
 }
 .mac-tile:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 22px -10px rgba(255, 120, 66, 0.4);
+}
+.mac-tile:hover::before {
+  transform: scaleY(1);
 }
 
 .mac-tile-meta {
@@ -446,15 +449,14 @@
 /* ── NARROW / MOBILE (≤ 900px) ─────────────────────────────────────
    The top-right editorial overlay + 3D orbit cinematic only works when
    there's enough horizontal room for the orbit ring AND a side rail.
-   Below ~900px the side rail collapses to a sliver and the blurb wraps
-   one word per line, while the orbit (hidden on mobile) leaves the
-   canvas blank. So at narrow widths we abandon the overlay entirely
-   and switch to a deliberate VERTICAL STACK:
+   Below ~900px the side rail collapses to a sliver, while the orbit
+   (hidden on mobile) leaves the canvas blank. So at narrow widths we
+   abandon the overlay entirely and switch to a deliberate VERTICAL
+   STACK:
 
      ┌──────────────────────────────┐
      │ 02 · STACK + PROJECTS         │  ← header: normal full-width
-     │ The kit.                      │     flow block, left-aligned,
-     │ Tools orbit the machine…      │     content-width blurb
+     │ The kit.                      │     flow block, left-aligned
      ├──────────────────────────────┤
      │  ‹ flat tech ticker marquee › │  ← TechStackTicker (mobile)
      ├──────────────────────────────┤
@@ -506,17 +508,6 @@
     font-size: clamp(32px, 8vw, 48px);
     margin-top: 4px;
   }
-  /* Scoped under .portfolio-mac (0,2,0) to beat both `.portfolio-section
-     p` (0,1,1) and the desktop `.portfolio-mac .mac-blurb` rule. */
-  .portfolio-mac .mac-blurb {
-    /* Full content width → normal multi-word wrapping (was a 240px
-       rail forcing one word per line). */
-    max-width: 52ch;
-    margin-left: 0;
-    margin-top: 14px;
-    font-size: 14px;
-  }
-
   /* Flat ticker sits between the header and the Mac. No scroll-pin
      gate on mobile, so force it visible (the desktop opacity:0 default
      relies on data-stage-visible which never flips here). */
@@ -591,8 +582,8 @@
     color: var(--ink, #0d0e10);
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    transition: border-color 200ms ease, box-shadow 200ms ease,
-      transform 120ms ease, background-color 200ms ease;
+    transition: border-color var(--t-fast) ease, box-shadow var(--t-fast) ease,
+      transform 120ms ease, background-color var(--t-fast) ease;
   }
   /* Touch active state (no hover dependency): clear pressed feedback. */
   .mac-project-btn:active {
@@ -706,8 +697,8 @@
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    transition: border-color 200ms ease, color 200ms ease,
-      background-color 200ms ease;
+    transition: border-color var(--t-fast) ease, color var(--t-fast) ease,
+      background-color var(--t-fast) ease;
   }
   .mac-detail-back:active {
     border-color: var(--accent, #e87040);
@@ -792,7 +783,7 @@
     text-decoration: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    transition: background-color 200ms ease;
+    transition: background-color var(--t-fast) ease;
   }
   .mac-detail-a11y[data-narrow="true"] .mac-detail-link:active {
     background: var(--accent-hot, #ff6a2a);
@@ -820,14 +811,10 @@
   }
 }
 
-/* Very narrow phones: give the Mac a touch more vertical room and
-   tighten the header so the blurb never crowds the canvas. */
+/* Very narrow phones: give the Mac a touch more vertical room. */
 @media (max-width: 480px) {
   .mac-stage {
     height: min(64vh, 480px);
-  }
-  .portfolio-mac .mac-blurb {
-    font-size: 13px;
   }
 }
 
@@ -842,7 +829,8 @@
   .mac-ticker-slot {
     transition: none;
   }
-  .mac-tile {
+  .mac-tile,
+  .mac-tile::before {
     transition: none;
   }
 }

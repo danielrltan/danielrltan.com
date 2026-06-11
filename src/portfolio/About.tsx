@@ -12,18 +12,18 @@ gsap.registerPlugin(ScrollTrigger);
  * DESKTOP pin progress beats (kept in sync with the thresholds below):
  *   0.00 – 0.50   wireframes assemble + hold (room hidden by cover dome)
  *   0.50 – 0.52   hard swap: wireframes/dome cut to 0, room appears
- *   0.52 – 0.55   room solo (only the floating "About." wordmark)
+ *   0.52 – 0.55   room solo (only the floating "Daniel" wordmark)
  *   0.55 – 0.62   content panel slides in from the right (over the room)
  *   0.63          lede reveals (top of panel, first body beat)
- *   0.66 – 0.79   key/value rows reveal one per beat
- *   0.82          sign-off row
+ *   0.66 – 0.78   key/value rows reveal one per beat
+ *   0.82          sign-off coda (closing editorial beat)
  *
  * MOBILE (≤720px) keeps the same pin but compresses the schedule
  * (MOBILE_* constants below): the room canvas is faded out on phones (see
  * about.css note), so About becomes a clean top-anchored section. The
- * "About." wordmark heads it, then a gentle translateY rise brings the
- * full-width body up, with the lede + all rows + sign-off revealing in a
- * short scrub band (0.5 → 0.68) so a thumb-scrub lands the whole block.
+ * "Daniel" wordmark heads it, then a gentle translateY rise brings the
+ * full-width body up, with the lede + all rows + coda revealing in a
+ * short scrub band (0.5 → 0.62) so a thumb-scrub lands the whole block.
  *
  * prefers-reduced-motion: when set, the panel is snapped into place and
  * every beat is forced revealed so the content is fully readable without
@@ -32,14 +32,24 @@ gsap.registerPlugin(ScrollTrigger);
  */
 
 const PIN_DURATION_PX = 1700;
-const PANEL_SLIDE_START = 0.55;
-const PANEL_SLIDE_END = 0.62;
+// Panel slide-in window. WIDENED 0.55-0.62 (a 0.07 slice ≈ 119px of scroll,
+// which whipped in even with scrub:1 — scrub floors the FULL progress sweep,
+// not this narrow sub-range) to 0.15-0.58 (~0.43 of the pin ≈ 730px), so the
+// panel eases in over a real stretch of scroll and lands just before the lede
+// (0.63) / rows reveal. The slide window is the real rate lever here, not scrub.
+const PANEL_SLIDE_START = 0.15;
+const PANEL_SLIDE_END = 0.58;
 /* Lede is the top of the panel + the first thing read, so it must
    reveal right after the panel lands, BEFORE the rows below it.
    (Previously gated at 0.79, which popped it in last, after every
    row had already appeared above an empty lede slot.) */
 const LEDE_REVEAL_AT = 0.63;
-const SIGN_REVEAL_AT = 0.82;
+/* Sign-off coda: the closing beat. Lands after the last row (0.78) and
+   fills what used to be ~370px of dead scroll at the tail of the pin
+   (the 0.82→1.0 stretch is then a held final beat). On mobile it folds
+   into the compressed reveal band via rowAt(ROWS.length, …) so it doesn't
+   pop in after the band has already closed. */
+const CODA_REVEAL_AT = 0.82;
 
 /* Mobile (≤720px) reveal schedule. On a phone the same 1700px pin is
    scrubbed with a thumb, so the desktop drip (panel 0.55→0.62, then
@@ -56,7 +66,6 @@ const MOBILE_PANEL_SLIDE_END = 0.5;
 const MOBILE_LEDE_REVEAL_AT = 0.5;
 const MOBILE_ROW_START = 0.52;
 const MOBILE_ROW_STEP = 0.025;
-const MOBILE_SIGN_REVEAL_AT = 0.68;
 /* Wordmark appears a touch earlier on mobile so it has presence over
    the room before the card rises. */
 const MOBILE_EYEBROW_AT = 0.32;
@@ -81,23 +90,18 @@ const ROWS: Array<{ label: string; value: React.ReactNode; beat: Beat }> = [
   },
   {
     label: "Studying",
-    value: <>B.Sc. Computer Science, Western Ontario &rarr; 2027</>,
+    value: <>Computer Science &amp; Ivey Business School, Western</>,
     beat: { at: 0.70 },
   },
   {
-    label: "Building",
-    value: <>Cognetech &middot; Revamp &middot; this site</>,
-    beat: { at: 0.73 },
-  },
-  {
-    label: "Off-hours",
-    value: <>Piano &middot; Taekwondo &middot; mechanical keyboards</>,
-    beat: { at: 0.76 },
+    label: "Exploring",
+    value: <>Gaussian splatting &amp; semantic segmentation</>,
+    beat: { at: 0.74 },
   },
   {
     label: "Reach",
     value: <a href="mailto:hello@danielrltan.com">hello@danielrltan.com</a>,
-    beat: { at: 0.79 },
+    beat: { at: 0.78 },
   },
 ];
 
@@ -142,7 +146,10 @@ export function About() {
       end: `+=${PIN_DURATION_PX}`,
       pin: true,
       pinSpacing: true,
-      scrub: true,
+      // Rate-limit: scrub:1 (a ~1s catch-up lerp), NOT scrub:true (which is
+      // instant, locked 1:1 to scroll). Without the numeric scrub a fast
+      // flick teleported the side panel in; now it eases through.
+      scrub: 1,
       anticipatePin: 1,
       onUpdate: (self) => setProgress(self.progress),
     });
@@ -167,7 +174,6 @@ export function About() {
   const slideEnd = mobile ? MOBILE_PANEL_SLIDE_END : PANEL_SLIDE_END;
   const eyebrowAt = mobile ? MOBILE_EYEBROW_AT : 0.52;
   const ledeAt = mobile ? MOBILE_LEDE_REVEAL_AT : LEDE_REVEAL_AT;
-  const signAt = mobile ? MOBILE_SIGN_REVEAL_AT : SIGN_REVEAL_AT;
   /* Row thresholds: on desktop each row carries its own authored beat;
      on mobile we re-space them off a tighter base so the whole list
      reveals in a short scrub band right after the card lands. */
@@ -193,7 +199,10 @@ export function About() {
     : `translate3d(${panelOffset}%, 0, 0)`;
   const ledeRevealed = reducedMotion || progress >= ledeAt;
   const rowRevealed = (at: number) => reducedMotion || progress >= at;
-  const signRevealed = reducedMotion || progress >= signAt;
+  /* Coda fires after the last row. rowAt(ROWS.length, …) keeps it inside
+     the compressed mobile band (≈0.62) while holding the authored 0.82 on
+     desktop, mirroring the row-threshold logic so it never pops in late. */
+  const codaRevealed = rowRevealed(rowAt(ROWS.length, CODA_REVEAL_AT));
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-about">
@@ -204,7 +213,7 @@ export function About() {
         aria-hidden
       >
         <span className="about-floating-num">01</span>
-        <span className="about-floating-label">About.</span>
+        <span className="about-floating-label">Daniel</span>
       </div>
 
       <div
@@ -242,14 +251,10 @@ export function About() {
             </div>
           ))}
         </dl>
-        <div
-          className={`about-sign${signRevealed ? " is-revealed" : ""}`}
-        >
-          <span className="about-sign-line" />
-          <span className="about-sign-text">
-            Scroll for the kit &rarr;
-          </span>
-        </div>
+        <p className={`about-coda${codaRevealed ? " is-revealed" : ""}`}>
+          Always happy to talk shop, trade ideas, or build something that
+          shouldn&rsquo;t exist yet. <span className="about-coda-name">Daniel Tan</span>
+        </p>
       </div>
     </section>
   );

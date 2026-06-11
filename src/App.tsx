@@ -1,5 +1,6 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import type { RootState } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { Physics } from "@react-three/rapier";
@@ -68,13 +69,44 @@ const ABOUT_PROGRESS_END_VH = 2.20;
 const CONTENT_FADE_START = 0.07;
 const CONTENT_FADE_END = 0.105;
 
+// Rate-limit constant for the scroll-driven reveal signals. The raw
+// targets below are bound directly to window.scrollY, so a fast flick
+// would otherwise teleport the hero dissolve / room fade / wireframe
+// build straight to their end state — the user never SEES the animation.
+// We ease each eased signal toward its raw target at this fixed
+// exponential rate so the SPEED is capped (thresholds, windows, and
+// sequence are untouched). ~2.5 → ≈400ms to settle, matching the feel
+// of GSAP `scrub: 1`. Tunable.
+const PROGRESS_EASE_RATE = 2.5;
+// Clamp per-frame dt so a long idle / tab-switch (where rAF stops
+// firing) doesn't produce one giant catch-up jump on the next tick.
+const MAX_TICK_DT = 0.05;
+
+// Canvas camera config. END_POS/END_FOV never change, so hoist to
+// module scope to avoid a per-render object allocation. Far 300
+// accommodates the near-ortho camera distance (~173 from origin) +
+// the wireframe cover dome (radius 20 around camera) + room extent.
+const CAMERA_CONFIG = {
+  position: [END_POS.x, END_POS.y, END_POS.z] as [number, number, number],
+  fov: END_FOV,
+  near: 1,
+  far: 300,
+};
+
 /**
- * Single rAF-coalesced scroll listener. Writes ALL derived
- * fade/progress values to CSS variables on documentElement AND to
- * refs. R3F consumers read the refs in their per-frame loops; DOM
- * elements bind opacity to `var(--*-opacity)`. App.tsx never
- * re-renders on scroll. The prior version had five setState-backed
- * hooks reconciling the whole Canvas tree per scroll frame.
+ * Single continuous rAF loop. Each frame it recomputes the raw
+ * scroll-derived targets and eases the reveal signals toward them at a
+ * fixed rate (PROGRESS_EASE_RATE) so a fast flick can't teleport through
+ * the reveals — only the SPEED is capped; thresholds/windows/sequence are
+ * unchanged. Writes ALL derived fade/progress values to CSS variables on
+ * documentElement AND to refs. R3F consumers read the refs in their
+ * per-frame loops; DOM elements bind opacity to `var(--*-opacity)`.
+ * App.tsx never re-renders on scroll. The prior version had five
+ * setState-backed hooks reconciling the whole Canvas tree per scroll frame.
+ *
+ * The loop is continuous (not scroll-coalesced) on purpose: the eased
+ * values must keep catching up to their targets for ~400ms after the user
+ * stops scrolling, which a scroll-only listener could not do.
  */
 function installScrollChoreography(): {
   aboutProgressRef: React.MutableRefObject<number>;
@@ -92,7 +124,20 @@ function installScrollChoreography(): {
   const root = document.documentElement;
   const isMobileQuery = window.matchMedia("(max-width: 720px)");
 
-  const update = () => {
+  // Raw scroll-derived targets. computeTargets() reproduces the exact
+  // math/thresholds the old update() used (no easing applied here);
+  // tick() then rate-limits each eased signal toward these.
+  type Targets = {
+    heroOpacity: number;
+    heroToAbout: number;
+    finalCanvasOpacity: number; // mobile fade folded into canvas composite
+    aboutProgress: number;
+    contentOpacity: number;
+    scrollProgress: number; // raw — ScrollCamera damps internally
+    isMobile: boolean;
+  };
+
+  const computeTargets = (): Targets => {
     const vh = window.innerHeight || 1;
     const ratio = window.scrollY / vh;
     const scrollMax = Math.max(
@@ -100,7 +145,6 @@ function installScrollChoreography(): {
       document.documentElement.scrollHeight - window.innerHeight,
     );
     const scrollProgress = clamp01(window.scrollY / scrollMax);
-    scrollProgressRef.current = scrollProgress;
 
     // Hero opacity (3D signature): 1 at top, fades to 0 as user
     // scrolls past first viewport.
@@ -139,7 +183,6 @@ function installScrollChoreography(): {
         ? 1
         : 0;
     const canvasOpacity = Math.max(roomOpacity, wireframeOn);
-    roomCanvasFadeRef.current = canvasOpacity;
 
     // Mobile hero canvas fade: 0 in hero, ramps to 1 after.
     const mobileFade = clamp01(
@@ -150,7 +193,7 @@ function installScrollChoreography(): {
 
     // About progress (consumed by ScrollWireframeRoom per frame).
     const aboutSpan = ABOUT_PROGRESS_END_VH - ABOUT_PROGRESS_START_VH;
-    aboutProgressRef.current = clamp01(
+    const aboutProgress = clamp01(
       (ratio - ABOUT_PROGRESS_START_VH) / aboutSpan,
     );
 
@@ -160,9 +203,69 @@ function installScrollChoreography(): {
     );
 
     const isMobile = isMobileQuery.matches;
-    const finalCanvasOpacity = (isMobile ? mobileCanvasOpacity : 1) * canvasOpacity;
-    const canvasInteractive =
-      finalCanvasOpacity < 0.05 ? "none" : "auto";
+    const finalCanvasOpacity =
+      (isMobile ? mobileCanvasOpacity : 1) * canvasOpacity;
+
+    return {
+      heroOpacity,
+      heroToAbout,
+      finalCanvasOpacity,
+      aboutProgress,
+      contentOpacity,
+      scrollProgress,
+      isMobile,
+    };
+  };
+
+  // Previously-eased values for the eased signals. Seeded from the first
+  // target so there is no ease-in flash on initial load / refresh-at-offset.
+  const seed = computeTargets();
+  const prevEased = {
+    heroOpacity: seed.heroOpacity,
+    heroToAbout: seed.heroToAbout,
+    finalCanvasOpacity: seed.finalCanvasOpacity,
+    aboutProgress: seed.aboutProgress,
+    contentOpacity: seed.contentOpacity,
+  };
+
+  // Frame-rate-independent exponential ease toward a target.
+  const ease = (prev: number, target: number, dt: number) =>
+    prev + (target - prev) * (1 - Math.exp(-dt * PROGRESS_EASE_RATE));
+
+  // Largest remaining gap between an eased signal and its target after the
+  // most recent tick. The loop uses it to know when easing has settled so it
+  // can stop ticking (and stop reading layout) until the next scroll/resize.
+  let convergenceDelta = 1;
+
+  const tick = (dt: number) => {
+    const t = computeTargets();
+
+    // scrollProgress stays RAW — ScrollCamera already damps internally,
+    // so easing here would double-damp the camera.
+    scrollProgressRef.current = t.scrollProgress;
+
+    const heroOpacity = ease(prevEased.heroOpacity, t.heroOpacity, dt);
+    const heroToAbout = ease(prevEased.heroToAbout, t.heroToAbout, dt);
+    const finalCanvasOpacity = ease(
+      prevEased.finalCanvasOpacity,
+      t.finalCanvasOpacity,
+      dt,
+    );
+    const aboutProgress = ease(prevEased.aboutProgress, t.aboutProgress, dt);
+    const contentOpacity = ease(prevEased.contentOpacity, t.contentOpacity, dt);
+
+    prevEased.heroOpacity = heroOpacity;
+    prevEased.heroToAbout = heroToAbout;
+    prevEased.finalCanvasOpacity = finalCanvasOpacity;
+    prevEased.aboutProgress = aboutProgress;
+    prevEased.contentOpacity = contentOpacity;
+
+    roomCanvasFadeRef.current = finalCanvasOpacity;
+    aboutProgressRef.current = aboutProgress;
+
+    // Pointer-events stays a hard threshold but is derived from the
+    // EASED canvas opacity so it flips in step with the visible fade.
+    const canvasInteractive = finalCanvasOpacity < 0.05 ? "none" : "auto";
 
     root.style.setProperty("--hero-opacity", heroOpacity.toFixed(3));
     root.style.setProperty("--hero-to-about", heroToAbout.toFixed(3));
@@ -170,19 +273,56 @@ function installScrollChoreography(): {
     root.style.setProperty("--canvas-pointer-events", canvasInteractive);
     root.style.setProperty(
       "--content-opacity",
-      isMobile ? "1" : contentOpacity.toFixed(3),
+      t.isMobile ? "1" : contentOpacity.toFixed(3),
+    );
+
+    convergenceDelta = Math.max(
+      Math.abs(t.heroOpacity - heroOpacity),
+      Math.abs(t.heroToAbout - heroToAbout),
+      Math.abs(t.finalCanvasOpacity - finalCanvasOpacity),
+      Math.abs(t.aboutProgress - aboutProgress),
+      Math.abs(t.contentOpacity - contentOpacity),
     );
   };
 
-  let raf = 0;
-  const onScroll = () => {
-    if (raf) cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(update);
-  };
+  // Seed the CSS vars/refs from the initial target with dt large enough
+  // to land exactly on it (no ease-in on first paint).
+  tick(MAX_TICK_DT);
 
-  update();
-  window.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", onScroll, { passive: true });
+  // Drive tick() from a rAF loop that EASES toward the target, but lets it
+  // SLEEP once the eased values have settled AND no scroll/resize happened
+  // recently — so we are NOT recomputing targets + reading layout
+  // (scrollHeight) every frame for the whole page lifetime. A passive
+  // scroll/resize listener wakes it; it then keeps ticking for SETTLE_MS
+  // after the last input AND until the ease has converged, so the reveal
+  // finishes catching up after the user stops scrolling (the whole point of
+  // the rate-limit) before the loop idles again.
+  const SETTLE_MS = 650; // comfortably longer than the ~400ms ease
+  const CONVERGE_EPS = 0.0004; // below one /1000 CSS-var step
+  let lastTs = performance.now();
+  let lastInput = lastTs;
+  let running = false;
+
+  const loop = (ts: number) => {
+    const dt = Math.min(MAX_TICK_DT, (ts - lastTs) / 1000);
+    lastTs = ts;
+    tick(dt);
+    if (performance.now() - lastInput < SETTLE_MS || convergenceDelta > CONVERGE_EPS) {
+      requestAnimationFrame(loop);
+    } else {
+      running = false; // settled + idle: nothing reads layout until next input
+    }
+  };
+  const wake = () => {
+    lastInput = performance.now();
+    if (!running) {
+      running = true;
+      lastTs = performance.now();
+      requestAnimationFrame(loop);
+    }
+  };
+  window.addEventListener("scroll", wake, { passive: true });
+  window.addEventListener("resize", wake, { passive: true });
 
   return { aboutProgressRef, roomCanvasFadeRef, scrollProgressRef };
 }
@@ -262,6 +402,13 @@ export default function App() {
       window.removeEventListener("keypad-cursor-hover", onKeypadHover);
   }, []);
 
+  /* Disable the browser context menu site-wide (no right-click). */
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+    window.addEventListener("contextmenu", onContextMenu);
+    return () => window.removeEventListener("contextmenu", onContextMenu);
+  }, []);
+
   /* First meaningful scroll (after the room is loaded and past
    * loading-active) triggers the intro. Gated on scrollY crossing
    * 0.75vh so the intro dolly begins when the user is actually
@@ -331,6 +478,71 @@ export default function App() {
   const noopSetDeskViewActive = useCallback(() => {}, []);
   const noopStartDeskView = useCallback(() => {}, []);
 
+  // RoomLoadedSignal's effect depends on onLoaded; a new function each
+  // render re-runs the effect and re-calls setRoomLoaded after it is
+  // already true. setMoveableHover is a plain useState setter (stable).
+  const handleRoomLoaded = useCallback(() => setRoomLoaded(true), []);
+
+  // Stable context value: a fresh object literal each render forces
+  // every SceneState consumer (DraggableRigidBody, Drawer, etc.) to
+  // re-render even though the contents are stable. The refs and noop
+  // callbacks are stable; setMoveableHover is a stable useState setter.
+  const sceneContextValue = useMemo(
+    () => ({
+      sceneReadyRef,
+      deskViewActiveRef,
+      setDeskViewActive: noopSetDeskViewActive,
+      setMoveableHover,
+      startDeskView: noopStartDeskView,
+    }),
+    [noopSetDeskViewActive, setMoveableHover, noopStartDeskView]
+  );
+
+  // Avoid a per-render allocation of the WebGL config. antialias is
+  // resolved once (kept verbatim from the inline config to preserve
+  // rendered output exactly).
+  const glConfig = useMemo(
+    () => ({
+      antialias:
+        typeof window !== "undefined" ? window.devicePixelRatio < 1.5 : true,
+      alpha: true,
+      toneMapping: THREE.ACESFilmicToneMapping,
+      toneMappingExposure: 1.0,
+      powerPreference: "high-performance" as const,
+      // Z-fighting fix: many nearly-coplanar surfaces (mirror against
+      // wall, cat on bed) under the iso camera need more depth precision
+      // than the default 24-bit buffer provides. GroundPlane's
+      // ShaderMaterial mirrors the logdepthbuf chunks so its sort order
+      // stays consistent.
+      logarithmicDepthBuffer: true,
+    }),
+    []
+  );
+
+  // onCreated fires once; extracted for reference hygiene. Body is
+  // verbatim from the inline arrow to avoid any behavior change.
+  const handleCanvasCreated = useCallback(({ gl, camera }: RootState) => {
+    gl.outputColorSpace = THREE.SRGBColorSpace;
+    (gl as unknown as { useLegacyLights?: boolean }).useLegacyLights = false;
+    cameraRef.current = camera as THREE.PerspectiveCamera;
+    camera.lookAt(END_LOOK_AT);
+    // PERF (single biggest win): freeze the shadow map. The room
+    // is a STATIC iso scene. The directional light, the room
+    // geometry, and every shadow caster sit still 99% of the
+    // time. With three's default `shadowMap.autoUpdate = true`
+    // the renderer re-rendered the ENTIRE caster set (~140 meshes)
+    // into the light's depth texture on EVERY frame, a full
+    // extra scene pass that roughly DOUBLED the room canvas's
+    // draw calls (measured 276/frame; ~138 of those were the
+    // redundant shadow pass). Turning autoUpdate OFF and only
+    // re-arming `needsUpdate` while something actually moves
+    // (intro settle + active drag/throw, see ShadowGate) keeps
+    // the baked shadow on screen while halving the per-frame cost
+    // of the heaviest, always-on canvas on the page.
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.needsUpdate = true;
+  }, []);
+
   return (
     <AssemblyProvider>
       <div
@@ -378,15 +590,7 @@ export default function App() {
           }}
         >
           <Canvas
-            camera={{
-              position: [END_POS.x, END_POS.y, END_POS.z],
-              fov: END_FOV,
-              // Far 300 accommodates the near-ortho camera distance
-              // (~173 from origin) + the wireframe cover dome (radius
-              // 20 around camera) + room geometry extent.
-              near: 1,
-              far: 300,
-            }}
+            camera={CAMERA_CONFIG}
             // R3F-managed shadow map. Setting gl.shadowMap.enabled in
             // onCreated alone is unreliable. R3F runs its own shadow
             // setup pipeline after onCreated and explicitly disables
@@ -406,56 +610,12 @@ export default function App() {
             // single biggest mobile GPU win and keeps the scroll smooth.
             // MSAA still on when DPR < 1.5.
             dpr={isMobile ? [1, 1] : [1, 1.25]}
-            gl={{
-              antialias: (typeof window !== "undefined"
-                ? window.devicePixelRatio < 1.5
-                : true),
-              alpha: true,
-              toneMapping: THREE.ACESFilmicToneMapping,
-              toneMappingExposure: 1.0,
-              powerPreference: "high-performance",
-              // Z-fighting fix: many nearly-coplanar surfaces (mirror
-              // against wall, cat on bed) under the iso camera need
-              // more depth precision than the default 24-bit buffer
-              // provides. GroundPlane's ShaderMaterial mirrors the
-              // logdepthbuf chunks so its sort order stays consistent.
-              logarithmicDepthBuffer: true,
-            }}
-            onCreated={({ gl, camera }) => {
-              gl.outputColorSpace = THREE.SRGBColorSpace;
-              (
-                gl as unknown as { useLegacyLights?: boolean }
-              ).useLegacyLights = false;
-              cameraRef.current = camera as THREE.PerspectiveCamera;
-              camera.lookAt(END_LOOK_AT);
-              // PERF (single biggest win): freeze the shadow map. The room
-              // is a STATIC iso scene. The directional light, the room
-              // geometry, and every shadow caster sit still 99% of the
-              // time. With three's default `shadowMap.autoUpdate = true`
-              // the renderer re-rendered the ENTIRE caster set (~140 meshes)
-              // into the light's depth texture on EVERY frame, a full
-              // extra scene pass that roughly DOUBLED the room canvas's
-              // draw calls (measured 276/frame; ~138 of those were the
-              // redundant shadow pass). Turning autoUpdate OFF and only
-              // re-arming `needsUpdate` while something actually moves
-              // (intro settle + active drag/throw, see ShadowGate) keeps
-              // the baked shadow on screen while halving the per-frame cost
-              // of the heaviest, always-on canvas on the page.
-              gl.shadowMap.autoUpdate = false;
-              gl.shadowMap.needsUpdate = true;
-            }}
+            gl={glConfig}
+            onCreated={handleCanvasCreated}
           >
-            <SceneStateProvider
-              value={{
-                sceneReadyRef,
-                deskViewActiveRef,
-                setDeskViewActive: noopSetDeskViewActive,
-                setMoveableHover,
-                startDeskView: noopStartDeskView,
-              }}
-            >
+            <SceneStateProvider value={sceneContextValue}>
               <Suspense fallback={null}>
-                <RoomLoadedSignal onLoaded={() => setRoomLoaded(true)} />
+                <RoomLoadedSignal onLoaded={handleRoomLoaded} />
                 {/* PERF: the room canvas is only ever visible during the
                     hero intro + About beat (scroll ratio < ~3vh). Past
                     that its wrapper opacity is pinned 0, yet R3F's
@@ -580,7 +740,7 @@ export default function App() {
             indicator / narrow gutters on phones). */}
         {sceneReady && (
           <>
-            <StatusBar onReset={resetRoom} />
+            <StatusBar />
             {!isMobile && <ScrollRail />}
             <JumpToTop />
           </>

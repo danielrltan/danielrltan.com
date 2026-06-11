@@ -1,17 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw, Volume2, VolumeX } from "lucide-react";
-import { useAudioToggle } from "./useAudioToggle";
 import { useIsMobile } from "./useIsMobile";
 
-interface Props {
-  /** Reset the room (snap throwables / draggables back to starting pose). */
-  onReset: () => void;
-}
-
 /**
- * Top-right status pill: active section, live clock, scroll progress,
- * audio + reset controls. Section detection is IO-based so it stays
- * accurate as pinned sections grow their pin spacers.
+ * Top-right section indicator: Offbit numeral + Geist label + an SVG
+ * scroll-progress ring. Section detection is IO-based so it stays accurate
+ * as pinned sections grow their pin spacers. (The faux-mono readout, live
+ * clock, and reset/ambience buttons were removed per design; room reset
+ * still lives on the keyboard shortcut.)
  */
 
 interface SectionEntry {
@@ -27,17 +22,14 @@ const SECTION_REGISTRY: SectionEntry[] = [
   { number: "01", label: "About", selector: ".portfolio-section:not([class*='--'])" },
   { number: "02", label: "Stack", selector: ".portfolio-mac" },
   { number: "03", label: "Work", selector: ".portfolio-work" },
-  { number: "04", label: "Off the clock", selector: ".portfolio-other" },
+  { number: "04", label: "Play", selector: ".portfolio-other" },
   { number: "05", label: "Bits and pieces", selector: ".portfolio-bp" },
   { number: "06", label: "Contact", selector: ".keypad-section" },
 ];
 
-function formatClock(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  const ss = String(d.getSeconds()).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
-}
+// Progress-ring geometry: r=12 stroke ring, circumference for dash math.
+const RING_R = 12;
+const RING_C = 2 * Math.PI * RING_R;
 
 function findSectionElements(): Array<{ entry: SectionEntry; el: Element | null }> {
   return SECTION_REGISTRY.map((entry, i) => {
@@ -61,65 +53,70 @@ function findSectionElements(): Array<{ entry: SectionEntry; el: Element | null 
   });
 }
 
-export function StatusBar({ onReset }: Props) {
+export function StatusBar() {
   const isMobile = useIsMobile();
   const [activeIdx, setActiveIdx] = useState(0);
-  const [now, setNow] = useState(() => new Date());
-  // Progress % is written directly into the span via ref, keeping the
-  // StatusBar tree from reconciling on every scroll frame.
-  const progressLabelRef = useRef<HTMLSpanElement>(null);
-  const audio = useAudioToggle();
+  // Scroll progress drives the SVG ring's stroke-dashoffset directly via
+  // this ref, so the StatusBar tree never reconciles on a scroll frame.
+  const ringRef = useRef<SVGCircleElement>(null);
 
-  // OLD: the 1s setNow interval ran always, re-rendering the whole StatusBar
-  // every second even on mobile where the clock isn't rendered (wasted render
-  // per second). NEW: gated behind !isMobile, so mobile has zero clock-driven
-  // re-renders; desktop clock behaviour is unchanged.
-  useEffect(() => {
-    if (isMobile) return;
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, [isMobile]);
-
-  // Active section = deepest one whose top has passed 45% of viewport.
-  // OLD: every IO callback looped ALL ~7 sections calling live
-  // getBoundingClientRect() (forced synchronous layout per crossing), built
-  // an unread visibleRatios Map, and called setActiveIdx unconditionally
-  // (re-render on every threshold crossing even when the index was unchanged).
-  // NEW: read entry.boundingClientRect.top straight off the IO entries (no
-  // forced layout), cache per-target tops across calls, and setState only
-  // when the derived index changes (ref-guarded) — re-render solely on a
-  // genuine active-section change.
+  // Active section = the deepest one whose top has passed 45% of viewport.
+  //
+  // We read LIVE getBoundingClientRect() on a rAF-coalesced scroll listener
+  // rather than caching IntersectionObserver entry rects. The IO approach
+  // cached each section's top from the snapshot taken at a threshold
+  // crossing — but the GSAP-pinned sections (Mac / Work / Other) sit
+  // `position: fixed` during their pin, so their real top changes (0 while
+  // pinned → moving once released) WITHOUT firing new IO crossings. Those
+  // stale tops made the pill lag a whole section behind at the pin
+  // boundaries. Live rects on the ~7 section elements per scroll frame are
+  // cheap and always correct. setState only fires on a genuine index change.
   useEffect(() => {
     const found = findSectionElements();
-    // Latest observed top per target; IO only reports targets that changed,
-    // so we persist the rest from prior callbacks.
-    const tops = new Map<Element, number>();
-    let lastActiveIdx = -1;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          tops.set(entry.target, entry.boundingClientRect.top);
-        }
-        const vh = window.innerHeight || 1;
-        let bestIdx = 0;
-        for (let i = 0; i < found.length; i++) {
-          const el = found[i]!.el;
-          if (!el) continue;
-          const top = tops.get(el);
-          if (top === undefined) continue;
-          if (top <= vh * 0.45) bestIdx = i;
-        }
-        if (bestIdx !== lastActiveIdx) {
-          lastActiveIdx = bestIdx;
-          setActiveIdx(bestIdx);
-        }
-      },
-      { threshold: [0, 0.25, 0.5, 0.75, 1] },
-    );
-    for (const f of found) {
-      if (f.el) io.observe(f.el);
-    }
-    return () => io.disconnect();
+    let lastIdx = -1;
+    let raf = 0;
+    let lastInput = 0; // last scroll/resize time
+    const measure = () => {
+      const vh = window.innerHeight || 1;
+      let bestIdx = 0;
+      for (let i = 0; i < found.length; i++) {
+        const el = found[i]!.el;
+        if (!el) continue;
+        if (el.getBoundingClientRect().top <= vh * 0.45) bestIdx = i;
+      }
+      if (bestIdx !== lastIdx) {
+        lastIdx = bestIdx;
+        setActiveIdx(bestIdx);
+      }
+    };
+    // Keep measuring for ~1.3s after the last scroll/resize. A scroll fires
+    // one event, but GSAP's pinned sections (Mac/Work/Other) ease into place
+    // over ~1s of SCRUB *without* further scroll events — so a scroll-only
+    // listener would read a mid-transition rect and never re-check, leaving
+    // the pill one section off when you stop near a pin boundary. Ticking
+    // through the settle window keeps it correct, then idles (no per-frame
+    // layout cost when nothing's moving).
+    const SETTLE_MS = 1800;
+    const tick = () => {
+      measure();
+      if (performance.now() - lastInput < SETTLE_MS) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        raf = 0;
+      }
+    };
+    const onInput = () => {
+      lastInput = performance.now();
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+    measure();
+    window.addEventListener("scroll", onInput, { passive: true });
+    window.addEventListener("resize", onInput, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onInput);
+      window.removeEventListener("resize", onInput);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   useEffect(() => {
@@ -133,8 +130,9 @@ export function StatusBar({ onReset }: Props) {
       const pct = Math.round((window.scrollY / max) * 100);
       if (pct === lastPct) return;
       lastPct = pct;
-      const el = progressLabelRef.current;
-      if (el) el.textContent = String(pct).padStart(3, "0") + "%";
+      const el = ringRef.current;
+      // Fill the ring clockwise: 0% → full dash gap (empty), 100% → no gap.
+      if (el) el.style.strokeDashoffset = String(RING_C * (1 - pct / 100));
     };
     const onScroll = () => {
       cancelAnimationFrame(raf);
@@ -152,189 +150,171 @@ export function StatusBar({ onReset }: Props) {
 
   const active = SECTION_REGISTRY[activeIdx] ?? SECTION_REGISTRY[0]!;
 
-  // Mobile: compact info pill with section number + label + scroll %, and
-  // the live clock and the reset/mute buttons dropped. Those controls
-  // live in RoomHUD's labeled bottom-left pills on mobile (single source
-  // of truth, no duplicate top-right buttons crowding the notch). The
-  // pill anchors top-right with safe-area insets and a smaller min-width
-  // so it never overflows a 360px viewport or collides with the cat mark.
+  // Shared SVG progress ring. The track is a faint full circle; the
+  // accent circle's stroke-dashoffset is driven by the scroll listener
+  // (ringRef) — background-agnostic (works over the 3D hero + sections),
+  // unlike a conic-gradient donut whose hole has to match the backdrop.
+  const ring = (size: number) => (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 30 30"
+      style={{ flex: "0 0 auto", display: "block" }}
+      aria-hidden
+    >
+      <circle
+        cx={15}
+        cy={15}
+        r={RING_R}
+        fill="none"
+        stroke="rgba(13, 14, 16, 0.14)"
+        strokeWidth={3}
+      />
+      <circle
+        ref={ringRef}
+        cx={15}
+        cy={15}
+        r={RING_R}
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth={3}
+        strokeLinecap="round"
+        transform="rotate(-90 15 15)"
+        strokeDasharray={RING_C}
+        strokeDashoffset={RING_C}
+        style={{ transition: "stroke-dashoffset 120ms linear" }}
+      />
+    </svg>
+  );
+
+  // Offbit numeral + Geist label + progress ring. No faux-mono, no live
+  // clock. Offbit appears ONLY as the display numeral (a deliberate
+  // accent), the label is clean Geist. Anchors top-right.
   if (isMobile) {
     return (
       <div
+        data-active-section={active.number}
         style={{
           position: "fixed",
           top: "calc(14px + env(safe-area-inset-top, 0px))",
           right: "calc(14px + env(safe-area-inset-right, 0px))",
-          // Cap width so a long label ("Bits and pieces") wraps/ellipsizes
-          // rather than pushing the pill off-screen or into the cat mark.
-          maxWidth: "min(62vw, 240px)",
+          maxWidth: "min(64vw, 240px)",
           zIndex: 40,
           display: "inline-flex",
           alignItems: "center",
           gap: 10,
-          padding: "8px 14px",
-          background: "rgba(238, 240, 243, 0.82)",
-          backdropFilter: "blur(10px) saturate(120%)",
-          WebkitBackdropFilter: "blur(10px) saturate(120%)",
+          padding: "7px 12px",
+          background: "rgba(255, 255, 255, 0.86)",
+          backdropFilter: "blur(12px) saturate(125%)",
+          WebkitBackdropFilter: "blur(12px) saturate(125%)",
           border: "1px solid var(--ink-hairline)",
-          borderRadius: 999,
-          boxShadow:
-            "0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 8px 24px -16px rgba(13, 14, 16, 0.25)",
-          fontFamily: "var(--font-mono)",
-          fontSize: 10.5,
-          letterSpacing: "0.16em",
-          textTransform: "uppercase",
+          borderRadius: 12,
+          boxShadow: "0 8px 20px -16px rgba(13, 14, 16, 0.45)",
           color: "var(--ink)",
-          fontWeight: 600,
           userSelect: "none",
         }}
       >
         <span
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            minWidth: 0,
-          }}
-        >
-          <span
-            style={{
-              color: "var(--accent)",
-              fontVariantNumeric: "tabular-nums",
-              flex: "0 0 auto",
-            }}
-          >
-            {active.number}
-          </span>
-          <span
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {active.label}
-          </span>
-        </span>
-        <span style={{ opacity: 0.25, flex: "0 0 auto" }}>·</span>
-        <span
-          ref={progressLabelRef}
-          style={{
-            fontVariantNumeric: "tabular-nums",
-            opacity: 0.65,
+            fontFamily: '"Offbit", monospace',
+            fontWeight: 700,
+            fontSize: 22,
+            lineHeight: 1,
+            color: "var(--accent)",
             flex: "0 0 auto",
+            // Offbit sits ~13% high in its line box; nudge to optically centre.
+            transform: "translateY(3px)",
           }}
         >
-          000%
+          {active.number}
         </span>
+        <span
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {active.label}
+        </span>
+        {ring(22)}
       </div>
     );
   }
 
   return (
     <div
+      data-active-section={active.number}
       style={{
         position: "fixed",
-        // Shares baseline with the brand cat chip in RoomHUD and the
-        // hero eyebrow so all top-row chrome reads as one editorial
-        // top-bar (TOP_STRIP_TOP = 20, ~40px tall).
         top: 20,
         right: 22,
         zIndex: 40,
         display: "inline-flex",
         alignItems: "center",
-        gap: 14,
-        padding: "6px 6px 6px 16px",
-        background: "rgba(238, 240, 243, 0.82)",
-        backdropFilter: "blur(10px) saturate(120%)",
-        WebkitBackdropFilter: "blur(10px) saturate(120%)",
+        gap: 12,
+        padding: "8px 14px 8px 12px",
+        background: "rgba(255, 255, 255, 0.86)",
+        backdropFilter: "blur(12px) saturate(125%)",
+        WebkitBackdropFilter: "blur(12px) saturate(125%)",
         border: "1px solid var(--ink-hairline)",
-        borderRadius: 999,
-        boxShadow:
-          "0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 8px 24px -16px rgba(13, 14, 16, 0.25)",
-        fontFamily: "var(--font-mono)",
-        fontSize: 10.5,
-        letterSpacing: "0.18em",
-        textTransform: "uppercase",
+        borderRadius: 14,
+        boxShadow: "0 10px 26px -18px rgba(13, 14, 16, 0.5)",
         color: "var(--ink)",
-        fontWeight: 600,
         userSelect: "none",
       }}
     >
-      {/* Fixed min-width so the pill doesn't visibly resize between
-          "HERO" and "BITS AND PIECES". */}
       <span
         style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 10,
-          minWidth: 162,
+          fontFamily: '"Offbit", monospace',
+          fontWeight: 700,
+          fontSize: 30,
+          lineHeight: 1,
+          color: "var(--accent)",
+          // Offbit sits ~13% high in its line box, so flex-centering the box
+          // leaves the glyph optically high. Nudge down to centre it.
+          transform: "translateY(4px)",
+        }}
+      >
+        {active.number}
+      </span>
+      <span
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 3,
+          lineHeight: 1,
+          // Fixed width so the pill doesn't resize between "Work" and
+          // "Bits and pieces".
+          minWidth: 128,
         }}
       >
         <span
           style={{
-            color: "var(--accent)",
-            fontVariantNumeric: "tabular-nums",
+            fontSize: 9.5,
+            fontWeight: 600,
+            letterSpacing: "0.2em",
+            textTransform: "uppercase",
+            color: "rgba(13, 14, 16, 0.5)",
           }}
         >
-          {active.number}
+          Section
         </span>
-        <span>{active.label}</span>
+        <span
+          style={{
+            fontSize: 15,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {active.label}
+        </span>
       </span>
-      <span style={{ opacity: 0.25 }}>·</span>
-      <span style={{ fontVariantNumeric: "tabular-nums", opacity: 0.85 }}>
-        {formatClock(now)}
-      </span>
-      <span style={{ opacity: 0.25 }}>·</span>
-      <span
-        ref={progressLabelRef}
-        style={{ fontVariantNumeric: "tabular-nums", opacity: 0.65 }}
-      >
-        000%
-      </span>
-      <button
-        type="button"
-        className="hud-btn"
-        onClick={onReset}
-        aria-label="Reset room"
-        style={iconButtonStyle(false)}
-      >
-        <RotateCcw size={13} strokeWidth={2} />
-      </button>
-      <button
-        type="button"
-        className="hud-btn"
-        onClick={audio.toggle}
-        aria-label={audio.on ? "Mute ambience" : "Play ambience"}
-        aria-pressed={audio.on}
-        style={iconButtonStyle(audio.on)}
-      >
-        {audio.on ? (
-          <Volume2 size={13} strokeWidth={2} />
-        ) : (
-          <VolumeX size={13} strokeWidth={2} />
-        )}
-      </button>
+      {ring(30)}
     </div>
   );
-}
-
-function iconButtonStyle(active: boolean): React.CSSProperties {
-  return {
-    marginLeft: 2,
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    border: "1px solid var(--ink-hairline)",
-    background: active
-      ? "var(--accent-tint)"
-      : "rgba(13, 14, 16, 0.04)",
-    color: active ? "var(--accent)" : "var(--ink)",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    padding: 0,
-    transition: "background 0.18s ease, color 0.18s ease",
-  };
 }
