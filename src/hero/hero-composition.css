@@ -92,33 +92,24 @@
     var(--hero-to-about, 0) * var(--hero-to-about, 0) *
     (3 - 2 * var(--hero-to-about, 0))
   );
-  /* Geometry progress: defaults to the smooth curve; quantised into
-     discrete steps below when CSS round() is available, so the zoom
-     advances in chunky low-frame-rate increments (the "pixelated
-     zoom"). Opacity/mask stay on the SMOOTH --p so the dissolve never
-     strobes. */
-  --pz: var(--p);
   /* Scale: 1 → 3.0. Camera-dive feel: composition fills, then
      overflows, the frame. Past p=1 the composition is fully off-
-     screen and faded. */
-  --hero-scale: calc(1 + var(--pz) * 2.0);
+     screen and faded. SMOOTH on purpose: an earlier pass quantised
+     this into 14 steps for a "pixelated zoom", but each step was a
+     ~0.14 scale jump on a 130vw body (~376px-wide pops, measured),
+     which read as the ring glitching during the scroll-up ease-back.
+     The pixel identity lives entirely in the dither dissolve below;
+     geometry stays continuous. */
+  --hero-scale: calc(1 + var(--p) * 2.0);
   /* Slight downward push (2vh max) so the dive isn't perfectly
      symmetric, which adds the sense that the viewer is sinking THROUGH
      the type, not staring at it pulling apart. */
-  --hero-shift-y: calc(var(--pz) * 2vh);
+  --hero-shift-y: calc(var(--p) * 2vh);
 
   transform: translate3d(0, var(--hero-shift-y), 0) scale(var(--hero-scale));
   /* The old blur(0→2px) depth cue is GONE: replaced by the dither
      dissolve below, which fits the pixel retrofuturism language and
      costs less than a 130vw blur ever did. */
-}
-
-/* Stepped zoom: 14 increments across the dive. round() ships in all
-   evergreen browsers; everything else keeps the smooth fallback. */
-@supports (width: round(1.5px, 1px)) {
-  .hero-composition {
-    --pz: calc(round(var(--p) * 14, 1) / 14);
-  }
 }
 
 /* Bayer-dither block dissolve (the 8-bit screen-wipe):
@@ -323,7 +314,9 @@
   /* Bolder: OffBit ships 400/700 only, so past weight 700 the lift
      comes from a proportional stroke that fattens the pixel glyphs at
      every size (0.014em ≈ 3px at the 230px cap). Same accent as the
-     fill, so it reads as weight, not as an outline effect. */
+     fill, so it reads as weight, not as an outline effect. (The CRT
+     scanline fill that briefly accompanied this was removed: user
+     verdict "cheesy and fake".) */
   -webkit-text-stroke: 0.014em var(--accent);
   /* See hero-ring-wrap for the full entrance choreography note.
      Wordmark fill enters FIRST at 0.40s: the persistent signature
@@ -347,33 +340,9 @@
   will-change: transform;
 }
 
-/* CRT scanlines, clipped INSIDE the glyphs (background-clip: text):
-   thin darker-accent bands over the accent fill, so the wordmark reads
-   as phosphor on a tube while the page around it stays untouched. The
-   solid text-stroke above keeps the glyph edges crisp, which is what
-   stops this from reading as a faded gradient. Deliberately STATIC (no
-   flicker/roll animation: motion here adds noise, not meaning) and
-   DESKTOP-ONLY (below ~720px the em-scaled line pitch goes sub-pixel
-   and smears into moire mush). Em units keep the pitch proportional
-   across the clamp range. Bands sit per-char (the gradient rides each
-   .hero-mega-char box), so the inhale spring shifts lines with the
-   glyph: a slight CRT-jitter that suits the effect. */
-@supports (-webkit-background-clip: text) {
-  @media (min-width: 721px) {
-    .hero-mega-char {
-      background-image: repeating-linear-gradient(
-        to bottom,
-        var(--accent) 0,
-        var(--accent) 0.027em,
-        color-mix(in srgb, var(--accent) 82%, var(--bg-page)) 0.027em,
-        color-mix(in srgb, var(--accent) 82%, var(--bg-page)) 0.038em
-      );
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-  }
-}
+/* (A CRT scanline fill via background-clip:text lived here briefly;
+   removed per user: "looks cheesy and fake". The wordmark is solid
+   accent with the text-stroke weight boost only.) */
 
 /* Outline ghost: HIDDEN.
    User feedback: "WAY too much shit going on". The dark outline ghost
