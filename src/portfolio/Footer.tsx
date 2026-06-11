@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { FooterSignature } from "./FooterSignature";
 import "./footer.css";
 
@@ -83,12 +85,55 @@ function jumpTo(selector: string) {
 
 export function Footer() {
   const year = new Date().getFullYear();
+  // jumpTo is module-level/stable, so an empty dep array is sound; this
+  // keeps a single stable handler instead of allocating one closure per link.
+  const handleJumpClick = useCallback((selector: string) => jumpTo(selector), []);
+
+  // Scroll-in reveal: add .footer-revealed once the band enters the
+  // viewport so the nav links cascade in (CSS owns the stagger via --i ×
+  // --stagger). One-shot — disconnects after firing. Mirrors the
+  // lightweight IO reveal pattern the keypad section uses; falls back to
+  // visible if IO is unavailable (and reduced-motion shows them at rest).
+  const footerRef = useRef<HTMLElement>(null);
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    const el = footerRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setRevealed(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setRevealed(true);
+            io.disconnect();
+            return;
+          }
+        }
+      },
+      { rootMargin: "0px 0px -15% 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   return (
-    <footer className="portfolio-footer" aria-labelledby="footer-heading">
+    <footer
+      ref={footerRef}
+      className={`portfolio-footer${revealed ? " footer-revealed" : ""}`}
+      aria-labelledby="footer-heading"
+    >
       <h2 id="footer-heading" className="sr-only">
         Site footer: navigation, links, and colophon
       </h2>
+      {/* Terminal landmark: "06" Offbit Dot marker so the closing band
+          carries the same big-numeral anchor as the sections above.
+          aria-hidden — it's decorative; the index is announced via the
+          jump-link labels. */}
+      <div className="footer-marker" aria-hidden="true">
+        06
+      </div>
       <div className="footer-inner">
         {/* Three-column grid. Order (left → right):
             1. Elsewhere: sits behind the signature, which renders
@@ -97,12 +142,12 @@ export function Footer() {
             3. Colophon: build metadata. */}
         <div className="footer-grid">
           <div className="footer-col footer-col-elsewhere">
-            <FooterSignature height={132} />
+            <FooterSignature height={90} />
             <h3 className="footer-col-label" id="footer-elsewhere-label">
               Elsewhere
             </h3>
             <nav className="footer-nav" aria-labelledby="footer-elsewhere-label">
-              {ELSEWHERE.map((l) => {
+              {ELSEWHERE.map((l, i) => {
                 const isMail = l.href.startsWith("mailto:");
                 return (
                   <a
@@ -114,6 +159,8 @@ export function Footer() {
                     rel={isMail ? undefined : "noreferrer noopener"}
                     aria-label={l.aria}
                     className="footer-link"
+                    // --i drives the CSS reveal stagger (i × --stagger).
+                    style={{ "--i": i } as CSSProperties}
                   >
                     <span className="footer-link-num" aria-hidden="true">
                       {l.glyph}
@@ -130,13 +177,15 @@ export function Footer() {
               Index
             </h3>
             <nav className="footer-nav" aria-labelledby="footer-index-label">
-              {JUMP_LINKS.map((l) => (
+              {JUMP_LINKS.map((l, i) => (
                 <button
                   key={l.label}
                   type="button"
                   className="footer-link"
                   aria-label={`Jump to ${l.label}`}
-                  onClick={() => jumpTo(l.selector)}
+                  onClick={() => handleJumpClick(l.selector)}
+                  // --i drives the CSS reveal stagger (i × --stagger).
+                  style={{ "--i": i } as CSSProperties}
                 >
                   <span className="footer-link-num" aria-hidden="true">
                     {l.number}
@@ -153,7 +202,7 @@ export function Footer() {
               <div>
                 <dt className="footer-meta-key">Stack</dt>
                 <dd className="footer-meta-val">
-                  React · TypeScript · Three.js · Rapier
+                  React · TypeScript · Three.js · R3F
                 </dd>
               </div>
               <div>

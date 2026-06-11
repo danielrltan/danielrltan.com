@@ -618,11 +618,17 @@ function MonitorClickHint({ pose }: { pose: MonitorPose | null }) {
   // so the per-frame poll doesn't schedule React renders. The CSS
   // transition on the element smooths the opacity change to 0.35s.
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Track the last opacity we wrote so the per-frame guard compares against a
+  // local ref instead of reading el.style.opacity (a DOM access) every frame.
+  const lastOpacityRef = useRef<string>("");
   useFrame(() => {
     const el = wrapperRef.current;
     if (!el) return;
     const next = !!(sceneReady?.current && !deskActive?.current) ? "1" : "0";
-    if (el.style.opacity !== next) el.style.opacity = next;
+    if (lastOpacityRef.current !== next) {
+      el.style.opacity = next;
+      lastOpacityRef.current = next;
+    }
   });
 
   if (!pose) return null;

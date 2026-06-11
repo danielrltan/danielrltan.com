@@ -114,7 +114,7 @@
   inset: 0;
   /* GSAP-onUpdate writes opacity inline; CSS transition smooths edge
      cases like jump-to-section anchors. */
-  transition: opacity 220ms linear;
+  transition: opacity var(--t-fast) linear;
   will-change: opacity;
 }
 
@@ -169,20 +169,24 @@
   font-weight: 600;
   opacity: var(--head-eye, 1);
   transform: translateY(calc((1 - var(--head-eye, 1)) * 8px));
-  transition: opacity 320ms ease, transform 320ms ease;
+  transition: opacity var(--t-med) var(--ease-entrance),
+              transform var(--t-med) var(--ease-entrance);
 }
 .other-section-num {
   font-family: var(--font-dot);
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--fs-sub);
   letter-spacing: 0.02em;
   color: var(--accent-text);
 }
 .other-section-divider {
-  /* Decorative em-dash (aria-hidden). Bumped from --accent-tint (an
-     ~0.10-alpha fill, invisible as a glyph) to a faint ink hairline so
-     the separator actually reads. */
-  color: var(--ink-faint);
+  /* Signature editorial glyph (aria-hidden). The Play section adopts a
+     confident forward slash (set in Other.tsx) rather than the old faint
+     dot — warmed to --accent-text (AA-safe small accent, see top of file)
+     and italicised so the separator reads as an intentional editorial
+     mark, not an invisible connector. This is the section's divider voice;
+     the caption strip below echoes the same warm slash. */
+  color: var(--accent-text);
   font-weight: 400;
   letter-spacing: 0;
 }
@@ -194,7 +198,7 @@
 .other-title {
   grid-column: 1;
   grid-row: 2;
-  margin: 14px 0 0;
+  margin: var(--space-4) 0 0;
   font-family: var(--font-display);
   font-weight: 500;
   font-size: clamp(56px, 7.8vw, 132px);
@@ -203,8 +207,9 @@
   color: var(--ink);
   opacity: var(--head-title, 1);
   transform: translateY(calc((1 - var(--head-title, 1)) * 22px));
-  transition: opacity 420ms var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1)),
-              transform 420ms var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1));
+  /* Title is the slowest reveal so it lands last + most deliberately. */
+  transition: opacity var(--t-slow) var(--ease-entrance),
+              transform var(--t-slow) var(--ease-entrance);
 }
 .other-title-period {
   color: var(--accent);
@@ -306,11 +311,30 @@
   border: 1px solid var(--accent);
   z-index: 5;
   white-space: nowrap;
-  animation: hobbies-tooltip-in 140ms ease;
+  /* RECIPROCAL FOCUS CUE (Play swing): the tooltip used to fade in flat,
+     reading as a detached UI chip. It now latches on with a brief accent
+     halo that overshoots then settles (--ease-bounce), so it registers as
+     a focus indicator clamping onto the hovered object rather than a solo
+     label. NOTE: `transform` is OFF-LIMITS to animate here — HobbiesScene
+     sets the tooltip position via an inline transform (cursor coords), so
+     the cue rides opacity + box-shadow only (no transform collision, no
+     behaviour change). The paired 3D model scale/glow proposed alongside
+     this lives in HobbiesScene (out of scope) and is left to sign-off. */
+  animation: hobbies-tooltip-in var(--t-base) var(--ease-bounce);
 }
 @keyframes hobbies-tooltip-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+  60% {
+    opacity: 1;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  to {
+    opacity: 1;
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 /* ======================================================================
@@ -347,7 +371,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  animation: other-caption-swap 260ms var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1));
+  animation: other-caption-swap var(--t-base) var(--ease-entrance);
 }
 @keyframes other-caption-swap {
   from { opacity: 0; transform: translateY(6px); }
@@ -360,17 +384,20 @@
 }
 .other-caption-no {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-base);
   letter-spacing: 0.22em;
-  /* Was --ink-faint (0.32 alpha → ~2.4:1, fails AA on the small index).
-     Bumped to --ink-muted (0.62 alpha → passes AA) so the index reads
-     for low-vision sighted users; the name + quote already use ink /
-     ink-muted. */
-  color: var(--ink-muted);
+  /* WARM SEAM CLOSE (Play swing): the index used cool --ink-muted while
+     the Beat-B eyebrow uses warm --accent-text, so the reel's two mono
+     markers read in different temperatures. Unified to --accent-text — the
+     darkened accent (66% accent / 34% ink, defined at top of file) that is
+     AA-safe (~5:1) for small accent text, so the index stays legible for
+     low-vision users while joining the warm eyebrow voice. */
+  color: var(--accent-text);
   font-weight: 600;
 }
 .other-caption-divider {
-  color: var(--ink-faint);
+  /* Warm editorial slash, matching the header dividers above. */
+  color: var(--accent-text);
 }
 .other-caption-name {
   font-family: var(--font-display);
@@ -394,7 +421,7 @@
   z-index: 5;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-4);
   pointer-events: auto;
 }
 
@@ -462,9 +489,14 @@
   z-index: 5;
   pointer-events: none;
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* Single column: Beat A's header only renders the eyebrow + title, so
+     the old `1fr auto` second track was always empty and only served to
+     inset the title by `column-gap`. Collapsing to `1fr` signals a
+     deliberate difference from Beat B's grid rather than an accidental
+     empty column (Beat B currently renders no .other-sub either). The
+     mobile override below was already single-column. */
+  grid-template-columns: 1fr;
   grid-template-rows: auto auto;
-  column-gap: 4vw;
   align-items: end;
 }
 .other-gallery-eyebrow {
@@ -473,7 +505,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
   letter-spacing: 0.28em;
@@ -482,7 +514,8 @@
   font-weight: 600;
   opacity: var(--gh-eye, 1);
   transform: translateY(calc((1 - var(--gh-eye, 1)) * 8px));
-  transition: opacity 320ms ease, transform 320ms ease;
+  transition: opacity var(--t-med) var(--ease-entrance),
+              transform var(--t-med) var(--ease-entrance);
 }
 /* Big section numeral: matches the Work section's "03" treatment
    (dot font, ink, clamp(56-84px)) so 04 reads at the same scale as the
@@ -501,7 +534,8 @@
   gap: var(--space-3);
 }
 .other-gallery-divider {
-  color: var(--ink-faint);
+  /* Same warm editorial slash voice as the Beat-B eyebrow divider. */
+  color: var(--accent-text);
   font-weight: 400;
   letter-spacing: 0;
 }
@@ -511,7 +545,7 @@
 .other-gallery-title {
   grid-column: 1;
   grid-row: 2;
-  margin: 14px 0 0;
+  margin: var(--space-4) 0 0;
   font-family: var(--font-display);
   font-weight: 500;
   font-size: clamp(56px, 7.8vw, 132px);
@@ -520,8 +554,8 @@
   color: var(--ink);
   opacity: var(--gh-title, 1);
   transform: translateY(calc((1 - var(--gh-title, 1)) * 22px));
-  transition: opacity 420ms var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1)),
-              transform 420ms var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1));
+  transition: opacity var(--t-slow) var(--ease-entrance),
+              transform var(--t-slow) var(--ease-entrance);
 }
 .other-gallery-title-period {
   color: var(--accent);
@@ -560,6 +594,11 @@
    and-braces guard, not the primary mechanism). */
 .other-trains-wrap {
   position: absolute;
+  /* Centre the stack vertically between the "Recents" header (top) and the
+     "CURATED REEL" index line (bottom). It was bottom-heavy and jammed
+     against the footer line; 30/12vh + slightly shorter rows (18vh, below)
+     give a balanced ~57px of breathing room on both sides. Verified via
+     Playwright against the real pinned view. */
   top: 30vh;
   bottom: 12vh;
   left: 0;
@@ -574,12 +613,15 @@
 
 .other-trains {
   width: 100%;
+  /* Fill the whole train band and distribute the three rows evenly across
+     it (equal gaps) instead of clustering them in the centre with empty
+     headroom above/below. */
+  height: 100%;
   display: flex;
   flex-direction: column;
-  /* min-height:0 lets the column shrink to the band so centred rows
-     never push past the (now clipping) band edges. */
+  justify-content: space-between;
   min-height: 0;
-  /* Row gap scales with the band (vh) so three rows always fit. */
+  /* Minimum row gap; space-between adds the rest to fill the band. */
   gap: clamp(12px, 1.6vh, 22px);
 }
 
@@ -587,6 +629,12 @@
   position: relative;
   overflow: hidden;
   width: 100%;
+  /* Centre the (much wider) strip so its resting position overflows BOTH
+     sides. The rAF drift then translates around centre and never runs past
+     an edge — that left-anchored overrun was the mid-scroll gap. */
+  display: flex;
+  justify-content: center;
+  align-items: center;
   /* Left/right edge fade so cards entering or leaving the viewport
      dissolve rather than hard-clip. */
   mask-image: linear-gradient(
@@ -623,7 +671,9 @@
    aspect-ratio:1 so the card reads as a square photo tile. */
 .other-train-card {
   flex: 0 0 auto;
-  height: clamp(118px, 16vh, 180px);
+  /* Tile size: 18vh so three rows + gaps fit the centred band with
+     balanced padding above ("Recents") and below ("CURATED REEL"). */
+  height: clamp(132px, 18vh, 220px);
   aspect-ratio: 1 / 1;
   position: relative;
   display: flex;
@@ -642,7 +692,7 @@
 
 .other-train-card-label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-mono);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--bg-surface);
@@ -706,9 +756,9 @@
 .other-gallery-next {
   display: inline-flex;
   align-items: baseline;
-  gap: 10px;
+  gap: var(--space-2);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--ink-muted);
@@ -716,7 +766,7 @@
 }
 .other-gallery-next-arrow {
   color: var(--accent-text);
-  font-size: 14px;
+  font-size: var(--fs-sub);
   transform: translateY(2px);
   display: inline-block;
 }
@@ -874,7 +924,7 @@
     padding: 10px;
   }
   .other-train-card-label {
-    font-size: 9.5px;
+    font-size: var(--text-xs);
     padding: 4px 7px;
     letter-spacing: 0.18em;
   }
@@ -884,7 +934,7 @@
     bottom: 4vh;
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: var(--space-2);
   }
   .other-gallery-scrub {
     max-width: none;
@@ -894,7 +944,7 @@
     letter-spacing: 0.18em;
   }
   .other-gallery-next {
-    font-size: 9.5px;
+    font-size: var(--text-xs);
     letter-spacing: 0.18em;
     justify-content: flex-end;
   }

@@ -26,14 +26,19 @@ const STINTS: Stint[] = [
     when: "May 2026 - Present",
     year: "2026",
     where: "Broadridge",
-    brand: "Broadridge",
+    // Sector tag, not the company name again: the headline already says
+    // "Broadridge" at 132px, so the orange eyebrow earns its place as a
+    // chapter label rather than a same-word repeat one line up.
+    brand: "Fintech",
     role: "Software Engineer",
     current: true,
     // Just started: no specifics yet, by request. Keep the entry
     // honest + forward-looking rather than padding it with detail.
     pull: {
+      // Caption intentionally empty: the bullet below already says this,
+      // and the duplicate "just started, more to come" read as filler.
       metric: "Now",
-      caption: "the current chapter. Just started, more to come.",
+      caption: "",
     },
     bullets: [
       "Recently joined as a Software Engineer. More on this work soon.",
@@ -43,13 +48,16 @@ const STINTS: Stint[] = [
     when: "May 2025 - Nov 2025",
     year: "2025",
     where: "Windscribe",
-    brand: "Windscribe",
+    brand: "VPN Privacy",
     role: "Software Developer Intern",
     location: "Toronto, ON",
+    // Pull metric pulls from the TRIAGE bullet (bullet 3, 90s→20s) rather
+    // than mirroring bullet[0]'s −50% figure, so the oversized hero number
+    // carries an orthogonal insight instead of repeating the first line.
     pull: {
-      metric: "−50%",
+      metric: "90s → 20s",
       caption:
-        "support response time. Ticket-automation extension built end-to-end, deployed to 89M users",
+        "manual triage per ticket, via an OpenAI-backed automation flow deployed to 89M users",
     },
     bullets: [
       "Engineered a ticket automation extension that resolved 30% of support load autonomously, cutting response times by 50% and improving SLA compliance at scale for 89M users.",
@@ -61,13 +69,16 @@ const STINTS: Stint[] = [
     when: "Jan 2025 - May 2025",
     year: "2025",
     where: "Nodes",
-    brand: "Nodes",
+    brand: "Automation",
     role: "Software Developer Intern",
     location: "London, ON",
+    // Pull metric pulls from the verification-automation bullet (33min→5sec,
+    // bullet 2) rather than mirroring bullet[0]'s 600+ launch figure, so the
+    // hero number reports a distinct win from the launch headline.
     pull: {
-      metric: "600+",
+      metric: "33min → 5s",
       caption:
-        "users in launch week: owned the Gmail OAuth flow that replaced MFA entry",
+        "hiring-email verification, automated against 250+ applicants via a Firebase cross-check",
     },
     bullets: [
       "Implemented Gmail OAuth for user authentication, replacing MFA entry with a secure flow that contributed to a launch driving 600+ users in the first week.",
@@ -366,7 +377,10 @@ export function Work() {
       end: `+=${PIN_DURATION_PX}`,
       pin: true,
       pinSpacing: true,
-      scrub: true,
+      // Rate-limit: scrub:1 (~1s catch-up lerp) instead of scrub:true
+      // (instant 1:1 with scroll) so the timeline reveal can't be flicked
+      // past in one gesture.
+      scrub: 1,
       anticipatePin: 1,
       onEnter: () => setEntered(true),
       onEnterBack: () => setEntered(true),
@@ -376,13 +390,15 @@ export function Work() {
         const bar = progressBarRef.current;
         if (bar) bar.style.transform = `scaleX(${p})`;
 
-        // Exit dissolve: fade the whole ledger out over the last 10% of
-        // the pin so the handoff into the Other section reads as a soft
-        // cross-dissolve (Other fades its own beat-A content in) rather
-        // than a hard section swap. Starts at 0.90 so the final stint is
-        // fully readable first.
-        const exit = p > 0.9 ? 1 - (p - 0.9) / 0.1 : 1;
-        el.style.setProperty("--work-exit", String(Math.max(0, exit)));
+        // Handoff: keep the ledger fully opaque through the end of the
+        // pin. The old "exit dissolve" faded it to 0 over the last 10%,
+        // but Other's beat-A content doesn't fade in until ITS pin
+        // engages ~900px (one viewport) later — so the cross-dissolve had
+        // nothing to dissolve INTO and the seam read as ~1.3 viewports of
+        // blank background. Holding the content lets Work physically
+        // scroll up out of frame while Other slides in beneath it: a
+        // normal, seamless vertical handoff with no empty gap.
+        el.style.setProperty("--work-exit", "1");
 
         // Locate the active stint by which scroll window `p` falls in.
         // Pre-entry collapses to stint 0; past the last window stays on
@@ -469,10 +485,24 @@ export function Work() {
             <span className="work-ledger-index">03 / 06 · Work</span>
           </div>
           <div className="work-ledger-head-right">
-            <span className="work-ledger-eyebrow">Work</span>
-            <h2 className="work-ledger-title">Experience.</h2>
+            <span className="work-ledger-eyebrow" />
+            <h2 className="work-ledger-title">Experience</h2>
           </div>
         </header>
+
+        {/* Full résumé: pinned to the top-right of the whole ledger frame
+            (absolute, so it's out of the grid flow) and always visible
+            while the Work section is on screen — not gated to one stint. */}
+        <a
+          href="/resume/Daniel_Tan_Resume.pdf"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Download Daniel Tan's full résumé (PDF, opens in a new tab)"
+          className="work-resume is-revealed"
+        >
+          <span className="work-resume-label">Full résumé</span>
+          <span className="work-resume-arrow" aria-hidden>↗</span>
+        </a>
 
         <div className="work-ledger-body">
           <aside className="work-ticker" aria-hidden>
@@ -545,21 +575,6 @@ export function Work() {
                 />
               ))}
             </ol>
-
-            <a
-              href="/resume/Daniel_Tan_Resume.pdf"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Download Daniel Tan's full résumé (PDF, opens in a new tab)"
-              className={`work-resume${
-                staticLayout || activeIndex === STINTS.length - 1
-                  ? " is-revealed"
-                  : ""
-              }`}
-            >
-              <span className="work-resume-label">Full résumé</span>
-              <span className="work-resume-arrow" aria-hidden>↗</span>
-            </a>
           </div>
         </div>
 
@@ -622,7 +637,6 @@ function WorkStintSpread({
 
       <h3 className="work-stint-headline">
         {stint.where}
-        <span className="work-stint-headline-period">.</span>
       </h3>
 
       <div className="work-stint-meta">
@@ -643,7 +657,9 @@ function WorkStintSpread({
 
       <div className="work-stint-pull">
         <div className="work-stint-pull-metric">{stint.pull.metric}</div>
-        <p className="work-stint-pull-caption">{stint.pull.caption}</p>
+        {stint.pull.caption && (
+          <p className="work-stint-pull-caption">{stint.pull.caption}</p>
+        )}
       </div>
 
       <ul className="work-stint-bullets">

@@ -17,7 +17,10 @@
 
 /* Ghosted category marquee sliding horizontally behind the whole
    section. Provides editorial texture without competing for the
-   user's foreground attention. */
+   user's foreground attention. Lifted from a near-invisible 0.05 to
+   0.08 so the giant category words read as INTENTIONAL editorial
+   ghost-texture (a signature detail), not a subliminal rendering
+   artifact — while still sitting clearly behind the foreground. */
 .bp-marquee {
   position: absolute;
   top: 28%;
@@ -26,7 +29,7 @@
   pointer-events: none;
   overflow: hidden;
   white-space: nowrap;
-  opacity: 0.05;
+  opacity: 0.08;
   font-family: var(--font-display, system-ui, sans-serif);
   font-weight: 800;
   font-size: clamp(120px, 18vw, 280px);
@@ -58,10 +61,10 @@
 .bp-head {
   display: grid;
   grid-template-columns: auto 1fr;
-  column-gap: 18px;
+  column-gap: var(--space-4h); /* 18→20, on-grid */
   row-gap: 4px;
   align-items: end;
-  margin-bottom: 26px;
+  margin-bottom: var(--space-5); /* 26→24, on-grid */
 }
 .bp-marker {
   grid-column: 1;
@@ -77,8 +80,8 @@
   grid-column: 2;
   font-family: var(--font-display, system-ui, sans-serif);
   font-size: clamp(48px, 7vw, 96px);
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  font-weight: 500;
+  letter-spacing: -0.045em;
   line-height: 1;
   margin: 0;
   color: var(--ink);
@@ -87,10 +90,10 @@
 .bp-blurb {
   grid-column: 2;
   font-family: var(--font-body, system-ui, sans-serif);
-  font-size: 14px;
+  font-size: var(--fs-sub); /* 14, on-grid */
   color: var(--ink-muted);
   line-height: 1.55;
-  margin: 12px 0 0;
+  margin: var(--space-3) 0 0; /* 12, on-grid */
   max-width: 60ch;
 }
 
@@ -98,12 +101,12 @@
 .bp-stats {
   display: grid;
   grid-template-columns: 1fr 1px 1fr 1px 1fr;
-  gap: 28px;
+  gap: var(--space-5); /* 28→24, on-grid */
   align-items: end;
-  padding: 20px 0 26px;
+  padding: var(--space-4h) 0 var(--space-5); /* 20 0 26→24, on-grid */
   border-top: 1px solid var(--ink-hairline);
   border-bottom: 1px solid var(--ink-hairline);
-  margin: 0 0 28px;
+  margin: 0 0 var(--space-6); /* 28→32, on-grid */
 }
 .bp-stat {
   display: flex;
@@ -115,23 +118,24 @@
   font-size: clamp(40px, 5vw, 72px);
   font-weight: 700;
   letter-spacing: -0.02em;
-  /* --accent-text (accent darkened toward ink, ~5:1) instead of base
-     --accent (~2.64:1 on the cool-white gradient). The number is the
-     sole information carrier here, so it must clear AA on its own. */
-  color: var(--accent-text);
+  /* Large bold display number (40-72px): WCAG large-text bar is 3:1, so
+     use --accent-text-lg (~3.4:1, on-brand orange) rather than the muddy
+     small-text --accent-text (~5:1). Base --accent is only ~2.64:1 and
+     fails even the large bar. */
+  color: var(--accent-text-lg);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   margin: 0;
 }
 .bp-stat-label {
   font-family: var(--font-mono, sans-serif);
-  font-size: 11px;
+  font-size: var(--fs-mono); /* 11, on-grid */
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--ink-muted);
 }
 .bp-stat-rule {
-  height: 56px;
+  height: var(--space-7); /* 56→48, on-grid */
   width: 1px;
   background: var(--ink-hairline);
   align-self: center;
@@ -145,7 +149,7 @@
   grid-template-columns: repeat(6, 1fr);
   grid-auto-rows: minmax(140px, auto);
   grid-auto-flow: dense;
-  gap: 14px;
+  gap: var(--space-4); /* 14→16, on-grid */
   align-content: start;
   /* <ul> reset: semantic list for SR enumeration, no visual bullets. */
   list-style: none;
@@ -164,11 +168,15 @@
      edges as the user scrolls in. */
   opacity: 0;
   filter: blur(4px);
-  transform: translate3d(var(--bp-from-x, 0), 24px, 0) scale(0.97);
+  transform: translate3d(var(--bp-from-x, 0), var(--space-5), 0) scale(0.97);
+  /* Reveal sweep folded onto the motion spine: longest-reveal --t-slow
+     (540) for opacity/transform, --t-med (400) for the blur clear, all on
+     --ease-entrance (the gentle reveal-in/up curve). Replaces the ad-hoc
+     620/720/520ms + bare --ease-soft fallbacks. */
   transition:
-    opacity 620ms var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1)),
-    transform 720ms var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1)),
-    filter 520ms ease;
+    opacity var(--t-slow) var(--ease-entrance),
+    transform var(--t-slow) var(--ease-entrance),
+    filter var(--t-med) var(--ease-entrance);
   will-change: opacity, transform, filter;
 }
 .bp-tile--from-left { --bp-from-x: -28px; }
@@ -190,14 +198,14 @@
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--ink-hairline);
   border-radius: var(--r-card, 14px);
-  padding: 18px 20px;
+  padding: var(--space-4h); /* 18 20→20, on-grid */
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1); /* 4, on-grid */
   overflow: hidden;
   transition:
-    box-shadow 240ms ease,
-    border-color 240ms ease;
+    box-shadow var(--t-base) ease,
+    border-color var(--t-base) ease;
 }
 
 /* Featured tiles span 3 columns and get more visual weight. */
@@ -223,8 +231,8 @@
 
 .bp-tile-cat {
   font-family: var(--font-mono, sans-serif);
-  font-size: 9.5px;
-  letter-spacing: 0.24em;
+  font-size: var(--fs-mono); /* 11, on-grid */
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--ink-muted);
   font-weight: 600;
@@ -237,13 +245,13 @@
 
 .bp-tile-title {
   font-family: var(--font-display, system-ui, sans-serif);
-  font-size: 17px;
+  font-size: var(--fs-body-lg); /* 17, on-grid editorial body-lg */
   font-weight: 600;
   letter-spacing: -0.005em;
   color: var(--ink);
   margin: 0 0 2px;
   line-height: 1.2;
-  padding-right: 20px;
+  padding-right: var(--space-4h); /* 20, on-grid */
 }
 
 .bp-tile-metric {
@@ -252,17 +260,18 @@
   font-size: clamp(28px, 3vw, 36px);
   font-weight: 700;
   letter-spacing: -0.02em;
-  /* Sole information carrier (e.g. "Finalist", "1st"): use the
-     AA-safe darkened accent, not base --accent. */
-  color: var(--accent-text);
+  /* Large bold metric (28-36px, e.g. "Finalist", "1st"): large-text 3:1
+     bar, so the brighter on-brand --accent-text-lg (~3.4:1) instead of the
+     muddy small-text --accent-text (~5:1). */
+  color: var(--accent-text-lg);
   line-height: 1;
   margin-top: 6px;
 }
 
 .bp-tile-context {
   font-family: var(--font-mono, sans-serif);
-  font-size: 10.5px;
-  letter-spacing: 0.16em;
+  font-size: var(--fs-mono); /* 11, on-grid */
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--ink-muted);
   margin-top: -2px;
@@ -270,7 +279,7 @@
 
 .bp-tile-blurb {
   font-family: var(--font-body, system-ui, sans-serif);
-  font-size: 12px;
+  font-size: var(--text-base); /* 12, on-grid (mobile bumps to 16) */
   line-height: 1.45;
   color: var(--ink-muted);
   margin: 6px 0 0;
@@ -303,8 +312,8 @@
   }
   .bp-stats {
     grid-template-columns: 1fr 1fr;
-    gap: 18px 28px;
-    padding: 16px 0 22px;
+    gap: var(--space-4h) var(--space-5); /* 18 28→20 24, on-grid */
+    padding: var(--space-4) 0 var(--space-4h); /* 16 0 22→20, on-grid */
   }
   /* Hide the vertical rules; the 2-up grid carries the separation. */
   .bp-stat-rule {
@@ -317,7 +326,7 @@
   .bp-grid {
     grid-template-columns: repeat(2, 1fr);
     grid-auto-rows: minmax(132px, auto);
-    gap: 12px;
+    gap: var(--space-3); /* 12, on-grid */
   }
   .bp-tile {
     grid-column: span 1;
@@ -360,14 +369,14 @@
     font-size: clamp(38px, 12vw, 56px);
   }
   .bp-blurb {
-    font-size: 16px;
+    font-size: var(--fs-body); /* 16, on-grid */
     line-height: 1.5;
     max-width: 40ch;
   }
   .bp-stats {
     grid-template-columns: 1fr;
-    gap: 16px;
-    padding: 16px 0 20px;
+    gap: var(--space-4); /* 16, on-grid */
+    padding: var(--space-4) 0 var(--space-4h); /* 16 0 20, on-grid */
   }
   .bp-stat:first-of-type {
     grid-column: auto;
@@ -377,7 +386,7 @@
      won't work: display:none .bp-stat-rule divs sit between the stats in
      the DOM, so target by position instead.) */
   .bp-stat:not(:first-of-type) {
-    padding-top: 16px;
+    padding-top: var(--space-4); /* 16, on-grid */
     border-top: 1px solid var(--ink-hairline);
   }
   .bp-stat-num {
@@ -387,21 +396,21 @@
   .bp-grid {
     grid-template-columns: 1fr;
     grid-auto-rows: minmax(118px, auto);
-    gap: 12px;
+    gap: var(--space-3); /* 12, on-grid */
   }
   .bp-tile,
   .bp-tile--featured {
     grid-column: 1 / -1;
   }
   .bp-tile-inner {
-    padding: 18px 18px;
+    padding: var(--space-4h); /* 18→20, on-grid */
   }
   .bp-tile-title {
-    font-size: 18px;
+    font-size: var(--fs-body); /* 18→16, on-grid (context call: phone tile title) */
   }
   /* Blurb is body prose; bump to 16px on phones for readability. */
   .bp-tile-blurb {
-    font-size: 16px;
+    font-size: var(--fs-body); /* 16, on-grid */
     line-height: 1.5;
     max-width: 40ch;
   }
@@ -437,6 +446,6 @@
     transition: none;
   }
   .bp-tile-inner {
-    transition: border-color 240ms ease;
+    transition: border-color var(--t-base) ease;
   }
 }

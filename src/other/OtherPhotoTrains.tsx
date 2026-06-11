@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Hobby photo trains: three horizontal rows of placeholder photo
@@ -29,11 +29,13 @@ import { useEffect, useMemo, useRef } from "react";
  */
 
 export interface PhotoItem {
-  /** Stable label shown over the placeholder tint. */
-  label: string;
-  /** Placeholder tint (hex). Real photos can drop in later; until
-   *  then this is the card's visible fill. */
-  color: string;
+  /** Real photo URL (from /photos/manifest.json, built by `npm run photos`).
+   *  When present the card shows the image and the label/tint are unused. */
+  src?: string;
+  /** Stable label shown over the placeholder tint (placeholder cards only). */
+  label?: string;
+  /** Placeholder tint (hex) — the card fill until real photos are uploaded. */
+  color?: string;
 }
 
 interface Props {
@@ -46,11 +48,18 @@ const ROWS = 3;
 // Per-row travel coefficients. Sign = direction (positive moves the
 // strip left, exposing later cards). Magnitudes are tuned so each row
 // reads as a different speed but the overall band feels like one rack.
-const ROW_SPEEDS = [0.55, -0.42, 0.50];
-// Total travel multiplier (% of strip width at full Beat A). Combined
-// with the row speed this gives ~50–60% horizontal travel across the
-// pin window, plenty of motion without spinning labels into a blur.
-const TRAVEL_MULT = 140;
+// EQUAL magnitudes (alternating direction for parallax): every row drifts
+// the same distance, so all three reveal their full 12-photo chunk over the
+// pass. Unequal speeds (was [0.55, -0.42, 0.50]) made the fast row show all
+// its photos while the slower rows never finished revealing theirs.
+const ROW_SPEEDS = [0.5, -0.5, 0.5];
+// Total travel multiplier (% of strip width at full Beat A). The strip is
+// the 12-photo row repeated 3× (36 cards); to reveal the WHOLE 12 over a
+// pass without wrapping into a repeat, the drift + the ~6–7 visible cards
+// must land right around 12 cards. With equal row speeds (0.5) that's
+// TRAVEL_MULT ≈ 30. Lower drops photos; higher starts repeating the set.
+// Verified via Playwright (per-row reveal + over-sweep repeat at 1440/1920).
+const TRAVEL_MULT = 30;
 // rAF lerp factor. 0.085 ≈ ~25 frames to 95% of target at 60fps
 // (~420ms catch-up). Same shape as the original.
 const LERP_K = 0.085;
@@ -74,10 +83,40 @@ export function OtherPhotoTrains({ photos, progress }: Props) {
   // Beat A. 3x repeat gives ample wrap room (overshoot stays in mask)
   // while cutting DOM node count by 25% (144 → 108). The mask-image
   // fade at the row edges hides the seam either way.
-  const repeated = useMemo(
-    () => [...photos, ...photos, ...photos],
-    [photos],
-  );
+  // Real uploaded photos, fetched at runtime from the manifest that
+  // `npm run photos` generates. Until any exist (or if the fetch fails),
+  // fall back to the gradient placeholders passed via props — so the reel
+  // always renders something and never breaks.
+  const [real, setReal] = useState<PhotoItem[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/photos/manifest.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && Array.isArray(d) && d.length) {
+          setReal(d.map((p: { src: string }) => ({ src: p.src })));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const items = real && real.length ? real : photos;
+  // Split the photos across the rows (contiguous thirds: row 0 = first 12 of
+  // 36, row 1 = next 12, row 2 = last 12) so each row shows DIFFERENT photos
+  // instead of the same set three times. Each row's chunk is then repeated
+  // enough (~36 cards) to fill its sliding strip seamlessly.
+  const rowStrips = useMemo(() => {
+    const per = Math.ceil(items.length / ROWS);
+    return Array.from({ length: ROWS }, (_, r) => {
+      let chunk = items.slice(r * per, (r + 1) * per);
+      if (chunk.length === 0) chunk = items; // fewer photos than rows → reuse all
+      const reps = Math.max(3, Math.ceil(36 / Math.max(1, chunk.length)));
+      return Array.from({ length: reps }, () => chunk).flat();
+    });
+  }, [items]);
 
   // Keep the rAF-loop view of progress fresh on every render.
   useEffect(() => {
@@ -171,15 +210,27 @@ export function OtherPhotoTrains({ photos, progress }: Props) {
             }}
             className="other-train-strip"
           >
-            {repeated.map((p, i) => (
+            {rowStrips[rowIdx]!.map((p, i) => (
               <div
                 key={i}
                 className="other-train-card"
-                style={{
-                  background: `linear-gradient(135deg, ${p.color} 0%, ${darken(p.color, 0.35)} 100%)`,
-                }}
+                style={
+                  p.src
+                    ? {
+                        backgroundImage: `url(${p.src})`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                        // Without this, sub-pixel rounding tiles a 1px sliver
+                        // of the image at the card edge — reads as a glitchy
+                        // outline. no-repeat kills it.
+                        backgroundRepeat: "no-repeat",
+                      }
+                    : {
+                        background: `linear-gradient(135deg, ${p.color ?? "#222"} 0%, ${darken(p.color ?? "#222", 0.35)} 100%)`,
+                      }
+                }
               >
-                <span className="other-train-card-label">{p.label}</span>
+                {!p.src && <span className="other-train-card-label">{p.label}</span>}
               </div>
             ))}
           </div>

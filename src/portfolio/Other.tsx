@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import "./sections.css";
@@ -120,26 +120,30 @@ const TRAIN_PHOTOS = [
   { color: "#1f1a17", label: "Books" },
 ];
 
-// Two beats inside the pin. Trains are lighter than the old drum
-// scene (no per-frame 3D math, no preserve-3d transforms), so we trim
-// the pin slightly: 5600 → 5000.
-const PIN_DURATION_PX = 5000;
+// Two beats inside the pin. PIN shortened 7400 → 5600: Beat A (the photo
+// trains) was eating ~3250px (~3 viewports) of scroll, which read as
+// excessive — you kept scrolling over the reel long after you'd seen it.
+// Beat A's scrub is now ~1400px (~1.3 viewports), just enough for one
+// pass, while Beat B keeps ~2900px of scroll: its windows were re-derived
+// so the hobby reel's per-object pacing + snap are unchanged from the
+// 7400 tuning (the snap is computed from REEL_START/REEL_END below).
+const PIN_DURATION_PX = 5600;
 
-// Beat windows, expressed as fractions of the pin progress.
-//   [0.00, 0.04]  Beat A header land
-//   [0.04, 0.48]  Beat A scrub (trains glide)
-//   [0.48, 0.55]  Beat A → Beat B handoff (crossfade)
-//   [0.55, 0.62]  Beat B header land
-//   [0.62, 0.96]  Beat B scrub (hobby reel cycles)
-//   [0.96, 1.00]  outro pad
-const BEAT_A_HEAD_END = 0.04;
-const BEAT_A_REEL_START = 0.04;
-const BEAT_A_REEL_END = 0.48;
-const HANDOFF_START = 0.48;
-const HANDOFF_END = 0.55;
-const HEAD_END = 0.62;     // Beat B header end
-const REEL_START = 0.62;   // Beat B reel start
-const REEL_END = 0.96;
+// Beat windows, expressed as fractions of the pin progress (px @5600).
+//   [0.00, 0.05]  Beat A header land           (~280px)
+//   [0.05, 0.30]  Beat A scrub (trains glide)  (~1400px)
+//   [0.30, 0.40]  Beat A → Beat B handoff      (~560px)
+//   [0.40, 0.43]  Beat B header land           (~170px)
+//   [0.43, 0.95]  Beat B scrub (hobby reel)    (~2910px)
+//   [0.95, 1.00]  outro pad                    (~280px)
+const BEAT_A_HEAD_END = 0.05;
+const BEAT_A_REEL_START = 0.05;
+const BEAT_A_REEL_END = 0.30;
+const HANDOFF_START = 0.30;
+const HANDOFF_END = 0.40;
+const HEAD_END = 0.43;      // Beat B header end
+const REEL_START = 0.43;    // Beat B reel start
+const REEL_END = 0.95;
 
 const TUNE_MODE =
   typeof window !== "undefined" &&
@@ -298,7 +302,11 @@ export function Other() {
   // focus directly so the dot strip is still fully operable. Keyboard
   // users can Tab to a dot and Enter to focus that hobby in the 3D
   // scene + swap the floating label, even with no scroll animation.
-  const jumpToIndex = (idx: number) => {
+  // Memoised: reads only stable refs + the stable setActiveIndex setter +
+  // module-level constants, so an empty dep list is correct. Stabilising
+  // it keeps `handleDotClick` (and any future consumer) referentially
+  // stable across renders, removing per-render closure churn.
+  const jumpToIndex = useCallback((idx: number) => {
     const el = sectionRef.current;
     if (!el) return;
     const st = ScrollTrigger.getById("other-pin");
@@ -321,7 +329,15 @@ export function Other() {
       captionLayerRef.current.style.setProperty("--cap-opacity", "1");
       captionLayerRef.current.style.setProperty("--cap-drift", "0px");
     }
-  };
+  }, []);
+
+  // Per-dot click handler. Stable across renders (depends only on the
+  // memoised jumpToIndex) so the HOBBIES.map buttons stop allocating a
+  // fresh closure per render — pure GC-pressure reduction, no visual change.
+  const handleDotClick = useCallback(
+    (idx: number) => jumpToIndex(idx),
+    [jumpToIndex],
+  );
 
   useEffect(() => {
     if (TUNE_MODE) {
@@ -369,25 +385,56 @@ export function Other() {
       end: `+=${PIN_DURATION_PX}`,
       pin: true,
       pinSpacing: true,
-      scrub: true,
+      // Scroll speed limit: smoothed scrub (vs scrub:true / 1:1) eases the
+      // beat progression over ~1s, so a fast flick GLIDES through the
+      // photo trains + hobby reel instead of teleporting past every object.
+      // The scene catches up under its own momentum rather than snapping to
+      // the raw scroll position, giving the objects time to read.
+      scrub: 1,
+      // Per-hobby SNAP LOCK: within the Beat-B hobby reel each object is a
+      // hard stop, so the reel SETTLES on every "thing I enjoy" one at a
+      // time and you can't flick past them all. Quantising is scoped to
+      // the reel window only — Beat A (the continuous photo-train glide)
+      // and the outro pad return the value unchanged so they stay free.
+      // inertia:false → snap to the hobby nearest where the scroll comes
+      // to rest (don't project the flick's momentum forward to a far one),
+      // which combined with the smoothed scrub keeps it to ~one step per
+      // gesture. directional:false lets it pull back onto the current
+      // hobby when you overshoot, so nothing flies by.
+      snap: {
+        snapTo: (value) => {
+          if (value <= REEL_START || value >= REEL_END) return value;
+          const t = (value - REEL_START) / (REEL_END - REEL_START);
+          const i = Math.round(t * (HOBBIES.length - 1));
+          return REEL_START + (i / (HOBBIES.length - 1)) * (REEL_END - REEL_START);
+        },
+        duration: { min: 0.25, max: 0.55 },
+        delay: 0.04,
+        ease: "power2.inOut",
+        inertia: false,
+        directional: false,
+      },
       anticipatePin: 1,
       onUpdate: (self) => {
         const p = self.progress;
 
         // -------- Beat A: photo train stack --------
-        // Header lands across [0, BEAT_A_HEAD_END].
-        setBeatAHead(smoothstep(0, BEAT_A_HEAD_END, p));
+        // Header is already landed by the entrance trigger (which fades
+        // Beat A in over the section's approach, filling the old seam
+        // gap), so the pin just holds it up; no per-frame re-land that
+        // would snap it back to 0 at progress 0.
+        setBeatAHead(1);
         // Train progress 0..1 across [BEAT_A_REEL_START, BEAT_A_REEL_END].
         const aT = Math.max(
           0,
           Math.min(1, (p - BEAT_A_REEL_START) / (BEAT_A_REEL_END - BEAT_A_REEL_START))
         );
         setBeatAProgress(aT);
-        // Train rack opacity: fade in across the first 10% of Beat A,
-        // hold visible, then fade out during the handoff window.
-        const aFadeIn = smoothstep(0, 0.10, aT);
+        // Train rack opacity: already faded IN by the entrance trigger, so
+        // it's fully visible from progress 0 (no re-hide flash at pin
+        // engage). Here we only fade it OUT during the Beat A→B handoff.
         const aFadeOut = 1 - smoothstep(HANDOFF_START, HANDOFF_END, p);
-        setBeatAOpacity(Math.min(aFadeIn, aFadeOut));
+        setBeatAOpacity(aFadeOut);
 
         // -------- Beat B: curated reel --------
         // Header land: staggered beats across [HANDOFF_END, HEAD_END]
@@ -428,6 +475,27 @@ export function Other() {
       },
     });
 
+    // Entrance cross-fade: reveal Beat A as the section RISES into view,
+    // BEFORE the pin engages. Window is [top bottom → top top] — exactly
+    // the stretch where the preceding Work section is scrolling up and
+    // off the top. Fading the trains + header in across it means the seam
+    // is a true cross-dissolve (Work slides out, Other fades in) instead
+    // of ~1.3 viewports of blank background. By the time the pin takes
+    // over at "top top", Beat A is already fully revealed, so the pin's
+    // onUpdate (which holds beatAHead=1 / opacity=fadeOut) matches with no
+    // flash. Reverses cleanly on scroll-up.
+    const entrance = ScrollTrigger.create({
+      trigger: el,
+      start: "top bottom",
+      end: "top top",
+      scrub: true,
+      onUpdate: (self) => {
+        const e = self.progress;
+        setBeatAHead(e);
+        setBeatAOpacity(e);
+      },
+    });
+
     // Refresh after the loading screen lifts: pin position can shift
     // during initial layout. Same pattern as Macintosh + Keypad.
     const html = document.documentElement;
@@ -445,6 +513,7 @@ export function Other() {
     return () => {
       obs.disconnect();
       st.kill();
+      entrance.kill();
     };
   }, []);
 
@@ -559,12 +628,12 @@ export function Other() {
           <div className="other-gallery-eyebrow">
             <span className="other-gallery-num">04</span>
             <span className="other-gallery-label">
-              <span className="other-gallery-divider" aria-hidden>·</span>
+              <span className="other-gallery-divider" aria-hidden>/</span>
               <span className="other-gallery-tag">Photo reel</span>
             </span>
           </div>
           <h2 className="other-gallery-title">
-            Flashes<span className="other-gallery-title-period">.</span>
+            Recents
           </h2>
         </header>
 
@@ -616,16 +685,12 @@ export function Other() {
                 collided with the global "02: Stack" in the StatusBar
                 registry. Now matches StatusBar's SECTION_REGISTRY. */}
             <span className="other-section-num">04</span>
-            <span className="other-section-divider" aria-hidden>·</span>
+            <span className="other-section-divider" aria-hidden>/</span>
             <span className="other-section-tag">Off the clock</span>
           </div>
           <h2 className="other-title">
-            Some things I enjoy<span className="other-title-period">.</span>
+            Some interests
           </h2>
-          <p className="other-sub">
-            A ten-track reel of the obsessions that fill the gap between
-            shipping things.
-          </p>
         </header>
 
         {/* Full-width 3D scene: no left photo plate, no offset shadow.
@@ -660,7 +725,7 @@ export function Other() {
               <span className="other-caption-no">
                 {String(activeIndex + 1).padStart(2, "0")}
               </span>
-              <span className="other-caption-divider" aria-hidden>·</span>
+              <span className="other-caption-divider" aria-hidden>/</span>
               <span className="other-caption-name">{active.label}</span>
             </div>
           </div>
@@ -682,7 +747,7 @@ export function Other() {
                 key={h.id}
                 type="button"
                 className={`other-dot${isActive ? " is-active" : ""}`}
-                onClick={() => jumpToIndex(i)}
+                onClick={() => handleDotClick(i)}
                 aria-current={isActive ? "true" : undefined}
                 aria-label={`Jump to ${h.label} (${i + 1} of ${HOBBIES.length})`}
               >

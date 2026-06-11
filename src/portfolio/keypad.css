@@ -53,10 +53,48 @@
   pointer-events: auto;
 }
 
+/* Visual hint layer: sits BEHIND the 3D canvas (z below the stage's
+   flex children, which paint at the default z:auto > a negative z).
+   Centered editorial label + interaction cue at low opacity so it reads
+   as a quiet watermark when the keypad is present, and as a graceful
+   fallback if WebGL is unavailable. pointer-events:none guarantees it
+   never steals a click from the dial / social caps. */
+.keypad-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+}
+.keypad-hint-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  /* Holds an accent presence but stays quiet behind the model. */
+  opacity: 0.5;
+}
+.keypad-hint-cue {
+  font-family: var(--font-body);
+  font-size: var(--fs-sub);
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+  opacity: 0.35;
+}
+
 .keypad-canvas-wrapper {
   width: 100%;
   height: 100%;
   position: relative;
+  /* Lift the live canvas above the hint watermark behind it. */
+  z-index: 1;
 }
 
 .keypad-canvas-wrapper > canvas {

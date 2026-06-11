@@ -2,7 +2,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import { SKILL_LOGOS, type MacProject, type SkillLogo } from "./projects";
+import { SKILL_LOGOS, liveLinkLabel, type MacProject, type SkillLogo } from "./projects";
 import { useMacNarrow } from "./useMacNarrow";
 
 // Visit ?tune=mac to enter a free-camera, slider-driven positioning
@@ -482,142 +482,97 @@ function LogoSprite({
 // vars, so these mirror the design-system tokens (--bg-surface,
 // --bg-elevated, --ink, --ink-muted, --ink-hairline, --accent).
 const CARD_INK = "#0d0e10";
-const CARD_INK_MUTED = "rgba(13, 14, 16, 0.58)";
 const CARD_INK_FAINT = "rgba(13, 14, 16, 0.34)";
-const CARD_HAIRLINE = "rgba(13, 14, 16, 0.14)";
 const CARD_ACCENT = "#e87040";
 
 /**
- * Orbit card texture: a flat industrial SPEC-TAG, not a generic SaaS
- * card. The read is a NASA part label / Teenage-Engineering component
- * tag: cool-white panel, hard right-angle corners, a crisp hairline
- * border, an orange index rule across the top, a mono header row
- * (index number · category code), the tech name set large in the
- * display face, corner registration ticks, and one small status dot in
- * the tech's brand hue as the single intentional spot of colour. No
- * "STK" tag (removed, it was meaningless), no rounded SaaS radius, no
- * coloured left slab, no fake drop shadow.
+ * Orbit card texture: a calm, restrained name plate.
  *
- * Drawn at 2× the plane aspect (0.66×0.355 → ~480×258) so type stays
- * crisp at orbit distance under anisotropic filtering.
+ * The previous design stacked ten competing marks on a card that is
+ * only ever seen small, tilted and drifting in the orbit ring (orange
+ * top rule, elevated header band, index, orange category, hairline
+ * divider, big name, brand status dot + ink ring, two mono footer
+ * lines, four L-shaped corner ticks, a full frame border). At orbit
+ * distance the 1px filigree turned to mush and the orange category
+ * fought the name for attention — it read as "too detailed / busy".
+ *
+ * Current design: a white field with the large tech NAME as the single
+ * hero (vertically centred so it stays anchored when the card tilts
+ * off-axis, auto-shrunk so the longest label never clips), a faint tracked
+ * index top-left, a QUIET neutral hairline edge, and a single orange
+ * L-bracket tick in the top-left corner as the sole accent. Earlier passes
+ * tried a per-brand colour bar under the name (read as arbitrary) and a
+ * bold full orange frame (too heavy small + tilted) — both rejected. The
+ * hairline gives the card just enough edge to read as an object; the
+ * corner tick carries the orange without the weight of a full line.
+ *
+ * Drawn at 768×412 (same 1.86:1 ratio as the 0.66×0.355 plane, higher res
+ * than before) so type stays crisp under anisotropic filtering.
  */
 function makeLogoTexture(logo: SkillLogo, index: number): THREE.CanvasTexture {
-  const w = 480;
-  const h = 258;
+  // 1.86:1 ratio (matches the 0.66 x 0.355 plane), rendered higher-res than
+  // the plane so type stays crisp when the card is small, tilted and drifting.
+  const w = 768;
+  const h = 412;
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d")!;
+  const PAD = 56; // inset for the name + index, clear of the frame
 
-  const PAD = 26; // outer content inset
-  const idx = String(index + 1).padStart(2, "0"); // "01".."12"
-
-  // ── Panel surface ───────────────────────────────────────────────
-  // Square corners (TE/industrial), pure white face. A 1px hairline
-  // inset border frames it as a discrete machined object on the
-  // cool-white page.
+  // White field.
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, w, h);
 
-  // Faint top "elevated" band so the header row reads as a printed
-  // strip on the tag, not floating text. Mirrors --bg-elevated.
-  ctx.fillStyle = "#f4f6f8";
-  ctx.fillRect(0, 0, w, 64);
+  // Quiet neutral hairline frame: just enough to define the card's edge
+  // against the page. A full bold orange box read as too heavy, especially
+  // small and tilted in the orbit — so the edge is now a soft hairline and
+  // the orange is a single restrained mark (below).
+  const FRAME = 3;
+  ctx.strokeStyle = "rgba(13, 14, 16, 0.13)";
+  ctx.lineWidth = FRAME;
+  ctx.strokeRect(FRAME / 2, FRAME / 2, w - FRAME, h - FRAME);
 
-  // ── Orange index rule ───────────────────────────────────────────
-  // A thin accent rule pinned to the very top edge, the signature
-  // orange, the only saturated UI element. Runs full width like a
-  // file-folder colour tab.
+  // The orange accent: one L-bracket tick in the top-left corner —
+  // architectural, reads cleanly at orbit distance, and far lighter than a
+  // full frame or an under-name bar (both previously rejected). It frames
+  // the index below it, reading as a quiet "spec-tag" corner.
+  const TICK = 6; // arm thickness
+  const ARM_X = Math.round(w * 0.13); // horizontal arm length
+  const ARM_Y = Math.round(h * 0.19); // vertical arm length
+  const TICK_INSET = 22; // sits just inside the card edge
   ctx.fillStyle = CARD_ACCENT;
-  ctx.fillRect(0, 0, w, 6);
+  ctx.fillRect(TICK_INSET, TICK_INSET, ARM_X, TICK); // horizontal arm
+  ctx.fillRect(TICK_INSET, TICK_INSET, TICK, ARM_Y); // vertical arm
 
-  // ── Header row: index · category ────────────────────────────────
-  // Mono, uppercase, tracked: the "part code" line. Left: the orbit
-  // index. Right: the accurate classification (LANG / 3D / API …).
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = CARD_INK_MUTED;
-  ctx.font = "600 22px 'Geist', system-ui, sans-serif";
-  ctx.textAlign = "left";
-  drawTracked(ctx, idx, PAD, 36, 2);
-
-  // Category code, right-aligned. Accent-coloured so the eye picks up
-  // the taxonomy at a glance without it competing with the name.
-  ctx.fillStyle = CARD_ACCENT;
-  ctx.font = "700 21px 'Geist', system-ui, sans-serif";
-  ctx.textAlign = "right";
-  drawTracked(ctx, logo.cat.toUpperCase(), w - PAD, 36, 3, "right");
-
-  // Hairline under the header strip.
-  ctx.strokeStyle = CARD_HAIRLINE;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, 64.5);
-  ctx.lineTo(w, 64.5);
-  ctx.stroke();
-
-  // ── Tech name (primary) ─────────────────────────────────────────
-  // Large display face, ink, left-aligned in the body. Auto-shrinks
-  // so long labels ("TypeScript") never clip the right margin.
-  ctx.fillStyle = CARD_INK;
+  // Faint tracked index, top-left — the quiet spec-tag nod, kept
+  // subordinate via size + faint ink.
+  const idx = String(index + 1).padStart(2, "0");
+  ctx.fillStyle = CARD_INK_FAINT;
+  ctx.font = "500 22px 'Geist', 'Inter', system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  let nameSize = 64;
+  drawTracked(ctx, idx, PAD, PAD + Math.round(h * 0.029), 3);
+
+  // HERO: the tech name, big + vertically centered so it fills the open
+  // field (the old plate left a lot of dead space). Auto-shrinks so the
+  // longest label ("TypeScript") never clips the frame.
+  const maxNameW = w - PAD * 2;
+  let nameSize = 132;
   ctx.font = `600 ${nameSize}px 'Geist', 'Inter', system-ui, sans-serif`;
-  const maxNameW = w - PAD - 92; // leave room for the status dot block
-  while (ctx.measureText(logo.label).width > maxNameW && nameSize > 30) {
+  while (ctx.measureText(logo.label).width > maxNameW && nameSize > 48) {
     nameSize -= 2;
     ctx.font = `600 ${nameSize}px 'Geist', 'Inter', system-ui, sans-serif`;
   }
-  ctx.fillText(logo.label, PAD, 168);
-
-  // ── Status dot (per-tech brand hue) ─────────────────────────────
-  // The single intentional spot of brand colour. A small filled disc
-  // with a thin ink ring + a mono "ONLINE"-style readout, like an
-  // equipment status LED on a spec sheet. Reads as designed telemetry,
-  // not a decorative coloured slab.
-  const dotX = w - PAD - 8;
-  const dotY = 152;
-  ctx.beginPath();
-  ctx.arc(dotX, dotY, 8, 0, Math.PI * 2);
-  ctx.fillStyle = logo.color;
-  ctx.fill();
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = CARD_HAIRLINE;
-  ctx.stroke();
-
-  // ── Footer meta line ────────────────────────────────────────────
-  // A quiet mono readout pinned to the bottom, giving the tag the
-  // documentation feel without adding noise. Left "STACK" descriptor,
-  // right a faux revision tick.
-  ctx.fillStyle = CARD_INK_FAINT;
-  ctx.font = "500 16px 'Geist', system-ui, sans-serif";
-  ctx.textBaseline = "alphabetic";
+  const nameBaseline = h / 2 + nameSize * 0.34; // optical vertical centering
+  ctx.fillStyle = CARD_INK;
   ctx.textAlign = "left";
-  drawTracked(ctx, "STACK / KIT", PAD, h - 24, 2);
-  ctx.textAlign = "right";
-  drawTracked(ctx, "REV.26", w - PAD, h - 24, 2, "right");
-
-  // ── Corner registration ticks ───────────────────────────────────
-  // Short L-shaped crop marks in each corner: the "machined / printed
-  // for assembly" tell. Drawn inside the hairline so they don't touch
-  // the panel edge.
-  ctx.strokeStyle = CARD_INK_FAINT;
-  ctx.lineWidth = 2;
-  const t = 14; // tick length
-  const m = 12; // inset from edge
-  drawCornerTick(ctx, m, m, t, 1, 1); // top-left
-  drawCornerTick(ctx, w - m, m, t, -1, 1); // top-right
-  drawCornerTick(ctx, m, h - m, t, 1, -1); // bottom-left
-  drawCornerTick(ctx, w - m, h - m, t, -1, -1); // bottom-right
-
-  // ── Frame hairline ──────────────────────────────────────────────
-  ctx.strokeStyle = CARD_HAIRLINE;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, w - 2, h - 2);
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(logo.label, PAD, nameBaseline);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = 16;
   return tex;
 }
 
@@ -646,20 +601,14 @@ function drawTracked(
   ctx.textAlign = prevAlign;
 }
 
-/** L-shaped corner crop mark. `(sx, sy)` are direction signs (+1/-1). */
-function drawCornerTick(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  len: number,
-  sx: number,
-  sy: number,
-) {
-  ctx.beginPath();
-  ctx.moveTo(x + sx * len, y);
-  ctx.lineTo(x, y);
-  ctx.lineTo(x, y + sy * len);
-  ctx.stroke();
+/**
+ * Single guarded uppercaser for CRT system-labels (meta lines, tag
+ * chips, tile meta). Routing every label through one helper means a
+ * future edit can't silently drop a `.toUpperCase()` and render
+ * lowercase on the CRT with no warning.
+ */
+function ensureUppercase(text: string): string {
+  return text.toUpperCase();
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -1148,8 +1097,12 @@ function drawProjectDetail(
   // wordmark-centred artwork shows uncropped.
   const projImg = project.image ? getProjectImage(project.image) : undefined;
   const hasImage = imageReady(projImg);
+  // Narrowed 0.34 → 0.28: a tighter, flush-right thumbnail column gives
+  // the text block the dominant share of the panel and introduces the
+  // asymmetric tension the symmetric ~third-column template lacked. The
+  // text column widens to fill the reclaimed space (textMaxW below).
   const colGap = Math.round(w * 0.045);
-  const imgW = hasImage ? Math.round(w * 0.34) : 0;
+  const imgW = hasImage ? Math.round(w * 0.28) : 0;
   const imgX = w - PAD - imgW;
   const textRight = hasImage ? imgX - colGap : w - PAD;
   const textMaxW = textRight - PAD;
@@ -1171,21 +1124,34 @@ function drawProjectDetail(
   ctx.lineTo(w, barH + 0.5);
   ctx.stroke();
 
-  // Close control: a sharp square outline with an × glyph, top-left.
+  // Close control: a sharp square outline with a SIGNATURE × glyph,
+  // top-left. The two arms are deliberately mismatched — one quiet
+  // dim-ink stroke, one bold ORANGE stroke that overshoots the box
+  // corner as an angled slash. It reads as a hand-marked "strike-out"
+  // rather than a default OS ×, giving the window chrome a POV without
+  // changing the (DOM-overlaid) hit target.
   const closeSz = Math.round(barH * 0.42);
   const closeX = PAD;
   const closeY = Math.round((barH - closeSz) / 2);
   ctx.strokeStyle = CRT_HAIRLINE;
   ctx.lineWidth = 1.5;
   ctx.strokeRect(closeX, closeY, closeSz, closeSz);
+  const g = Math.round(closeSz * 0.3);
+  // Quiet arm: top-left → bottom-right, dim ink.
   ctx.strokeStyle = CRT_TEXT_DIM;
   ctx.lineWidth = 1.5;
-  const g = Math.round(closeSz * 0.3);
   ctx.beginPath();
   ctx.moveTo(closeX + g, closeY + g);
   ctx.lineTo(closeX + closeSz - g, closeY + closeSz - g);
-  ctx.moveTo(closeX + closeSz - g, closeY + g);
-  ctx.lineTo(closeX + g, closeY + closeSz - g);
+  ctx.stroke();
+  // Signature arm: bottom-left → top-right, ORANGE, overshooting the box
+  // corner so it reads as an angled slash through the glyph.
+  const over = Math.round(closeSz * 0.22);
+  ctx.strokeStyle = CRT_ACCENT;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(closeX + g, closeY + closeSz - g);
+  ctx.lineTo(closeX + closeSz - g + over, closeY + g - over);
   ctx.stroke();
 
   // Breadcrumb path: mono, the one place mono suits (a system label).
@@ -1213,9 +1179,13 @@ function drawProjectDetail(
 
   // ── Content panel ────────────────────────────────────────────────
   // Header wipe: the title bar + title slide/fade in first (reveal
-  // 0 → 0.35), body types in after (0.3 → 1).
+  // 0 → 0.35), body types in after (0.3 → 0.85). The body finishes typing
+  // a bit BEFORE the dolly fully settles: the open lerp approaches 1
+  // asymptotically, so tying the LAST char to r===1 left every blurb
+  // stranded ~2% short (cut off mid-word). Completing by r≈0.85 guarantees
+  // the full description is shown well before the camera comes to rest.
   const headReveal = clamp01(r / 0.35);
-  const bodyReveal = clamp01((r - 0.3) / 0.7);
+  const bodyReveal = clamp01((r - 0.3) / 0.55);
 
   // Reclaim vertical space above the blurb (tighter than before) so the
   // longest blurb fits without truncation; see fit calc at the blurb below.
@@ -1227,28 +1197,32 @@ function drawProjectDetail(
   ctx.textAlign = "left";
   ctx.fillStyle = CRT_TEXT_DIM;
   ctx.font = "500 12px 'Geist', system-ui, sans-serif";
-  drawTracked(ctx, project.meta.toUpperCase(), PAD, y, 1.5);
+  drawTracked(ctx, ensureUppercase(project.meta), PAD, y, 1.5);
   y += Math.round(h * 0.05);
 
-  // Title: clean Geist. Auto-shrink so long titles never clip.
+  // Title: the HERO moment of the detail view. Bumped 0.058 → 0.07 and
+  // weighted to 700 so it dominates the panel rather than merely reading.
+  // Stays cool-white (the accent lives in the bar beneath) so a long
+  // title never loses legibility. Auto-shrinks so long titles never clip.
   ctx.fillStyle = CRT_TEXT;
-  let titleSize = Math.round(h * 0.058);
-  ctx.font = `600 ${titleSize}px 'Geist', system-ui, sans-serif`;
+  let titleSize = Math.round(h * 0.07);
+  ctx.font = `700 ${titleSize}px 'Geist', system-ui, sans-serif`;
   const maxTitleW = textMaxW;
   while (ctx.measureText(project.title).width > maxTitleW && titleSize > 22) {
     titleSize -= 2;
-    ctx.font = `600 ${titleSize}px 'Geist', system-ui, sans-serif`;
+    ctx.font = `700 ${titleSize}px 'Geist', system-ui, sans-serif`;
   }
   ctx.fillText(project.title, PAD, y);
-  y += Math.round(titleSize * 0.55);
+  const titleW = Math.min(ctx.measureText(project.title).width, maxTitleW);
+  y += Math.round(titleSize * 0.5);
 
-  // Accent rule under the title: a short flat hairline tick.
-  ctx.strokeStyle = CRT_ACCENT;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(PAD, y);
-  ctx.lineTo(PAD + Math.round(w * 0.08), y);
-  ctx.stroke();
+  // Accent bar under the title: a confident orange rule the FULL width of
+  // the title (was a fixed short 0.08w tick) so the title reads as the
+  // hero element it is — a bold underline anchoring the wordmark, not a
+  // decorative hairline. Thickened 2 → 4px to match the new weight.
+  ctx.fillStyle = CRT_ACCENT;
+  ctx.fillRect(PAD, y, Math.round(titleW), 4);
+  y += 4;
   ctx.globalAlpha = 1;
 
   // ── Thumbnail panel (right column) ───────────────────────────────
@@ -1287,7 +1261,7 @@ function drawProjectDetail(
     let rowArr: { label: string; tw: number }[] = [];
     let rowW = 0;
     for (const tag of project.tags) {
-      const label = tag.toUpperCase();
+      const label = ensureUppercase(tag);
       const tw = Math.round(ctx.measureText(label).width + 20);
       if (rowArr.length && rowW + tw > textMaxW) {
         tagRows.push(rowArr);
@@ -1316,19 +1290,39 @@ function drawProjectDetail(
   // blurbBottom (above the 2 tag rows) ≈ 405 → ~237px / 19 = 12 lines of
   // room. 7 lines fits with comfortable headroom.
   ctx.globalAlpha = bodyReveal;
-  const bodySize = Math.round(h * 0.0225);
-  const lineH = Math.round(bodySize * 1.34);
   ctx.fillStyle = CRT_TEXT_DIM;
-  ctx.font = `400 ${bodySize}px 'Geist', system-ui, sans-serif`;
   ctx.textBaseline = "top";
-  const blurbLines = wrapText(ctx, project.blurb, textMaxW);
+  const by0 = y + Math.round(h * 0.022);
+  const blurbBottom = (numTagRows > 0 ? tagBlockTop : btnY) - 12;
+  const availH = Math.max(0, blurbBottom - by0);
+
+  // BODY SIZE: a confident, FIXED editorial reading size — shrink ONLY if a
+  // long blurb would otherwise overflow (so it never truncates), never grow
+  // to fill (that ballooned short blurbs to a clumsy size). ~17px on the
+  // 640px canvas reads ~24px once the CRT is dollied to fill the viewport.
+  let bodySize = Math.round(h * 0.027); // ~17px @640
+  const minBodySize = Math.max(13, Math.round(h * 0.0185));
+  let lineH = Math.round(bodySize * 1.5); // airy, editorial leading
+  let blurbLines: string[] = [];
+  for (;;) {
+    ctx.font = `400 ${bodySize}px 'Geist', system-ui, sans-serif`;
+    blurbLines = wrapText(ctx, project.blurb, textMaxW);
+    lineH = Math.round(bodySize * 1.5);
+    if (blurbLines.length * lineH <= availH || bodySize <= minBodySize) break;
+    bodySize -= 1;
+  }
+
   const charsToShow = Math.floor(bodyReveal * project.blurb.length);
   let shown = 0;
-  let by = y + Math.round(h * 0.022);
-  const blurbBottom = (numTagRows > 0 ? tagBlockTop : btnY) - 12;
+  // Vertically CENTRE the blurb block within its region so the column reads
+  // as a balanced cluster (meta/title up top, centred body, tags + CTA
+  // anchored low) instead of text crammed under the title with a dead gap.
+  const blockH = Math.min(availH, blurbLines.length * lineH);
+  let by = by0 + Math.max(0, Math.round((availH - blockH) / 2));
+  const blockBottom = by + blockH;
   for (let li = 0; li < blurbLines.length; li++) {
     const line = blurbLines[li]!;
-    if (by + lineH > blurbBottom) break; // out of room (full text in a11y DOM)
+    if (by + lineH > blockBottom + 1) break; // safety (full text also in a11y DOM)
     const remain = charsToShow - shown;
     if (remain <= 0) break;
     ctx.fillText(line.slice(0, Math.max(0, remain)), PAD, by);
@@ -1364,7 +1358,7 @@ function drawProjectDetail(
   // The visible face of the real DOM <a> positioned over it. Pinned
   // bottom-left of the content panel.
   if (hasLink) {
-    const label = project.liveHref ? "View live" : "Source";
+    const label = project.liveHref ? liveLinkLabel(project.liveHref) : "Source";
     ctx.font = "600 16px 'Geist', system-ui, sans-serif";
     ctx.textBaseline = "middle";
     const arrow = "  →";
@@ -1416,7 +1410,16 @@ function drawScreen(
 
   const showDesktop = bootProgress >= 0.95;
   if (!showDesktop) {
-    const lines = ["BOOT_OS v1.0", "loading projects.dir...", "READY."];
+    // Boot voice: a touch of personality over the generic placeholder.
+    // A version string with build date, a self-aware "mounting" line, and
+    // a sign-off that reads as a person behind the machine rather than a
+    // canned READY. Still pure typed-in mono; the char-count typing math
+    // below is unchanged.
+    const lines = [
+      "DANIEL_OS v2.6",
+      "mounting projects.dir ... ok",
+      "READY. (it works this time)",
+    ];
     const totalChars = lines.reduce((s, l) => s + l.length, 0);
     const charsToShow = Math.floor(bootProgress * totalChars * 1.25);
     let remaining = charsToShow;
@@ -1534,7 +1537,7 @@ function drawScreen(
     ctx.font = "500 12px 'Geist', system-ui, sans-serif";
     drawTracked(
       ctx,
-      p.meta.split(" · ")[0]!.toUpperCase(),
+      ensureUppercase(p.meta.split(" · ")[0]!),
       x + 18,
       y + tileH - 44,
       1.2,
@@ -1864,11 +1867,24 @@ function Scene({
       lastTickRef.current = now;
       setBootProgress((prev) => (Math.abs(prev - newBoot) > 0.02 ? newBoot : prev));
       const dz = detailZoomRef.current;
-      // Snap to exactly 0 once closed so the texture reliably falls back
-      // to the tile grid (the >0.02 threshold could otherwise strand it
-      // at a tiny non-zero reveal that keeps drawing the detail view).
+      // Snap to exactly 0 once closed (texture falls back to the tile grid)
+      // AND exactly 1 once fully open. Without the ==1 case, the throttled
+      // 0.02-step mirror stranded detailReveal at ~0.98 while the asymptotic
+      // dolly lerp crept the final 2% toward 1 — so the blurb's typed-in
+      // reveal (bodyReveal = (r-0.3)/0.7) topped out at ~97% and EVERY
+      // description was cut off mid-word at the end.
       setDetailReveal((prev) =>
-        dz === 0 ? (prev === 0 ? prev : 0) : Math.abs(prev - dz) > 0.02 ? dz : prev,
+        dz === 0
+          ? prev === 0
+            ? prev
+            : 0
+          : dz === 1
+            ? prev === 1
+              ? prev
+              : 1
+            : Math.abs(prev - dz) > 0.02
+              ? dz
+              : prev,
       );
       // Publish the real screen-face aspect once MacBody has built the
       // overlay, so the CRT canvas matches the screen plane (no squish).
@@ -1936,6 +1952,10 @@ function Scene({
     detailZoomRef.current +=
       (detailTarget - detailZoomRef.current) * DETAIL_LERP;
     if (detailZoomRef.current < 0.0005) detailZoomRef.current = 0;
+    // Asymptotic lerp never hits 1 exactly; snap it so the detail reveal
+    // (and the blurb's typing) actually completes instead of stalling ~98%.
+    else if (detailTarget === 1 && detailZoomRef.current > 0.999)
+      detailZoomRef.current = 1;
     const detail = easeInOutCubic(clamp01(detailZoomRef.current));
 
     // ── CAMERA DOLLY-IN + DETAIL-ZOOM ─────────────────────────────

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { AsciiEffect } from "three/examples/jsm/effects/AsciiEffect.js";
+// Vendored from three/examples (one-line willReadFrequently fix; see
+// ./AsciiEffect.js header) so the per-frame getImageData readback that drives
+// the ring doesn't stall the GPU.
+import { AsciiEffect } from "./AsciiEffect.js";
 
 /**
  * Big bold ASCII ring: hero's primary motion centerpiece.
@@ -130,6 +133,35 @@ function RingScene({
   const asciiRef = useRef<AsciiEffect | null>(null);
   const lastTRef = useRef(performance.now() / 1000);
   const asciiDtAccRef = useRef(0); // accumulator for 30fps readback cap
+  // Entrance: timestamp (s) the ring's reveal began, or null until the hero
+  // first reveals (loading scrim lifts). Drives the crossfade-in + the
+  // face-on → tilt-back rotation. Runs once.
+  const entranceStartRef = useRef<number | null>(null);
+  // When the load gate (scrim gone + composition visible) was first met, so
+  // we can wait ENTRANCE_DELAY past it before igniting — a beat AFTER the
+  // loading screen clears, not right on its fade-out.
+  const gateMetAtRef = useRef<number | null>(null);
+  const ENTRANCE_DELAY = 0.5; // seconds after the loading screen is gone
+  // Tracks the offscreen→onscreen edge so the first resumed frame forces a
+  // fresh ascii.render() (no stale-frame flash when scrolling back up).
+  const wasOffscreenRef = useRef(true);
+  // Resting orientation (the scene's tilt). The entrance rotates the tilt
+  // group from 0 (face-on, facing the camera) to these over the reveal.
+  const TILT_X = (38 * Math.PI) / 180;
+  const TILT_Z = (-12 * Math.PI) / 180;
+  const reducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // DEV: ?introFreeze=<seconds> freezes the entrance at a fixed elapsed time
+  // (et) and bypasses the load gate, so the sub-second reveal can be
+  // screenshotted at specific moments for review. null in production.
+  const INTRO_FREEZE = (() => {
+    if (typeof window === "undefined") return null;
+    const raw = new URLSearchParams(window.location.search).get("introFreeze");
+    if (raw == null) return null;
+    const v = parseFloat(raw);
+    return Number.isFinite(v) ? v : null;
+  })();
 
   // PERF: the hero composition is `position: fixed`, so this component
   // NEVER unmounts; even at the footer it kept running AsciiEffect every
@@ -276,7 +308,7 @@ function RingScene({
 
     // Force a re-compile if onBeforeCompile changes (it won't here, but
     // safe to set):
-    mat.customProgramCacheKey = () => "hero-ring-cursor-pull-v1";
+    mat.customProgramCacheKey = () => "hero-ring-cursor-pull-v3";
 
     return { material: mat, uniforms: u };
   }, []);
@@ -308,6 +340,7 @@ function RingScene({
     dom.style.background = "transparent";
     dom.style.userSelect = "none";
     dom.style.pointerEvents = "none";
+    dom.style.opacity = "0"; // hidden until the entrance crossfades it in
     container.appendChild(dom);
 
     // Hide the raw WebGL canvas: AsciiEffect re-renders its content as
@@ -394,6 +427,7 @@ function RingScene({
     // canvas does NO GPU work while the hero is out of view.
     if (offscreenRef.current) {
       lastTRef.current = performance.now() / 1000;
+      wasOffscreenRef.current = true;
       return;
     }
 
@@ -401,8 +435,77 @@ function RingScene({
     const dt = Math.min(0.05, now - lastTRef.current);
     lastTRef.current = now;
 
-    // Spin on the torus's local Y axis. Combined with the tilt group's
-    // X-rotation, this gives the visible "tumbling tilted disc" motion.
+    // On re-entry from off-screen the AsciiEffect <td> table is still sized
+    // to the rect cached while the container was hidden, so the first resume
+    // frame renders off-center until R3F's size effect re-fires. Re-measure
+    // the LIVE container now so the resume render is correctly centered.
+    if (wasOffscreenRef.current) {
+      const container = gl.domElement.parentElement;
+      if (container && container.clientWidth > 0 && container.clientHeight > 0) {
+        ascii.setSize(container.clientWidth, container.clientHeight);
+      }
+    }
+
+    // Kick off the entrance only once the LOADING SCREEN is gone AND the
+    // composition is revealed: `loading-active` is removed (scrim cleared)
+    // ~0.72s after the composition reveals, which is LATER than is-settled
+    // (~0.6s) — so gating on is-settled started the entrance while the
+    // loading scrim was still up. Wait for both. The ignition blast uses
+    // the same gate so they fire together on a clean, fully-loaded hero.
+    if (INTRO_FREEZE == null) {
+      if (entranceStartRef.current === null) {
+        const gateMet =
+          document.querySelector(".hero-composition.is-visible") &&
+          !document.documentElement.classList.contains("loading-active");
+        if (gateMet) {
+          // Wait ENTRANCE_DELAY past the loading screen clearing before
+          // igniting, so the blast lands a beat AFTER the load-in, not on it.
+          if (gateMetAtRef.current === null) gateMetAtRef.current = now;
+          if (now - gateMetAtRef.current >= ENTRANCE_DELAY) {
+            entranceStartRef.current = now;
+          }
+        }
+      }
+      // Nothing to show until the entrance has begun: skip the render so the
+      // ring never flashes face-on at full opacity before its crossfade, and
+      // the first entrance frame is guaranteed fresh.
+      if (entranceStartRef.current === null) {
+        wasOffscreenRef.current = true;
+        return;
+      }
+    }
+
+    const ss = (a: number, b: number, x: number) => {
+      const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+      return t * t * (3 - 2 * t);
+    };
+    // Entrance choreography (snappy, ~1.3s), driven entirely here on the
+    // fully-revealed hero:
+    //   crossfade in FACE-ON (0–0.35s) → hold a beat → TILT back to the
+    //   scene lean (0.4–1.1s).
+    // The SPIN stays at the normal resting rate the whole time — a fast
+    // spin-up read as broken/inconsistent, so the only "rotation" of the
+    // entrance is the tilt into the scene. The ignition blast plays over
+    // the same window.
+    const et = INTRO_FREEZE != null ? INTRO_FREEZE : now - entranceStartRef.current!;
+    let ringOpacity: number, tiltT: number;
+    if (reducedMotion) {
+      ringOpacity = 1; tiltT = 1;       // land at rest immediately
+    } else {
+      // Ring crossfades in face-on early (0–0.35s) over the blast, then
+      // rotates into the scene lean (0.4–1.1s). (Pulled ~0.5s sooner than
+      // the prior 0.35–0.7s delay per feedback.)
+      ringOpacity = ss(0.0, 0.35, et);
+      tiltT = ss(0.4, 1.1, et);
+    }
+    const entering = INTRO_FREEZE != null || et < 1.3;
+
+    // Apply orientation (face-on → resting lean) + the crossfade opacity.
+    const tg = tiltGroupRef.current;
+    if (tg) tg.rotation.set(tiltT * TILT_X, 0, tiltT * TILT_Z);
+    (ascii.domElement as HTMLElement).style.opacity = ringOpacity.toFixed(3);
+
+    // Spin on the torus's local Y axis — constant normal rate (no spin-up).
     const spinPerSec = (Math.PI * 2) / spinDuration;
     torus.rotation.y += spinPerSec * dt;
 
@@ -425,17 +528,22 @@ function RingScene({
     shader.uniforms.uMouseStrength.value = mouseStrengthSmoothedRef.current;
     shader.uniforms.uTime.value = now;
 
-    // Render via AsciiEffect, NOT gl.render: this is what produces the
-    // glyph table in the DOM. priority=1 on this useFrame suppresses
-    // R3F's default render call so we don't double-render.
+    // Render via AsciiEffect, NOT gl.render: this produces the glyph table
+    // in the DOM. priority=1 suppresses R3F's default render.
     //
-    // PERF: ascii.render() issues a synchronous GPU→CPU readback (getImageData)
-    // and rebuilds the glyph table every call.
-    // OLD: readback + glyph rebuild every frame  → 60 calls/sec, ~1–2 ms each.
-    // NEW: capped at 30 fps via dt accumulator   → 30 calls/sec, saving ~50 %.
-    // Rotation and all uniforms still advance every frame — only the readback is gated.
+    // PERF: ascii.render() does a synchronous GPU→CPU readback + glyph
+    // rebuild; normally capped at 30fps via the accumulator. We BYPASS the
+    // cap when (a) resuming from offscreen — the first visible frame must be
+    // fresh or the user sees the stale pre-scroll frame flash on the way
+    // back up; and (b) mid-entrance — the tilt/spin-up needs every frame.
+    const resuming = wasOffscreenRef.current;
+    wasOffscreenRef.current = false;
+    const forceRender = resuming || entering;
     asciiDtAccRef.current += dt;
-    if (asciiDtAccRef.current >= 1 / 30) {
+    if (forceRender) {
+      asciiDtAccRef.current = 0;
+      ascii.render(scene, camera);
+    } else if (asciiDtAccRef.current >= 1 / 30) {
       asciiDtAccRef.current -= 1 / 30;
       ascii.render(scene, camera);
     }
@@ -461,10 +569,9 @@ function RingScene({
       {/* Tilt group + torus: torus spins on local Y inside the tilted
           parent so the silhouette actually changes over time (spinning
           a torus on its own symmetry axis would be invisible). */}
-      <group
-        ref={tiltGroupRef}
-        rotation={[(38 * Math.PI) / 180, 0, (-12 * Math.PI) / 180]}
-      >
+      {/* Starts face-on (0,0,0); the entrance in useFrame tilts it back to
+          the resting lean (TILT_X / TILT_Z) as the ring crossfades in. */}
+      <group ref={tiltGroupRef} rotation={[0, 0, 0]}>
         <mesh ref={torusRef} material={material}>
           {/* Mobile: 24×160 vs desktop 40×260 segments. The torus is
               rasterised then re-quantised into ASCII cells (resolution

@@ -18,6 +18,15 @@ export interface MacProject {
   color: string;
 }
 
+/**
+ * Label for a project's live-link button: a Devpost project page reads
+ * "View dev post"; any other live URL (a deployed site) reads "View live".
+ * Repo-only projects use "Source" (handled at the call site).
+ */
+export function liveLinkLabel(liveHref: string): string {
+  return /devpost\.com/i.test(liveHref) ? "View dev post" : "View live";
+}
+
 export const MAC_PROJECTS: MacProject[] = [
   {
     id: "cognetech",

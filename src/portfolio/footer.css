@@ -11,6 +11,10 @@
      the 1px ink hairline on top. */
   background: var(--bg-deep);
   border-top: 1px solid var(--ink-hairline);
+  /* Intentional rhythm break: top is 96px (20% tighter than the 120px
+     section norm) and bottom is a lighter 48px — heavier top, lighter
+     terminal bottom so the footer reads as the page's closing band
+     rather than another full-height section. Deliberate, not drift. */
   padding: 96px 6vw 48px;
   margin-top: 0;
   z-index: 5;
@@ -25,20 +29,55 @@
   margin: 0 auto;
 }
 
+/* Terminal landmark: the footer is the page's final section but carried
+   no Offbit marker like About/Work/Other above it, leaving it visually
+   underweight. "06" matches the Elsewhere jump-link index and gives the
+   closing band the same big-Dot anchor the sections use — ghosted to
+   --ink-faint (vs the sections' full --ink) so it reads as a watermark
+   anchoring the band rather than competing with the live links, with the
+   accent ↑ glyph pointing back up the page. */
+.footer-marker {
+  font-family: var(--font-dot);
+  font-weight: 700;
+  font-size: clamp(72px, 9vw, 120px);
+  line-height: 0.82;
+  letter-spacing: 0.01em;
+  /* Ghosted on the dark band: full --ink here would shout; a faint ink
+     reads as a watermark anchoring the corner. */
+  color: var(--ink-faint);
+  margin: 0 0 var(--space-6) 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  user-select: none;
+  pointer-events: none;
+}
+.footer-marker::after {
+  /* ↑ (vs the sections' ↓): this is the terminus — the glyph points the
+     reader back to the top of the page. */
+  content: "↑";
+  color: var(--accent);
+  font-family: var(--font-body, system-ui);
+  font-size: 0.32em;
+  font-weight: 500;
+  align-self: center;
+  transform: translateY(-0.15em);
+}
+
 /* 3-column grid on desktop. Stacks on mobile. */
 .footer-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1.4fr;
-  gap: 56px;
+  gap: var(--space-7);
   margin-bottom: 96px;
 }
 
 .footer-col-label {
   /* Was an <div>; now an <h3> for landmark structure; strip UA
      heading margins/size so the visual treatment is unchanged. */
-  margin: 0 0 22px 0;
+  margin: 0 0 var(--space-4h) 0;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-mono);
   letter-spacing: 0.28em;
   text-transform: uppercase;
   /* Base --accent (#e87040) on the bg-deep band is < 2.6:1, fails AA
@@ -62,7 +101,7 @@
   flex-direction: column;
 }
 .footer-col-elsewhere > :first-child {
-  margin-bottom: 18px;
+  margin-bottom: var(--space-4h);
   max-width: 100%;
   overflow: hidden;
 }
@@ -76,13 +115,13 @@
 .footer-nav {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .footer-link {
   display: inline-flex;
   align-items: baseline;
-  gap: 14px;
+  gap: var(--space-4);
   /* Slight horizontal padding so the focus ring + hover offset have
      breathing room and the hit target is comfortable. */
   padding: 6px 6px;
@@ -92,14 +131,21 @@
   border-radius: 4px;
   color: var(--ink);
   font-family: var(--font-display);
-  font-size: 17px;
+  font-size: var(--fs-body-lg);
   font-weight: 500;
   letter-spacing: -0.02em;
   cursor: pointer;
   text-decoration: none;
   width: max-content;
-  transition: color var(--t-fast, 0.15s) var(--ease-out, ease),
-    transform var(--t-fast, 0.15s) var(--ease-out, ease);
+  /* Two roles for this transition:
+       1. hover/focus colour + translate feedback (--t-fast).
+       2. the scroll-in reveal — the opacity/translateY settle uses the
+          slower --t-med on --ease-entrance, staggered per item by --i
+          (see .footer-reveal below). Both share the property list so the
+          reveal and the hover use one declaration. */
+  transition: color var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out),
+    opacity var(--t-med) var(--ease-entrance);
 }
 .footer-link:hover {
   color: var(--accent-hot);
@@ -117,15 +163,44 @@
 }
 .footer-link-num {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-mono);
   letter-spacing: 0.18em;
-  color: var(--ink-muted);
+  /* The glyph/index is the primary affordance in this 3-col grid — the
+     thing that says "this row is navigable" (cf. Work's accent metrics).
+     Give it accent presence by DEFAULT (was muted-until-hover), so the
+     warm marker reads as the editorial through-line, not just a hover
+     reward. Hover then drives it to the hotter accent. */
+  color: var(--accent-text);
   font-weight: 500;
   min-width: 18px;
+  transition: color var(--t-fast) var(--ease-out);
 }
 .footer-link:hover .footer-link-num,
 .footer-link:focus-visible .footer-link-num {
-  color: var(--accent-text);
+  color: var(--accent-hot);
+}
+
+/* Scroll-in reveal: Footer.tsx adds .footer-revealed once the band
+   enters the viewport. Items start lifted + transparent and settle on
+   --ease-entrance, each delayed by its --i × --stagger (rows 0..n give
+   the 0/60/120/180/240/300ms cascade the proposal calls for), bringing
+   the footer's affordances up to the choreography of the sections above. */
+.footer-nav .footer-link {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.footer-revealed .footer-nav .footer-link {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: calc(var(--stagger) * var(--i, 0));
+}
+/* Re-assert the hover nudge above the revealed rule's transform (which
+   has higher specificity than the base .footer-link:hover). Opacity is
+   already settled, so only the per-property transform matters; clear the
+   reveal's transition-delay so the hover responds instantly. */
+.footer-revealed .footer-nav .footer-link:hover {
+  transform: translateX(3px);
+  transition-delay: 0s;
 }
 
 /* Colophon is now a real description list (<dl> of <dt>/<dd> pairs)
@@ -133,23 +208,28 @@
 .footer-meta {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: var(--space-3);
   margin: 0;
 }
 .footer-meta > div {
   display: grid;
-  grid-template-columns: 90px 1fr;
-  gap: 16px;
+  /* Editorial key/value rhythm: was a cramped fixed 90px label column,
+     out of step with the spacious key/value layout the sections use. A
+     fluid min-content key column lets the label set its own width and
+     opens the gap to --space-4h so the colophon breathes like the
+     editorial grid above it. */
+  grid-template-columns: minmax(72px, max-content) 1fr;
+  gap: var(--space-4h);
   align-items: baseline;
   border-bottom: 1px dotted var(--ink-hairline);
-  padding-bottom: 10px;
+  padding-bottom: var(--space-3);
 }
 .footer-meta > div:last-child {
   border-bottom: 0;
 }
 .footer-meta-key {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-mono);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--ink-muted);
@@ -158,7 +238,7 @@
 .footer-meta-val {
   margin: 0; /* reset UA <dd> indent */
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: var(--fs-sub);
   color: var(--ink);
   letter-spacing: -0.01em;
 }
@@ -168,12 +248,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-4);
   flex-wrap: wrap;
   border-top: 1px solid var(--ink-hairline);
-  padding-top: 28px;
+  padding-top: var(--space-5);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-mono);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ink-muted);
@@ -215,7 +295,7 @@
        horizontal scroll. */
     grid-template-columns: 1fr;
     gap: 40px;
-    margin-bottom: 56px;
+    margin-bottom: var(--space-7);
   }
   /* In the stacked layout there is no shared cell height to align
      bottoms against, so the bottom-anchoring margin is moot; reset it
@@ -242,7 +322,7 @@
   .footer-bottom {
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     text-align: center;
   }
 }
@@ -256,7 +336,7 @@
     padding: 64px 5vw calc(80px + env(safe-area-inset-bottom, 0px));
   }
   .footer-grid {
-    gap: 36px;
+    gap: var(--space-6);
   }
 }
 
@@ -267,5 +347,14 @@
 @media (prefers-reduced-motion: reduce) {
   .footer-link:hover {
     transform: none;
+  }
+  /* No motion → no scroll-in reveal. Show every link immediately and at
+     rest so the reveal's opacity:0 start state never strands the nav for
+     reduced-motion users (or if the JS observer never fires). */
+  .footer-nav .footer-link,
+  .footer-revealed .footer-nav .footer-link {
+    opacity: 1;
+    transform: none;
+    transition-delay: 0s;
   }
 }

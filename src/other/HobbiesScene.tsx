@@ -241,25 +241,41 @@ function startPreload() {
   preloadStarted = true;
   if (typeof window === "undefined") return;
   const loader = new GLTFLoader();
+  // Create every entry up front so subscribers can attach before any load
+  // finishes, then pump the actual requests through a small concurrency
+  // limit. Firing all ~10 GLB loads at once saturated the socket pool and
+  // starved first-paint assets (fonts, the room mesh); capping in-flight to
+  // 3 paces the SAME loads without delaying them past when the user reaches
+  // the Other section. Behaviour (entries, listener callbacks) is unchanged.
+  const queue: Array<(typeof HOBBIES)[number]> = [];
   HOBBIES.forEach((h) => {
-    const entry: LoadEntry = { scene: null, loaded: false, listeners: new Set() };
-    PRELOADED[h.id] = entry;
-    loader.load(
-      `/hobbies/${h.file}`,
-      (gltf) => {
-        entry.scene = gltf.scene;
-        entry.loaded = true;
-        entry.listeners.forEach((cb) => cb(entry.scene));
-      },
-      undefined,
-      () => {
-        // 404 / parse error: placeholder takes over.
-        entry.scene = null;
-        entry.loaded = true;
-        entry.listeners.forEach((cb) => cb(null));
-      },
-    );
+    PRELOADED[h.id] = { scene: null, loaded: false, listeners: new Set() };
+    queue.push(h);
   });
+  const MAX_CONCURRENT = 3;
+  let active = 0;
+  const pump = () => {
+    while (active < MAX_CONCURRENT && queue.length > 0) {
+      const h = queue.shift()!;
+      const entry = PRELOADED[h.id]!;
+      active += 1;
+      const finish = (scene: THREE.Group | null) => {
+        entry.scene = scene;
+        entry.loaded = true;
+        entry.listeners.forEach((cb) => cb(scene));
+        active -= 1;
+        pump();
+      };
+      loader.load(
+        `/hobbies/${h.file}`,
+        (gltf) => finish(gltf.scene),
+        undefined,
+        // 404 / parse error: placeholder takes over.
+        () => finish(null),
+      );
+    }
+  };
+  pump();
 }
 startPreload();
 
@@ -474,7 +490,10 @@ function HobbyMesh({ hobby, scene, index, activeIdxRef, visibleRef, onHoverChang
     // crossing a hysteresis boundary, or a dot-strip jump) eases rather
     // than snaps. Same smoothness model as before; only the target source
     // changed (committed index instead of fractional floor).
-    focusLerpRef.current += (targetWeight - focusLerpRef.current) * (1 - Math.exp(-dt * 7));
+    // dt*7 → dt*4.5: slower focus-weight ease so each object's scale/
+    // opacity arrival between hobbies feels more gradual (matches the
+    // slower camera glide + the widened reel window in Other.tsx).
+    focusLerpRef.current += (targetWeight - focusLerpRef.current) * (1 - Math.exp(-dt * 4.5));
     const weight = focusLerpRef.current;
 
     // Bob: sinusoidal Y offset around an outward-pushed layout pos.
@@ -657,9 +676,10 @@ function camDistanceForAspect(aspect: number): number {
   return Math.max(CAM_DISTANCE, need);
 }
 // How fast camera position/lookAt lerps to the new focus per second.
-// 4 = ~250ms catch-up at 60fps. Smooth, but still responsive to a
-// chip-click jump.
-const CAM_LERP_RATE = 4.0;
+// 2.4 = ~420ms catch-up at 60fps (lowered from 4.0 ≈ 250ms): a more
+// deliberate, cinematic glide between hobbies so the jump rate between
+// the 3D objects reads slower. Still settles well within a chip-click.
+const CAM_LERP_RATE = 2.4;
 // Bounded orbit sway about dead-front. The camera oscillates within
 // ±CAM_ORBIT_AMP radians of straight-on (so it NEVER swings around to an
 // object's side/back (the front-facing rule), at CAM_ORBIT_RATE rad/s

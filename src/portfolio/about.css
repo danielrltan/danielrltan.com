@@ -21,14 +21,14 @@
   left: 6vw;
   display: flex;
   align-items: baseline;
-  gap: 18px;
+  gap: var(--space-4h, 20px);
   pointer-events: none;
   z-index: 4;
   opacity: 0;
   transform: translateY(8px);
   transition:
-    opacity 540ms cubic-bezier(0.2, 0.7, 0.2, 1),
-    transform 540ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    opacity var(--t-slow, 540ms) var(--ease-soft),
+    transform var(--t-slow, 540ms) var(--ease-soft);
 }
 .about-floating-eyebrow.is-visible {
   opacity: 1;
@@ -36,12 +36,12 @@
 }
 .about-floating-num {
   font-family: var(--font-mono, sans-serif);
-  font-size: 12px;
+  font-size: var(--text-base, 12px);
   font-weight: 600;
   letter-spacing: 0.22em;
   color: var(--accent, #e87040);
   /* Pin to the bottom of the wordmark line height so the small
-     mono "01" sits visually beside the big "Daniel." baseline. */
+     mono "01" sits visually beside the big "Daniel" baseline. */
   align-self: flex-end;
   margin-bottom: 0.18em;
 }
@@ -55,6 +55,16 @@
   letter-spacing: -0.035em;
   line-height: 0.9;
   color: var(--wrapper-ink, #0d0e10);
+}
+
+/* Desktop kills the big dot marker for the same reason the mobile rule
+   (≤720px) does: it duplicates the floating "About." wordmark, which is
+   the section's editorial anchor here. Two competing giants both labelled
+   "About" (the 64–128px wordmark vs. the 96–148px .section-marker) read as
+   noise; the wordmark stays the sole hero and the mono "01 / 06 · About"
+   index handles wayfinding. */
+.portfolio-about .section-marker {
+  display: none;
 }
 
 /* Override the default `.portfolio-col` 50vw-right-margin so the
@@ -157,20 +167,22 @@
 /* Lede paragraph: reveals at the start of the pin. */
 .about-lede {
   font-family: var(--font-display, "Geist", "Inter", sans-serif);
-  font-size: clamp(20px, 2.1vw, 28px);
+  font-size: var(--fs-lead, clamp(20px, 2.1vw, 28px));
   line-height: 1.35;
   font-weight: 400;
   letter-spacing: -0.015em;
   color: var(--wrapper-ink, #0d0e10);
-  margin: 0 0 36px;
+  margin: 0 0 var(--space-6, 32px);
   max-width: 540px;
   /* Avoid ragged orphans on the narrow editorial measure. */
   text-wrap: pretty;
   opacity: 0;
   transform: translateY(14px);
+  /* 700ms one-shot intro stays literal (off-spine); only the easing
+     folds to the shared --ease-soft token. */
   transition:
-    opacity 700ms cubic-bezier(0.2, 0.7, 0.2, 1),
-    transform 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    opacity 700ms var(--ease-soft),
+    transform 700ms var(--ease-soft);
 }
 .about-lede.is-revealed {
   opacity: 1;
@@ -195,15 +207,18 @@
 .about-row {
   display: grid;
   grid-template-columns: 96px 1fr;
-  gap: 22px;
+  gap: var(--space-4h, 20px);
   align-items: baseline;
-  padding: 14px 0;
+  /* Row spacing scales with viewport height so the few rows spread out
+     evenly to fill the panel instead of bunching at the top with dead
+     space below. Floor keeps it tidy on short screens. */
+  padding: clamp(18px, 3.6vh, 48px) 0;
   border-bottom: 1px solid rgba(13, 14, 16, 0.08);
   opacity: 0;
   transform: translateX(16px);
   transition:
-    opacity 540ms cubic-bezier(0.2, 0.7, 0.2, 1),
-    transform 540ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    opacity var(--t-slow, 540ms) var(--ease-soft),
+    transform var(--t-slow, 540ms) var(--ease-soft);
 }
 .about-row.is-revealed {
   opacity: 1;
@@ -219,7 +234,7 @@
      the design-system floor for muted text. Use the canonical muted
      ink token (0.62 alpha ≈ 4.7:1 on the panel bg) and nudge the size
      to 11px so the tracked caps stay legible. */
-  font-size: 11px;
+  font-size: var(--fs-mono, 11px);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ink-muted, rgba(13, 14, 16, 0.62));
@@ -228,43 +243,52 @@
 
 .about-value {
   font-family: var(--font-body, "Inter", sans-serif);
-  font-size: 15px;
+  /* Snapped to --fs-body (16) so desktop matches the mobile rule below
+     (which is already 16px), reading coherently across breakpoints. */
+  font-size: var(--fs-body, 16px);
   line-height: 1.45;
   color: var(--wrapper-ink, #0d0e10);
   /* Reset UA <dd> indent. */
   margin: 0;
 }
 
-/* Sign-off line: last beat, points the user toward the next
-   section. */
-.about-sign {
-  margin-top: 32px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
+/* Sign-off coda: the closing beat that lands after the last row, filling
+   the previously-dead 0.82→1.0 tail of the pin. A brief editorial sign-off
+   in the lede's voice — not a key/value row, so it lives outside the <dl>.
+   Scoped under .portfolio-about so it outranks the shared
+   `.portfolio-section p` rule (0,1,1: sets ink colour, 0.88 opacity, 1.65
+   line-height) — otherwise the muted sign-off treatment silently loses,
+   exactly like the lede had to be scoped. */
+.portfolio-about .about-coda {
+  margin: var(--space-6, 32px) 0 0;
+  font-family: var(--font-display, "Geist", "Inter", sans-serif);
+  font-size: var(--fs-body-lg, 17px);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--ink-muted, rgba(13, 14, 16, 0.62));
   opacity: 0;
-  transform: translateY(8px);
+  max-width: 520px;
+  text-wrap: pretty;
+  transform: translateY(12px);
   transition:
-    opacity 520ms ease,
-    transform 520ms ease;
+    opacity var(--t-slow, 540ms) var(--ease-entrance),
+    transform var(--t-slow, 540ms) var(--ease-entrance);
 }
-.about-sign.is-revealed {
+.portfolio-about .about-coda.is-revealed {
   opacity: 1;
   transform: translateY(0);
 }
-.about-sign-line {
-  display: block;
-  width: 48px;
-  height: 1px;
-  background: var(--accent, #e87040);
+/* The signed name in full ink, prefixed by an orange em-dash signature
+   mark — reads as "— Daniel Tan" closing the section, tying the sign-off
+   to the brand spine. */
+.portfolio-about .about-coda .about-coda-name {
+  color: var(--wrapper-ink, #0d0e10);
+  font-weight: 600;
+  white-space: nowrap;
 }
-.about-sign-text {
-  font-family: var(--font-mono, sans-serif);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  /* 0.55 → muted token (0.62) to clear the 4.5:1 floor on the panel. */
-  color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+.portfolio-about .about-coda .about-coda-name::before {
+  content: "\2014\00a0";
+  color: var(--accent, #e87040);
 }
 
 /* Links inside the rows (Windscribe, mailto). They inherit the accent
@@ -303,7 +327,7 @@
   }
   .about-row {
     grid-template-columns: 80px 1fr;
-    gap: 16px;
+    gap: var(--space-4, 16px);
   }
   /* Tablets (e.g. iPad portrait at 768px) are touch devices too, so the
      row links need the same ≥44px hit area as phones. The desktop base
@@ -376,7 +400,7 @@
     top: calc(54px + env(safe-area-inset-top, 0px));
     left: 24px;
     right: 24px;
-    gap: 12px;
+    gap: var(--space-3, 12px);
     z-index: 5;
   }
   .about-floating-label {
@@ -394,7 +418,7 @@
     display: none;
   }
   .portfolio-about .about-col .section-index {
-    margin-bottom: 16px;
+    margin-bottom: var(--space-4, 16px);
   }
 
   /* Scoped under .portfolio-about so it outranks the shared
@@ -403,7 +427,7 @@
   .portfolio-about .about-lede {
     font-size: clamp(18px, 5vw, 22px);
     line-height: 1.4;
-    margin: 0 0 24px;
+    margin: 0 0 var(--space-5, 24px);
     /* Full measure on the narrow card; let it use the column width. */
     max-width: none;
   }
@@ -416,18 +440,18 @@
     /* Stack label over value on the narrowest phones so the value gets
        the full width and never truncates a link/email. */
     grid-template-columns: 1fr;
-    gap: 4px;
-    padding: 12px 0;
+    gap: var(--space-1, 4px);
+    padding: var(--space-3, 12px) 0;
   }
 
   .about-label {
-    font-size: 11px;
+    font-size: var(--fs-mono, 11px);
     letter-spacing: 0.18em;
   }
 
   .about-value {
     /* ≥16px avoids iOS tap-zoom + clears the mobile body-text floor. */
-    font-size: 16px;
+    font-size: var(--fs-body, 16px);
     line-height: 1.5;
   }
 
@@ -443,10 +467,6 @@
     margin: -4px -6px;
     /* 8px gap between adjacent tappable links if a value ever holds two. */
     gap: 8px;
-  }
-
-  .about-sign {
-    margin-top: 24px;
   }
 }
 
@@ -470,20 +490,20 @@
      specificity (0,2,0); the bare `.about-lede` selector (0,1,0) lost to
      it, so the 360px margin trim never applied. */
   .portfolio-about .about-lede {
-    margin-bottom: 20px;
+    margin-bottom: var(--space-4h, 20px);
   }
 }
 
 /* prefers-reduced-motion: the pin still scrolls (structural) but the
-   panel slide, row stagger, lede rise, sign-off, and floating wordmark
-   must not animate. The JS already force-reveals every beat and snaps
-   the panel in; here we neutralise the CSS transitions so the change is
+   panel slide, row stagger, lede rise, and floating wordmark must not
+   animate. The JS already force-reveals every beat and snaps the panel
+   in; here we neutralise the CSS transitions so the change is
    instantaneous and the content is fully visible at rest. */
 @media (prefers-reduced-motion: reduce) {
   .about-floating-eyebrow,
   .about-lede,
   .about-row,
-  .about-sign {
+  .about-coda {
     transition: none !important;
   }
   .about-floating-eyebrow,
@@ -492,8 +512,8 @@
   .about-lede.is-revealed,
   .about-row,
   .about-row.is-revealed,
-  .about-sign,
-  .about-sign.is-revealed {
+  .about-coda,
+  .about-coda.is-revealed {
     opacity: 1 !important;
     transform: none !important;
   }
