@@ -2,11 +2,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { RigidBody, type RapierRigidBody } from "@react-three/rapier";
 import { useRef } from "react";
 import * as THREE from "three";
-import {
-  useDeskViewActiveRef,
-  useSceneReadyRef,
-  useSetMoveableHover,
-} from "./SceneState";
+import { useSceneReadyRef, useSetMoveableHover } from "./SceneState";
 import { playOneShot } from "./audio";
 
 export interface DrawerData {
@@ -61,7 +57,6 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
 
   const { camera, raycaster, pointer, controls } = useThree();
   const sceneReadyRef = useSceneReadyRef();
-  const deskViewActiveRef = useDeskViewActiveRef();
   const setMoveableHover = useSetMoveableHover();
 
   const applyTranslation = () => {
@@ -117,10 +112,8 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
           targetZ.current === closedZ &&
           lastSettledZ.current !== closedZ
         ) {
-          playOneShot("drawer_close", 0.04);
-        // Heighten pitch by increasing the playbackRate for the close sound.
-        playOneShot("drawer_close", 0.04, /* playbackRate= */ 2.5);
-
+          // Heightened pitch via playbackRate for the close sound.
+          playOneShot("drawer_close", 0.04, /* playbackRate= */ 2.5);
         }
         lastSettledZ.current = targetZ.current;
       }
@@ -130,8 +123,6 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
 
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (!sceneReadyRef?.current) return;
-    // Interaction is locked out while seated at the desk.
-    if (deskViewActiveRef?.current) return;
     // Left mouse / primary touch only.
     if (e.button !== 0) return;
     if (!rb.current) return;

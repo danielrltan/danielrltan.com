@@ -147,11 +147,37 @@ function nodeLocalMatrix(node) {
 }
 
 /**
+ * Per-componentType divisor for KHR_mesh_quantization: a `normalized`
+ * integer accessor stores min/max as RAW integers; the float value is
+ * c / divisor (clamped to [-1, 1] for the signed types, irrelevant for
+ * AABB purposes since |min| ≤ typeMax). The dequantization scale/offset
+ * itself is baked into the node TRS by the optimizer
+ * (scripts/optimize-assets.mjs → gltf-transform quantize()), so after
+ * normalizing here the existing world-matrix composition is correct.
+ */
+const NORMALIZED_DIVISORS = {
+  5120: 127, // BYTE
+  5121: 255, // UNSIGNED_BYTE
+  5122: 32767, // SHORT
+  5123: 65535, // UNSIGNED_SHORT
+};
+
+function accessorMinMax(acc) {
+  const div = acc.normalized ? NORMALIZED_DIVISORS[acc.componentType] : null;
+  if (!div) return { min: acc.min, max: acc.max };
+  return {
+    min: acc.min.map((v) => v / div),
+    max: acc.max.map((v) => v / div),
+  };
+}
+
+/**
  * Returns the world-space AABB of `node` and all its descendants.
  * Uses each mesh primitive's POSITION accessor.min/max as the local
- * AABB and applies the accumulated world transform via Box3.applyMatrix4
- * (which correctly handles rotated/scaled boxes by transforming the 8
- * corners and refitting to an axis-aligned box).
+ * AABB (dequantized if the accessor is normalized) and applies the
+ * accumulated world transform via Box3.applyMatrix4 (which correctly
+ * handles rotated/scaled boxes by transforming the 8 corners and
+ * refitting to an axis-aligned box).
  */
 function nodeWorldAABB(node, parentMat, gltf) {
   const local = nodeLocalMatrix(node);
@@ -167,9 +193,10 @@ function nodeWorldAABB(node, parentMat, gltf) {
         if (posIdx === undefined) continue;
         const acc = gltf.accessors?.[posIdx];
         if (!acc?.min || !acc?.max) continue;
+        const { min, max } = accessorMinMax(acc);
         const localBox = new Box3(
-          new Vector3().fromArray(acc.min),
-          new Vector3().fromArray(acc.max),
+          new Vector3().fromArray(min),
+          new Vector3().fromArray(max),
         );
         localBox.applyMatrix4(world);
         result.union(localBox);

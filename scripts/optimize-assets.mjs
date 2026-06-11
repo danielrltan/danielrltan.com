@@ -45,10 +45,15 @@ const PUBLIC_DIR = join(__dirname, '..', 'public');
 
 // --- Per-asset config -------------------------------------------------------
 
+// Only the room is compressed here. It's the heavy asset (~22.6 MB raw)
+// and is viewed at iso distance where 10-bit normal quantization is
+// invisible. keypad.glb / mac.glb are deliberately EXCLUDED: they're
+// tiny (sub-450 KB) AND are close-up hero models whose smooth shading
+// matters — meshopt's normal quantization made the keypad caps read as
+// harsh/high-contrast up close, for a saving not worth having. Leave
+// them uncompressed.
 const TARGETS = [
   { name: 'room.glb' },
-  { name: 'keypad.glb' },
-  { name: 'mac.glb' },
 ];
 
 // Textures whose longest edge should be clamped to 512px (small props / covers).

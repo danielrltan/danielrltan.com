@@ -1,17 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useFrame } from "@react-three/fiber";
 import { Html, useGLTF } from "@react-three/drei";
 import { CuboidCollider, RigidBody } from "@react-three/rapier";
 import * as THREE from "three";
 import { DraggableRigidBody } from "./DraggableRigidBody";
 import { Drawer, type DrawerData } from "./Drawer";
 import { GlowBox } from "./GlowBox";
-import { playOneShot } from "./audio";
-import {
-  useDeskViewActiveRef,
-  useSceneReadyRef,
-  useStartDeskView,
-} from "./SceneState";
+import { useSceneReadyRef } from "./SceneState";
 
 // Drawer meshes are handled by Drawer.tsx (kinematic slide). They MUST NOT
 // go through DraggableRigidBody. The kinematic translation handler would
@@ -109,28 +104,6 @@ const HARDCODED_STATICS: ReadonlyArray<{ name: string } & CuboidSpec> = [
 
 const HARDCODED_NAMES = new Set(HARDCODED_STATICS.map((s) => s.name));
 
-/**
- * Static bodies that can start seated desk view. Only the desk itself
- * (and via the allowlist, only its monitor sub-meshes, see
- * `matchesDeskFocusPickMesh`). The keyboard frame is no longer a
- * trigger. The monitor is the visual focus and the only thing the
- * user is expected to click to sit down.
- */
-const DESK_FOCUS_STATIC_NAMES = new Set<string>(["desk"]);
-
-/** Under the `desk` static only: meshes that count as “desk peripherals” for focus. */
-const DESK_FOCUS_MESH_PREFIXES: ReadonlyArray<string> = ["monitor_"];
-const DESK_FOCUS_MESH_EXACT = new Set<string>([
-  "mousepad_static",
-  "clk_monitor_frame",
-  "screen",
-]);
-
-function matchesDeskFocusPickMesh(name: string): boolean {
-  if (DESK_FOCUS_MESH_EXACT.has(name)) return true;
-  return DESK_FOCUS_MESH_PREFIXES.some((p) => name.startsWith(p));
-}
-
 const SKIP_NAMES = new Set<string>([
   "wall_right",
   "floor",
@@ -194,47 +167,6 @@ const EMISSIVE_PATTERNS: Array<{
   { match: "emit_light_orange", intensity: 3, color: new THREE.Color().setRGB(1.0, 0.3, 0.06) },
   { match: "lightbar_emission", intensity: 8, color: new THREE.Color().setRGB(1.0, 0.7, 0.4) },
 ];
-
-// ---------------------------------------------------------------------------
-// Keyboard typing animation
-// ---------------------------------------------------------------------------
-
-const PRESS_DEPTH = 0.008;
-const PRESS_LERP = 0.35;
-
-const KEY_MAP: Record<string, string> = {
-  KeyA: "key_a", KeyB: "key_b", KeyC: "key_c",
-  KeyD: "key_d", KeyE: "key_e", KeyF: "key_f",
-  KeyG: "key_g", KeyH: "key_h", KeyI: "key_i",
-  KeyJ: "key_j", KeyK: "key_k", KeyL: "key_l",
-  KeyM: "key_m", KeyN: "key_n", KeyO: "key_o",
-  KeyP: "key_p", KeyQ: "key_q", KeyR: "key_r",
-  KeyS: "key_s", KeyT: "key_t", KeyU: "key_u",
-  KeyV: "key_v", KeyW: "key_w", KeyX: "key_x",
-  KeyY: "key_y", KeyZ: "key_z",
-  Digit0: "key_0", Digit1: "key_1", Digit2: "key_2",
-  Digit3: "key_3", Digit4: "key_4", Digit5: "key_5",
-  Digit6: "key_6", Digit7: "key_7", Digit8: "key_8",
-  Digit9: "key_9",
-  Space: "key_space", Enter: "key_enter", Tab: "key_tab",
-  Escape: "key_esc", Backspace: "key_bkspc", Delete: "key_del",
-  ShiftLeft: "key_shiftl", ShiftRight: "key_shftr",
-  ControlLeft: "key_ctrll", ControlRight: "key_ctrlr",
-  AltLeft: "key_alt", CapsLock: "key_caplk",
-  ArrowUp: "key_arwup", ArrowDown: "key_arwdwn",
-  ArrowLeft: "key_arwlft", ArrowRight: "key_arwrt",
-  Backquote: "key_tilde", Minus: "key_dash",
-  Equal: "key_equals", Semicolon: "key_colon",
-  Quote: "key_quote", Slash: "key_slsh",
-  Backslash: "key_bkslsh", BracketLeft: "key_sqbrktl",
-  BracketRight: "key_sqrbrktr",
-  Comma: "key_comma", Period: "key_period",
-  PageUp: "key_pgup", PageDown: "key_pgdn", End: "key_end",
-  MetaLeft: "key_win",
-  F1: "key_f1", F2: "key_f2", F3: "key_f3", F4: "key_f4",
-  F5: "key_f5", F6: "key_f6", F7: "key_f7", F8: "key_f8",
-  F9: "key_f9", F10: "key_f10", F11: "key_f11", F12: "key_f12",
-};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -447,137 +379,36 @@ function disableRaycasts(root: THREE.Object3D) {
   });
 }
 
-/** Narrow desk hits to peripherals; other desk wood passes rays (e.g. to orbit). */
-function applyDeskFocusMeshRaycasts(root: THREE.Object3D) {
-  root.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    if (matchesDeskFocusPickMesh(mesh.name)) {
-      mesh.raycast = THREE.Mesh.prototype.raycast.bind(mesh);
-    } else {
-      mesh.raycast = noRaycast;
-    }
-  });
-}
-
-/**
- * Hover-glow wrapper for the static keyboard. Wraps `object` in a group that
- * tracks hover + click and renders a `GlowBox` sized to the keyboard's AABB
- * (so there are no gaps between keys and frame). Always-on at low intensity
- * once the scene is ready, brighter + pulsing on hover, with a shockwave
- * burst on click. All disabled while seated at the desk.
- */
-function KeyboardStaticHoverEdges({
-  sceneReadyRef,
-  onPointerDown,
-  object,
-  half,
-}: {
-  sceneReadyRef: RefObject<boolean> | undefined;
-  onPointerDown: (e: ThreeEvent<PointerEvent>) => void;
-  object: THREE.Object3D;
-  half: Triple;
-}) {
-  const [hover, setHover] = useState(false);
-  const deskViewActiveRef = useDeskViewActiveRef();
-  const shockwaveRef = useRef(0);
-
-  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    if (!sceneReadyRef?.current) return;
-    if (deskViewActiveRef?.current) return;
-    if (e.button !== 0) return;
-    shockwaveRef.current = 1;
-    onPointerDown(e);
-  };
-
-  // Hover state + shockwave are kept so the click flow (and the
-  // possibility of re-introducing a per-mesh effect later) still works,
-  // but the GlowBox has moved to the monitor instead. The keyboard
-  // sits flush with the desk and the white outline read as "selected"
-  // even when the user wasn't trying to focus it.
-  void hover;
-  void setHover;
-  void shockwaveRef;
-  void half;
-  return (
-    <group
-      onPointerDown={handlePointerDown}
-      onPointerOver={() => {
-        if (!sceneReadyRef?.current) return;
-        if (deskViewActiveRef?.current) return;
-        setHover(true);
-      }}
-      onPointerOut={() => setHover(false)}
-    >
-      <primitive object={object} />
-    </group>
-  );
-}
-
 interface MonitorPose {
   center: [number, number, number];
   half: [number, number, number];
 }
 
 /**
- * Feature flag: when false, the monitor is a pure visual prop. The
- * room's OS entry path is the scroll-triggered corruption transition
- * (see `CorruptionOverlay.tsx`). Flip to true to restore click-to-zoom
- * for minigames / future use. The rest of the desk-view machinery
- * (`DeskViewController`, `MonitorScreen`) is preserved.
- */
-const MONITOR_CLICK_ENABLED = false;
-
-/**
- * Glow halo around the monitor: telegraphs the monitor as the
- * clickable focus surface. AABB read from `clk_monitor_frame`.
+ * Glow halo around the monitor: a decorative breathing highlight on the
+ * room's visual focal point. AABB read from `clk_monitor_frame`.
  *
  * Behaviour:
- *   - Always breathing (idle pulse) when not seated.
+ *   - Always breathing (idle pulse) once the scene is ready.
  *   - Hover brightens it (HOVER_BONUS in GlowBox.tsx).
- *   - Click triggers a shockwave + enters desk view.
  *
- * The glow mesh keeps raycast ON so the group catches pointer events.
- * Calling `startDeskView` directly means we don't rely on the
- * underlying desk-static's monitor-sub-mesh allowlist for this click.
+ * The glow mesh keeps raycast ON so the group catches pointer events
+ * (the desk statics have raycast disabled like every other static).
  */
 function MonitorGlow({ pose }: { pose: MonitorPose | null }) {
   const [hover, setHover] = useState(false);
-  const shockwaveRef = useRef(0);
-  const deskActive = useDeskViewActiveRef();
   const sceneReady = useSceneReadyRef();
-  const startDeskView = useStartDeskView();
 
-  // Stay mounted across the desk-view transition so GlowBox can lerp
-  // base/hover intensities to zero over ~1 s instead of being yanked
-  // off-screen in a single frame. Pointer handlers below are gated on
-  // `!deskActive?.current` so the (now invisible) glow can't intercept
-  // clicks while seated.
   if (!pose) return null;
   return (
     <group
       position={pose.center}
       onPointerOver={(e) => {
         if (!sceneReady?.current) return;
-        if (deskActive?.current) return;
         e.stopPropagation();
         setHover(true);
       }}
       onPointerOut={() => setHover(false)}
-      // Click-to-zoom-into-monitor is DISABLED while the corruption
-      // transition is the active OS entry path. The handler stays
-      // here (and `DeskViewController` / `MonitorScreen` stay in the
-      // tree) so re-enabling for future minigames is a one-line
-      // flip of MONITOR_CLICK_ENABLED.
-      onPointerDown={(e) => {
-        if (!MONITOR_CLICK_ENABLED) return;
-        if (!sceneReady?.current) return;
-        if (deskActive?.current) return;
-        if (e.button !== 0) return;
-        e.stopPropagation();
-        shockwaveRef.current = 1;
-        startDeskView();
-      }}
     >
       {/* ----- MONITOR GLOW TUNING -----------------------------------
           padding         outline thickness from the monitor's AABB
@@ -586,13 +417,11 @@ function MonitorGlow({ pose }: { pose: MonitorPose | null }) {
                           INTENSITY now, so the outline visibly fades
                           rather than blinking on/off.
           idlePulseRate   pulse speed (radians/sec, ~2π/rate per cycle).
-          Hover bonus + shockwave decay live in GlowBox.tsx
-          (HOVER_BONUS, SHOCKWAVE_DECAY).
+          Hover bonus lives in GlowBox.tsx (HOVER_BONUS).
           ----------------------------------------------------------- */}
       <GlowBox
         half={pose.half}
         hover={hover}
-        shockwaveRef={shockwaveRef}
         alwaysOn
         padding={0.04}
         radius={0.025}
@@ -605,14 +434,11 @@ function MonitorGlow({ pose }: { pose: MonitorPose | null }) {
 
 /**
  * Thin white chevron that drifts down + fades on a loop, floating just
- * above the monitor. Read as "click here" without needing copy. Drei's
+ * above the monitor. Draws the eye to the room's focal point. Drei's
  * `<Html>` anchors it to the monitor's world position, so it tracks the
- * monitor through every orbit / pan / zoom. Hidden once the user is
- * seated at the desk. At that point the cue has served its purpose
- * and any in-frame HUD just clutters the OS view.
+ * monitor through every orbit / pan / zoom.
  */
 function MonitorClickHint({ pose }: { pose: MonitorPose | null }) {
-  const deskActive = useDeskViewActiveRef();
   const sceneReady = useSceneReadyRef();
   // Visibility is driven by direct DOM-style mutation (NOT React state)
   // so the per-frame poll doesn't schedule React renders. The CSS
@@ -624,7 +450,7 @@ function MonitorClickHint({ pose }: { pose: MonitorPose | null }) {
   useFrame(() => {
     const el = wrapperRef.current;
     if (!el) return;
-    const next = !!(sceneReady?.current && !deskActive?.current) ? "1" : "0";
+    const next = sceneReady?.current ? "1" : "0";
     if (lastOpacityRef.current !== next) {
       el.style.opacity = next;
       lastOpacityRef.current = next;
@@ -677,34 +503,11 @@ function MonitorClickHint({ pose }: { pose: MonitorPose | null }) {
   );
 }
 
-interface RoomProps {
-  roomGroupRef: RefObject<THREE.Group | null>;
-}
-
-export function Room({ roomGroupRef }: RoomProps) {
+export function Room() {
   const { scene } = useGLTF(ROOM_URL);
   const sceneReadyRef = useSceneReadyRef();
-  const startDeskView = useStartDeskView();
-
-  const onDeskAreaPointerDown = useCallback(
-    (e: ThreeEvent<PointerEvent>) => {
-      // Same feature flag as the MonitorGlow handler above.
-      // disabled while the corruption transition is the OS entry path.
-      if (!MONITOR_CLICK_ENABLED) return;
-      if (!sceneReadyRef?.current) return;
-      if (e.button !== 0) return;
-      e.stopPropagation();
-      startDeskView();
-    },
-    [sceneReadyRef, startDeskView],
-  );
 
   const mouseMeshRef = useRef<THREE.Object3D | null>(null);
-  const pressedKeysRef = useRef<Set<string>>(new Set());
-  // Caps currently mid-lerp (toward pressed OR toward rest). The
-  // per-frame loop iterates ONLY this set; both press and release add
-  // their cap here, and the loop removes a cap once it reaches target.
-  const animatingKeysRef = useRef<Set<string>>(new Set());
   // Independent viewport-pointer tracker. R3F's `state.pointer` stops
   // updating once drei's `<Html>` (the OS) intercepts events, which
   // would freeze the desk mouse-mesh at whatever stale value pointer
@@ -725,8 +528,6 @@ export function Room({ roomGroupRef }: RoomProps) {
     interactive,
     statics,
     drawers,
-    keyMeshes,
-    keyRestY,
     monitorPoseExtracted,
   } = useMemo(() => {
       const cloned = scene.clone(true);
@@ -754,6 +555,29 @@ export function Room({ roomGroupRef }: RoomProps) {
           NO_CAST_NAMES.has(child.name) ||
           NO_CAST_PREFIXES.some((p) => child.name.startsWith(p));
         mesh.castShadow = !noCast;
+
+        // The meshopt-optimized room.glb (scripts/optimize-assets.mjs)
+        // stores POSITION as normalized int16 (KHR_mesh_quantization).
+        // three renders that natively, but Rapier's trimesh colliders
+        // hand the raw attribute array to the WASM bindings, which
+        // require Float32Array — every static body throws "expected
+        // instance of" otherwise. Denormalize positions once here;
+        // getX/getY/getZ apply the int→float conversion, and the node
+        // transforms (which carry the dequantization scale) stay as-is,
+        // so the rendered result is identical.
+        const pos = mesh.geometry?.attributes?.position;
+        if (pos && pos.normalized) {
+          const arr = new Float32Array(pos.count * 3);
+          for (let i = 0; i < pos.count; i++) {
+            arr[i * 3] = pos.getX(i);
+            arr[i * 3 + 1] = pos.getY(i);
+            arr[i * 3 + 2] = pos.getZ(i);
+          }
+          mesh.geometry.setAttribute(
+            "position",
+            new THREE.BufferAttribute(arr, 3),
+          );
+        }
       });
 
       // Snapshot monitor world AABB before processNode reparents
@@ -781,19 +605,15 @@ export function Room({ roomGroupRef }: RoomProps) {
       // descendants of keyboard_frame, so keyboard_frame's trimesh collider
       // doesn't pick them up (avoiding the 70-collider lag spike). They're
       // also matched by SKIP_PREFIXES below, so processNode ignores them
-      // and they end up as purely visual top-level meshes.
-      const keyMeshes = new Map<string, THREE.Object3D>();
-      const keyRestY = new Map<string, number>();
+      // and they end up as purely visual top-level meshes. (The typing
+      // animation that used to move these caps was removed; the reparent
+      // stays because it's what keeps them out of the trimesh collider.)
       const keys: THREE.Object3D[] = [];
       cloned.traverse((obj) => {
         if (obj.name.startsWith("key_")) keys.push(obj);
       });
       for (const k of keys) {
         if (k.parent !== cloned) cloned.attach(k);
-      }
-      for (const k of keys) {
-        keyMeshes.set(k.name, k);
-        keyRestY.set(k.name, k.position.y);
       }
 
       for (const name of EXTRA_THROWABLE_NAMES) {
@@ -906,8 +726,6 @@ export function Room({ roomGroupRef }: RoomProps) {
         interactive,
         statics,
         drawers,
-        keyMeshes,
-        keyRestY,
         monitorPoseExtracted,
       };
     }, [scene]);
@@ -928,11 +746,10 @@ export function Room({ roomGroupRef }: RoomProps) {
     for (const d of drawers) applyEmissive(d.object);
     for (const s of statics) {
       applyEmissive(s.object);
-      if (s.name === "desk") {
-        applyDeskFocusMeshRaycasts(s.object);
-      } else if (!DESK_FOCUS_STATIC_NAMES.has(s.name)) {
-        disableRaycasts(s.object);
-      }
+      // Statics never receive pointer events (the monitor's hover glow
+      // raycasts against the GlowBox mesh itself), so skipping them in
+      // the raycaster keeps per-pointermove cost down.
+      disableRaycasts(s.object);
     }
   }, [visualScene, interactive, statics, drawers]);
 
@@ -947,86 +764,7 @@ export function Room({ roomGroupRef }: RoomProps) {
 
   }, [visualScene]);
 
-  // Window-level keyboard listeners: only register press state after the
-  // iso transition completes. preventDefault is scoped to keys that have a
-  // matching mesh so OrbitControls and dev shortcuts still work.
-  useEffect(() => {
-    // The keydown.mp3 / keyup.mp3 assets are inverted from their filenames
-    // (keydown.mp3 contains the release click, keyup.mp3 contains the press
-    // click), so we swap them here. Spacebar gets a deeper pitch on both.
-    const SPACE_RATE = 0.82;
-    // The modifier keys themselves set e.ctrlKey / e.metaKey true on their
-    // OWN press event, so a blind `e.ctrlKey || e.metaKey` filter would
-    // reject pressing left-ctrl / left-meta / etc. Allow modifier-code
-    // events through; only reject when a *different* key is being chorded.
-    const MODIFIER_CODES = new Set<string>([
-      "ControlLeft",
-      "ControlRight",
-      "MetaLeft",
-      "MetaRight",
-      "AltLeft",
-      "AltRight",
-    ]);
-    const isCombo = (e: KeyboardEvent) =>
-      (e.ctrlKey || e.metaKey) && !MODIFIER_CODES.has(e.code);
-    // Skip the room keyboard animation when the user is typing into
-    // an OS input; otherwise preventDefault() below swallows the
-    // keystroke and the input never gets the character.
-    const isTypingTarget = (e: KeyboardEvent): boolean => {
-      const el = e.target;
-      return (
-        el instanceof HTMLElement &&
-        (el.isContentEditable ||
-          el.tagName === "INPUT" ||
-          el.tagName === "TEXTAREA" ||
-          el.tagName === "SELECT" ||
-          el.closest("input, textarea, select, [contenteditable='true']") !==
-            null)
-      );
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!sceneReadyRef?.current) return;
-      if (isCombo(e)) return;
-      if (isTypingTarget(e)) return;
-      if (e.code === "KeyR" && e.defaultPrevented) return;
-      const meshName = KEY_MAP[e.code];
-      if (!meshName) return;
-      e.preventDefault();
-      if (!pressedKeysRef.current.has(meshName)) {
-        const isSpace = meshName === "key_space";
-        const rate = isSpace ? SPACE_RATE : 1;
-        const vol = isSpace ? Math.min(1, 0.45 * 2) : 0.45;
-        playOneShot("keyup", vol, rate);
-      }
-      pressedKeysRef.current.add(meshName);
-      // Wake this cap so the frame loop lerps it down to pressed depth.
-      animatingKeysRef.current.add(meshName);
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (!sceneReadyRef?.current) return;
-      if (isCombo(e)) return;
-      if (isTypingTarget(e)) return;
-      if (e.code === "KeyR" && e.defaultPrevented) return;
-      const meshName = KEY_MAP[e.code];
-      if (!meshName) return;
-      e.preventDefault();
-      pressedKeysRef.current.delete(meshName);
-      // Wake this cap so the frame loop lerps it back up to rest.
-      animatingKeysRef.current.add(meshName);
-      const isSpace = meshName === "key_space";
-      const rate = isSpace ? SPACE_RATE : 1;
-      const vol = isSpace ? Math.min(1, 0.4 * 2) : 0.4;
-      playOneShot("keydown", vol, rate);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-    };
-  }, [sceneReadyRef]);
-
-  // Drive mouse mesh + key press animations every frame. Both gated on
+  // Drive the desk mouse mesh every frame (cursor-follow). Gated on
   // sceneReady so nothing moves during the intro idle/transition.
   useFrame(() => {
     if (!sceneReadyRef?.current) return;
@@ -1053,45 +791,10 @@ export function Room({ roomGroupRef }: RoomProps) {
         0.12,
       );
     }
-
-    // Key meshes: lerp toward rest or rest - PRESS_DEPTH. Since keys live
-    // at the cloned root, position.y is in world space and "down" is fixed.
-    // Perf: was O(n) lerps/frame for ALL caps (n~70) every frame even at
-    //   idle; now O(k) where k = caps currently animating (usually 0). A
-    //   cap is added on press/release and removed once it reaches target,
-    //   so a still keyboard does no per-key work. Same lerp factor and
-    //   targets — identical press-down/release-up feel.
-    const animating = animatingKeysRef.current;
-    if (animating.size > 0) {
-      for (const name of animating) {
-        const mesh = keyMeshes.get(name);
-        const restY = keyRestY.get(name);
-        if (!mesh || restY === undefined) {
-          animating.delete(name);
-          continue;
-        }
-        const targetY = pressedKeysRef.current.has(name)
-          ? restY - PRESS_DEPTH
-          : restY;
-        const nextY = THREE.MathUtils.lerp(
-          mesh.position.y,
-          targetY,
-          PRESS_LERP,
-        );
-        // Snap + retire once within sub-micron of target so the set
-        // empties and the loop goes idle.
-        if (Math.abs(nextY - targetY) < 1e-5) {
-          mesh.position.y = targetY;
-          animating.delete(name);
-        } else {
-          mesh.position.y = nextY;
-        }
-      }
-    }
   });
 
   return (
-    <group ref={roomGroupRef}>
+    <group>
       <primitive object={visualScene} />
 
       {BOUNDARIES.map((b, i) => (
@@ -1124,23 +827,7 @@ export function Room({ roomGroupRef }: RoomProps) {
           position={s.bodyPos}
           colliders="trimesh"
         >
-          {DESK_FOCUS_STATIC_NAMES.has(s.name) ? (
-            s.name === "desk" ? (
-              <primitive
-                object={s.object}
-                onPointerDown={onDeskAreaPointerDown}
-              />
-            ) : (
-              <KeyboardStaticHoverEdges
-                sceneReadyRef={sceneReadyRef}
-                onPointerDown={onDeskAreaPointerDown}
-                object={s.object}
-                half={s.half}
-              />
-            )
-          ) : (
-            <primitive object={s.object} />
-          )}
+          <primitive object={s.object} />
         </RigidBody>
       ))}
 

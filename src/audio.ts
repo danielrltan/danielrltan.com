@@ -1,7 +1,6 @@
 /**
  * Tiny audio helper around HTMLAudioElement. Each one-shot clip is pooled
- * so rapid retriggers (e.g. typing) don't cut their own tail. The ambient
- * room tone is a single looping element.
+ * so rapid retriggers (e.g. typing) don't cut their own tail.
  *
  * No Web Audio API here on purpose: `createMediaElementSource` makes
  * Chrome show the "tab is sharing content" capture indicator, which reads
@@ -16,22 +15,16 @@
  */
 
 type ClipName =
-  | "room_tone"
   | "tap"
-  | "keydown"
-  | "keyup"
   | "cat"
   | "drawer_open"
   | "drawer_close";
 
 const URLS: Record<ClipName, string> = {
-  room_tone: "/sounds/room_tone.mp3",
   tap: "/sounds/tap.mp3",
-  keydown: "/sounds/keydown.mp3",
-  keyup: "/sounds/keyup.mp3",
   cat: "/sounds/cat.mp3",
   // Cache-bust suffix: the asset contents were updated several times
-  // during dev; without this the browser kept serving an older keystroke
+  // during dev; without this the browser kept serving an older
   // sample under these names.
   drawer_open: "/sounds/draweropen.mp3?v=2",
   drawer_close: "/sounds/drawerclose.mp3?v=2",
@@ -78,7 +71,7 @@ export function playOneShot(
   }
   a.volume = Math.max(0, Math.min(1, volume * MASTER_GAIN));
   // playbackRate < 1 lowers pitch (and slows the clip slightly, fine for
-  // sub-second SFX). Used for the spacebar keydown/keyup tone.
+  // sub-second SFX). Used for the pitched drawer-close variant.
   a.playbackRate = playbackRate;
   a.play().catch(() => {});
 }
@@ -121,18 +114,3 @@ export function playTap(speed: number): void {
   tapElement.play().catch(() => {});
 }
 
-let ambience: HTMLAudioElement | null = null;
-
-export function startAmbience(volume = 0.4): void {
-  if (ambience) return;
-  ambience = new Audio(URLS.room_tone);
-  ambience.loop = true;
-  ambience.volume = Math.max(0, Math.min(1, volume * MASTER_GAIN));
-  ambience.play().catch(() => {});
-}
-
-export function stopAmbience(): void {
-  if (!ambience) return;
-  ambience.pause();
-  ambience = null;
-}

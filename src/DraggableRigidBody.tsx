@@ -12,11 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import * as THREE from "three";
-import {
-  useDeskViewActiveRef,
-  useSceneReadyRef,
-  useSetMoveableHover,
-} from "./SceneState";
+import { useSceneReadyRef, useSetMoveableHover } from "./SceneState";
 import { playOneShot, playTap } from "./audio";
 
 interface Props {
@@ -161,7 +157,6 @@ export function DraggableRigidBody({
 
   const { camera, raycaster, pointer, controls } = useThree();
   const sceneReadyRef = useSceneReadyRef();
-  const deskViewActiveRef = useDeskViewActiveRef();
   const setMoveableHover = useSetMoveableHover();
 
   const lastCollisionAt = useRef(0);
@@ -407,8 +402,6 @@ export function DraggableRigidBody({
 
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (!sceneReadyRef?.current) return;
-    // Interaction is locked out while seated at the desk.
-    if (deskViewActiveRef?.current) return;
     // Left mouse / primary touch only. Middle / right / trackpad-secondary
     // are reserved for OrbitControls (orbit, pan, shift+middle pan).
     if (e.button !== 0) return;

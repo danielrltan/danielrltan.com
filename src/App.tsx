@@ -3,12 +3,9 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { RootState } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { Physics } from "@react-three/rapier";
 import * as THREE from "three";
-import { Room } from "./Room";
 import { Lighting } from "./Lighting";
 import {
-  IntroController,
   END_POS,
   END_FOV,
   END_LOOK_AT,
@@ -25,6 +22,12 @@ import { track } from "./analytics";
 const SignatureCapture = lazy(() =>
   import("./SignatureCapture").then((m) => ({ default: m.SignatureCapture })),
 );
+// PERF: the Physics+Room subtree is the only consumer of @react-three/rapier
+// (2.3 MB minified / 840 kB gzipped, mostly base64-embedded WASM). Lazy-loading
+// it moves that chunk off the boot-critical path: the hero paints and becomes
+// interactive sooner, and the chunk streams in immediately after mount (the
+// room itself still gates on the GLB download, which index.html preloads).
+const RoomPhysics = lazy(() => import("./RoomPhysics"));
 import { AssemblyProvider } from "./loading";
 import { HeroSignature } from "./hero/HeroSignature";
 import { ScrollWireframeRoom } from "./loading/ScrollWireframeRoom";
@@ -32,7 +35,6 @@ import { ScrollCamera } from "./ScrollCamera";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { useIsMobile } from "./useIsMobile";
 import { StatusBar } from "./StatusBar";
-import { ScrollRail } from "./ScrollRail";
 
 // Mobile hero canvas fades over scroll-pixels relative to viewport
 // height so total page height changes don't shift the window.
@@ -78,6 +80,20 @@ const CONTENT_FADE_END = 0.105;
 // sequence are untouched). ~2.5 → ≈400ms to settle, matching the feel
 // of GSAP `scrub: 1`. Tunable.
 const PROGRESS_EASE_RATE = 2.5;
+// The room canvas FADE-OUT (handing off to the Kit/Mac section) eases at a
+// STEEPER rate than the shared reveal rate above. The shared rate's gentle
+// exponential tail near zero left the room lingering as a faint, slowly-
+// dissolving "ghost" over the section behind it (~1.5s to read as gone),
+// which looked messy. A faster downward rate + a snap-to-zero floor makes
+// the room leave cleanly once it starts to go. The fade-IN (room reveal
+// during About) keeps the gentle shared rate, so nothing pops in.
+const CANVAS_FADE_OUT_RATE = 6;
+// Below this eased opacity a fade-out snaps straight to 0 instead of
+// crawling down the exponential's asymptote (where the room is still
+// faintly visible but reads as "stuck" dissolving). Also means the room
+// is fully gone before its canvas frameloop sleeps, so the frozen last
+// frame is never seen.
+const CANVAS_FADE_OUT_SNAP = 0.015;
 // Clamp per-frame dt so a long idle / tab-switch (where rAF stops
 // firing) doesn't produce one giant catch-up jump on the next tick.
 const MAX_TICK_DT = 0.05;
@@ -110,15 +126,13 @@ const CAMERA_CONFIG = {
  */
 function installScrollChoreography(): {
   aboutProgressRef: React.MutableRefObject<number>;
-  roomCanvasFadeRef: React.MutableRefObject<number>;
   scrollProgressRef: React.MutableRefObject<number>;
 } {
   const aboutProgressRef: React.MutableRefObject<number> = { current: 0 };
-  const roomCanvasFadeRef: React.MutableRefObject<number> = { current: 0 };
   const scrollProgressRef: React.MutableRefObject<number> = { current: 0 };
 
   if (typeof window === "undefined") {
-    return { aboutProgressRef, roomCanvasFadeRef, scrollProgressRef };
+    return { aboutProgressRef, scrollProgressRef };
   }
 
   const root = document.documentElement;
@@ -246,11 +260,20 @@ function installScrollChoreography(): {
 
     const heroOpacity = ease(prevEased.heroOpacity, t.heroOpacity, dt);
     const heroToAbout = ease(prevEased.heroToAbout, t.heroToAbout, dt);
-    const finalCanvasOpacity = ease(
-      prevEased.finalCanvasOpacity,
-      t.finalCanvasOpacity,
-      dt,
-    );
+    // Canvas opacity: gentle shared rate on the way IN (anti-teleport on the
+    // room reveal), steeper rate + snap-to-zero on the way OUT so the room
+    // doesn't ghost over the Kit section. See CANVAS_FADE_OUT_RATE.
+    const canvasFalling = t.finalCanvasOpacity < prevEased.finalCanvasOpacity;
+    let finalCanvasOpacity =
+      prevEased.finalCanvasOpacity +
+      (t.finalCanvasOpacity - prevEased.finalCanvasOpacity) *
+        (1 -
+          Math.exp(
+            -dt * (canvasFalling ? CANVAS_FADE_OUT_RATE : PROGRESS_EASE_RATE),
+          ));
+    if (t.finalCanvasOpacity === 0 && finalCanvasOpacity < CANVAS_FADE_OUT_SNAP) {
+      finalCanvasOpacity = 0;
+    }
     const aboutProgress = ease(prevEased.aboutProgress, t.aboutProgress, dt);
     const contentOpacity = ease(prevEased.contentOpacity, t.contentOpacity, dt);
 
@@ -260,7 +283,6 @@ function installScrollChoreography(): {
     prevEased.aboutProgress = aboutProgress;
     prevEased.contentOpacity = contentOpacity;
 
-    roomCanvasFadeRef.current = finalCanvasOpacity;
     aboutProgressRef.current = aboutProgress;
 
     // Pointer-events stays a hard threshold but is derived from the
@@ -324,7 +346,7 @@ function installScrollChoreography(): {
   window.addEventListener("scroll", wake, { passive: true });
   window.addEventListener("resize", wake, { passive: true });
 
-  return { aboutProgressRef, roomCanvasFadeRef, scrollProgressRef };
+  return { aboutProgressRef, scrollProgressRef };
 }
 
 export default function App() {
@@ -339,12 +361,9 @@ export default function App() {
     );
   }
 
-  const roomGroupRef = useRef<THREE.Group | null>(null);
   const sceneReadyRef = useRef(false);
-  const isHoveringRef = useRef(false);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const deskViewActiveRef = useRef(false);
   const [transitionStarted, setTransitionStarted] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
   // Set once Room finishes loading (post-Suspense). Drives the signature
@@ -382,6 +401,14 @@ export default function App() {
     setSceneReady(true);
     track("room_entered");
   }, []);
+
+  /* The intro camera dolly was removed (camera starts at END pose), so
+   * "transition started" completes immediately. Kept as an effect so
+   * sceneReady still flips one tick after the triggering scroll, which
+   * is when OrbitControls + ScrollCamera mount. */
+  useEffect(() => {
+    if (transitionStarted) completeTransition();
+  }, [transitionStarted, completeTransition]);
 
   const resetRoom = useCallback(() => {
     track("room_reset");
@@ -475,9 +502,6 @@ export default function App() {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
   }, [sceneReady, resetRoom]);
 
-  const noopSetDeskViewActive = useCallback(() => {}, []);
-  const noopStartDeskView = useCallback(() => {}, []);
-
   // RoomLoadedSignal's effect depends on onLoaded; a new function each
   // render re-runs the effect and re-calls setRoomLoaded after it is
   // already true. setMoveableHover is a plain useState setter (stable).
@@ -485,17 +509,14 @@ export default function App() {
 
   // Stable context value: a fresh object literal each render forces
   // every SceneState consumer (DraggableRigidBody, Drawer, etc.) to
-  // re-render even though the contents are stable. The refs and noop
-  // callbacks are stable; setMoveableHover is a stable useState setter.
+  // re-render even though the contents are stable. The ref is stable;
+  // setMoveableHover is a stable useState setter.
   const sceneContextValue = useMemo(
     () => ({
       sceneReadyRef,
-      deskViewActiveRef,
-      setDeskViewActive: noopSetDeskViewActive,
       setMoveableHover,
-      startDeskView: noopStartDeskView,
     }),
-    [noopSetDeskViewActive, setMoveableHover, noopStartDeskView]
+    [setMoveableHover]
   );
 
   // Avoid a per-render allocation of the WebGL config. antialias is
@@ -552,13 +573,7 @@ export default function App() {
           minHeight: "100vh",
           cursor: "none",
         }}
-        onPointerEnter={() => {
-          isHoveringRef.current = true;
-        }}
-        onPointerLeave={() => {
-          isHoveringRef.current = false;
-          setMoveableHover(false);
-        }}
+        onPointerLeave={() => setMoveableHover(false)}
       >
         {/* Hero signature: fixed full viewport. Sits between the room
             canvas (z 0) and the HUD (z 9999). Opacity driven by
@@ -572,7 +587,11 @@ export default function App() {
             width: "100vw",
             height: "100vh",
             pointerEvents: "none",
-            transition: "opacity 200ms linear",
+            // NO opacity transition here: --hero-opacity is already
+            // eased per-frame by the scroll choreography; a CSS
+            // transition on top continuously re-targets 200ms behind
+            // the eased value (double smoothing), which read as
+            // lag/stutter when reversing scroll direction at the hero.
             zIndex: 2,
           }}
         >
@@ -659,36 +678,16 @@ export default function App() {
                     color="#0d0e10"
                   />
                 </mesh>
-                {/* Mobile: keep the Physics provider mounted (Room's
-                    <RigidBody>s require it) but pause the sim. PERF: also
-                    pause once the room is asleep (scrolled out): a
-                    running Rapier step calls invalidate() every frame,
-                    which is what kept the room canvas rendering at full
-                    rate behind the invisible layer even under
-                    frameloop="demand". Pausing it lets the demand loop
-                    actually idle on Mac / Work / Other. */}
-                <Physics
+                {/* Physics + Room live in a lazy chunk (see RoomPhysics
+                    above) so rapier's WASM payload stays off the boot
+                    path. Room stays mounted + visible always; the
+                    ScrollWireframeRoom cover dome handles the
+                    wireframe-only beat so there's no pop-in seam. */}
+                <RoomPhysics
                   paused={isMobile || roomAsleep}
-                  gravity={[0, -9.81, 0]}
-                  timeStep={1 / 60}
-                  numSolverIterations={3}
-                  numInternalPgsIterations={1}
-                  allowedLinearError={0.0025}
-                  contactNaturalFrequency={22}
-                >
-                  {/* Room stays mounted + visible always; the
-                      ScrollWireframeRoom cover dome handles the
-                      wireframe-only beat so there's no pop-in seam. */}
-                  <Room key={roomResetKey} roomGroupRef={roomGroupRef} />
-                </Physics>
-                <ScrollWireframeRoom progressRef={aboutProgressRef} />
-                <IntroController
-                  cameraRef={cameraRef}
-                  roomGroupRef={roomGroupRef}
-                  isHoveringRef={isHoveringRef}
-                  transitionStarted={transitionStarted}
-                  onComplete={completeTransition}
+                  roomResetKey={roomResetKey}
                 />
+                <ScrollWireframeRoom progressRef={aboutProgressRef} />
                 {sceneReady && (
                   <>
                     <OrbitControls
@@ -734,14 +733,13 @@ export default function App() {
         <RoomHUD visible={true} />
 
         {/* TE-spec-sheet flourishes: only after the room loads.
-            StatusBar (compact section/progress pill on mobile) and
-            JumpToTop render on every breakpoint; ScrollRail stays
-            desktop-only (the edge rail has no room next to the home
-            indicator / narrow gutters on phones). */}
+            StatusBar (section + pixel scroll meter) and JumpToTop
+            render on every breakpoint. (The right-edge ScrollRail was
+            removed in the pixel retrofuturism pass: it duplicated the
+            StatusBar's progress readout.) */}
         {sceneReady && (
           <>
             <StatusBar />
-            {!isMobile && <ScrollRail />}
             <JumpToTop />
           </>
         )}

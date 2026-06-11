@@ -16,7 +16,7 @@ interface SignatureEvent {
   ny: number;
 }
 
-export interface SignatureBounds {
+interface SignatureBounds {
   minX: number;
   minY: number;
   maxX: number;

@@ -89,10 +89,7 @@ const DROP_HEIGHT = 6;
 // then it animates" or "I scroll, then it slowly plays out."
 // easeOutCubic still applies inside this 700ms so the landing feels
 // soft despite the shorter duration.
-// DROP_DURATION_MS preserved as a doc anchor for the 700ms target;
-// the drop ramp is now driven from Keypad.tsx via pinProgressRef.
-const _DROP_DURATION_MS = 700;
-void _DROP_DURATION_MS;
+// The drop ramp is driven from Keypad.tsx via pinProgressRef.
 
 interface CursorState {
   // 0..1 across the canvas (top-left origin to match HTML conventions).

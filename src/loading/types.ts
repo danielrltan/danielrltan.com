@@ -1,6 +1,6 @@
 // src/loading/types.ts
 
-export interface WireframeMesh {
+interface WireframeMesh {
   name: string;
   center: [number, number, number];
   half: [number, number, number];
@@ -51,8 +51,10 @@ export const STABLE_WAIT_TIMEOUT_MS = 3000;
 export const HARD_CEILING_MS = 15000;
 export const CLIMAX_DURATION_MS = 400;
 export const POST_CLIMAX_HUD_FADE_MS = 320;
-/** GLB size in MB: display-only. Real bytes come from useProgress. */
-export const GLB_TOTAL_MB = 27.4;
+/** GLB size in MB: display-only. Real bytes come from useProgress.
+ *  room.glb is meshopt-compressed with WebP textures via
+ *  scripts/optimize-assets.mjs (raw Blender export is ~22.6 MB). */
+export const GLB_TOTAL_MB = 4.0;
 /** combinedPct thresholds that unlock each phase. Index = phase - 1.
  *  Includes a sixth upper-bound entry so phase 5's window is bounded
  *  Without it, the `?? 1` fallback in ScrollWireframeRoom pushes phase

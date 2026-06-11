@@ -230,7 +230,7 @@ const FRAGMENT = /* glsl */ `
   }
 `;
 
-export interface CursorState {
+interface CursorState {
   x: number;
   y: number;
   active: boolean;

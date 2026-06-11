@@ -1,20 +1,14 @@
-import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
-import { useDeskViewActiveRef, useSceneReadyRef } from "./SceneState";
+import { useSceneReadyRef } from "./SceneState";
 
 interface Props {
   /** AABB half-extents of the body the glow surrounds, in body-local space. */
   half: readonly [number, number, number];
   /** Pointer-hover state from the parent. */
   hover: boolean;
-  /**
-   * Optional ref whose `.current` should be set to `1` on click. The
-   * component decays it back to `0` over ~285ms and adds it on top of
-   * the smooth intensity (the visual "shockwave" click feedback).
-   */
-  shockwaveRef?: RefObject<number>;
   /**
    * If true, the glow stays visible at low intensity even without hover
    * (used for the keyboard so the user knows it's interactive). Otherwise
@@ -40,29 +34,26 @@ const BASE_INTENSITY = 0.6;
 const HOVER_BONUS = 1;
 const HOVER_PULSE_DEPTH = .5;
 const PULSE_RATE = 2;
-const SHOCKWAVE_DECAY = 6;
 const FADE_RATE = 0.025;
 
 /**
  * Rounded-box hover glow. Inverted-hull style (BackSide + slightly larger
  * than the body's AABB), with a fragment shader bright enough to trigger
- * the bloom pass. Intensity smoothly fades on hover, pulses on a sine
- * wave while hovered, and adds a one-shot burst on click via `shockwaveRef`.
+ * the bloom pass. Intensity smoothly fades on hover and pulses on a sine
+ * wave while hovered.
  */
 export function GlowBox({
   half,
   hover,
-  shockwaveRef,
   alwaysOn = false,
   padding = 0.01,
   radius = 0.025,
   idlePulseDepth = 0,
   idlePulseRate = PULSE_RATE,
 }: Props) {
-  // Read each frame: these refs flip without re-rendering, so a render-time
-  // boolean would stay stale (glow staying visible after entering desk view).
+  // Read each frame: this ref flips without re-rendering, so a render-time
+  // boolean would stay stale.
   const sceneReadyRef = useSceneReadyRef();
-  const deskViewActiveRef = useDeskViewActiveRef();
 
   const material = useMemo(
     () =>
@@ -106,12 +97,11 @@ export function GlowBox({
   const baseRef = useRef(0);
   const hoverRef = useRef(0);
 
-  useFrame((state, dt) => {
+  useFrame((state) => {
     const u = material.uniforms;
-    // Refs are read here (not at render time) so the glow reacts to the
-    // scene-ready / desk-view transitions without needing a re-render.
-    const enabled =
-      sceneReadyRef?.current === true && deskViewActiveRef?.current !== true;
+    // Ref is read here (not at render time) so the glow reacts to the
+    // scene-ready transition without needing a re-render.
+    const enabled = sceneReadyRef?.current === true;
     const base = alwaysOn ? BASE_INTENSITY : 0;
     baseRef.current = THREE.MathUtils.lerp(
       baseRef.current,
@@ -123,14 +113,6 @@ export function GlowBox({
       enabled && hover ? HOVER_BONUS : 0,
       FADE_RATE,
     );
-    if (shockwaveRef) {
-      shockwaveRef.current = Math.max(
-        0,
-        shockwaveRef.current - dt * SHOCKWAVE_DECAY,
-      );
-    }
-    const shock = shockwaveRef?.current ?? 0;
-
     // Idle pulse modulates the BASE intensity only. Hover bonus is
     // additive and constant so hovering reads as a sustained brightness
     // step that doesn't blink with the breath.
@@ -138,7 +120,7 @@ export function GlowBox({
       enabled && idlePulseDepth > 0
         ? 1 + idlePulseDepth * Math.sin(state.clock.elapsedTime * idlePulseRate)
         : 1;
-    u.intensity.value = baseRef.current * idleFactor + hoverRef.current + shock;
+    u.intensity.value = baseRef.current * idleFactor + hoverRef.current;
 
     // Hover-only colour pulse (the original keyboard-style "tap" pulse,
     // scales in with hover). Kept as a `pulse` shader uniform so it
