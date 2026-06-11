@@ -142,7 +142,12 @@ export function Footer() {
             3. Colophon: build metadata. */}
         <div className="footer-grid">
           <div className="footer-col footer-col-elsewhere">
-            <FooterSignature height={90} />
+            {/* Sign-off signature: replays the captured gesture when the
+                footer scrolls into view. Height 132 is the published
+                redesign value (a later sweep shrank it to 90, where it
+                read as a smudge instead of a signature; user: keep it
+                prominent, it's a signature feature in both senses). */}
+            <FooterSignature height={132} />
             <h3 className="footer-col-label" id="footer-elsewhere-label">
               Elsewhere
             </h3>
@@ -229,10 +234,9 @@ export function Footer() {
           <span className="footer-mark">Made with intent and the orange crab.</span>
         </div>
 
-        {/* Signature was here: moved to PortfolioSections.tsx above
-            the footer so it acts as a sign-off bridge between the
-            keypad section and the footer instead of living inside
-            the dark footer band. */}
+        {/* (A stale note here used to claim the signature moved to
+            PortfolioSections.tsx; it never did. The signature renders
+            at the top of the Elsewhere column above.) */}
       </div>
     </footer>
   );
