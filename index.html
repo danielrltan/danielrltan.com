@@ -19,15 +19,17 @@
          in a fallback. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- VT323: terminal pixel face for the Mac section's CRT canvas
+         textures (screen UI, boot type-in, orbiting skill cards). -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=VT323&display=swap"
       rel="stylesheet"
     />
 
-    <!-- Preload the heavy assets: room GLB (~27MB) and the signature
-         path used by both hero + footer. Kicks the fetches off in
-         parallel with the JS module download so they're in cache by
-         the time React mounts. -->
+    <!-- Preload the heavy assets: room GLB (~4MB, meshopt-compressed)
+         and the signature path used by both hero + footer. Kicks the
+         fetches off in parallel with the JS module download so they're
+         in cache by the time React mounts. -->
     <link rel="preload" href="/room.glb" as="fetch" type="model/gltf-binary" crossorigin="anonymous" />
     <link rel="preload" href="/signature.json" as="fetch" type="application/json" crossorigin="anonymous" />
     <link rel="preload" href="/wireframes.json" as="fetch" type="application/json" crossorigin="anonymous" />
@@ -35,11 +37,11 @@
     <title>Daniel Tan // Portfolio</title>
     <meta
       name="description"
-      content="Personal portfolio of Daniel Tan, software engineer and web developer. Interactive 3D bedroom showcasing projects, resume, and contact information."
+      content="Personal portfolio of Daniel Tan, software engineer in Toronto. Interactive 3D site with selected projects, work experience, resume, and contact links."
     />
     <meta
       name="keywords"
-      content="Daniel Tan, Daniel Tan, software engineer, web developer, frontend, full stack, portfolio, resume, React, TypeScript, three.js, interactive 3D"
+      content="Daniel Tan, software engineer, web developer, frontend, full stack, portfolio, resume, React, TypeScript, three.js, interactive 3D"
     />
     <meta name="author" content="Daniel Tan" />
 
@@ -59,25 +61,25 @@
          important since recruiters share the link on LinkedIn). -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://danielrltan.com/" />
-    <meta property="og:site_name" content="Daniel R.L. Tan" />
-    <meta property="og:title" content="Daniel R.L. Tan | Software Engineer Portfolio" />
+    <meta property="og:site_name" content="Daniel Tan" />
+    <meta property="og:title" content="Daniel Tan's Portfolio Website" />
     <meta
       property="og:description"
-      content="Interactive 3D portfolio of Daniel R.L. Tan, software engineer. Explore the room to view projects, resume, and contact."
+      content="Interactive 3D portfolio of Daniel Tan, software engineer. Selected projects, work experience, resume, and contact."
     />
-    <meta property="og:image" content="https://danielrltan.com/og-image.png" />
+    <meta property="og:image" content="https://danielrltan.com/images/thumbnail.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:locale" content="en_US" />
 
     <!-- Twitter / X Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Daniel R.L. Tan | Software Engineer Portfolio" />
+    <meta name="twitter:title" content="Daniel Tan | Software Engineer Portfolio" />
     <meta
       name="twitter:description"
-      content="Interactive 3D portfolio of Daniel R.L. Tan, software engineer."
+      content="Interactive 3D portfolio of Daniel Tan, software engineer."
     />
-    <meta name="twitter:image" content="https://danielrltan.com/og-image.png" />
+    <meta name="twitter:image" content="https://danielrltan.com/images/thumbnail.png" />
 
     <!-- Structured data: identifies this as a Person + their portfolio WebSite.
          Search engines and a growing number of filter vendors use schema.org
@@ -89,7 +91,7 @@
           {
             "@type": "Person",
             "@id": "https://danielrltan.com/#person",
-            "name": "Daniel R.L. Tan",
+            "name": "Daniel Tan",
             "url": "https://danielrltan.com/",
             "jobTitle": "Software Engineer",
             "sameAs": [
@@ -101,8 +103,8 @@
             "@type": "WebSite",
             "@id": "https://danielrltan.com/#website",
             "url": "https://danielrltan.com/",
-            "name": "Daniel R.L. Tan | Portfolio",
-            "description": "Personal portfolio of Daniel R.L. Tan, software engineer.",
+            "name": "Daniel Tan | Portfolio",
+            "description": "Personal portfolio of Daniel Tan, software engineer.",
             "inLanguage": "en-US",
             "publisher": { "@id": "https://danielrltan.com/#person" },
             "about": [
@@ -166,19 +168,22 @@
          classifiers concrete text to read so the site isn't filed as
          "uncategorized" just because the foreground is a 3D canvas. -->
     <main class="seo-fallback">
-      <h1>Daniel R.L. Tan | Software Engineer Portfolio</h1>
+      <h1>Daniel Tan | Software Engineer Portfolio</h1>
       <p>
-        Welcome to the personal portfolio of Daniel R.L. Tan, a software
-        engineer and web developer. This site presents Daniel's resume,
-        software projects, contact information, and professional
-        background through an interactive 3D bedroom built with React,
-        TypeScript, and three.js.
+        Personal portfolio of Daniel Tan, a software engineer in Toronto
+        studying Computer Science and business at Western University. The
+        site is an interactive 3D experience built with React, TypeScript,
+        and three.js, featuring an isometric 3D bedroom scene.
       </p>
       <p>
-        Sections available inside the interactive desktop: About, Resume,
-        Projects, GitHub activity, and Contact. For recruiters and hiring
-        managers, the resume window contains the full work history and the
-        contact window includes a direct email link.
+        Sections on the page: About, a stack and selected-projects showcase
+        (including Cognetech, Revamp, Weaver, and this interactive 3D
+        portfolio itself), a work experience timeline, personal interests,
+        and contact. For recruiters and hiring managers, the experience
+        section links the full
+        <a href="/resume/Daniel_Tan_Resume.pdf">resume (PDF)</a>, and the
+        contact section includes a direct email link
+        (hello@danielrltan.com).
       </p>
       <p>
         Connect with Daniel on
@@ -207,7 +212,7 @@
         "
       >
         <h1 style="margin: 0; font-size: 20px; letter-spacing: 2px;">
-          Daniel R.L. Tan | Software Engineer
+          Daniel Tan | Software Engineer
         </h1>
         <p style="max-width: 540px; line-height: 1.6; font-size: 13px;">
           This portfolio is an interactive 3D experience and requires
