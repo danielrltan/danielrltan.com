@@ -53,8 +53,9 @@
   overflow: hidden; /* clip the oversized ASCII ring at the viewport edge */
   transform-origin: 50% 50%;
   /* will-change scoped to the actually animated props to keep the
-     compositor layer minimal. */
-  will-change: transform, opacity, filter;
+     compositor layer minimal (filter dropped with the blur; the dive's
+     depth cue is now the dither mask). */
+  will-change: transform, opacity;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -86,29 +87,67 @@
  * (from .scroll-layer--hero in App.tsx) does the work instead.
  * ─────────────────────────────────────────────────────────────────── */
 .hero-composition {
-  /* Smoothstep curve. Reused by transform / opacity / blur below. */
+  /* Smoothstep curve. Reused by transform / opacity / mask below. */
   --p: calc(
     var(--hero-to-about, 0) * var(--hero-to-about, 0) *
     (3 - 2 * var(--hero-to-about, 0))
   );
+  /* Geometry progress: defaults to the smooth curve; quantised into
+     discrete steps below when CSS round() is available, so the zoom
+     advances in chunky low-frame-rate increments (the "pixelated
+     zoom"). Opacity/mask stay on the SMOOTH --p so the dissolve never
+     strobes. */
+  --pz: var(--p);
   /* Scale: 1 → 3.0. Camera-dive feel: composition fills, then
      overflows, the frame. Past p=1 the composition is fully off-
      screen and faded. */
-  --hero-scale: calc(1 + var(--p) * 2.0);
+  --hero-scale: calc(1 + var(--pz) * 2.0);
   /* Slight downward push (2vh max) so the dive isn't perfectly
      symmetric, which adds the sense that the viewer is sinking THROUGH
      the type, not staring at it pulling apart. */
-  --hero-shift-y: calc(var(--p) * 2vh);
-  /* Subtle blur 0 → 2px ramped through the dive ("out of focus" as
-     the composition leaves the camera's plane). PERF: capped at 2px
-     (was 4px). Blur cost is roughly O(viewport_pixels × radius²) and
-     the composition spans 130vw × 130vh; halving the radius cuts the
-     per-frame paint to ~1/4 of the previous cost. 2px still reads as
-     a depth cue without the scroll-jank tax. */
-  --hero-blur: calc(var(--p) * 2px);
+  --hero-shift-y: calc(var(--pz) * 2vh);
 
   transform: translate3d(0, var(--hero-shift-y), 0) scale(var(--hero-scale));
-  filter: blur(var(--hero-blur));
+  /* The old blur(0→2px) depth cue is GONE: replaced by the dither
+     dissolve below, which fits the pixel retrofuturism language and
+     costs less than a 130vw blur ever did. */
+}
+
+/* Stepped zoom: 14 increments across the dive. round() ships in all
+   evergreen browsers; everything else keeps the smooth fallback. */
+@supports (width: round(1.5px, 1px)) {
+  .hero-composition {
+    --pz: calc(round(var(--p) * 14, 1) / 14);
+  }
+}
+
+/* Bayer-dither block dissolve (the 8-bit screen-wipe):
+   layer 1 is a 4x4 ordered-dither alpha tile whose cell size GROWS with
+   the dive (blocks read chunkier as the hero leaves); layer 2 is a
+   solid sheet whose alpha falls with --p. mask-composite: add takes the
+   union, so at rest (p=0) the solid sheet hides the dither entirely
+   (no dithering on the resting hero), and as p rises the sheet thins
+   and the hero's fade resolves through the Bayer thresholds: blocks
+   drop out in dither order instead of a uniform fade. Combined with
+   the stepped zoom this is the "pixelated zoom-out". Scroll-reversible
+   by construction (pure function of --p, no animation state). Browsers
+   without mask-composite keep the plain fade. */
+@supports (mask-composite: add) {
+  .hero-composition {
+    mask-image:
+      url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23000' fill-opacity='.0625'/><rect x='1' y='0' width='1' height='1' fill='%23000' fill-opacity='.5625'/><rect x='2' y='0' width='1' height='1' fill='%23000' fill-opacity='.1875'/><rect x='3' y='0' width='1' height='1' fill='%23000' fill-opacity='.6875'/><rect x='0' y='1' width='1' height='1' fill='%23000' fill-opacity='.8125'/><rect x='1' y='1' width='1' height='1' fill='%23000' fill-opacity='.3125'/><rect x='2' y='1' width='1' height='1' fill='%23000' fill-opacity='.9375'/><rect x='3' y='1' width='1' height='1' fill='%23000' fill-opacity='.4375'/><rect x='0' y='2' width='1' height='1' fill='%23000' fill-opacity='.25'/><rect x='1' y='2' width='1' height='1' fill='%23000' fill-opacity='.75'/><rect x='2' y='2' width='1' height='1' fill='%23000' fill-opacity='.125'/><rect x='3' y='2' width='1' height='1' fill='%23000' fill-opacity='.625'/><rect x='0' y='3' width='1' height='1' fill='%23000' fill-opacity='1'/><rect x='1' y='3' width='1' height='1' fill='%23000' fill-opacity='.5'/><rect x='2' y='3' width='1' height='1' fill='%23000' fill-opacity='.875'/><rect x='3' y='3' width='1' height='1' fill='%23000' fill-opacity='.375'/></svg>"),
+      linear-gradient(
+        rgb(0 0 0 / max(0, calc(1 - var(--p) * 1.6))) 0%,
+        rgb(0 0 0 / max(0, calc(1 - var(--p) * 1.6))) 100%
+      );
+    /* Dither cell pitch: 8px at rest → ~48px fully dived (chunkier as
+       it leaves). The tile is 4x4 cells, so cell = size / 4. */
+    mask-size:
+      calc(32px + var(--p) * 160px) calc(32px + var(--p) * 160px),
+      100% 100%;
+    mask-repeat: repeat, no-repeat;
+    mask-composite: add;
+  }
 }
 /* Opacity hand-off in two phases:
      1) LOAD-IN (0→1 over 600ms): a one-shot CSS animation on
@@ -242,11 +281,17 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  line-height: 0.84;
-  font-family: var(--font-display);
-  font-weight: 800;
-  letter-spacing: -0.082em;
-  font-size: clamp(96px, 17vw, 280px);
+  line-height: 0.88;
+  /* OffBit pixel display: the wordmark joins the sitewide big-title
+     voice (section h2s, About wordmark, footer dot type). OffBit ships
+     400/700 only, and pixel glyphs collide under negative tracking, so
+     the old 800/-0.082em pair becomes 700/0. Size drops ~20%: pixel
+     glyphs run optically larger and the zero tracking widens the line,
+     so 13.5vw keeps DANIEL at the same visual footprint as before. */
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  letter-spacing: 0;
+  font-size: clamp(84px, 13.5vw, 230px);
   text-transform: uppercase;
   user-select: none;
   width: max-content;
@@ -275,6 +320,11 @@
   z-index: 2;
   color: var(--accent);
   display: inline-block;
+  /* Bolder: OffBit ships 400/700 only, so past weight 700 the lift
+     comes from a proportional stroke that fattens the pixel glyphs at
+     every size (0.014em ≈ 3px at the 230px cap). Same accent as the
+     fill, so it reads as weight, not as an outline effect. */
+  -webkit-text-stroke: 0.014em var(--accent);
   /* See hero-ring-wrap for the full entrance choreography note.
      Wordmark fill enters FIRST at 0.40s: the persistent signature
      is already anchored from the loading phase, so the wordmark is
@@ -295,6 +345,34 @@
      transform — it would fight the spring and smear the motion. */
   transform-origin: 50% 60%;
   will-change: transform;
+}
+
+/* CRT scanlines, clipped INSIDE the glyphs (background-clip: text):
+   thin darker-accent bands over the accent fill, so the wordmark reads
+   as phosphor on a tube while the page around it stays untouched. The
+   solid text-stroke above keeps the glyph edges crisp, which is what
+   stops this from reading as a faded gradient. Deliberately STATIC (no
+   flicker/roll animation: motion here adds noise, not meaning) and
+   DESKTOP-ONLY (below ~720px the em-scaled line pitch goes sub-pixel
+   and smears into moire mush). Em units keep the pitch proportional
+   across the clamp range. Bands sit per-char (the gradient rides each
+   .hero-mega-char box), so the inhale spring shifts lines with the
+   glyph: a slight CRT-jitter that suits the effect. */
+@supports (-webkit-background-clip: text) {
+  @media (min-width: 721px) {
+    .hero-mega-char {
+      background-image: repeating-linear-gradient(
+        to bottom,
+        var(--accent) 0,
+        var(--accent) 0.027em,
+        color-mix(in srgb, var(--accent) 82%, var(--bg-page)) 0.027em,
+        color-mix(in srgb, var(--accent) 82%, var(--bg-page)) 0.038em
+      );
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+  }
 }
 
 /* Outline ghost: HIDDEN.
@@ -569,11 +647,11 @@
     padding-left: 0;
   }
   .hero-mega-text {
-    /* Bounded so DANIEL (6 glyphs, the widest line) always fits 92vw at
-       this weight/tracking. 19.5vw keeps it big and dominant; the 132px
-       cap stops it ballooning on the 768px tablet width. */
-    font-size: clamp(58px, 19.5vw, 132px);
-    letter-spacing: -0.045em;
+    /* Bounded so DANIEL (6 glyphs, the widest line) always fits 92vw in
+       the pixel face at zero tracking; the cap stops it ballooning on
+       the 768px tablet width. */
+    font-size: clamp(50px, 15.5vw, 108px);
+    letter-spacing: 0;
   }
   .hero-mega-line-2 {
     /* Tame the diagonal for portrait: a small right shift (8%) keeps the
@@ -635,8 +713,8 @@
    edges, and pull the ring tighter so it isn't an overwhelming wash. */
 @media (max-width: 400px) {
   .hero-mega-text {
-    font-size: clamp(54px, 19vw, 92px);
-    letter-spacing: -0.05em;
+    font-size: clamp(46px, 15vw, 76px);
+    letter-spacing: 0;
   }
   .hero-mega-line-2 {
     transform: translateX(6%);

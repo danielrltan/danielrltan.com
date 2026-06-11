@@ -3,6 +3,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import "./sections.css";
 import "./about.css";
+import { ScrambleText } from "./ScrambleText";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -12,11 +13,10 @@ gsap.registerPlugin(ScrollTrigger);
  * DESKTOP pin progress beats (kept in sync with the thresholds below):
  *   0.00 – 0.50   wireframes assemble + hold (room hidden by cover dome)
  *   0.50 – 0.52   hard swap: wireframes/dome cut to 0, room appears
- *   0.52 – 0.55   room solo (only the floating "Daniel" wordmark)
+ *   0.52 – 0.55   room solo (only the floating "About." wordmark)
  *   0.55 – 0.62   content panel slides in from the right (over the room)
  *   0.63          lede reveals (top of panel, first body beat)
  *   0.66 – 0.78   key/value rows reveal one per beat
- *   0.82          sign-off coda (closing editorial beat)
  *
  * MOBILE (≤720px) keeps the same pin but compresses the schedule
  * (MOBILE_* constants below): the room canvas is faded out on phones (see
@@ -44,13 +44,6 @@ const PANEL_SLIDE_END = 0.58;
    (Previously gated at 0.79, which popped it in last, after every
    row had already appeared above an empty lede slot.) */
 const LEDE_REVEAL_AT = 0.63;
-/* Sign-off coda: the closing beat. Lands after the last row (0.78) and
-   fills what used to be ~370px of dead scroll at the tail of the pin
-   (the 0.82→1.0 stretch is then a held final beat). On mobile it folds
-   into the compressed reveal band via rowAt(ROWS.length, …) so it doesn't
-   pop in after the band has already closed. */
-const CODA_REVEAL_AT = 0.82;
-
 /* Mobile (≤720px) reveal schedule. On a phone the same 1700px pin is
    scrubbed with a thumb, so the desktop drip (panel 0.55→0.62, then
    six staggered beats trailing out to 0.82) means a reader has to
@@ -199,10 +192,6 @@ export function About() {
     : `translate3d(${panelOffset}%, 0, 0)`;
   const ledeRevealed = reducedMotion || progress >= ledeAt;
   const rowRevealed = (at: number) => reducedMotion || progress >= at;
-  /* Coda fires after the last row. rowAt(ROWS.length, …) keeps it inside
-     the compressed mobile band (≈0.62) while holding the authored 0.82 on
-     desktop, mirroring the row-threshold logic so it never pops in late. */
-  const codaRevealed = rowRevealed(rowAt(ROWS.length, CODA_REVEAL_AT));
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-about">
@@ -213,7 +202,10 @@ export function About() {
         aria-hidden
       >
         <span className="about-floating-num">01</span>
-        <span className="about-floating-label">Daniel</span>
+        <span className="about-floating-label">
+          <ScrambleText text="About" play={floatingEyebrowVisible} />
+          <span className="about-floating-period">.</span>
+        </span>
       </div>
 
       <div
@@ -226,7 +218,13 @@ export function About() {
         <span className="section-marker" aria-hidden="true">
           01
         </span>
-        <span className="section-index">01 / 06 &middot; About</span>
+        {/* Spec-sheet header: wayfinding index with a hairline rule
+            beneath. Reads like the title block of a TE spec sheet and
+            gives the panel a firm top edge instead of a lone floating
+            index line. */}
+        <div className="about-spec-header">
+          <span className="section-index">01 / 06 &middot; About</span>
+        </div>
         {/* DOM-real heading for screen readers / SEO. The big floating
             "About." wordmark that carries this visually is aria-hidden,
             so this is the section's only programmatic heading: it must
@@ -246,15 +244,16 @@ export function About() {
               key={row.label}
               className={`about-row${rowRevealed(rowAt(index, row.beat.at)) ? " is-revealed" : ""}`}
             >
+              {/* Spec-sheet row numeral: pure chrome (aria-hidden), same
+                  language as the Mac tiles' "01"-numbered cards. */}
+              <span className="about-row-num" aria-hidden="true">
+                {String(index + 1).padStart(2, "0")}
+              </span>
               <dt className="about-label">{row.label}</dt>
               <dd className="about-value">{row.value}</dd>
             </div>
           ))}
         </dl>
-        <p className={`about-coda${codaRevealed ? " is-revealed" : ""}`}>
-          Always happy to talk shop, trade ideas, or build something that
-          shouldn&rsquo;t exist yet. <span className="about-coda-name">Daniel Tan</span>
-        </p>
       </div>
     </section>
   );

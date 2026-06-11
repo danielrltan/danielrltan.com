@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useIsMobile } from "./useIsMobile";
 
 /**
- * Top-right section indicator: Offbit numeral + Geist label + an SVG
- * scroll-progress ring. Section detection is IO-based so it stays accurate
- * as pinned sections grow their pin spacers. (The faux-mono readout, live
- * clock, and reset/ambience buttons were removed per design; room reset
- * still lives on the keyboard shortcut.)
+ * Top-right section indicator: Offbit numeral + Geist label + a stepped
+ * pixel-block scroll meter. Section detection reads live rects so it
+ * stays accurate as pinned sections grow their pin spacers. (The
+ * faux-mono readout, live clock, and reset/ambience buttons were
+ * removed per design; room reset still lives on the keyboard shortcut.
+ * The previous circular SVG progress ring was retired with the pixel
+ * retrofuturism pass: round chrome fought the blocky type language.)
  */
 
 interface SectionEntry {
@@ -27,9 +29,10 @@ const SECTION_REGISTRY: SectionEntry[] = [
   { number: "06", label: "Contact", selector: ".keypad-section" },
 ];
 
-// Progress-ring geometry: r=12 stroke ring, circumference for dash math.
-const RING_R = 12;
-const RING_C = 2 * Math.PI * RING_R;
+// Pixel meter: scroll progress quantised into this many blocks. The
+// stepped fill (no tween) is deliberate — steps read as hardware.
+const METER_SEGMENTS = 7;
+const METER_TRACK = "rgba(13, 14, 16, 0.14)";
 
 function findSectionElements(): Array<{ entry: SectionEntry; el: Element | null }> {
   return SECTION_REGISTRY.map((entry, i) => {
@@ -56,9 +59,9 @@ function findSectionElements(): Array<{ entry: SectionEntry; el: Element | null 
 export function StatusBar() {
   const isMobile = useIsMobile();
   const [activeIdx, setActiveIdx] = useState(0);
-  // Scroll progress drives the SVG ring's stroke-dashoffset directly via
+  // Scroll progress fills the meter blocks via direct DOM mutation on
   // this ref, so the StatusBar tree never reconciles on a scroll frame.
-  const ringRef = useRef<SVGCircleElement>(null);
+  const meterRef = useRef<HTMLDivElement>(null);
 
   // Active section = the deepest one whose top has passed 45% of viewport.
   //
@@ -121,18 +124,27 @@ export function StatusBar() {
 
   useEffect(() => {
     let raf = 0;
-    let lastPct = -1;
+    let lastFilled = -1;
     const update = () => {
       const max = Math.max(
         1,
         document.documentElement.scrollHeight - window.innerHeight,
       );
-      const pct = Math.round((window.scrollY / max) * 100);
-      if (pct === lastPct) return;
-      lastPct = pct;
-      const el = ringRef.current;
-      // Fill the ring clockwise: 0% → full dash gap (empty), 100% → no gap.
-      if (el) el.style.strokeDashoffset = String(RING_C * (1 - pct / 100));
+      const progress = Math.min(1, Math.max(0, window.scrollY / max));
+      // ceil-with-floor: any progress > 0 lights the first block, full
+      // scroll lights all of them.
+      const filled =
+        progress <= 0
+          ? 0
+          : Math.max(1, Math.round(progress * METER_SEGMENTS));
+      if (filled === lastFilled) return;
+      lastFilled = filled;
+      const el = meterRef.current;
+      if (!el) return;
+      for (let i = 0; i < el.children.length; i++) {
+        (el.children[i] as HTMLElement).style.background =
+          i < filled ? "var(--accent)" : METER_TRACK;
+      }
     };
     const onScroll = () => {
       cancelAnimationFrame(raf);
@@ -150,41 +162,24 @@ export function StatusBar() {
 
   const active = SECTION_REGISTRY[activeIdx] ?? SECTION_REGISTRY[0]!;
 
-  // Shared SVG progress ring. The track is a faint full circle; the
-  // accent circle's stroke-dashoffset is driven by the scroll listener
-  // (ringRef) — background-agnostic (works over the 3D hero + sections),
-  // unlike a conic-gradient donut whose hole has to match the backdrop.
-  const ring = (size: number) => (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 30 30"
-      style={{ flex: "0 0 auto", display: "block" }}
+  // Shared pixel scroll meter: a row of square cells that fill with the
+  // accent as the page scrolls. Stepped on purpose (no transition) so it
+  // reads as a hardware segment display, matching the OffBit/dot-matrix
+  // type language. Fill is mutated directly by the scroll listener
+  // (meterRef), no React reconcile per frame.
+  const meter = (cellW: number, cellH: number) => (
+    <div
+      ref={meterRef}
       aria-hidden
+      style={{ display: "flex", gap: 2, flex: "0 0 auto" }}
     >
-      <circle
-        cx={15}
-        cy={15}
-        r={RING_R}
-        fill="none"
-        stroke="rgba(13, 14, 16, 0.14)"
-        strokeWidth={3}
-      />
-      <circle
-        ref={ringRef}
-        cx={15}
-        cy={15}
-        r={RING_R}
-        fill="none"
-        stroke="var(--accent)"
-        strokeWidth={3}
-        strokeLinecap="round"
-        transform="rotate(-90 15 15)"
-        strokeDasharray={RING_C}
-        strokeDashoffset={RING_C}
-        style={{ transition: "stroke-dashoffset 120ms linear" }}
-      />
-    </svg>
+      {Array.from({ length: METER_SEGMENTS }, (_, i) => (
+        <span
+          key={i}
+          style={{ width: cellW, height: cellH, background: METER_TRACK }}
+        />
+      ))}
+    </div>
   );
 
   // Offbit numeral + Geist label + progress ring. No faux-mono, no live
@@ -208,7 +203,8 @@ export function StatusBar() {
           backdropFilter: "blur(12px) saturate(125%)",
           WebkitBackdropFilter: "blur(12px) saturate(125%)",
           border: "1px solid var(--ink-hairline)",
-          borderRadius: 12,
+          // Square-ish chrome: round-pill radii fought the pixel type.
+          borderRadius: 6,
           boxShadow: "0 8px 20px -16px rgba(13, 14, 16, 0.45)",
           color: "var(--ink)",
           userSelect: "none",
@@ -240,7 +236,7 @@ export function StatusBar() {
         >
           {active.label}
         </span>
-        {ring(22)}
+        {meter(3, 9)}
       </div>
     );
   }
@@ -261,7 +257,8 @@ export function StatusBar() {
         backdropFilter: "blur(12px) saturate(125%)",
         WebkitBackdropFilter: "blur(12px) saturate(125%)",
         border: "1px solid var(--ink-hairline)",
-        borderRadius: 14,
+        // Square-ish chrome: round-pill radii fought the pixel type.
+        borderRadius: 6,
         boxShadow: "0 10px 26px -18px rgba(13, 14, 16, 0.5)",
         color: "var(--ink)",
         userSelect: "none",
@@ -314,7 +311,7 @@ export function StatusBar() {
           {active.label}
         </span>
       </span>
-      {ring(30)}
+      {meter(4, 12)}
     </div>
   );
 }

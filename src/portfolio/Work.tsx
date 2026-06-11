@@ -3,6 +3,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import "./sections.css";
 import "./work-timeline.css";
+import { ScrambleText } from "./ScrambleText";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -486,7 +487,9 @@ export function Work() {
           </div>
           <div className="work-ledger-head-right">
             <span className="work-ledger-eyebrow" />
-            <h2 className="work-ledger-title">Experience</h2>
+            <h2 className="work-ledger-title">
+              <ScrambleText text="Experience" />
+            </h2>
           </div>
         </header>
 

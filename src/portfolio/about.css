@@ -46,15 +46,21 @@
   margin-bottom: 0.18em;
 }
 .about-floating-label {
-  font-family: var(--font-display, "Geist", "Inter", sans-serif);
-  /* Bumped up: the floating wordmark is now the section's editorial
-     anchor (the panel's redundant 'About.' H2 has been removed),
-     so this needs the typographic weight to carry the moment. */
-  font-size: clamp(64px, 9vw, 128px);
+  /* OffBit pixel display (sitewide big-title voice): the wordmark is
+     the section's editorial anchor, and the pixel face is what makes
+     it read playful against the matte room render behind it. Pixel
+     glyphs need near-zero tracking (negative spacing collides). */
+  font-family: var(--font-pixel, "Offbit", monospace);
+  font-size: clamp(58px, 8.2vw, 116px);
   font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 0.9;
+  letter-spacing: 0.01em;
+  line-height: 0.92;
   color: var(--wrapper-ink, #0d0e10);
+}
+/* Orange period: same brand tic as .other-title-period, so the accent
+   punctuation reads as a deliberate signature across big titles. */
+.about-floating-period {
+  color: var(--accent, #e87040);
 }
 
 /* Desktop kills the big dot marker for the same reason the mobile rule
@@ -164,6 +170,21 @@
   border: 0;
 }
 
+/* Spec-sheet header: wayfinding index over a hairline rule. The title
+   block of the panel; gives the sheet a machined top edge instead of a
+   lone floating index line. */
+.about-spec-header {
+  padding-bottom: var(--space-3, 12px);
+  border-bottom: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
+  margin-bottom: var(--space-6, 32px);
+}
+/* The shared .section-index rule adds an 18px bottom margin for its
+   standalone use in other sections; inside the header the rule above
+   owns the spacing. */
+.about-spec-header .section-index {
+  margin-bottom: 0;
+}
+
 /* Lede paragraph: reveals at the start of the pin. */
 .about-lede {
   font-family: var(--font-display, "Geist", "Inter", sans-serif);
@@ -203,10 +224,13 @@
   margin: 0;
 }
 
-/* Per-row reveal: each row at its own pin-progress threshold. */
+/* Per-row reveal: each row at its own pin-progress threshold.
+   Spec-sheet anatomy: numeral | label | value. The numeral column uses
+   the same "01"-chrome as the Mac project tiles so the whole site reads
+   as one numbering system. */
 .about-row {
   display: grid;
-  grid-template-columns: 96px 1fr;
+  grid-template-columns: 30px 96px 1fr;
   gap: var(--space-4h, 20px);
   align-items: baseline;
   /* Row spacing scales with viewport height so the few rows spread out
@@ -226,6 +250,20 @@
 }
 .about-row:last-of-type {
   border-bottom: none;
+}
+
+/* Row numeral: small accent-toward-ink mono digits. --accent-text (the
+   WCAG-safe accent mix) rather than raw --accent: these sit at 11px next
+   to body text, where the base orange is below the small-text contrast
+   floor. */
+.about-row-num {
+  font-family: var(--font-mono, sans-serif);
+  font-size: var(--fs-mono, 11px);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--accent-text, #9a4f30);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
 }
 
 .about-label {
@@ -250,45 +288,6 @@
   color: var(--wrapper-ink, #0d0e10);
   /* Reset UA <dd> indent. */
   margin: 0;
-}
-
-/* Sign-off coda: the closing beat that lands after the last row, filling
-   the previously-dead 0.82→1.0 tail of the pin. A brief editorial sign-off
-   in the lede's voice — not a key/value row, so it lives outside the <dl>.
-   Scoped under .portfolio-about so it outranks the shared
-   `.portfolio-section p` rule (0,1,1: sets ink colour, 0.88 opacity, 1.65
-   line-height) — otherwise the muted sign-off treatment silently loses,
-   exactly like the lede had to be scoped. */
-.portfolio-about .about-coda {
-  margin: var(--space-6, 32px) 0 0;
-  font-family: var(--font-display, "Geist", "Inter", sans-serif);
-  font-size: var(--fs-body-lg, 17px);
-  line-height: 1.4;
-  letter-spacing: -0.01em;
-  color: var(--ink-muted, rgba(13, 14, 16, 0.62));
-  opacity: 0;
-  max-width: 520px;
-  text-wrap: pretty;
-  transform: translateY(12px);
-  transition:
-    opacity var(--t-slow, 540ms) var(--ease-entrance),
-    transform var(--t-slow, 540ms) var(--ease-entrance);
-}
-.portfolio-about .about-coda.is-revealed {
-  opacity: 1;
-  transform: translateY(0);
-}
-/* The signed name in full ink, prefixed by an orange em-dash signature
-   mark — reads as "— Daniel Tan" closing the section, tying the sign-off
-   to the brand spine. */
-.portfolio-about .about-coda .about-coda-name {
-  color: var(--wrapper-ink, #0d0e10);
-  font-weight: 600;
-  white-space: nowrap;
-}
-.portfolio-about .about-coda .about-coda-name::before {
-  content: "\2014\00a0";
-  color: var(--accent, #e87040);
 }
 
 /* Links inside the rows (Windscribe, mailto). They inherit the accent
@@ -326,7 +325,7 @@
     font-size: clamp(18px, 4vw, 22px);
   }
   .about-row {
-    grid-template-columns: 80px 1fr;
+    grid-template-columns: 26px 80px 1fr;
     gap: var(--space-4, 16px);
   }
   /* Tablets (e.g. iPad portrait at 768px) are touch devices too, so the
@@ -444,6 +443,12 @@
     padding: var(--space-3, 12px) 0;
   }
 
+  /* The numeral column is desktop spec-sheet chrome; in the stacked
+     single-column rows it would render as its own line of clutter. */
+  .about-row-num {
+    display: none;
+  }
+
   .about-label {
     font-size: var(--fs-mono, 11px);
     letter-spacing: 0.18em;
@@ -502,8 +507,7 @@
 @media (prefers-reduced-motion: reduce) {
   .about-floating-eyebrow,
   .about-lede,
-  .about-row,
-  .about-coda {
+  .about-row {
     transition: none !important;
   }
   .about-floating-eyebrow,
@@ -511,9 +515,7 @@
   .about-lede,
   .about-lede.is-revealed,
   .about-row,
-  .about-row.is-revealed,
-  .about-coda,
-  .about-coda.is-revealed {
+  .about-row.is-revealed {
     opacity: 1 !important;
     transform: none !important;
   }

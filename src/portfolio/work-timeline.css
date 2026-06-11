@@ -136,11 +136,12 @@
   background: var(--accent);
 }
 .work-ledger-title {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: clamp(30px, 3.6vw, 52px);
+  /* OffBit pixel display (sitewide big-title voice). */
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: clamp(28px, 3.4vw, 48px);
   line-height: 1;
-  letter-spacing: -0.045em;
+  letter-spacing: 0.01em;
   color: var(--ink);
   margin: 0;
 }

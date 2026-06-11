@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import "./sections.css";
 import "./bits-and-pieces.css";
+import { ScrambleText } from "./ScrambleText";
 
 /**
  * Bits and Pieces: full-bleed accomplishments spread. Stats band
@@ -482,7 +483,9 @@ export function BitsAndPieces() {
           <span className="section-index bp-index">
             05 / 06 &middot; Bits and pieces
           </span>
-          <h2 className="bp-title">The trophy wall</h2>
+          <h2 className="bp-title">
+            <ScrambleText text="The trophy wall" />
+          </h2>
           <p className="bp-blurb">
             The extras: awards, grants, leadership, scholarships.
             What the timeline above doesn&rsquo;t have room for.

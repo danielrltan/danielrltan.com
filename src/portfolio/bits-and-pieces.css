@@ -78,10 +78,11 @@
 }
 .bp-title {
   grid-column: 2;
-  font-family: var(--font-display, system-ui, sans-serif);
-  font-size: clamp(48px, 7vw, 96px);
-  font-weight: 500;
-  letter-spacing: -0.045em;
+  /* OffBit pixel display (sitewide big-title voice). */
+  font-family: var(--font-pixel, monospace);
+  font-size: clamp(44px, 6.4vw, 88px);
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1;
   margin: 0;
   color: var(--ink);
@@ -205,7 +206,8 @@
   overflow: hidden;
   transition:
     box-shadow var(--t-base) ease,
-    border-color var(--t-base) ease;
+    border-color var(--t-base) ease,
+    transform var(--t-base) var(--ease-soft);
 }
 
 /* Featured tiles span 3 columns and get more visual weight. */
@@ -216,9 +218,25 @@
   font-size: clamp(38px, 4.5vw, 56px);
 }
 
+/* Sticker tilt: each card rests at a tiny deterministic rotation
+   (nth-child cycle, ±1°-ish) so the trophy wall reads as stickers
+   slapped on a board rather than a CSS grid. Lives on .bp-tile-inner
+   (the visual card), NOT .bp-tile, whose transform is owned by the
+   scroll-reveal sweep. Rotation is static (not motion), so it stays
+   under prefers-reduced-motion; only the straighten transition is
+   covered by the global reduced-motion transition kill below. */
+.bp-tile-inner {
+  transform: rotate(var(--bp-tilt, 0deg));
+}
+.bp-tile:nth-child(4n + 1) .bp-tile-inner { --bp-tilt: -0.9deg; }
+.bp-tile:nth-child(4n + 2) .bp-tile-inner { --bp-tilt: 0.7deg; }
+.bp-tile:nth-child(4n + 3) .bp-tile-inner { --bp-tilt: 0.5deg; }
+.bp-tile:nth-child(4n + 4) .bp-tile-inner { --bp-tilt: -0.6deg; }
+
 /* Non-interactive cards: a restrained lift (border + soft shadow) on
-   hover for editorial polish. No scale transform (no layout shift),
-   no cursor:pointer (nothing to click).
+   hover for editorial polish, plus the sticker straightening flat as
+   if pressed down. No scale (no layout shift), no cursor:pointer
+   (nothing to click).
    Gated behind (hover: hover) so touch devices (which fire a synthetic
    hover on tap) don't get a stuck accent border/shadow with no way to
    dismiss it. On touch the card simply renders in its resting state. */
@@ -226,6 +244,7 @@
   .bp-tile-inner:hover {
     border-color: var(--accent);
     box-shadow: 0 12px 36px -16px var(--accent-tint);
+    transform: rotate(0deg);
   }
 }
 

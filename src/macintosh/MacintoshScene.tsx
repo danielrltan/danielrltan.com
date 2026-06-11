@@ -448,9 +448,15 @@ function LogoSprite({
   const meshRef = useRef<THREE.Mesh>(null);
   const matRef = useRef<THREE.MeshBasicMaterial>(null);
   // CanvasTexture is generated ONCE per logo (a canvas paint + GPU
-  // upload, memoised on the logo identity so it never rebuilds on
+  // upload), memoised on the logo identity so it never rebuilds on
   // re-render. The parent's single useFrame owns the per-frame motion.
-  const texture = useMemo(() => makeLogoTexture(logo, index), [logo, index]);
+  // fontReady: rebuilds once when VT323 lands so the card never keeps
+  // a fallback-font bake (see usePixelFontReady).
+  const fontReady = usePixelFontReady();
+  const texture = useMemo(
+    () => makeLogoTexture(logo, index),
+    [logo, index, fontReady],
+  );
 
   // Hand the live mesh + material refs up to the parent orbit so its
   // consolidated useFrame can animate this card. Re-registers only if
@@ -484,6 +490,38 @@ function LogoSprite({
 const CARD_INK = "#0d0e10";
 const CARD_INK_FAINT = "rgba(13, 14, 16, 0.34)";
 const CARD_ACCENT = "#e87040";
+
+/* Pixel face for EVERYTHING rasterized into this section's 3D canvas
+   textures: the CRT screen UI, the boot type-in, and the orbiting
+   skill cards. VT323 (terminal classic): single 400 weight, so no
+   weight prefixes anywhere — canvas would synthesize a smeared
+   faux-bold over pixel glyphs. Hierarchy is carried by size + ink.
+   Sizes at call sites run ~15-25% larger than the old Geist values:
+   VT323 is narrow, so equal px reads lighter. */
+const PIXEL_FONT = "'VT323', 'Courier New', monospace";
+
+/* Canvas rasterizes whatever font is AVAILABLE at draw time, so a
+   texture painted before the VT323 webfont arrives bakes the fallback
+   permanently. Texture builders include this in their memo deps to
+   rebuild once the font lands. The CRT screen painter needs no guard:
+   it repaints continuously through the boot beat, long after fonts
+   settle. */
+let pixelFontLoaded = false;
+function usePixelFontReady(): boolean {
+  const [ready, setReady] = useState(pixelFontLoaded);
+  useEffect(() => {
+    if (pixelFontLoaded) return;
+    let alive = true;
+    document.fonts.load(`16px ${PIXEL_FONT}`).then(() => {
+      pixelFontLoaded = true;
+      if (alive) setReady(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return ready;
+}
 
 /**
  * Orbit card texture: a calm, restrained name plate.
@@ -549,7 +587,7 @@ function makeLogoTexture(logo: SkillLogo, index: number): THREE.CanvasTexture {
   // subordinate via size + faint ink.
   const idx = String(index + 1).padStart(2, "0");
   ctx.fillStyle = CARD_INK_FAINT;
-  ctx.font = "500 22px 'Geist', 'Inter', system-ui, sans-serif";
+  ctx.font = `26px ${PIXEL_FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   drawTracked(ctx, idx, PAD, PAD + Math.round(h * 0.029), 3);
@@ -558,11 +596,11 @@ function makeLogoTexture(logo: SkillLogo, index: number): THREE.CanvasTexture {
   // field (the old plate left a lot of dead space). Auto-shrinks so the
   // longest label ("TypeScript") never clips the frame.
   const maxNameW = w - PAD * 2;
-  let nameSize = 132;
-  ctx.font = `600 ${nameSize}px 'Geist', 'Inter', system-ui, sans-serif`;
+  let nameSize = 150;
+  ctx.font = `${nameSize}px ${PIXEL_FONT}`;
   while (ctx.measureText(logo.label).width > maxNameW && nameSize > 48) {
     nameSize -= 2;
-    ctx.font = `600 ${nameSize}px 'Geist', 'Inter', system-ui, sans-serif`;
+    ctx.font = `${nameSize}px ${PIXEL_FONT}`;
   }
   const nameBaseline = h / 2 + nameSize * 0.34; // optical vertical centering
   ctx.fillStyle = CARD_INK;
@@ -1158,20 +1196,20 @@ function drawProjectDetail(
   const crumbX = closeX + closeSz + 16;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
-  ctx.font = "500 13px 'Geist', system-ui, sans-serif";
+  ctx.font = `16px ${PIXEL_FONT}`;
   ctx.fillStyle = CRT_TEXT_DIM;
   const crumbBase = "projects.dir / ";
   ctx.fillText(crumbBase, crumbX, barH / 2 + 1);
   const crumbBaseW = ctx.measureText(crumbBase).width;
   ctx.fillStyle = CRT_ACCENT;
-  ctx.font = "600 13px 'Geist', system-ui, sans-serif";
+  ctx.font = `16px ${PIXEL_FONT}`;
   ctx.fillText(project.id, crumbX + crumbBaseW, barH / 2 + 1);
 
   // ESC hint: quiet faint mono label, right-aligned in the title bar
   // (mirrors the × close box on the top-left: standard window-chrome
   // keyboard hint). Right-aligned to w - PAD so it never collides with
   // the breadcrumb at narrow screen aspects. Paint-only, no DOM hotspot.
-  ctx.font = "500 12px 'Geist', system-ui, sans-serif";
+  ctx.font = `15px ${PIXEL_FONT}`;
   ctx.fillStyle = CRT_TEXT_FAINT;
   drawTracked(ctx, "ESC TO CLOSE", w - PAD, barH / 2 + 1, 1.5, "right");
   ctx.textBaseline = "alphabetic";
@@ -1196,7 +1234,7 @@ function drawProjectDetail(
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
   ctx.fillStyle = CRT_TEXT_DIM;
-  ctx.font = "500 12px 'Geist', system-ui, sans-serif";
+  ctx.font = `15px ${PIXEL_FONT}`;
   drawTracked(ctx, ensureUppercase(project.meta), PAD, y, 1.5);
   y += Math.round(h * 0.05);
 
@@ -1206,11 +1244,11 @@ function drawProjectDetail(
   // title never loses legibility. Auto-shrinks so long titles never clip.
   ctx.fillStyle = CRT_TEXT;
   let titleSize = Math.round(h * 0.07);
-  ctx.font = `700 ${titleSize}px 'Geist', system-ui, sans-serif`;
+  ctx.font = `${titleSize}px ${PIXEL_FONT}`;
   const maxTitleW = textMaxW;
   while (ctx.measureText(project.title).width > maxTitleW && titleSize > 22) {
     titleSize -= 2;
-    ctx.font = `700 ${titleSize}px 'Geist', system-ui, sans-serif`;
+    ctx.font = `${titleSize}px ${PIXEL_FONT}`;
   }
   ctx.fillText(project.title, PAD, y);
   const titleW = Math.min(ctx.measureText(project.title).width, maxTitleW);
@@ -1251,7 +1289,7 @@ function drawProjectDetail(
   // Pre-measure the tag chips into up to TWO wrapped rows (the narrowed
   // text column can't fit 5-6 chips on one line). Measured first so the
   // blurb can be capped to the room above the tag block.
-  const chipFont = "500 12px 'Geist', system-ui, sans-serif";
+  const chipFont = `15px ${PIXEL_FONT}`;
   const chipH = Math.round(h * 0.046);
   const chipGapX = 7;
   const chipGapY = 7;
@@ -1305,7 +1343,7 @@ function drawProjectDetail(
   let lineH = Math.round(bodySize * 1.5); // airy, editorial leading
   let blurbLines: string[] = [];
   for (;;) {
-    ctx.font = `400 ${bodySize}px 'Geist', system-ui, sans-serif`;
+    ctx.font = `${bodySize}px ${PIXEL_FONT}`;
     blurbLines = wrapText(ctx, project.blurb, textMaxW);
     lineH = Math.round(bodySize * 1.5);
     if (blurbLines.length * lineH <= availH || bodySize <= minBodySize) break;
@@ -1359,7 +1397,7 @@ function drawProjectDetail(
   // bottom-left of the content panel.
   if (hasLink) {
     const label = project.liveHref ? liveLinkLabel(project.liveHref) : "Source";
-    ctx.font = "600 16px 'Geist', system-ui, sans-serif";
+    ctx.font = `19px ${PIXEL_FONT}`;
     ctx.textBaseline = "middle";
     const arrow = "  →";
     const btnW = Math.round(ctx.measureText(label + arrow).width + 40);
@@ -1424,7 +1462,7 @@ function drawScreen(
     const charsToShow = Math.floor(bootProgress * totalChars * 1.25);
     let remaining = charsToShow;
     ctx.fillStyle = CRT_ACCENT;
-    ctx.font = "500 28px 'Geist', system-ui, sans-serif";
+    ctx.font = `32px ${PIXEL_FONT}`;
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
     let y = 40;
@@ -1453,7 +1491,7 @@ function drawScreen(
 
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
-  ctx.font = "600 15px 'Geist', system-ui, sans-serif";
+  ctx.font = `18px ${PIXEL_FONT}`;
   ctx.fillStyle = CRT_ACCENT;
   ctx.fillText("projects.dir", PAD, headH / 2 + 1);
   ctx.textAlign = "right";
@@ -1516,7 +1554,7 @@ function drawScreen(
 
     if (hovered) {
       // "OPEN" affordance: flat accent tab, top-right, sharp corners.
-      ctx.font = "600 11px 'Geist', system-ui, sans-serif";
+      ctx.font = `14px ${PIXEL_FONT}`;
       const hintText = "OPEN ↵";
       const hintW = ctx.measureText(hintText).width + 18;
       const hintH = Math.round(tileH * 0.13);
@@ -1534,7 +1572,7 @@ function drawScreen(
     // Tile meta (mono) + title (Geist), bottom-left.
     ctx.textBaseline = "alphabetic";
     ctx.fillStyle = CRT_TEXT_DIM;
-    ctx.font = "500 12px 'Geist', system-ui, sans-serif";
+    ctx.font = `15px ${PIXEL_FONT}`;
     drawTracked(
       ctx,
       ensureUppercase(p.meta.split(" · ")[0]!),
@@ -1543,7 +1581,7 @@ function drawScreen(
       1.2,
     );
     ctx.fillStyle = CRT_TEXT;
-    ctx.font = "600 23px 'Geist', system-ui, sans-serif";
+    ctx.font = `26px ${PIXEL_FONT}`;
     ctx.fillText(p.title, x + 18, y + tileH - 18);
   });
 }

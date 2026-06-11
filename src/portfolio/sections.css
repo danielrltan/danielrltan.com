@@ -68,17 +68,22 @@
   text-transform: uppercase;
   color: var(--ink-muted);
   font-weight: 500;
-  margin-bottom: 18px;
+  /* 18px → 10px: the pixel display face below carries extra headroom in
+     its em box, so the old gap read as the index floating loose. */
+  margin-bottom: 10px;
   display: block;
 }
 
-/* Section heading: Geist mixed-case, tight tracking. */
+/* Section heading: OffBit pixel display. The playful counterweight to
+   the Geist body: big titles read as retro hardware silkscreen. OffBit
+   ships 400/700 only (500 would synthesize), and pixel glyphs collide
+   under the old -0.045em display tracking, so spacing sits near zero. */
 .portfolio-section h2 {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: clamp(40px, 4.6vw, 68px);
-  line-height: 1.02;
-  letter-spacing: -0.045em;
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: clamp(38px, 4.4vw, 64px);
+  line-height: 1.04;
+  letter-spacing: 0.01em;
   color: var(--ink);
   margin: 0 0 48px;
 }

@@ -194,16 +194,20 @@
   color: var(--accent-text);
 }
 
-/* Title: "My interests." Big editorial Geist. */
+/* Title: "Some interests." OffBit pixel display (sitewide big-title
+   voice). */
 .other-title {
   grid-column: 1;
   grid-row: 2;
-  margin: var(--space-4) 0 0;
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: clamp(56px, 7.8vw, 132px);
-  line-height: 0.92;
-  letter-spacing: -0.045em;
+  /* Tightened (16px → 6px) for the pixel face: OffBit carries a lot of
+     internal headroom in its em box, so the old gap read as the eyebrow
+     floating disconnected above the title. */
+  margin: 6px 0 0;
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: clamp(50px, 7vw, 118px);
+  line-height: 0.94;
+  letter-spacing: 0.01em;
   color: var(--ink);
   opacity: var(--head-title, 1);
   transform: translateY(calc((1 - var(--head-title, 1)) * 22px));
@@ -426,7 +430,7 @@
 }
 
 .other-dot {
-  /* Larger hit area than the visible mark so dots are easy to tap. */
+  /* Larger hit area than the visible mark so cells are easy to tap. */
   width: 24px;
   height: 24px;
   display: inline-flex;
@@ -435,7 +439,9 @@
   padding: 0;
   background: transparent;
   border: 0;
-  border-radius: 50%;
+  /* Square hit shape: the focus outline then draws as a box, matching
+     the pixel chrome (round rings retired with the retrofuturism pass). */
+  border-radius: 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -448,26 +454,24 @@
   outline-offset: 2px;
 }
 
-/* The visible mark: small ring, filled orange when active. */
+/* The visible mark: a square pixel cell, same segment-display language
+   as the StatusBar scroll meter. Active = the cell stretches into a
+   wide filled segment (a cartridge-slot "you are here"), instead of the
+   old circular ring + scale-up. */
 .other-dot-mark {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: transparent;
-  border: 1.5px solid var(--ink-hairline);
+  width: 7px;
+  height: 7px;
+  background: rgba(13, 14, 16, 0.16);
   transition:
     background var(--t-fast) var(--ease-out),
-    border-color var(--t-fast) var(--ease-out),
-    transform var(--t-fast) var(--ease-out);
+    width var(--t-fast) var(--ease-out);
 }
 .other-dot:hover .other-dot-mark {
-  border-color: var(--accent);
-  transform: scale(1.2);
+  background: rgba(13, 14, 16, 0.38);
 }
 .other-dot.is-active .other-dot-mark {
   background: var(--accent);
-  border-color: var(--accent);
-  transform: scale(1.35);
+  width: 18px;
 }
 
 /* ======================================================================
@@ -545,12 +549,14 @@
 .other-gallery-title {
   grid-column: 1;
   grid-row: 2;
-  margin: var(--space-4) 0 0;
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: clamp(56px, 7.8vw, 132px);
-  line-height: 0.92;
-  letter-spacing: -0.045em;
+  /* Tightened to match .other-title (pixel-face headroom, see above). */
+  margin: 6px 0 0;
+  /* OffBit pixel display (sitewide big-title voice). */
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: clamp(50px, 7vw, 118px);
+  line-height: 0.94;
+  letter-spacing: 0.01em;
   color: var(--ink);
   opacity: var(--gh-title, 1);
   transform: translateY(calc((1 - var(--gh-title, 1)) * 22px));

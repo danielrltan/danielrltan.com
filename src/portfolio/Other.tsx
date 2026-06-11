@@ -3,6 +3,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import "./sections.css";
 import "./other.css";
+import { ScrambleText } from "./ScrambleText";
 // Lazy: 3D hobbies scene loads on scroll-approach (idle-prefetched in App.tsx)
 // rather than shipping in the first-paint bundle.
 const HobbiesScene = lazy(() =>
@@ -633,7 +634,7 @@ export function Other() {
             </span>
           </div>
           <h2 className="other-gallery-title">
-            Recents
+            <ScrambleText text="Recents" />
           </h2>
         </header>
 
@@ -689,7 +690,7 @@ export function Other() {
             <span className="other-section-tag">Off the clock</span>
           </div>
           <h2 className="other-title">
-            Some interests
+            <ScrambleText text="Some interests" />
           </h2>
         </header>
 

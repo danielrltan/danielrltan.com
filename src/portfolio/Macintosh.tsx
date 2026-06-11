@@ -3,6 +3,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import "./sections.css";
 import "./macintosh.css";
+import { ScrambleText } from "./ScrambleText";
 import type { ScreenRect } from "../macintosh/MacintoshScene";
 // Lazy: this scene (its own WebGL canvas + drei/three deps) sits far down the
 // scroll, so its chunk loads on approach instead of in the first-paint bundle.
@@ -426,7 +427,9 @@ export function Macintosh() {
       <div className="portfolio-col mac-col">
         <span className="section-marker">02</span>
         <span className="section-index">02 / 06 &middot; Stack + Projects</span>
-        <h2>The kit</h2>
+        <h2>
+          <ScrambleText text="The kit" />
+        </h2>
       </div>
       {/* Detail region. The open project is drawn into the CRT <canvas>
           texture, which is invisible to assistive tech, so the project's
