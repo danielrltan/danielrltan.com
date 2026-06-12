@@ -146,8 +146,11 @@
      the page (the pin is removed on mobile, so this band is in normal
      flow). The global `canvas { touch-action: none }` would otherwise
      swallow the drag and feel like the page is stuck on the keypad.
-     pan-y still lets single taps through to the social caps / dial. */
-  .keypad-canvas-wrapper > canvas {
+     pan-y still lets single taps through to the social caps / dial.
+     DESCENDANT selector, not `>`: R3F wraps its canvas in an extra div,
+     so a child selector never matches. (index.css's any-pointer:coarse
+     canvas rule is the global net; this is the explicit local intent.) */
+  .keypad-canvas-wrapper canvas {
     touch-action: pan-y;
   }
 }

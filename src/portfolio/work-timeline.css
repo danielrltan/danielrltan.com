@@ -391,6 +391,13 @@
   pointer-events: none;
 }
 
+/* Mobile-only timeline rail marker (see the @media 900px block). On
+   desktop the sliding dot-matrix ticker owns the year, so the span is
+   hidden entirely. */
+.work-stint-year-marker {
+  display: none;
+}
+
 /* Brand line: small mono eyebrow with the company shorthand. */
 .work-stint-brand {
   display: inline-flex;
@@ -873,13 +880,96 @@
      live scrub no longer drives the bar (the scaleX JS only runs while
      pinned), so it would sit empty. Park it FULL so it reads as a
      completed-progress accent rule under the fully-shown résumé rather
-     than a broken empty track. The counter stays as a quiet "STINT"
-     label. */
+     than a broken empty track. The counter is HIDDEN here: its text is
+     also pin-driven, so static flow would forever show "01 / 03" under
+     the third stint — a stale, wrong number. The rail + year markers
+     above carry the timeline structure instead. */
   .work-ledger-foot {
     padding-top: clamp(12px, 4vw, 18px);
   }
+  .work-ledger-counter {
+    display: none;
+  }
   .work-ledger-bar-fill {
     transform: scaleX(1);
+  }
+
+  /* ===== Mobile timeline rail with year markers =====
+     The static stacked list reads as a TIMELINE again (user: "just a
+     list of stuff"): a left-gutter hairline rail runs the full list,
+     each stint pins a dot-matrix year marker (the desktop ticker's
+     face) + an accent node to the rail, and an accent segment bridges
+     the gap between stints. Pure decoration (markers are aria-hidden;
+     the meta rows carry the real dates), no pin, native scroll. */
+  .work-stint-list {
+    position: relative;
+    padding-left: clamp(40px, 10vw, 56px);
+  }
+  .work-stint-list::before {
+    content: "";
+    position: absolute;
+    left: clamp(9px, 4vw, 14px);
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--ink-hairline);
+    pointer-events: none;
+  }
+  .work-stint-year-marker {
+    display: block;
+    position: absolute;
+    left: clamp(9px, 4vw, 14px);
+    top: 0;
+    transform: translateX(-50%);
+    font-family: var(--font-dot);
+    font-weight: 700;
+    font-size: clamp(18px, 4.2vw, 26px);
+    line-height: 0.88;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    font-feature-settings: "tnum" 1;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    /* Quiet plate behind the digits so the rail doesn't strike through
+       them where they cross. */
+    background: var(--bg-page, #eef0f3);
+    padding: 2px 0;
+    pointer-events: none;
+    user-select: none;
+  }
+  /* Node: small accent square (sharp, spec-sheet voice) on the rail
+     beneath the year digits. */
+  .work-stint-year-marker::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    margin-top: 5px;
+    transform: translateX(-50%);
+    width: 7px;
+    height: 7px;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--bg-page, #eef0f3);
+  }
+  .work-stint {
+    position: relative;
+    /* Clearance so the year marker + node sit above the brand row. */
+    padding-top: clamp(34px, 8vw, 44px);
+  }
+  /* Accent rail segment bridging the gap to the next stint. */
+  .work-stint-list > li:not(:last-child) {
+    position: relative;
+  }
+  .work-stint-list > li:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: clamp(9px, 4vw, 14px);
+    top: 100%;
+    height: clamp(20px, 5vw, 32px);
+    width: 1px;
+    background: var(--accent);
+    transform: translateX(-50%);
+    pointer-events: none;
   }
 
   /* Resume CTA: full editorial affordance, >=44px touch target.

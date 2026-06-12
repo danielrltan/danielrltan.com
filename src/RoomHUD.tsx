@@ -47,6 +47,12 @@ export function RoomHUD({ visible }: Props) {
   // to 1, otherwise the browser may collapse both values into one
   // style and skip the fade-in.
   const [shown, setShown] = useState(false);
+  // Footer dodge: at the bottom-of-page rest position the footer's
+  // INDEX heading lands exactly under the cat (the footer can't choose
+  // what scrolls into the top-left corner). Fade the cat out whenever
+  // that heading is inside the top strip of the viewport — the
+  // JumpToTop FAB covers back-to-top down there anyway.
+  const [dodge, setDodge] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -55,6 +61,19 @@ export function RoomHUD({ visible }: Props) {
     }
     setShown(false);
   }, [visible]);
+
+  useEffect(() => {
+    const target = document.getElementById("footer-index-label");
+    if (!target || typeof IntersectionObserver === "undefined") return;
+    // rootMargin shrinks the root to the viewport's top 12% band, so
+    // "intersecting" means the heading overlaps the cat's strip.
+    const io = new IntersectionObserver(
+      ([entry]) => setDodge(!!entry?.isIntersecting),
+      { rootMargin: "0px 0px -88% 0px" },
+    );
+    io.observe(target);
+    return () => io.disconnect();
+  }, []);
 
   return (
     <div
@@ -91,11 +110,12 @@ export function RoomHUD({ visible }: Props) {
           // ~14px corner instead of shifting inward.
           margin: isMobile ? `${-(44 - chipH) / 2}px 0 0 ${-(44 - chipH) / 2}px` : 0,
           zIndex: HUD_Z,
-          pointerEvents: "auto",
+          pointerEvents: dodge ? "none" : "auto",
+          opacity: dodge ? 0 : 1,
           color: "var(--ink)",
           textDecoration: "none",
           userSelect: "none",
-          transition: "transform 0.18s ease",
+          transition: "transform 0.18s ease, opacity 0.3s ease",
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.transform = "translateY(-1px)";

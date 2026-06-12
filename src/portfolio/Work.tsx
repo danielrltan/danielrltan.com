@@ -631,6 +631,14 @@ function WorkStintSpread({
     <li
       className={`work-stint${isActive ? " is-active" : ""}${isPast ? " is-past" : ""}${stage ? " is-on-stage" : ""}`}
     >
+      {/* Mobile timeline rail marker: dot-matrix year pinned to the
+          left-gutter rail (display:none on desktop, where the sliding
+          ticker owns the year). aria-hidden: the meta row already
+          carries the full date range for AT. */}
+      <span className="work-stint-year-marker" aria-hidden="true">
+        {stint.year}
+      </span>
+
       <div className="work-stint-brand">
         <span className="work-stint-brand-dot" aria-hidden />
         <span className="work-stint-brand-text">{stint.brand}</span>
