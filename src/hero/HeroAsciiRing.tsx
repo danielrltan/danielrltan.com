@@ -1,78 +1,252 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-// Vendored from three/examples (one-line willReadFrequently fix; see
-// ./AsciiEffect.js header) so the per-frame getImageData readback that drives
-// the ring doesn't stall the GPU.
-import { AsciiEffect } from "./AsciiEffect.js";
 
 /**
- * Big bold ASCII ring: hero's primary motion centerpiece.
+ * Big bold glyph ring: hero's primary motion centerpiece.
  *
- * APPROACH: Option (a): AsciiEffect wrapped inside R3F.
- * --------------------------------------------------------
- * We keep AsciiEffect (the postFX that walks the rasterised image and
- * rewrites every cell as a glyph) but mount it inside an R3F <Canvas>.
- * The <Canvas> creates and owns the WebGLRenderer; an inner
- * <RingScene> component:
- *   1. Reads `gl, scene, camera, size` from useThree().
- *   2. Lazily instantiates one AsciiEffect that wraps `gl`.
- *   3. Mounts the AsciiEffect's div (a <table> of glyphs) into the
- *      Canvas's parent container, hides the original <canvas>, and
- *      keeps the table sized in lockstep with size changes.
- *   4. Takes over the render loop via `useFrame((_, dt) => …, 1)` and
- *      calls `ascii.render(scene, camera)` instead of the default
- *      WebGL render. (Priority 1 disables R3F's auto-render; see
- *      https://docs.pmnd.rs/react-three-fiber/api/hooks#taking-over-the-render-loop)
+ * APPROACH: GPU glyph-grid dither post-process (replaces AsciiEffect).
+ * ---------------------------------------------------------------------
+ * The old version was three's AsciiEffect: a synchronous GPU->CPU
+ * getImageData readback every frame feeding a DOM <table> of glyphs.
+ * This version is a pure-GPU two-pass pipeline:
  *
- * That gives us full R3F ergonomics (declarative scene, useThree hooks,
- * automatic disposal of geometry/material via JSX unmount) AND keeps
- * AsciiEffect doing what it does best: the deliberate-ASCII look that
- * a custom shader would have to fake at much higher complexity.
+ *   PASS 1 (scene -> tiny render target, ONE TEXEL PER GLYPH CELL):
+ *     The torus renders with a raw ShaderMaterial that encodes
+ *       R,G = flat per-face view-space normal.xy (dFdx/dFdy of the
+ *             view position, so every facet is constant -> faceted)
+ *       B   = lit luminance (key + fill + spec, computed in-shader)
+ *       A   = coverage (1 where the torus is, 0 elsewhere)
+ *
+ *   PASS 2 (fullscreen quad -> canvas):
+ *     For each screen pixel: find its glyph cell, read the cell's
+ *     texel, then
+ *       - LUMINANCE -> GLYPH: Bayer-dithered quantization picks a
+ *         glyph from a canvas-baked atlas ramp (" .:-=+*x#%@").
+ *       - PER-FACE NORMAL -> PALETTE: the facet normal dotted with
+ *         the key-light direction is quantized into discrete bands
+ *         across the orange family (shadow -> accent -> lit -> hot),
+ *         which is what gives the ring its volumetric shading.
+ *     Empty cells render a faint sparse glyph field so the page keeps
+ *     the textured backdrop the old table gave it.
+ *
+ * No readback, no DOM table, no 30fps cap: the whole thing is one
+ * small RT render plus one fullscreen draw.
  *
  * CURSOR-DRIVEN DEFORMATION
  * -------------------------
- * The torus material is MeshPhongMaterial (preserves the original
- * lighting/brightness response that drives AsciiEffect's glyph density)
- * augmented via onBeforeCompile to inject vertex displacement:
- *   - uMouseNdc: vec2:  mouse in [-1, 1] NDC, lerped 0.12/frame for
- *                       viscous inertia.
- *   - uMouseStrength: f: 0 when cursor offscreen, 1 when active.
- *   - uTime: f:          drives a low-frequency ripple so the surface
- *                        feels alive even at rest near the cursor.
- *   - uFalloff: f:       radius of influence in NDC space.
- *
- * For each vertex: project to NDC in the vertex shader, take XY
- * distance from uMouseNdc, smoothstep falloff (1 → 0 across uFalloff),
- * then displace along the local surface normal by a magnitude that's a
- * mix of (a) pull toward the cursor and (b) a time-driven sinusoid for
- * the "liquid breathing" feel. The result reads as a soft wave of
- * deformation following the cursor, not spiky, not jarring.
- *
- * No React state in the loop; all per-frame work is refs + uniforms.
+ * Unchanged from the AsciiEffect version, now living in the pass-1
+ * vertex shader directly: uMouseNdc/uMouseStrength/uTime/uFalloff
+ * displace vertices along their normals with a smooth NDC falloff +
+ * a low-frequency ripple, so the surface bulges liquidly toward the
+ * cursor. No React state in the loop; refs + uniforms only.
  */
 
 interface Props {
-  /** Brand orange for the glyphs. */
+  /** Brand orange: the palette's BASE band. */
   color?: string;
   /** Seconds per full revolution. Default 26: slow, organic. */
   spinDuration?: number;
 }
 
-// PERF (mobile): AsciiEffect.render() does a synchronous GPU→CPU
-// getImageData() readback EVERY frame to rebuild the glyph table, and
-// that readback cost scales with the backing-store pixel count. Phone
-// GPUs are far weaker and this canvas runs `frameloop="always"` over
-// the whole hero, so on small/coarse-pointer devices we cap the
-// backing store at DPR 1 (vs up to 2× on desktop = ~4× the pixels to
-// read back) and drop the torus tessellation; the silhouette is
-// quantised into ASCII glyphs anyway, so the lower poly count is
-// invisible while halving the vertex shader's per-frame displacement
-// work. Evaluated once at module scope (the breakpoint doesn't change
-// within a session without a reload).
+// PERF (mobile): the post pass scales with canvas pixels, so coarse
+// devices cap DPR at 1 (vs up to 2x desktop). Tessellation also drops:
+// with flat per-face normals the facet size IS the look, and chunkier
+// facets read fine (arguably better) on a small screen.
 const IS_SMALL_SCREEN =
   typeof window !== "undefined" &&
   window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
+
+// Glyph cell size in CSS px. The grid (and the pass-1 render target)
+// is the container size divided by this.
+const CELL_PX = 9;
+
+// Luminance ramp, sparse -> dense. Index 0 is a SPACE: the darkest
+// faces dissolve into nothing, which is what makes the dither read as
+// a dissolving volume instead of a solid cut-out.
+const GLYPH_RAMP = " .:-=+*x#%@";
+
+/** Canvas-baked glyph atlas: GLYPH_RAMP in one horizontal strip, white
+ *  on transparent; the post shader samples its alpha as the glyph mask. */
+function buildGlyphAtlas(): THREE.CanvasTexture {
+  const N = GLYPH_RAMP.length;
+  const TILE = 64;
+  const cv = document.createElement("canvas");
+  cv.width = N * TILE;
+  cv.height = TILE;
+  const ctx = cv.getContext("2d")!;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `700 ${Math.round(TILE * 0.72)}px ui-monospace, Menlo, Consolas, "Courier New", monospace`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i < N; i++) {
+    ctx.fillText(GLYPH_RAMP[i]!, i * TILE + TILE / 2, TILE / 2 + TILE * 0.04);
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  // No mips: tiles would bleed into their neighbours at low mip levels.
+  // Cells are ~9-18 device px, plain linear is clean enough.
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
+// ---------------------------------------------------------------------
+// PASS 1: torus material. Outputs data, not color: flat normal.xy in
+// RG, luminance in B, coverage in A. (No colorspace conversion here on
+// purpose; this is an encoding, not an image.)
+// ---------------------------------------------------------------------
+const RING_VERT = /* glsl */ `
+  uniform vec2 uMouseNdc;
+  uniform float uMouseStrength;
+  uniform float uTime;
+  uniform float uFalloff;
+  uniform float uPullAmp;
+  uniform float uRippleAmp;
+  varying vec3 vViewPos;
+
+  void main() {
+    vec3 transformed = position;
+
+    // Project the resting vertex to NDC so the cursor-distance
+    // calculation matches what the user actually sees on screen.
+    vec4 worldPos = modelMatrix * vec4(transformed, 1.0);
+    vec4 clipPos = projectionMatrix * viewMatrix * worldPos;
+    vec2 ndc = clipPos.xy / max(clipPos.w, 0.0001);
+
+    float d = distance(ndc, uMouseNdc);
+    // Smooth falloff: 1 at the cursor, 0 past uFalloff; pow sharpens
+    // the dome into a focal pull.
+    float fall = pow(1.0 - smoothstep(0.0, uFalloff, d), 1.6);
+
+    // Liquid breathing: low-freq sin riding the falloff.
+    float ripple = sin(uTime * 1.8 + d * 9.0) * uRippleAmp * fall;
+    float pull = uPullAmp * fall * uMouseStrength;
+    transformed += normal * (pull + ripple);
+
+    vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+    vViewPos = mvPosition.xyz;
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+const RING_FRAG = /* glsl */ `
+  uniform vec3 uKeyDir;
+  uniform vec3 uFillDir;
+  varying vec3 vViewPos;
+
+  void main() {
+    // FLAT per-face normal from screen-space derivatives of the view
+    // position: constant across each facet, which is what lets the
+    // post pass shift the palette per face.
+    vec3 n = normalize(cross(dFdx(vViewPos), dFdy(vViewPos)));
+
+    float diff = max(dot(n, uKeyDir), 0.0);
+    float fill = max(dot(n, uFillDir), 0.0);
+    vec3 v = normalize(-vViewPos);
+    vec3 h = normalize(uKeyDir + v);
+    float spec = pow(max(dot(n, h), 0.0), 36.0);
+    // Generous floor + fill so even away-facing facets keep mid-ramp
+    // glyph density: the ring must hold its bold mass on the light
+    // page; the palette bands carry the volume, density carries form.
+    float lum = clamp(0.18 + diff * 0.85 + fill * 0.38 + spec * 0.5, 0.0, 1.0);
+
+    gl_FragColor = vec4(n.xy * 0.5 + 0.5, lum, 1.0);
+  }
+`;
+
+// ---------------------------------------------------------------------
+// PASS 2: fullscreen glyph-grid dither.
+// ---------------------------------------------------------------------
+const POST_VERT = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+  }
+`;
+
+const POST_FRAG = /* glsl */ `
+  uniform sampler2D uScene;
+  uniform sampler2D uGlyphs;
+  uniform vec2 uGrid;
+  uniform float uGlyphCount;
+  uniform vec3 uShadow;
+  uniform vec3 uBase;
+  uniform vec3 uLit;
+  uniform vec3 uHot;
+  uniform vec3 uPaletteDir;
+  varying vec2 vUv;
+
+  // Recursive 2x2 -> 4x4 ordered (Bayer) matrix from cell coords.
+  float bayer2(vec2 p) {
+    float x2 = mod(p.x, 2.0);
+    float y2 = mod(p.y, 2.0);
+    return 3.0 * y2 + x2 * (2.0 - 4.0 * y2); // [[0,2],[3,1]]
+  }
+  float bayer4(vec2 p) {
+    p = floor(p);
+    return (4.0 * bayer2(floor(p / 2.0)) + bayer2(p) + 0.5) / 16.0;
+  }
+
+  void main() {
+    vec2 g = vUv * uGrid;
+    vec2 cell = floor(g);
+    vec2 cellUv = fract(g);
+    vec4 s = texture2D(uScene, (cell + 0.5) / uGrid);
+    float dith = bayer4(cell);
+
+    vec3 col;
+    float a;
+    if (s.a > 0.5) {
+      // LUMINANCE -> GLYPH: ordered-dither quantization into the ramp.
+      float lum = s.b;
+      float idx = clamp(
+        floor(lum * uGlyphCount + (dith - 0.5)),
+        0.0,
+        uGlyphCount - 1.0
+      );
+      float mask = texture2D(
+        uGlyphs,
+        vec2((idx + cellUv.x) / uGlyphCount, cellUv.y)
+      ).a;
+
+      // PER-FACE NORMAL -> PALETTE: reconstruct the facet normal, dot
+      // it with the key-light axis, quantize into discrete bands so
+      // adjacent facets snap to distinct tones (the volumetric read).
+      vec2 nxy = s.rg * 2.0 - 1.0;
+      float nz = sqrt(max(0.0, 1.0 - dot(nxy, nxy)));
+      float t = clamp(dot(vec3(nxy, nz), uPaletteDir) * 0.5 + 0.5, 0.0, 1.0);
+      float tq = floor(t * 4.0 + 0.5) / 4.0;
+      col = tq < 0.5
+        ? mix(uShadow, uBase, tq * 2.0)
+        : mix(uBase, uLit, (tq - 0.5) * 2.0);
+      // Specular tips flash hot (near-white peach) at peak luminance.
+      col = mix(col, uHot, smoothstep(0.9, 1.0, lum) * 0.65);
+      a = mask;
+    } else {
+      // Ambient field: sparse faint glyphs over empty cells so the
+      // hero keeps its full-bleed texture (the old table's backdrop).
+      float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+      float fieldIdx = h > 0.78 ? 3.0 : 1.0; // mostly '.', sometimes '-'
+      float mask = texture2D(
+        uGlyphs,
+        vec2((fieldIdx + cellUv.x) / uGlyphCount, cellUv.y)
+      ).a;
+      col = uBase;
+      a = mask * 0.30;
+    }
+
+    gl_FragColor = vec4(col, a);
+    #include <colorspace_fragment>
+    // Premultiply for NoBlending onto the alpha canvas (the page bg
+    // composites behind; entrance opacity is CSS on the canvas).
+    gl_FragColor.rgb *= gl_FragColor.a;
+  }
+`;
 
 export function HeroAsciiRing({
   color = "#e87040",
@@ -85,28 +259,18 @@ export function HeroAsciiRing({
         // transformed bounding box. The hero composition scales up to
         // 3x during the dive-out; R3F's default measurement uses
         // getBoundingClientRect, which INCLUDES that ancestor scale, so
-        // the canvas "resized" to ~3x mid-dive and again on the way
-        // back. Each resize rebuilt the AsciiEffect glyph table
-        // (43k -> 149k chars, measured) in full view: the "ring
-        // glitches around when scrolling back up" bug. offsetSize keeps
-        // the canvas pinned to the untransformed 130vw box and stops
-        // the renderer allocating a ~7000px-wide backing buffer per dive.
+        // the canvas would "resize" to ~3x mid-dive and back. offsetSize
+        // keeps the canvas pinned to the untransformed 130vw box.
         resize={{ offsetSize: true }}
         gl={{
-          antialias: true,
+          antialias: false, // pass 1 is a data buffer; AA would blur the encoding
           alpha: true,
           powerPreference: "high-performance",
-          // Important: AsciiEffect reads premultiplied pixel data; the
-          // default CSS bg handles transparency, so a clear color of
-          // (0,0,0,0) is correct here.
           preserveDrawingBuffer: false,
         }}
         camera={{ position: [0, 0, 6.2], fov: 22, near: 0.1, far: 100 }}
-        // Mobile caps the backing store at 1× to slash the per-frame
-        // AsciiEffect readback; desktop keeps up to 2× for crisp glyphs.
         dpr={IS_SMALL_SCREEN ? 1 : [1, 2]}
-        // `frameloop="always"` is fine; we override the render itself via
-        // priority frame, so the default render is suppressed.
+        // We own the render via a priority-1 useFrame (two manual passes).
         frameloop="always"
         style={{
           position: "absolute",
@@ -115,8 +279,6 @@ export function HeroAsciiRing({
           height: "100%",
           pointerEvents: "none",
         }}
-        // R3F sets a default tone-mapped clear; we want pure alpha so
-        // the AsciiEffect sees the torus on transparent.
         onCreated={({ gl }) => {
           gl.setClearColor(0x000000, 0);
         }}
@@ -128,8 +290,8 @@ export function HeroAsciiRing({
 }
 
 /**
- * Inner R3F scene: owns the torus mesh, the AsciiEffect lifecycle,
- * the cursor uniforms, and the manual render call.
+ * Inner R3F scene: owns the torus mesh, the two-pass pipeline, the
+ * cursor uniforms, and the manual render calls.
  */
 function RingScene({
   color,
@@ -141,39 +303,23 @@ function RingScene({
   const { gl, scene, camera, size } = useThree();
   const tiltGroupRef = useRef<THREE.Group>(null);
   const torusRef = useRef<THREE.Mesh>(null);
-  const asciiRef = useRef<AsciiEffect | null>(null);
   const lastTRef = useRef(performance.now() / 1000);
-  const asciiDtAccRef = useRef(0); // accumulator for 30fps readback cap
   // Entrance: timestamp (s) the ring's reveal began, or null until the hero
   // first reveals (loading scrim lifts). Drives the crossfade-in + the
-  // face-on → tilt-back rotation. Runs once.
+  // face-on -> tilt-back rotation. Runs once.
   const entranceStartRef = useRef<number | null>(null);
-  // When the load gate (scrim gone + composition visible) was first met, so
-  // we can wait ENTRANCE_DELAY past it before igniting — a beat AFTER the
-  // loading screen clears, not right on its fade-out.
   const gateMetAtRef = useRef<number | null>(null);
   const ENTRANCE_DELAY = 0.5; // seconds after the loading screen is gone
-  // Tracks the offscreen→onscreen edge so the first resumed frame forces a
-  // fresh ascii.render() (no stale-frame flash when scrolling back up).
   const wasOffscreenRef = useRef(true);
-  // Last dimensions actually applied via ascii.setSize. setSize is NOT
-  // cheap: it rebuilds the glyph-table DOM (innerHTML) and clears the
-  // readback canvas, which painted a visible one-frame jump every time
-  // the ring resumed from offscreen (the "ring glitches around when I
-  // scroll back up" bug: each offscreen boundary crossing forced a
-  // mid-frame rebuild at an UNCHANGED size). Cache lets the resume path
-  // skip the rebuild unless the container truly resized while asleep.
-  const asciiSizeRef = useRef({ w: 0, h: 0 });
   // Resting orientation (the scene's tilt). The entrance rotates the tilt
-  // group from 0 (face-on, facing the camera) to these over the reveal.
+  // group from 0 (face-on) to these over the reveal.
   const TILT_X = (38 * Math.PI) / 180;
   const TILT_Z = (-12 * Math.PI) / 180;
   const reducedMotion =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   // DEV: ?introFreeze=<seconds> freezes the entrance at a fixed elapsed time
-  // (et) and bypasses the load gate, so the sub-second reveal can be
-  // screenshotted at specific moments for review. null in production.
+  // and bypasses the load gate, for screenshotting specific reveal moments.
   const INTRO_FREEZE = (() => {
     if (typeof window === "undefined") return null;
     const raw = new URLSearchParams(window.location.search).get("introFreeze");
@@ -183,21 +329,11 @@ function RingScene({
   })();
 
   // PERF: the hero composition is `position: fixed`, so this component
-  // NEVER unmounts; even at the footer it kept running AsciiEffect every
-  // frame. AsciiEffect.render() walks the rasterised WebGL image via a
-  // synchronous getImageData() readback (a GPU→CPU stall, and the source
-  // of the recurring "Canvas2D willReadFrequently" warning) to rewrite
-  // the glyph table. Once the hero has scrolled out of view there is
-  // nothing to see, so we skip the whole render (spin + readback). A
-  // passive scroll listener flips a ref; no per-frame layout reads, no
-  // React state, no visual change while the ring is on screen.
+  // NEVER unmounts. Once the hero has scrolled out of view we skip both
+  // passes entirely (zero GPU work) via this ref; a passive scroll
+  // listener flips it, no per-frame layout reads.
   const offscreenRef = useRef(false);
   useEffect(() => {
-    // Hidden once the hero composition has fully dissolved. The
-    // consolidated scroll choreography fades the hero out by ~1.05vh; we
-    // gate slightly past that (1.2vh) so the ring keeps animating through
-    // the entire visible hero + dissolve and only sleeps once it's truly
-    // gone.
     const OFFSCREEN_VH = 1.2;
     let raf = 0;
     const apply = () => {
@@ -228,186 +364,106 @@ function RingScene({
   const mouseStrengthSmoothedRef = useRef(0);
 
   // ---------------------------------------------------------------
-  // Material: MeshPhongMaterial with vertex displacement injected via
-  // onBeforeCompile. Memo so it survives re-renders; geometry + material
-  // are explicitly disposed via the cleanup effect below.
+  // Pipeline objects: ring material, render target, glyph atlas, post
+  // scene. All imperative, memoised once, disposed on unmount.
   // ---------------------------------------------------------------
-  const { material, uniforms } = useMemo(() => {
-    // Mark dirty signals: these uniforms are also stored on the
-    // material's `.userData.shader` after the first compile so we can
-    // update them per frame from useFrame.
-    const u = {
-      uMouseNdc: { value: new THREE.Vector2(2, 2) },
-      uMouseStrength: { value: 0 },
-      uTime: { value: 0 },
-      // Radius of influence in NDC. 0.55 = roughly a third of the
-      // viewport diagonal; tuned so the cursor only deforms locally,
-      // not the entire ring.
-      uFalloff: { value: 0.55 },
-      // Peak displacement in world units. Tuned with the torus tube
-      // radius (0.30): 0.13 is ~43% of the tube radius which reads as
-      // a strong, visible pull without breaking the silhouette.
-      uPullAmp: { value: 0.13 },
-      // Amplitude of the time-driven ripple on top of the pull. Small
-      // (0.025) so it adds life without becoming the dominant motion.
-      uRippleAmp: { value: 0.025 },
-    };
+  const pipeline = useMemo(() => {
+    const keyDir = new THREE.Vector3(-2.2, 1.6, 3.0).normalize();
+    const fillDir = new THREE.Vector3(2.0, -1.0, 2.5).normalize();
 
-    const mat = new THREE.MeshPhongMaterial({
-      color: 0x202020,
-      specular: 0xffffff,
-      shininess: 36,
+    const ringMaterial = new THREE.ShaderMaterial({
+      vertexShader: RING_VERT,
+      fragmentShader: RING_FRAG,
+      uniforms: {
+        uMouseNdc: { value: new THREE.Vector2(2, 2) },
+        uMouseStrength: { value: 0 },
+        uTime: { value: 0 },
+        // Radius of influence in NDC; ~a third of the viewport diagonal.
+        uFalloff: { value: 0.55 },
+        // Peak displacement in world units (~43% of the tube radius).
+        uPullAmp: { value: 0.13 },
+        // Time-driven ripple amplitude on top of the pull.
+        uRippleAmp: { value: 0.025 },
+        uKeyDir: { value: keyDir },
+        uFillDir: { value: fillDir },
+      },
     });
 
-    mat.onBeforeCompile = (shader) => {
-      // Hook our uniforms into the compiled program.
-      shader.uniforms.uMouseNdc = u.uMouseNdc;
-      shader.uniforms.uMouseStrength = u.uMouseStrength;
-      shader.uniforms.uTime = u.uTime;
-      shader.uniforms.uFalloff = u.uFalloff;
-      shader.uniforms.uPullAmp = u.uPullAmp;
-      shader.uniforms.uRippleAmp = u.uRippleAmp;
+    // One texel per glyph cell; nearest both ways (it's a data buffer).
+    const rt = new THREE.WebGLRenderTarget(4, 4, {
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      depthBuffer: true,
+      stencilBuffer: false,
+    });
 
-      // Inject uniform declarations + a helper at the top of the
-      // vertex shader.
-      shader.vertexShader = shader.vertexShader.replace(
-        "#include <common>",
-        /* glsl */ `
-          #include <common>
-          uniform vec2 uMouseNdc;
-          uniform float uMouseStrength;
-          uniform float uTime;
-          uniform float uFalloff;
-          uniform float uPullAmp;
-          uniform float uRippleAmp;
-        `,
-      );
+    const atlas = buildGlyphAtlas();
 
-      // Inject displacement at the begin_vertex chunk: the place
-      // three.js exposes for transforming the vertex position before
-      // projection. We project the un-displaced vertex to NDC, measure
-      // distance to the cursor in NDC space, then displace the local
-      // position along the surface normal by a smooth falloff.
-      shader.vertexShader = shader.vertexShader.replace(
-        "#include <begin_vertex>",
-        /* glsl */ `
-          #include <begin_vertex>
+    // Palette: the orange family already on the page. uBase is the
+    // brand accent (prop); shadow/lit/hot are fixed family stops.
+    // THREE.Color converts sRGB hex -> linear under ColorManagement;
+    // the post shader's colorspace_fragment converts back on output.
+    const postMaterial = new THREE.ShaderMaterial({
+      vertexShader: POST_VERT,
+      fragmentShader: POST_FRAG,
+      uniforms: {
+        uScene: { value: rt.texture },
+        uGlyphs: { value: atlas },
+        uGrid: { value: new THREE.Vector2(4, 4) },
+        uGlyphCount: { value: GLYPH_RAMP.length },
+        // LIGHT-PAGE palette direction: on the cool-white page, faces
+        // toward the key light ADVANCE (deep saturated orange) and
+        // shadow faces recede, but only to a mid peach: every band has
+        // to stay unmistakably orange or the ring loses its mass. (A
+        // near-page pale stop read as a washed gray band; "lit =
+        // lighter" before that washed the whole ring to white.)
+        uShadow: { value: new THREE.Color("#ef9663") },
+        uBase: { value: new THREE.Color(color) },
+        uLit: { value: new THREE.Color("#c44a12") },
+        uHot: { value: new THREE.Color("#ff7a30") },
+        uPaletteDir: { value: keyDir.clone() },
+      },
+      // Premultiplied output written raw into the alpha canvas.
+      blending: THREE.NoBlending,
+      depthTest: false,
+      depthWrite: false,
+    });
 
-          // Project the resting vertex to NDC so the cursor-distance
-          // calculation matches what the user actually sees on screen.
-          vec4 worldPos = modelMatrix * vec4(transformed, 1.0);
-          vec4 clipPos = projectionMatrix * viewMatrix * worldPos;
-          vec2 ndc = clipPos.xy / max(clipPos.w, 0.0001);
+    const postScene = new THREE.Scene();
+    const postQuad = new THREE.Mesh(
+      new THREE.PlaneGeometry(2, 2),
+      postMaterial,
+    );
+    postQuad.frustumCulled = false;
+    postScene.add(postQuad);
+    const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-          float d = distance(ndc, uMouseNdc);
-          // Smooth falloff: 1 at the cursor, 0 past uFalloff.
-          float fall = 1.0 - smoothstep(0.0, uFalloff, d);
-          // Sharpen so the peak feels concentrated. pow shapes the
-          // wave from a soft dome into a more focal pull.
-          fall = pow(fall, 1.6);
-
-          // Liquid breathing: a low-freq sin riding on the falloff so
-          // even the steady-state cursor proximity has subtle motion.
-          float ripple = sin(uTime * 1.8 + d * 9.0) * uRippleAmp * fall;
-
-          // Pull magnitude: direction is the outward surface normal in
-          // local space. This makes the torus tube swell outward toward
-          // the cursor zone, reading as a liquid bulge rather than a
-          // sideways shear.
-          float pull = uPullAmp * fall * uMouseStrength;
-
-          transformed += normal * (pull + ripple);
-        `,
-      );
-
-      // Stash so we have a direct handle to the live uniform refs
-      // post-compile (some three.js versions copy uniforms on compile).
-      mat.userData.shader = shader;
-    };
-
-    // Force a re-compile if onBeforeCompile changes (it won't here, but
-    // safe to set):
-    mat.customProgramCacheKey = () => "hero-ring-cursor-pull-v3";
-
-    return { material: mat, uniforms: u };
+    return { ringMaterial, rt, atlas, postMaterial, postScene, postQuad, postCam };
+    // color is captured at mount; the brand accent doesn't change live.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------------------------------------------------------------
-  // AsciiEffect lifecycle: instantiate once after we have gl + a DOM
-  // parent. Mount its DOM as a sibling of the <canvas>, hide the
-  // canvas itself (the WebGL output is consumed by AsciiEffect, the
-  // user sees only the glyph table).
-  // ---------------------------------------------------------------
+  // Keep the cell grid (and the pass-1 target) in lockstep with the
+  // canvas CSS size: one RT texel per CELL_PX square.
   useEffect(() => {
-    const canvasEl = gl.domElement;
-    const container = canvasEl.parentElement;
-    if (!container) return;
-
-    const ascii = new AsciiEffect(gl, "@%#*+=-:. ", {
-      invert: false,
-      resolution: 0.16,
-      scale: 1,
-    });
-    asciiRef.current = ascii;
-
-    const dom = ascii.domElement;
-    dom.style.position = "absolute";
-    dom.style.inset = "0";
-    dom.style.width = "100%";
-    dom.style.height = "100%";
-    dom.style.color = color;
-    dom.style.background = "transparent";
-    dom.style.userSelect = "none";
-    dom.style.pointerEvents = "none";
-    dom.style.opacity = "0"; // hidden until the entrance crossfades it in
-    container.appendChild(dom);
-
-    // Hide the raw WebGL canvas: AsciiEffect re-renders its content as
-    // text. Leaving the canvas visible would double the silhouette.
-    canvasEl.style.visibility = "hidden";
-
-    // Initial sizing.
-    ascii.setSize(container.clientWidth, container.clientHeight);
-    asciiSizeRef.current = {
-      w: container.clientWidth,
-      h: container.clientHeight,
-    };
-
-    return () => {
-      if (dom.parentNode === container) container.removeChild(dom);
-      canvasEl.style.visibility = "";
-      asciiRef.current = null;
-    };
-    // Re-create only if the color changes (cheap; AsciiEffect doesn't
-    // expose a color setter on its own).
-  }, [gl, color]);
-
-  // Keep AsciiEffect dimensions in sync with the R3F canvas size.
-  useEffect(() => {
-    const ascii = asciiRef.current;
-    if (!ascii) return;
-    ascii.setSize(size.width, size.height);
-    asciiSizeRef.current = { w: size.width, h: size.height };
-  }, [size.width, size.height]);
+    const gw = Math.max(4, Math.round(size.width / CELL_PX));
+    const gh = Math.max(4, Math.round(size.height / CELL_PX));
+    pipeline.rt.setSize(gw, gh);
+    (pipeline.postMaterial.uniforms.uGrid!.value as THREE.Vector2).set(gw, gh);
+  }, [size.width, size.height, pipeline]);
 
   // ---------------------------------------------------------------
   // Pointer tracking: document-level so the cursor influence reaches
-  // the ring even when the pointer is over UI siblings (the wordmark,
-  // the meta line). We convert client coords to NDC matched to the
-  // ring container, so distances in the vertex shader align with the
-  // ring's actual on-screen footprint.
+  // the ring even when the pointer is over UI siblings. Client coords
+  // are converted to NDC matched to the ring container.
   // ---------------------------------------------------------------
   useEffect(() => {
     const canvasEl = gl.domElement;
     const container = canvasEl.parentElement;
     if (!container) return;
 
-    // PERF: these are document-level listeners on a component that
-    // never unmounts, and getBoundingClientRect forces layout. Skip the
-    // read entirely while the ring is scrolled out (offscreenRef) — the
-    // uniforms it feeds aren't rendered then anyway. (A resize-cached
-    // rect would be wrong here: the rect is transform-dependent during
-    // the dive scale, so it must be read live while on screen.)
+    // PERF: skip the layout read entirely while the ring is scrolled
+    // out; the uniforms it feeds aren't rendered then anyway.
     const onMove = (e: PointerEvent) => {
       if (offscreenRef.current) return;
       const rect = container.getBoundingClientRect();
@@ -443,20 +499,15 @@ function RingScene({
   }, [gl]);
 
   // ---------------------------------------------------------------
-  // Frame loop: priority=1 takes ownership of the render loop, so we
-  // can substitute ascii.render() for the default gl.render().
+  // Frame loop: priority=1 takes ownership of the render loop so we
+  // can run the two manual passes instead of R3F's default render.
   // ---------------------------------------------------------------
   useFrame(() => {
-    const ascii = asciiRef.current;
     const torus = torusRef.current;
-    if (!ascii || !torus) return;
+    if (!torus) return;
 
-    // PERF: hero scrolled away → skip the spin + the AsciiEffect readback
-    // entirely. Keep lastTRef current so the spin doesn't jump when the
-    // user scrolls back up (dt is clamped, but advancing the timestamp
-    // avoids a large catch-up step). The priority-1 useFrame still
-    // suppresses R3F's default render, so returning here means this
-    // canvas does NO GPU work while the hero is out of view.
+    // Hero scrolled away -> no GPU work at all; keep the clock current
+    // so the spin doesn't jump on resume.
     if (offscreenRef.current) {
       lastTRef.current = performance.now() / 1000;
       wasOffscreenRef.current = true;
@@ -467,47 +518,23 @@ function RingScene({
     const dt = Math.min(0.05, now - lastTRef.current);
     lastTRef.current = now;
 
-    // On re-entry from off-screen, re-measure the LIVE container and
-    // resize ONLY if it actually changed while the ring was asleep
-    // (e.g. a window resize mid-page). The unconditional setSize that
-    // used to live here rebuilt the glyph-table DOM + cleared the
-    // readback canvas on EVERY boundary crossing, which is what made
-    // the ring visibly glitch/jump when scrolling back up to the hero.
-    if (wasOffscreenRef.current) {
-      const container = gl.domElement.parentElement;
-      if (container && container.clientWidth > 0 && container.clientHeight > 0) {
-        const cw = container.clientWidth;
-        const ch = container.clientHeight;
-        if (cw !== asciiSizeRef.current.w || ch !== asciiSizeRef.current.h) {
-          ascii.setSize(cw, ch);
-          asciiSizeRef.current = { w: cw, h: ch };
-        }
-      }
-    }
-
-    // Kick off the entrance only once the LOADING SCREEN is gone AND the
-    // composition is revealed: `loading-active` is removed (scrim cleared)
-    // ~0.72s after the composition reveals, which is LATER than is-settled
-    // (~0.6s) — so gating on is-settled started the entrance while the
-    // loading scrim was still up. Wait for both. The ignition blast uses
-    // the same gate so they fire together on a clean, fully-loaded hero.
+    // Kick off the entrance only once the LOADING SCREEN is gone AND
+    // the composition is revealed, plus a beat (ENTRANCE_DELAY), same
+    // gate as the ignition blast.
     if (INTRO_FREEZE == null) {
       if (entranceStartRef.current === null) {
         const gateMet =
           document.querySelector(".hero-composition.is-visible") &&
           !document.documentElement.classList.contains("loading-active");
         if (gateMet) {
-          // Wait ENTRANCE_DELAY past the loading screen clearing before
-          // igniting, so the blast lands a beat AFTER the load-in, not on it.
           if (gateMetAtRef.current === null) gateMetAtRef.current = now;
           if (now - gateMetAtRef.current >= ENTRANCE_DELAY) {
             entranceStartRef.current = now;
           }
         }
       }
-      // Nothing to show until the entrance has begun: skip the render so the
-      // ring never flashes face-on at full opacity before its crossfade, and
-      // the first entrance frame is guaranteed fresh.
+      // Nothing to show until the entrance begins: skip the render so
+      // the ring never flashes at full opacity before its crossfade.
       if (entranceStartRef.current === null) {
         wasOffscreenRef.current = true;
         return;
@@ -518,40 +545,30 @@ function RingScene({
       const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
       return t * t * (3 - 2 * t);
     };
-    // Entrance choreography (snappy, ~1.3s), driven entirely here on the
-    // fully-revealed hero:
-    //   crossfade in FACE-ON (0–0.35s) → hold a beat → TILT back to the
-    //   scene lean (0.4–1.1s).
-    // The SPIN stays at the normal resting rate the whole time — a fast
-    // spin-up read as broken/inconsistent, so the only "rotation" of the
-    // entrance is the tilt into the scene. The ignition blast plays over
-    // the same window.
-    const et = INTRO_FREEZE != null ? INTRO_FREEZE : now - entranceStartRef.current!;
+    // Entrance choreography (~1.3s): crossfade in FACE-ON (0-0.35s),
+    // hold a beat, TILT back to the scene lean (0.4-1.1s). Spin stays
+    // at the resting rate throughout.
+    const et =
+      INTRO_FREEZE != null ? INTRO_FREEZE : now - entranceStartRef.current!;
     let ringOpacity: number, tiltT: number;
     if (reducedMotion) {
-      ringOpacity = 1; tiltT = 1;       // land at rest immediately
+      ringOpacity = 1;
+      tiltT = 1; // land at rest immediately
     } else {
-      // Ring crossfades in face-on early (0–0.35s) over the blast, then
-      // rotates into the scene lean (0.4–1.1s). (Pulled ~0.5s sooner than
-      // the prior 0.35–0.7s delay per feedback.)
       ringOpacity = ss(0.0, 0.35, et);
       tiltT = ss(0.4, 1.1, et);
     }
-    const entering = INTRO_FREEZE != null || et < 1.3;
 
-    // Apply orientation (face-on → resting lean) + the crossfade opacity.
+    // Apply orientation + the crossfade opacity (CSS on the canvas).
     const tg = tiltGroupRef.current;
     if (tg) tg.rotation.set(tiltT * TILT_X, 0, tiltT * TILT_Z);
-    (ascii.domElement as HTMLElement).style.opacity = ringOpacity.toFixed(3);
+    gl.domElement.style.opacity = ringOpacity.toFixed(3);
 
-    // Spin on the torus's local Y axis — constant normal rate (no spin-up).
+    // Spin on the torus's local Y axis.
     const spinPerSec = (Math.PI * 2) / spinDuration;
     torus.rotation.y += spinPerSec * dt;
 
-    // Viscous cursor lerp: uniform inertia is what makes the deformation
-    // feel liquid (drag behind the cursor, settles back smoothly when
-    // the cursor stops). Frame-rate independent: ≈ the old 0.12 / 0.08
-    // per-frame factors at 60Hz, which dragged ~2x faster on 120Hz.
+    // Viscous cursor lerp (frame-rate independent).
     mouseSmoothedRef.current.lerp(
       mouseTargetRef.current,
       1 - Math.exp(-dt * 7.7),
@@ -560,71 +577,45 @@ function RingScene({
       (mouseStrengthTargetRef.current - mouseStrengthSmoothedRef.current) *
       (1 - Math.exp(-dt * 5.0));
 
-    // Push to the live shader uniforms. We read from material.userData
-    // .shader if available (preferred: that's the post-compile copy),
-    // else fall back to the original `uniforms` object that we wired
-    // up in onBeforeCompile.
-    const shader =
-      (material.userData.shader as { uniforms: typeof uniforms } | undefined) ??
-      { uniforms };
-    shader.uniforms.uMouseNdc.value.copy(mouseSmoothedRef.current);
-    shader.uniforms.uMouseStrength.value = mouseStrengthSmoothedRef.current;
-    shader.uniforms.uTime.value = now;
+    const u = pipeline.ringMaterial.uniforms;
+    (u.uMouseNdc!.value as THREE.Vector2).copy(mouseSmoothedRef.current);
+    u.uMouseStrength!.value = mouseStrengthSmoothedRef.current;
+    u.uTime!.value = now;
 
-    // Render via AsciiEffect, NOT gl.render: this produces the glyph table
-    // in the DOM. priority=1 suppresses R3F's default render.
-    //
-    // PERF: ascii.render() does a synchronous GPU→CPU readback + glyph
-    // rebuild; normally capped at 30fps via the accumulator. We BYPASS the
-    // cap when (a) resuming from offscreen — the first visible frame must be
-    // fresh or the user sees the stale pre-scroll frame flash on the way
-    // back up; and (b) mid-entrance — the tilt/spin-up needs every frame.
-    const resuming = wasOffscreenRef.current;
     wasOffscreenRef.current = false;
-    const forceRender = resuming || entering;
-    asciiDtAccRef.current += dt;
-    if (forceRender) {
-      asciiDtAccRef.current = 0;
-      ascii.render(scene, camera);
-    } else if (asciiDtAccRef.current >= 1 / 30) {
-      asciiDtAccRef.current -= 1 / 30;
-      ascii.render(scene, camera);
-    }
+
+    // PASS 1: torus -> cell-grid data target.
+    gl.setRenderTarget(pipeline.rt);
+    gl.render(scene, camera);
+    // PASS 2: glyph-grid dither -> canvas.
+    gl.setRenderTarget(null);
+    gl.render(pipeline.postScene, pipeline.postCam);
   }, 1);
 
-  // Cleanup the geometry/material on unmount (memoised material isn't
-  // automatically disposed by R3F since we created it imperatively).
+  // Dispose the imperative pipeline on unmount.
   useEffect(() => {
     return () => {
-      material.dispose();
+      pipeline.ringMaterial.dispose();
+      pipeline.postMaterial.dispose();
+      pipeline.postQuad.geometry.dispose();
+      pipeline.rt.dispose();
+      pipeline.atlas.dispose();
     };
-  }, [material]);
+  }, [pipeline]);
 
   return (
-    <>
-      {/* Lighting: same key/fill/ambient as the vanilla version. The
-          ASCII effect quantises brightness into glyph density so we
-          want a strong gradient across the torus surface. */}
-      <directionalLight position={[-2.2, 1.6, 3.0]} intensity={2.4} />
-      <directionalLight position={[2.0, -1.0, 2.5]} intensity={0.9} />
-      <ambientLight intensity={0.18} />
-
-      {/* Tilt group + torus: torus spins on local Y inside the tilted
-          parent so the silhouette actually changes over time (spinning
-          a torus on its own symmetry axis would be invisible). */}
-      {/* Starts face-on (0,0,0); the entrance in useFrame tilts it back to
-          the resting lean (TILT_X / TILT_Z) as the ring crossfades in. */}
-      <group ref={tiltGroupRef} rotation={[0, 0, 0]}>
-        <mesh ref={torusRef} material={material}>
-          {/* Mobile: 24×160 vs desktop 40×260 segments. The torus is
-              rasterised then re-quantised into ASCII cells (resolution
-              0.16), so the coarser mesh is visually indistinguishable
-              while cutting the per-frame vertex-displacement cost ~63%. */}
-          <torusGeometry
-            args={IS_SMALL_SCREEN ? [1.25, 0.3, 24, 160] : [1.25, 0.3, 40, 260]}
-          />
-        </mesh>
-      </group>
-    </>
+    /* Tilt group + torus: torus spins on local Y inside the tilted
+       parent so the silhouette actually changes over time. Starts
+       face-on; the entrance tilts it back to the resting lean.
+       DELIBERATELY LOW TESSELLATION: with flat per-face normals the
+       facets are the visual unit; ~16 degree facets give each face a
+       readable palette band of its own. */
+    <group ref={tiltGroupRef} rotation={[0, 0, 0]}>
+      <mesh ref={torusRef} material={pipeline.ringMaterial}>
+        <torusGeometry
+          args={IS_SMALL_SCREEN ? [1.25, 0.3, 16, 88] : [1.25, 0.3, 22, 120]}
+        />
+      </mesh>
+    </group>
   );
 }

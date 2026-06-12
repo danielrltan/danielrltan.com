@@ -167,13 +167,10 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 0;
-  /* Resting opacity. The ring's reveal is now JS-driven (HeroAsciiRing's
-     entrance: crossfade-in face-on → tilt → spin-up, gated on
-     phase=settled), via the AsciiEffect DOM opacity, so the old CSS
-     fade-in here (which fought the entrance + played under the
-     composition's own 0→1 fade) is removed. The glyph DOM starts at
-     opacity 0 and JS fades it in, so the wrap can sit at its resting
-     0.55. */
+  /* Resting opacity. The ring's reveal is JS-driven (HeroAsciiRing's
+     entrance: crossfade-in face-on → tilt, gated on the loading screen
+     clearing) via the canvas element's opacity, so the wrap sits at
+     its resting 0.55. */
   opacity: 0.55;
 }
 
@@ -183,18 +180,10 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   width: 100%;
   height: 100%;
   pointer-events: none;
-  color: var(--accent);
-  font-family: "Courier New", monospace;
-  font-weight: 700;
   /* No scroll-bound transform/filter here. The composition root
      handles the dive-in transform; the ring moves as part of the
-     same rigid body. */
-}
-.hero-ascii-ring > div,
-.hero-ascii-ring table,
-.hero-ascii-ring td {
-  background: transparent !important;
-  color: inherit !important;
+     same rigid body. (The glyph rendering is a WebGL post-process now;
+     the old AsciiEffect <table> styling is gone with it.) */
 }
 
 @media (prefers-reduced-motion: reduce) {
