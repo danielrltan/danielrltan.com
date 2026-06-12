@@ -195,16 +195,16 @@ export function About() {
   );
   // Reduced motion: snap the panel fully in (no slide / fade-in).
   const panelEased = reducedMotion ? 1 : 1 - Math.pow(1 - panelSlide, 3);
-  /* Reveal axis: a gentle rise on every breakpoint. The old desktop
-     full-width translateX slide belonged to the retired sidebar panel
-     (the content is now an uncontained overlay set into the page's
-     negative space — sweeping it across the room read as a drawer).
-     Desktop rises a touch less than mobile since its pieces are
-     corner-anchored rather than a stacked card. */
+  /* Slide axis: desktop panel enters from the right (translateX) over the
+     full-bleed room; mobile (room canvas faded out, see about.css note)
+     gently rises (translateY) into a top-anchored, self-contained section.
+     Distance is a fraction of the element box so it tracks the panel size. */
   const panelOffset = (1 - panelEased) * 100;
+  /* Mobile rises a modest fraction of its own height (a gentle lift, not a
+     full-screen sweep); desktop slides the full panel width from the right. */
   const panelTransform = mobile
     ? `translate3d(0, ${panelOffset * 0.18}%, 0)`
-    : `translate3d(0, ${panelOffset * 0.06}%, 0)`;
+    : `translate3d(${panelOffset}%, 0, 0)`;
   const ledeRevealed = reducedMotion || progress >= ledeAt;
   const rowRevealed = (at: number) => reducedMotion || progress >= at;
 

@@ -73,99 +73,85 @@
   display: none;
 }
 
-/* DESKTOP REDESIGN: no panel. The previous right-rail "newsprint
-   sheet" (solid bg + spine rule + paper grain) read as a dated
-   slide-out sidebar (user: "super vibe coded, outdated in a bad
-   way"). Exaggerated-minimal replacement: the content has NO
-   container at all — the room stays full-bleed and the type is set
-   directly into the page's negative space. Lede = oversized
-   statement in the clear top-right; key/value rows = one horizontal
-   spec strip under a single hairline along the bottom-right, beside
-   the "About." wordmark. Content reads as page architecture, not as
-   a panel floating over it. */
+/* Override the default `.portfolio-col` 50vw-right-margin so the
+   About text can use the full viewport, but pinned to the right
+   third with a slight backdrop-blur so it reads cleanly on top of
+   the visible room behind. The content forms a sidebar-ish editorial
+   panel rather than an opaque half-column. */
 .portfolio-about .about-col {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  width: auto;
-  /* The shared .portfolio-col base caps width at 880px; this col is a
-     full-viewport positioning canvas, so the cap must go or every
-     right-anchored child resolves against a phantom 880px box. */
-  max-width: none;
-  padding: 0;
-  display: block;
-  box-sizing: border-box;
+  margin-left: auto;
+  width: min(540px, 42vw);
+  margin-right: 5vw;
+  padding-top: 9vh;
+  padding-bottom: 6vh;
+  display: flex;
+  flex-direction: column;
   will-change: transform, opacity;
-  background: none;
-  border: none;
-  /* The col is a full-viewport positioning canvas; only its children
-     paint, so it must not block the room behind it. (Links inside
-     re-enable pointer events via .portfolio-col defaults on text.) */
-  pointer-events: none;
-}
-.portfolio-about .about-col a {
-  pointer-events: auto;
+  /* Solid wrapper-bg panel with a sharp left edge, no gradient
+     fade-in. User's note on the previous gradient: "looks like a
+     shitty gradient, you can do better." Editorial newsprint-style
+     side panel: clean hard edge, light grain via a subtle pseudo-
+     element noise, a thin orange spine rule for editorial structure. */
+  background: var(--wrapper-bg, #eef0f3);
+  border-left: 1px solid rgba(13, 14, 16, 0.08);
+  padding-left: 42px;
+  padding-right: 42px;
+  box-sizing: border-box;
+  position: relative;
 }
 
-/* Atmosphere scrims: the room render runs nearly full-bleed behind the
-   type, so the lede corner and the bottom spec band each get a wide
-   FEATHERED cool-white wash (same language as .hero-bottom-scrim) that
-   quiets the render directly under the text and dissolves long before
-   it could read as a panel edge. The room's centre (bed/desk) stays
-   untouched. */
+/* Thin orange spine on the left edge: picks up the brand accent
+   and reads as a deliberate editorial mark (folio rule) instead of
+   a fade-in gradient. */
 .portfolio-about .about-col::before {
   content: "";
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      ellipse 62vw 56vh at calc(100% - 22vw) 14vh,
-      rgba(238, 240, 243, 0.97) 0%,
-      rgba(238, 240, 243, 0.86) 42%,
-      rgba(238, 240, 243, 0) 74%
-    ),
-    linear-gradient(
-      to top,
-      rgba(238, 240, 243, 0.92) 0%,
-      rgba(238, 240, 243, 0.6) 14vh,
-      rgba(238, 240, 243, 0) 30vh
-    );
+  left: -1px;
+  top: 9vh;
+  bottom: 9vh;
+  width: 2px;
+  background: var(--accent, #e87040);
+  /* Tapered ends: masks the rule to fade out at top + bottom so it
+     doesn't read as a clinical border. */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 8%,
+    black 92%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 8%,
+    black 92%,
+    transparent 100%
+  );
 }
 
-/* Frosted zones hugging the text blocks: a blurred, feather-masked
-   backdrop patch behind the lede and the spec strip. The blur reads as
-   depth-of-field fog over the render (no hard edge anywhere, so it
-   never becomes a card), and it guarantees legibility at widths where
-   the room runs underneath the full text block — the wash alone left
-   the lede sitting on raw render (user: "why is it completely
-   transparent?"). z-index:1 on the hosts keeps each ::before inside
-   its own stacking context, under its text, above the wash. */
-.portfolio-about .about-lede,
-.portfolio-about .about-grid {
-  z-index: 1;
-}
-.portfolio-about .about-lede::before,
-.portfolio-about .about-grid::before {
+/* Paper grain over the panel: very subtle, ~3% opacity speckled
+   noise. Sells the "newsprint sheet" feel against the flat cream. */
+.portfolio-about .about-col::after {
   content: "";
   position: absolute;
-  inset: -30px -36px;
-  z-index: -1;
+  inset: 0;
   pointer-events: none;
-  background: rgba(238, 240, 243, 0.58);
-  -webkit-backdrop-filter: blur(18px) saturate(108%);
-  backdrop-filter: blur(18px) saturate(108%);
-  /* Feather every edge so the patch dissolves into the wash. */
-  mask-image: radial-gradient(
-    ellipse 100% 100% at 50% 50%,
-    black 52%,
-    transparent 98%
+  background-image: radial-gradient(
+    circle at center,
+    rgba(13, 14, 16, 0.12) 0.5px,
+    transparent 1px
   );
-  -webkit-mask-image: radial-gradient(
-    ellipse 100% 100% at 50% 50%,
-    black 52%,
-    transparent 98%
-  );
+  background-size: 4px 4px;
+  background-position: 0 0;
+  opacity: 0.45;
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+
+/* Lift the actual content above the grain pseudo-element. */
+.portfolio-about .about-col > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* DOM-real <h2> for assistive tech + SEO. Visually hidden because the
@@ -184,17 +170,13 @@
   border: 0;
 }
 
-/* Wayfinding index: small mono line floating at the top-right, where
-   the lede statement hangs below it. A short right-anchored hairline
-   under it gives the corner a machined edge without boxing anything. */
+/* Spec-sheet header: wayfinding index over a hairline rule. The title
+   block of the panel; gives the sheet a machined top edge instead of a
+   lone floating index line. */
 .about-spec-header {
-  position: absolute;
-  top: 9vh;
-  right: 6vw;
-  width: min(620px, 44vw);
   padding-bottom: var(--space-3, 12px);
   border-bottom: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
-  text-align: left;
+  margin-bottom: var(--space-6, 32px);
 }
 /* The shared .section-index rule adds an 18px bottom margin for its
    standalone use in other sections; inside the header the rule above
@@ -203,26 +185,22 @@
   margin-bottom: 0;
 }
 
-/* Lede: the statement. Oversized display type set directly on the page
-   in the top-right negative space beside the room — no card behind it.
-   The size jump (vs the old 20-28px panel paragraph) is what carries
-   the section now that the container is gone. */
+/* Lede paragraph: reveals at the start of the pin. */
 .about-lede {
-  position: absolute;
-  top: calc(9vh + 64px);
-  right: 6vw;
-  width: min(620px, 44vw);
   font-family: var(--font-display, "Geist", "Inter", sans-serif);
-  font-size: clamp(24px, 2.5vw, 38px);
-  line-height: 1.22;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+  font-size: var(--fs-lead, clamp(20px, 2.1vw, 28px));
+  line-height: 1.35;
+  font-weight: 400;
+  letter-spacing: -0.015em;
   color: var(--wrapper-ink, #0d0e10);
-  margin: 0;
-  /* Avoid ragged orphans on the editorial measure. */
+  margin: 0 0 var(--space-6, 32px);
+  max-width: 540px;
+  /* Avoid ragged orphans on the narrow editorial measure. */
   text-wrap: pretty;
   opacity: 0;
   transform: translateY(14px);
+  /* 700ms one-shot intro stays literal (off-spine); only the easing
+     folds to the shared --ease-soft token. */
   transition:
     opacity 700ms var(--ease-soft),
     transform 700ms var(--ease-soft);
@@ -236,58 +214,42 @@
   font-weight: 600;
 }
 
-/* Key/value rows: one horizontal SPEC STRIP along the bottom, to the
-   right of the "About." wordmark — four columns under a single shared
-   hairline, like the spec footer on a hardware sheet. Replaces the
-   stacked sidebar rows. */
+/* Description list of key/value rows. Reset the UA <dl> margin so it
+   doesn't add a phantom gap below the lede. */
 .about-grid {
-  position: absolute;
-  right: 6vw;
-  bottom: 7vh;
-  /* 54vw keeps ~60px clearance from the bottom-left "About." wordmark
-     (8.2vw type, ~430px wide) at every desktop width. */
-  width: min(900px, 54vw);
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0 clamp(20px, 2.4vw, 40px);
-  border-top: 1px solid rgba(13, 14, 16, 0.14);
-  padding-top: clamp(14px, 2vh, 20px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 520px;
   margin: 0;
-  max-width: none;
 }
 
-/* One spec column: numeral + label share the top line, value beneath
-   spanning the column. Reveal rises (translateY) so the strip staggers
-   left-to-right along the rule. */
+/* Per-row reveal: each row at its own pin-progress threshold.
+   Spec-sheet anatomy: numeral | label | value. The numeral column uses
+   the same "01"-chrome as the Mac project tiles so the whole site reads
+   as one numbering system. */
 .about-row {
   display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  gap: 10px 10px;
+  grid-template-columns: 30px 96px 1fr;
+  gap: var(--space-4h, 20px);
   align-items: baseline;
-  padding: 0;
-  border-bottom: none;
+  /* Row spacing scales with viewport height so the few rows spread out
+     evenly to fill the panel instead of bunching at the top with dead
+     space below. Floor keeps it tidy on short screens. */
+  padding: clamp(18px, 3.6vh, 48px) 0;
+  border-bottom: 1px solid rgba(13, 14, 16, 0.08);
   opacity: 0;
-  transform: translateY(12px);
+  transform: translateX(16px);
   transition:
     opacity var(--t-slow, 540ms) var(--ease-soft),
     transform var(--t-slow, 540ms) var(--ease-soft);
 }
-.about-row-num {
-  grid-column: 1;
-  grid-row: 1;
-}
-.about-row .about-label {
-  grid-column: 2;
-  grid-row: 1;
-}
-.about-row .about-value {
-  grid-column: 1 / -1;
-  grid-row: 2;
-}
 .about-row.is-revealed {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateX(0);
+}
+.about-row:last-of-type {
+  border-bottom: none;
 }
 
 /* Row numeral: small accent-toward-ink mono digits. --accent-text (the
@@ -355,19 +317,18 @@
    (Lower bound moved 721 → 769: the room canvas hides below 768 on the
    App.tsx choreography, so ≤768 uses the mobile build-out below.) */
 @media (max-width: 900px) and (min-width: 769px) {
-  .about-spec-header,
-  .about-lede {
-    width: min(560px, 54vw);
+  .portfolio-about .about-col {
+    width: min(560px, 70vw);
+    margin-right: auto;
+    margin-left: auto;
+    padding-top: 6vh;
   }
   .about-lede {
-    font-size: clamp(20px, 3vw, 28px);
+    font-size: clamp(18px, 4vw, 22px);
   }
-  /* Spec strip folds 4 → 2x2 and narrows so it clears the bottom-left
-     "About." wordmark at this width. */
-  .about-grid {
-    width: min(460px, 54vw);
-    grid-template-columns: repeat(2, 1fr);
-    gap: 18px clamp(20px, 3vw, 36px);
+  .about-row {
+    grid-template-columns: 26px 80px 1fr;
+    gap: var(--space-4, 16px);
   }
   /* Tablets (e.g. iPad portrait at 768px) are touch devices too, so the
      row links need the same ≥44px hit area as phones. The desktop base
@@ -411,14 +372,6 @@
   }
 
   .portfolio-about .about-col {
-    /* Back into normal flow: the desktop base is now an absolute
-       full-viewport positioning canvas with pointer-events:none; the
-       phone layout is a plain stacked document. */
-    position: relative;
-    inset: auto;
-    pointer-events: auto;
-    display: flex;
-    flex-direction: column;
     width: 100%;
     margin: 0;
     min-height: 100svh;
@@ -435,19 +388,9 @@
     /* Flat page ground: clean + legible, matches the design system. */
     background: var(--bg-page, #eef0f3);
   }
-  /* Desktop's absolutely-placed corner pieces return to the flow. */
-  .about-spec-header,
-  .portfolio-about .about-lede,
-  .about-grid {
-    position: static;
-    inset: auto;
-    width: auto;
-  }
-  /* No room behind the phone layout; the atmosphere scrim and the
-     frosted text patches are dead weight on the flat page ground. */
+  /* Spine rule + paper grain were tuned for the desktop rail; drop them. */
   .portfolio-about .about-col::before,
-  .portfolio-about .about-lede::before,
-  .portfolio-about .about-grid::before {
+  .portfolio-about .about-col::after {
     display: none;
   }
 
@@ -494,26 +437,14 @@
 
   .about-grid {
     max-width: none;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    border-top: none;
-    padding-top: 0;
-    margin: 0;
   }
 
   .about-row {
-    /* Stack label over value (flex column ignores the desktop strip's
-       grid-area assignments) so the value gets the full width and never
-       truncates a link/email. */
-    display: flex;
-    flex-direction: column;
+    /* Stack label over value on the narrowest phones so the value gets
+       the full width and never truncates a link/email. */
+    grid-template-columns: 1fr;
     gap: var(--space-1, 4px);
     padding: var(--space-3, 12px) 0;
-    border-bottom: 1px solid rgba(13, 14, 16, 0.08);
-  }
-  .about-row:last-of-type {
-    border-bottom: none;
   }
 
   /* The numeral column is desktop spec-sheet chrome; in the stacked
