@@ -558,15 +558,23 @@ export function Macintosh() {
         const barH = 0.135 * h;
         const closeSz = 0.42 * barH;
         const btnH = 0.085 * h;
+        // BULGE COMPENSATION: the CRT shader barrel-distorts its sample
+        // space (k=0.12), so painted content near the edges appears
+        // pulled ~1-2% toward the screen centre relative to this flat
+        // rect. Nudge each hotspot the same direction so it stays
+        // centred on its painted face: close box (top-left) shifts
+        // right+down, link button (bottom-left) shifts right+up.
+        const bx = 0.007 * w;
+        const by = 0.010 * h;
         const closeStyle: React.CSSProperties = {
-          left: x + pad,
-          top: y + (barH - closeSz) / 2,
+          left: x + pad + bx,
+          top: y + (barH - closeSz) / 2 + by,
           width: Math.max(closeSz, 30),
           height: Math.max(closeSz, 30),
         };
         const linkStyle: React.CSSProperties = {
-          left: x + pad,
-          top: y + h - pad - btnH,
+          left: x + pad + bx,
+          top: y + h - pad - btnH - by,
           height: Math.max(btnH, 34),
           minWidth: 132,
         };

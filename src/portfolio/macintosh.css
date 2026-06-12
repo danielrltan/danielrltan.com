@@ -428,13 +428,20 @@
   z-index: 56;
   pointer-events: none;
 }
-.mac-crt-close,
-.mac-crt-link {
+/* Scoped under .mac-crt-controls (0,2,0): the shared
+   `.portfolio-section a` rule (0,1,1) silently BEAT the bare
+   `.mac-crt-link` (0,1,0), painting the "invisible" hotspot as a
+   visible orange underlined "Source" floating beside the CRT's
+   painted button (user screenshot). Same specificity bug class as the
+   Other titles. */
+.mac-crt-controls .mac-crt-close,
+.mac-crt-controls .mac-crt-link {
   position: absolute;
   /* Transparent: the CRT canvas paints the visible face; this is the
      clickable hotspot sitting on top of it. */
   color: transparent;
   background: transparent;
+  text-decoration: none;
   border: 0;
   border-radius: 0; /* sharp corners, rigid OS */
   padding: 0;
