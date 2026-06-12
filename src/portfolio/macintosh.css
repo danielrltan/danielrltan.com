@@ -230,6 +230,19 @@
   top: 9vh;
   right: 3vw;
   z-index: 2;
+  /* Bumped 260 → 300px AND, critically, reset the .portfolio-col
+     inheritance: that shared class adds margin-left:50vw + padding:0 8vw
+     + width:50vw, none of which this absolute top-right rail wants. The
+     leftover 8vw padding was eating the entire 260px box (content width
+     collapsed to ~0), forcing the blurb to wrap one word per line; the
+     reported bug, present at EVERY width because the override never
+     neutralized the gutter. (A later edit accidentally moved this reset
+     block into .is-detail-open, which let margin-left:50vw through and
+     CENTERED the header — user: move it back to the corner.) */
+  width: 300px;
+  margin: 0;
+  padding: 0;
+  text-align: right;
   /* Fades while a project detail is open (see .is-detail-open below):
      during the dolly-in the header floated over the black CRT edge in
      the corner, barely legible — read as broken. */
@@ -238,23 +251,19 @@
 .mac-col.is-detail-open {
   opacity: 0;
   pointer-events: none;
-  /* Bumped 260 → 300px AND, critically, reset the .portfolio-col
-     inheritance: that shared class adds margin-left:50vw + padding:0 8vw
-     + width:50vw, none of which this absolute top-right rail wants. The
-     leftover 8vw padding was eating the entire 260px box (content width
-     collapsed to ~0), forcing the blurb to wrap one word per line; the
-     reported bug, present at EVERY width because the override never
-     neutralized the gutter. */
-  width: 300px;
-  margin: 0;
-  padding: 0;
-  pointer-events: none;
-  text-align: right;
 }
 .mac-col .section-marker,
 .mac-col .section-index,
 .mac-col h2 {
   pointer-events: auto;
+}
+/* Children must not punch through the faded parent (child
+   pointer-events:auto overrides a parent's none — the same invisible
+   hit-island bug the hero wordmark had). */
+.mac-col.is-detail-open .section-marker,
+.mac-col.is-detail-open .section-index,
+.mac-col.is-detail-open h2 {
+  pointer-events: none;
 }
 
 /* Smaller marker in the Mac section; the giant "02" competes with
