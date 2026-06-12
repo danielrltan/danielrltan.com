@@ -230,6 +230,14 @@
   top: 9vh;
   right: 3vw;
   z-index: 2;
+  /* Fades while a project detail is open (see .is-detail-open below):
+     during the dolly-in the header floated over the black CRT edge in
+     the corner, barely legible — read as broken. */
+  transition: opacity var(--t-med, 400ms) ease;
+}
+.mac-col.is-detail-open {
+  opacity: 0;
+  pointer-events: none;
   /* Bumped 260 → 300px AND, critically, reset the .portfolio-col
      inheritance: that shared class adds margin-left:50vw + padding:0 8vw
      + width:50vw, none of which this absolute top-right rail wants. The

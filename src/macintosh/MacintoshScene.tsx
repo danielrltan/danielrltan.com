@@ -499,6 +499,12 @@ const CARD_ACCENT = "#e87040";
    Sizes at call sites run ~15-25% larger than the old Geist values:
    VT323 is narrow, so equal px reads lighter. */
 const PIXEL_FONT = "'VT323', 'Courier New', monospace";
+/* Reading-body face for PARAGRAPHS on the CRT (the project blurb).
+   VT323 at ~17px was genuinely hard to read (user) — pixel faces are
+   display/label voices, not body voices. Geist is already loaded
+   site-wide, so the canvas can rasterize it; labels/meta/chips stay
+   pixel for the system-voice contrast. */
+const BODY_FONT = "'Geist', 'Inter', system-ui, sans-serif";
 
 /* Canvas rasterizes whatever font is AVAILABLE at draw time, so a
    texture painted before the VT323 webfont arrives bakes the fallback
@@ -698,7 +704,22 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
         //   3. RGB chroma split that widens with the glitch;
         //   4. a broadband noise burst.
         // All of it displaces/samples the screen's OWN pixels.
-        vec2 uv = vUv;
+
+        // SCREEN BULGE: barrel-distort the sample space so the picture
+        // curves like tube glass — the image swells at centre and its
+        // edges pull in, leaving a thin curved black bezel at the
+        // corners of the flat quad. k kept subtle (corner overshoot
+        // ~3%) so the DOM click hotspots (positioned on the FLAT rect)
+        // stay within a few px of the painted UI.
+        vec2 cb = vUv - 0.5;
+        float r2 = dot(cb, cb);
+        vec2 uv = 0.5 + cb * (1.0 + 0.12 * r2);
+        // Bezel mask: anything sampled past the texture edge is tube
+        // rim, fading over ~1% so the curve reads smooth.
+        vec2 edgeD = abs(uv - 0.5);
+        float outside = max(edgeD.x, edgeD.y) - 0.5;
+        float bezel = 1.0 - smoothstep(0.0, 0.012, outside);
+
         if (uGlitch > 0.001) {
           float row = floor(uv.y * 36.0);
           float h = fract(sin(row * 91.7 + floor(uTime * 24.0) * 7.3) * 43758.5453);
@@ -721,7 +742,9 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
         // a bright line core with a soft DARK SEAM between rows, the
         // way a real tube's beam rows actually read. The whole raster
         // crawls slowly downward so it reads as live scan, not print.
-        float line = vUv.y * 96.0 + uTime * 0.8;
+        // Raster follows the BULGED beam-space so the scanlines curve
+        // with the glass like a real tube.
+        float line = uv.y * 96.0 + uTime * 0.8;
         float ph = fract(line);
         float scan = 0.70 + 0.30 *
           (smoothstep(0.03, 0.36, ph) * (1.0 - smoothstep(0.64, 0.97, ph)));
@@ -735,7 +758,7 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
 
         // APERTURE GRILLE: faint vertical RGB phosphor triads. Pure
         // chroma texture (no geometry), reads as tube glass up close.
-        float gx = vUv.x * 320.0 * 6.2832;
+        float gx = uv.x * 320.0 * 6.2832;
         vec3 triad = vec3(
           0.96 + 0.04 * cos(gx),
           0.96 + 0.04 * cos(gx + 2.094),
@@ -745,7 +768,7 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
         // REFRESH BAND: a soft bright bar rolling DOWN the face every
         // ~6s (doubled presence vs the old 5%), with a faint dark
         // retrace shadow trailing just behind it.
-        float roll = fract(vUv.y - uTime * 0.16);
+        float roll = fract(uv.y - uTime * 0.16);
         float band = 1.0 + 0.10 * exp(-pow((roll - 0.5) * 8.0, 2.0))
                          - 0.045 * exp(-pow((roll - 0.62) * 12.0, 2.0));
 
@@ -762,7 +785,8 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
         // touch of unmodulated bleed keeps text legible through the
         // raster, like real phosphor glow spilling between rows.
         outCol += col * 0.10;
-        gl_FragColor = vec4(outCol, uOpacity);
+        // Tube rim: black out the curved over-edge region.
+        gl_FragColor = vec4(outCol * bezel, uOpacity);
         #include <colorspace_fragment>
       }
     `,
@@ -1444,7 +1468,7 @@ function drawProjectDetail(
   let lineH = Math.round(bodySize * 1.5); // airy, editorial leading
   let blurbLines: string[] = [];
   for (;;) {
-    ctx.font = `${bodySize}px ${PIXEL_FONT}`;
+    ctx.font = `${bodySize}px ${BODY_FONT}`;
     blurbLines = wrapText(ctx, project.blurb, textMaxW);
     lineH = Math.round(bodySize * 1.5);
     if (blurbLines.length * lineH <= availH || bodySize <= minBodySize) break;

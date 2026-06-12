@@ -424,7 +424,13 @@ export function Macintosh() {
           ))}
         </ul>
       )}
-      <div className="portfolio-col mac-col">
+      {/* Editorial header fades out while a project detail is open:
+          the camera dollies into the CRT and the header was left
+          floating over the black screen edge in the top-right corner —
+          barely legible, read as a glitch (user). */}
+      <div
+        className={`portfolio-col mac-col${selected ? " is-detail-open" : ""}`}
+      >
         <span className="section-marker">02</span>
         <span className="section-index">02 / 06 &middot; Stack + Projects</span>
         <h2>
