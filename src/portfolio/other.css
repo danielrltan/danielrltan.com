@@ -201,13 +201,15 @@
 
 /* Title: "Some interests." OffBit pixel display (sitewide big-title
    voice). */
-.other-title {
+/* Scoped under .portfolio-other (0,2,0): the shared `.portfolio-section
+   h2 { margin: 0 0 48px }` rule is class+element (0,1,1) and silently
+   beat the bare `.other-title` (0,1,0) — the authored eyebrow gap NEVER
+   applied, which is the cramped header the user flagged. */
+.portfolio-other .other-title {
   grid-column: 1;
   grid-row: 2;
-  /* Tightened (16px → 6px) for the pixel face: OffBit carries a lot of
-     internal headroom in its em box, so the old gap read as the eyebrow
-     floating disconnected above the title. */
-  margin: 6px 0 0;
+  /* 14px: eyebrow-to-title rebalance (user: "a bit tight"). */
+  margin: 14px 0 0;
   font-family: var(--font-pixel);
   font-weight: 700;
   font-size: clamp(50px, 7vw, 118px);
@@ -551,11 +553,12 @@
 .other-gallery-tag {
   color: var(--accent-text);
 }
-.other-gallery-title {
+/* Scoped for the same specificity reason as .other-title above. */
+.portfolio-other .other-gallery-title {
   grid-column: 1;
   grid-row: 2;
-  /* Tightened to match .other-title (pixel-face headroom, see above). */
-  margin: 6px 0 0;
+  /* Matches .other-title's rebalanced 14px (see above). */
+  margin: 14px 0 0;
   /* OffBit pixel display (sitewide big-title voice). */
   font-family: var(--font-pixel);
   font-weight: 700;
@@ -701,6 +704,20 @@
   overflow: hidden;
 }
 
+/* Cover photo inside the card: real <img> (not background-image) so
+   loading="lazy" / decoding="async" apply — the background variant
+   decoded every WebP synchronously at section entry (scroll jank). */
+.other-train-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
 .other-train-card-label {
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
@@ -800,10 +817,11 @@
     row-gap: 6px;
   }
   .other-eyebrow { grid-column: 1; grid-row: 1; }
-  .other-title  {
+  .portfolio-other .other-title  {
     grid-column: 1;
     grid-row: 2;
-    margin-top: 8px;
+    /* Sitewide eyebrow-to-title rebalance. */
+    margin-top: 12px;
     font-size: clamp(40px, 12vw, 64px);
   }
   .other-sub {
@@ -902,10 +920,11 @@
     row-gap: 6px;
   }
   .other-gallery-eyebrow { grid-column: 1; grid-row: 1; }
-  .other-gallery-title  {
+  .portfolio-other .other-gallery-title  {
     grid-column: 1;
     grid-row: 2;
-    margin-top: 6px;
+    /* Sitewide eyebrow-to-title rebalance. */
+    margin-top: 12px;
     font-size: clamp(40px, 12vw, 64px);
   }
   .other-gallery-sub {

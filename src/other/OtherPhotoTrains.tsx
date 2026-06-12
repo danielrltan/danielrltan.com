@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Hobby photo trains: three horizontal rows of placeholder photo
@@ -40,8 +40,11 @@ export interface PhotoItem {
 
 interface Props {
   photos: PhotoItem[];
-  /** Beat-A progress 0..1 written by Other.tsx every frame. */
-  progress: number;
+  /** Beat-A progress 0..1, written by Other.tsx's pin onUpdate into a
+   *  REF (not state): as a number prop it re-rendered all ~108 card
+   *  nodes on every scroll tick of the Beat A scrub. The rAF loop
+   *  below reads it directly; React never re-renders for progress. */
+  progressRef: React.MutableRefObject<number>;
 }
 
 const ROWS = 3;
@@ -71,16 +74,16 @@ const LERP_K = 0.085;
 // ticks now write zero styles.
 const PX_GRID = 8;
 
-export function OtherPhotoTrains({ photos, progress }: Props) {
+export const OtherPhotoTrains = memo(function OtherPhotoTrains({
+  photos,
+  progressRef,
+}: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([null, null, null]);
-  // Target shift values are derived from `progress` per frame; the rAF
-  // loop reads them and lerps the visible transform.
+  // Target shift values are derived from `progressRef` per frame; the
+  // rAF loop reads them and lerps the visible transform.
   const targetShiftRef = useRef<number[]>([0, 0, 0]);
   const currentShiftRef = useRef<number[]>([0, 0, 0]);
-  // Mirror of the latest `progress` prop so the rAF loop can read it
-  // without React closure capture. Updated by the effect below.
-  const progressRef = useRef<number>(progress);
   // PERF: visibility flag toggled by IntersectionObserver. The rAF
   // loop short-circuits when the rack isn't on screen.
   const visibleRef = useRef<boolean>(false);
@@ -128,11 +131,6 @@ export function OtherPhotoTrains({ photos, progress }: Props) {
       return Array.from({ length: reps }, () => chunk).flat();
     });
   }, [items]);
-
-  // Keep the rAF-loop view of progress fresh on every render.
-  useEffect(() => {
-    progressRef.current = progress;
-  }, [progress]);
 
   // Measure strip widths after layout (and re-measure on resize / when
   // the real photo manifest swaps the strips). Reading offsetWidth in
@@ -262,20 +260,29 @@ export function OtherPhotoTrains({ photos, progress }: Props) {
                 className="other-train-card"
                 style={
                   p.src
-                    ? {
-                        backgroundImage: `url(${p.src})`,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                        // Without this, sub-pixel rounding tiles a 1px sliver
-                        // of the image at the card edge — reads as a glitchy
-                        // outline. no-repeat kills it.
-                        backgroundRepeat: "no-repeat",
-                      }
+                    ? undefined
                     : {
                         background: `linear-gradient(135deg, ${p.color ?? "#222"} 0%, ${darken(p.color ?? "#222", 0.35)} 100%)`,
                       }
                 }
               >
+                {/* Real <img> instead of background-image (PERF,
+                    load-bearing): CSS backgrounds can't lazy-load or
+                    decode async, so all ~36 unique WebPs decoded in one
+                    synchronous burst the moment the section first
+                    painted — the scroll-entry jank. loading="lazy"
+                    defers offscreen cards entirely and decoding="async"
+                    keeps the decode off the scroll frame. */}
+                {p.src && (
+                  <img
+                    className="other-train-photo"
+                    src={p.src}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    draggable={false}
+                  />
+                )}
                 {!p.src && <span className="other-train-card-label">{p.label}</span>}
               </div>
             ))}
@@ -284,7 +291,7 @@ export function OtherPhotoTrains({ photos, progress }: Props) {
       ))}
     </div>
   );
-}
+});
 
 /** Lightweight hex darken: amount in [0, 1]. */
 function darken(hex: string, amount: number): string {

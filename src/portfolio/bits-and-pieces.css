@@ -74,7 +74,9 @@
 .bp-index {
   grid-column: 2;
   align-self: end;
-  margin-bottom: 2px;
+  /* 2px → 10px: breathing room above "The trophy wall" (sitewide
+     eyebrow-to-title rebalance). */
+  margin-bottom: 10px;
 }
 .bp-title {
   grid-column: 2;

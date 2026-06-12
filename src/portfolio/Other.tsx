@@ -267,10 +267,18 @@ export function Other() {
   // label + caption is shown). We don't need to re-render React on
   // every fractional change: only when the integer flips.
   const [activeIndex, setActiveIndex] = useState(TUNE_MODE ? 2 : 0);
-  // Beat A state: train progress 0..1 + visibility opacity.
-  const [beatAProgress, setBeatAProgress] = useState(
-    TUNE_BEAT === "gallery" ? 0.5 : 0
-  );
+  // Beat A train progress 0..1: a REF, not state. It changes on every
+  // scroll tick through the whole Beat A scrub, and as state it
+  // re-rendered <OtherPhotoTrains/> (108 card nodes) per tick — a big
+  // slice of the section-entry jank. The trains' rAF loop reads the
+  // ref directly; React never hears about it.
+  const beatAProgressRef = useRef(TUNE_BEAT === "gallery" ? 0.5 : 0);
+  // True once the pin progress approaches the Beat B handoff: gates the
+  // HobbiesScene render loop so the hidden 3D scene doesn't render at
+  // full rate behind the opacity-0 layer for all of Beat A (the other
+  // big slice of the entry jank). setState with an unchanged boolean
+  // bails, so calling it per tick is free.
+  const [beatBLive, setBeatBLive] = useState(TUNE_BEAT !== "gallery" && TUNE_MODE);
   const [beatAOpacity, setBeatAOpacity] = useState(
     TUNE_BEAT === "gallery" ? 1 : 0
   );
@@ -430,7 +438,10 @@ export function Other() {
           0,
           Math.min(1, (p - BEAT_A_REEL_START) / (BEAT_A_REEL_END - BEAT_A_REEL_START))
         );
-        setBeatAProgress(aT);
+        beatAProgressRef.current = aT;
+        // Wake the 3D scene slightly before its fade-in so the first
+        // visible frame is already warm; sleeps again on scroll-back.
+        setBeatBLive(p > HANDOFF_START - 0.05);
         // Train rack opacity: already faded IN by the entrance trigger, so
         // it's fully visible from progress 0 (no re-hide flash at pin
         // engage). Here we only fade it OUT during the Beat A→B handoff.
@@ -642,7 +653,7 @@ export function Other() {
         <div className="other-trains-wrap">
           <OtherPhotoTrains
             photos={TRAIN_PHOTOS}
-            progress={beatAProgress}
+            progressRef={beatAProgressRef}
           />
         </div>
 
@@ -705,6 +716,7 @@ export function Other() {
               focusRef={focusRef}
               activeIdxRef={activeIdxRef}
               hobbyIds={HOBBY_IDS}
+              beatBLive={beatBLive}
             />
           </Suspense>
         </div>

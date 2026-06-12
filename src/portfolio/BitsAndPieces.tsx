@@ -507,8 +507,7 @@ export function BitsAndPieces() {
             <ScrambleText text="The trophy wall" />
           </h2>
           <p className="bp-blurb">
-            The extras: awards, grants, leadership, scholarships.
-            What the timeline above doesn&rsquo;t have room for.
+            Awards, grants, leadership, scholarships, whatever the timeline doesn&rsquo;t have room for.
           </p>
         </header>
 

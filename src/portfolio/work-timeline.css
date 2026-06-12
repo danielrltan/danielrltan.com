@@ -114,7 +114,8 @@
 .work-ledger-head-right {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  /* 8 → 12px: sitewide eyebrow-to-title rebalance (user: too tight). */
+  gap: 12px;
   align-items: flex-start;
 }
 .work-ledger-eyebrow {

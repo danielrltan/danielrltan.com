@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -325,6 +325,9 @@ interface HobbyMeshProps {
   hobby: Hobby;
   scene: THREE.Group | null;
   index: number;
+  /** Viewport-relative cursor (0..1 + active flag) shared by all hobby
+   *  meshes for the keypad-style face-tracking parallax. */
+  cursorRef: React.RefObject<{ x: number; y: number; active: boolean }>;
   /** Committed active (integer) hobby index from the parent, resolved
    *  via NEAREST + hysteresis. The mesh compares its own `index` to this
    *  each frame: equal ⇒ this is the hero (weight → 1), otherwise dim
@@ -380,11 +383,13 @@ const FOCUS_OPACITY = 1.0;
 // would churn the GC, so the hot color is shared + immutable.
 const PLACEHOLDER_COLOR_HOT = new THREE.Color(FOCUSED_PLACEHOLDER_COLOR);
 
-function HobbyMesh({ hobby, scene, index, activeIdxRef, visibleRef, onHoverChange }: HobbyMeshProps) {
+function HobbyMesh({ hobby, scene, index, cursorRef, activeIdxRef, visibleRef, onHoverChange }: HobbyMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
   const hoveredRef = useRef(false);
   const hoverLerpRef = useRef(0);
+  // Smoothed face-tracking tilt (keypad parallax port).
+  const tiltRef = useRef({ x: 0, y: 0 });
   // Smoothed focus weight (0 = fully dim, 1 = fully focused). Tracks
   // a triangle-shaped target derived from |index - focusRef|.
   const focusLerpRef = useRef(0);
@@ -538,7 +543,20 @@ function HobbyMesh({ hobby, scene, index, activeIdxRef, visibleRef, onHoverChang
       const roll =
         Math.sin((t / SWAY_ROLL_PERIOD) * Math.PI * 2 + anim.swayPhaseZ) *
         SWAY_ROLL * damp;
-      _eSway.set(pitch, yaw, roll);
+      // Keypad face-tracking parallax riding on the sway: the object
+      // turns toward the cursor (±15°, exp lerp rate 6 — identical
+      // constants to KeypadScene). Inactive cursor eases back to rest.
+      const c = cursorRef.current;
+      const cx = c && c.active ? (c.x - 0.5) * 2 : 0;
+      const cy = c && c.active ? (c.y - 0.5) * 2 : 0;
+      const pk = 1 - Math.exp(-dt * PARALLAX_LERP_RATE);
+      tiltRef.current.x += (cy * PARALLAX_X - tiltRef.current.x) * pk;
+      tiltRef.current.y += (cx * PARALLAX_Y - tiltRef.current.y) * pk;
+      _eSway.set(
+        pitch + tiltRef.current.x,
+        yaw + tiltRef.current.y,
+        roll,
+      );
       g.rotation.copy(_eSway);
     }
 
@@ -688,15 +706,28 @@ const CAM_LERP_RATE = 2.4;
 const CAM_ORBIT_AMP = 0.11;   // ~±6.3° of yaw about dead-front
 const CAM_ORBIT_RATE = 0.22;  // sine-phase speed (rad/s)
 
+// Face-tracking parallax, ported VERBATIM from the keypad (user: "the
+// same exact parallax"): viewport-relative cursor, ±15° of tilt toward
+// the cursor, exponential lerp at rate 6. Each interest object turns
+// toward the pointer like the keypad does, riding on top of its idle
+// sway. Touch devices skip it (no meaningful cursor).
+const PARALLAX_X = THREE.MathUtils.degToRad(15);
+const PARALLAX_Y = THREE.MathUtils.degToRad(15);
+const PARALLAX_LERP_RATE = 6;
+
 function SceneInner({
   loaded,
   activeIdxRef,
   visibleRef,
+  beatBLiveRef,
+  cursorRef,
   onHoverChange,
 }: {
   loaded: Record<string, THREE.Group | null>;
   activeIdxRef: React.RefObject<number>;
   visibleRef: React.RefObject<boolean>;
+  beatBLiveRef: React.RefObject<boolean>;
+  cursorRef: React.RefObject<{ x: number; y: number; active: boolean }>;
   onHoverChange: (hovering: boolean, label: string) => void;
 }) {
   const { camera, invalidate } = useThree();
@@ -714,10 +745,13 @@ function SceneInner({
   const orbitPhaseRef = useRef(0);
 
   useFrame((state, dt) => {
-    // PERF: skip the camera dolly logic when the scene is off-screen.
-    // Combined with frameloop="demand" on the Canvas, this lets the
-    // canvas idle entirely while the user is elsewhere on the page.
-    if (visibleRef.current === false) return;
+    // PERF: skip the camera dolly logic when the scene is off-screen
+    // OR while Beat A (photo reel) owns the section — the canvas sits
+    // behind an opacity-0 layer for that whole beat, and rendering it
+    // at full rate was the photo-reel scroll-entry jank. Combined with
+    // frameloop="demand", early-returning here stops scheduling frames
+    // entirely; the IO edge / beatBLive rising edge re-invalidate.
+    if (visibleRef.current === false || beatBLiveRef.current === false) return;
     // Keep the demand loop alive while visible.
     invalidate();
     // Aspect-aware dolly distance: pull back in portrait so the hero's
@@ -786,6 +820,7 @@ function SceneInner({
           hobby={h}
           index={i}
           scene={loaded[h.id] ?? null}
+          cursorRef={cursorRef}
           activeIdxRef={activeIdxRef}
           visibleRef={visibleRef}
           onHoverChange={onHoverChange}
@@ -820,9 +855,18 @@ interface HobbiesSceneProps {
   /** Ordered hobby ids from the parent. Provided as a sanity guard
    *  that parent + scene rosters agree; logged once on mount if not. */
   hobbyIds?: string[];
+  /** True while the Beat B (curated reel) window is live or imminent.
+   *  Gates the demand render loop: without it the scene rendered at
+   *  full rate behind the opacity-0 layer for ALL of Beat A — the
+   *  photo-reel scroll-entry jank. */
+  beatBLive?: boolean;
 }
 
-export function HobbiesScene({ activeIdxRef, hobbyIds }: HobbiesSceneProps) {
+export const HobbiesScene = memo(function HobbiesScene({
+  activeIdxRef,
+  hobbyIds,
+  beatBLive = true,
+}: HobbiesSceneProps) {
   const [loaded, setLoaded] = useState<Record<string, THREE.Group | null>>(() => {
     const init: Record<string, THREE.Group | null> = {};
     for (const h of HOBBIES) {
@@ -835,6 +879,15 @@ export function HobbiesScene({ activeIdxRef, hobbyIds }: HobbiesSceneProps) {
   // the viewport. Used by useFrame loops below to short-circuit per-
   // frame work when the section isn't on-screen.
   const visibleRef = useRef<boolean>(false);
+  // Beat gate mirror (see HobbiesSceneProps.beatBLive). Mirrored to a
+  // ref so the useFrame gate reads it without re-creating the loop;
+  // the rising edge pokes the demand loop awake (same pattern as the
+  // IO visible edge below).
+  const beatBLiveRef = useRef<boolean>(beatBLive);
+  // Viewport-relative cursor for the keypad-style face-tracking
+  // parallax (see PARALLAX_* constants). Document-level like the
+  // keypad's, so tracking continues when the pointer leaves the canvas.
+  const parallaxCursorRef = useRef({ x: 0.5, y: 0.5, active: false });
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
     label: "",
@@ -905,6 +958,36 @@ export function HobbiesScene({ activeIdxRef, hobbyIds }: HobbiesSceneProps) {
   // the loop would never restart since SceneInner's useFrame is the
   // only invalidator and it early-returns until visibleRef flips.
   const canvasInvalidateRef = useRef<(() => void) | null>(null);
+
+  // Mirror the beat gate + wake the demand loop on its rising edge.
+  useEffect(() => {
+    const was = beatBLiveRef.current;
+    beatBLiveRef.current = beatBLive;
+    if (beatBLive && !was && visibleRef.current) {
+      canvasInvalidateRef.current?.();
+    }
+  }, [beatBLive]);
+
+  // Keypad parallax cursor feed (desktop pointers only; touch has no
+  // meaningful cursor and the keypad skips it the same way).
+  useEffect(() => {
+    if (isTouch) return;
+    const onMove = (e: PointerEvent) => {
+      parallaxCursorRef.current.x = e.clientX / Math.max(1, window.innerWidth);
+      parallaxCursorRef.current.y = e.clientY / Math.max(1, window.innerHeight);
+      parallaxCursorRef.current.active = true;
+    };
+    const onLeave = () => {
+      parallaxCursorRef.current.active = false;
+    };
+    document.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerleave", onLeave);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerleave", onLeave);
+    };
+  }, [isTouch]);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -951,19 +1034,19 @@ export function HobbiesScene({ activeIdxRef, hobbyIds }: HobbiesSceneProps) {
         tip.style.transform = `translate(${x + 20}px, ${y + 20}px)`;
       }
     };
-    // PERF: scroll fires for the whole page lifetime; getBoundingClientRect
-    // forces a layout.  OLD: refreshRect ran on every scroll event always.
-    // NEW: O(1) guard — skip when section is off-screen (visibleRef=false).
-    const refreshRectIfVisible = () => {
-      if (visibleRef.current) refreshRect();
-    };
+    // Rect refresh on POINTERENTER (not per scroll event): during the
+    // pin scrub, scroll fires every frame and the old visible-gated
+    // listener forced a layout read against a dirty layout per frame
+    // for both beats — purely to keep tooltip coords fresh. The rect
+    // only needs to be current when the pointer actually engages the
+    // canvas; entering re-reads it, resize covers window changes.
     el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerenter", refreshRect, { passive: true });
     window.addEventListener("resize", refreshRect, { passive: true });
-    window.addEventListener("scroll", refreshRectIfVisible, { passive: true });
     return () => {
       el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerenter", refreshRect);
       window.removeEventListener("resize", refreshRect);
-      window.removeEventListener("scroll", refreshRectIfVisible);
     };
   }, []);
 
@@ -1066,6 +1149,8 @@ export function HobbiesScene({ activeIdxRef, hobbyIds }: HobbiesSceneProps) {
           loaded={loaded}
           activeIdxRef={activeIdxRef}
           visibleRef={visibleRef}
+          beatBLiveRef={beatBLiveRef}
+          cursorRef={parallaxCursorRef}
           onHoverChange={handleHoverChange}
         />
       </Canvas>
@@ -1082,4 +1167,4 @@ export function HobbiesScene({ activeIdxRef, hobbyIds }: HobbiesSceneProps) {
       )}
     </div>
   );
-}
+});
