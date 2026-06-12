@@ -269,11 +269,14 @@
 }
 
 .work-ticker-year {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: clamp(48px, 4.8vw, 64px);
+  /* Dot-matrix numerals (the section-marker "03" face): the sliding
+     year stack reads as a hardware counter instead of editorial Geist
+     digits — the ticker's whole conceit. */
+  font-family: var(--font-dot);
+  font-weight: 700;
+  font-size: clamp(44px, 4.4vw, 58px);
   line-height: 0.92;
-  letter-spacing: -0.045em;
+  letter-spacing: 0.02em;
   color: var(--ink);
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
@@ -430,7 +433,9 @@
   color: #fff;
   font-size: var(--text-xs);
   letter-spacing: 0.22em;
-  border-radius: 999px;
+  /* Sharp block (was a 999px pill): rounded pills are off-voice in the
+     pixel/spec-sheet language. */
+  border-radius: 0;
   font-weight: 700;
 }
 .work-stint-current-dot {
@@ -446,16 +451,19 @@
   50%      { opacity: 0.5; transform: scale(0.78); }
 }
 
-/* Giant company headline: editorial display type. */
+/* Giant company headline: OffBit pixel display (was Geist 500 at
+   -0.055em — the "minimalist, off-theme" read the user flagged). The
+   company name joins the sitewide big-title voice; zero tracking per
+   the pixel-glyph rule, sized down ~15% since OffBit runs optically
+   larger. */
 .work-stint-headline {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: clamp(48px, 7.4vw, 132px);
-  line-height: 0.92;
-  letter-spacing: -0.055em;
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: clamp(44px, 6.2vw, 110px);
+  line-height: 0.98;
+  letter-spacing: 0;
   color: var(--ink);
   margin: 0;
-  margin-left: -3px;
   opacity: 0;
   transform: translate3d(0, 18px, 0);
   transition: opacity var(--t-slow) var(--ease-entrance) 80ms, transform 680ms var(--ease-entrance) 80ms;
@@ -519,11 +527,14 @@
   transform: translate3d(0, 0, 0);
 }
 .work-stint-pull-metric {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: clamp(36px, 4.8vw, 76px);
-  line-height: 0.92;
-  letter-spacing: -0.05em;
+  /* Pixel display for the hero number (matches the trophy-wall
+     metrics): the pulled-out stat is display type, and display type
+     sitewide is the pixel face. */
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: clamp(32px, 4vw, 62px);
+  line-height: 0.96;
+  letter-spacing: 0;
   color: var(--accent);
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
@@ -633,7 +644,7 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 4px;
+  padding: 10px 16px;
   background: transparent;
   color: var(--ink) !important;
   font-family: var(--font-mono);
@@ -642,10 +653,11 @@
   text-transform: uppercase;
   text-decoration: none;
   font-weight: 600;
-  /* Underline affordance beneath the CTA. */
-  border-top: none;
-  border-bottom: 1px solid var(--ink-hairline);
-  border-left: none;
+  /* Sharp bordered chip (was a bottom-hairline underline): the CTA
+     joins the spec-sheet chip language; hover flips it to a flat
+     accent block below. */
+  border: 1px solid var(--ink-hairline);
+  border-radius: 0;
   opacity: 0;
   transform: translate3d(0, 6px, 0);
   transition:
@@ -668,9 +680,12 @@
   transition: transform var(--t-fast) var(--ease-bounce);
 }
 .portfolio-work .work-resume:hover {
-  color: var(--accent) !important;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff !important;
 }
 .portfolio-work .work-resume:hover .work-resume-arrow {
+  color: #fff;
   transform: translate(2px, -3px);
 }
 /* Keyboard focus: the CTA is opacity-0 until revealed, so it can be
@@ -802,14 +817,13 @@
     transition: none;
   }
 
-  /* GIANT headline gets a mobile ceiling: at 13vw "Windscribe" /
-     "Western" (the longest single-word headlines) fit a 360–390px
-     portrait width with margin and never trigger horizontal scroll,
-     while still reading as the oversized editorial display type from
-     desktop. min-width:0 + the wrapper padding keep it bounded. */
+  /* GIANT headline gets a mobile ceiling: at 11.5vw "Windscribe" (the
+     longest headline, 10 glyphs) fits a 360-390px portrait width in
+     the pixel face with margin and never triggers horizontal scroll.
+     min-width:0 + the wrapper padding keep it bounded. */
   .work-stint-headline {
-    font-size: clamp(40px, 13vw, 72px);
-    line-height: 0.94;
+    font-size: clamp(34px, 11.5vw, 64px);
+    line-height: 1;
     min-width: 0;
   }
 
@@ -881,18 +895,13 @@
     top: auto;
     right: auto;
     bottom: auto;
-    /* No border-top: the header's border-bottom already rules this
-       seam; a second parallel hairline 60px below read as a hollow
-       dead band (the "cooked" gap on small screens). */
-    border-top: none;
-    border-left: none;
     align-self: flex-start;
     /* min-height + box-sizing guarantee ≥44px regardless of font line
-       box; padding gives a comfortable tap area. Left padding 0 so the
-       label aligns to the column edge like every other element. */
+       box; the chip keeps its full border on mobile now (the old
+       underline-only override predates the chip treatment). */
     min-height: 48px;
     box-sizing: border-box;
-    padding: 14px 20px 14px 0;
+    padding: 14px 18px;
     margin-top: 0;
     font-size: 12px;
   }
