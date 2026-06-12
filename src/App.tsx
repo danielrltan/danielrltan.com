@@ -250,6 +250,27 @@ function installScrollChoreography(): {
   const ease = (prev: number, target: number, dt: number) =>
     prev + (target - prev) * (1 - Math.exp(-dt * PROGRESS_EASE_RATE));
 
+  // Stepped pixelation bucket for the hero dive. Maps the eased
+  // hero→about progress onto the SVG mosaic filters defined in
+  // HeroSignature (#hero-px-1..5, cells 4→32px): the hero's rendered
+  // pixels resample into progressively chunkier blocks as the zoom
+  // deepens. Bucket 0 = no filter (resting hero pays zero filter cost).
+  // SVG filter parameters can't be driven by CSS vars, hence the
+  // attribute steps instead of a continuous ramp — the quantised jumps
+  // read as authentic pixel-art degradation under the smooth scale.
+  const HERO_PX_STEPS = [0.08, 0.26, 0.44, 0.62, 0.8];
+  let lastHeroPx = -1;
+  const applyHeroPx = (p: number) => {
+    let bucket = 0;
+    for (let i = 0; i < HERO_PX_STEPS.length; i++) {
+      if (p > HERO_PX_STEPS[i]!) bucket = i + 1;
+    }
+    if (bucket === lastHeroPx) return;
+    lastHeroPx = bucket;
+    if (bucket === 0) root.removeAttribute("data-hero-px");
+    else root.setAttribute("data-hero-px", String(bucket));
+  };
+
   // Largest remaining gap between an eased signal and its target after the
   // most recent tick. The loop uses it to know when easing has settled so it
   // can stop ticking (and stop reading layout) until the next scroll/resize.
@@ -304,6 +325,7 @@ function installScrollChoreography(): {
 
     root.style.setProperty("--hero-opacity", heroOpacity.toFixed(3));
     root.style.setProperty("--hero-to-about", heroToAbout.toFixed(3));
+    applyHeroPx(heroToAbout);
     root.style.setProperty("--canvas-opacity", finalCanvasOpacity.toFixed(3));
     root.style.setProperty("--canvas-pointer-events", canvasInteractive);
     root.style.setProperty(

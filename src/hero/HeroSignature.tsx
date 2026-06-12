@@ -19,6 +19,14 @@ import "./hero-composition.css";
 
 type Phase = "drawing" | "transition" | "settled";
 
+/* Mosaic cell sizes (px, pre-transform) for the dive's stepped
+   pixelation. The composition also scales up to 3x during the dive, so
+   the on-screen block size is cell * scale — the late cells read much
+   chunkier than these numbers suggest. Must stay in sync with the
+   `data-hero-px` bucket count in App.tsx and the rules in
+   hero-composition.css. */
+const PIXELATE_CELLS = [4, 8, 14, 22, 32];
+
 export function HeroSignature() {
   const [data, setData] = useState<SignatureData | null>(null);
   const [drawingComplete, setDrawingComplete] = useState(false);
@@ -276,6 +284,52 @@ export function HeroSignature() {
 
   return (
     <>
+      {/* REAL pixelation filters for the hero→about dive. Each filter
+          Gaussian-blurs the composition's actual rendered pixels
+          (feGaussianBlur), samples one dot per cell (feFlood→feComposite
+          →feTile→composite-in), and dilates the samples back to full
+          cells (feMorphology) — a true blur-then-downsample mosaic of
+          the content itself. App.tsx's scroll choreography steps
+          `data-hero-px` on <html> through these as the dive progresses;
+          hero-composition.css maps each step to its filter. (Replaces
+          the Bayer-dither mask overlay, which just painted a pixel
+          TEXTURE over the type instead of pixelating it.) */}
+      <svg
+        aria-hidden
+        focusable="false"
+        width="0"
+        height="0"
+        style={{ position: "absolute" }}
+      >
+        <defs>
+          {PIXELATE_CELLS.map((c, i) => (
+            <filter
+              key={c}
+              id={`hero-px-${i + 1}`}
+              x="-5%"
+              y="-5%"
+              width="110%"
+              height="110%"
+            >
+              <feGaussianBlur
+                in="SourceGraphic"
+                stdDeviation={c * 0.35}
+                result="blur"
+              />
+              <feFlood
+                x={c * 0.4}
+                y={c * 0.4}
+                width={Math.max(1, c * 0.2)}
+                height={Math.max(1, c * 0.2)}
+              />
+              <feComposite width={c} height={c} />
+              <feTile result="grid" />
+              <feComposite in="blur" in2="grid" operator="in" />
+              <feMorphology operator="dilate" radius={c / 2} />
+            </filter>
+          ))}
+        </defs>
+      </svg>
       {renderTwoD && (
         <HeroSignature2D
           data={data}

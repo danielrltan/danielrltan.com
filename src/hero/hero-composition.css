@@ -98,8 +98,8 @@
      this into 14 steps for a "pixelated zoom", but each step was a
      ~0.14 scale jump on a 130vw body (~376px-wide pops, measured),
      which read as the ring glitching during the scroll-up ease-back.
-     The pixel identity lives entirely in the dither dissolve below;
-     geometry stays continuous. */
+     The pixel identity lives entirely in the stepped mosaic filter
+     below; geometry stays continuous. */
   --hero-scale: calc(1 + var(--p) * 2.0);
   /* Slight downward push (2vh max) so the dive isn't perfectly
      symmetric, which adds the sense that the viewer is sinking THROUGH
@@ -107,39 +107,27 @@
   --hero-shift-y: calc(var(--p) * 2vh);
 
   transform: translate3d(0, var(--hero-shift-y), 0) scale(var(--hero-scale));
-  /* The old blur(0→2px) depth cue is GONE: replaced by the dither
-     dissolve below, which fits the pixel retrofuturism language and
-     costs less than a 130vw blur ever did. */
+  /* Depth cue: the stepped mosaic filter below (real blur-then-
+     downsample of the composition's own pixels), not a blur alone and
+     not a dither texture. */
 }
 
-/* Bayer-dither block dissolve (the 8-bit screen-wipe):
-   layer 1 is a 4x4 ordered-dither alpha tile whose cell size GROWS with
-   the dive (blocks read chunkier as the hero leaves); layer 2 is a
-   solid sheet whose alpha falls with --p. mask-composite: add takes the
-   union, so at rest (p=0) the solid sheet hides the dither entirely
-   (no dithering on the resting hero), and as p rises the sheet thins
-   and the hero's fade resolves through the Bayer thresholds: blocks
-   drop out in dither order instead of a uniform fade. Combined with
-   the stepped zoom this is the "pixelated zoom-out". Scroll-reversible
-   by construction (pure function of --p, no animation state). Browsers
-   without mask-composite keep the plain fade. */
-@supports (mask-composite: add) {
-  .hero-composition {
-    mask-image:
-      url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 4' shape-rendering='crispEdges'><rect x='0' y='0' width='1' height='1' fill='%23000' fill-opacity='.0625'/><rect x='1' y='0' width='1' height='1' fill='%23000' fill-opacity='.5625'/><rect x='2' y='0' width='1' height='1' fill='%23000' fill-opacity='.1875'/><rect x='3' y='0' width='1' height='1' fill='%23000' fill-opacity='.6875'/><rect x='0' y='1' width='1' height='1' fill='%23000' fill-opacity='.8125'/><rect x='1' y='1' width='1' height='1' fill='%23000' fill-opacity='.3125'/><rect x='2' y='1' width='1' height='1' fill='%23000' fill-opacity='.9375'/><rect x='3' y='1' width='1' height='1' fill='%23000' fill-opacity='.4375'/><rect x='0' y='2' width='1' height='1' fill='%23000' fill-opacity='.25'/><rect x='1' y='2' width='1' height='1' fill='%23000' fill-opacity='.75'/><rect x='2' y='2' width='1' height='1' fill='%23000' fill-opacity='.125'/><rect x='3' y='2' width='1' height='1' fill='%23000' fill-opacity='.625'/><rect x='0' y='3' width='1' height='1' fill='%23000' fill-opacity='1'/><rect x='1' y='3' width='1' height='1' fill='%23000' fill-opacity='.5'/><rect x='2' y='3' width='1' height='1' fill='%23000' fill-opacity='.875'/><rect x='3' y='3' width='1' height='1' fill='%23000' fill-opacity='.375'/></svg>"),
-      linear-gradient(
-        rgb(0 0 0 / max(0, calc(1 - var(--p) * 1.6))) 0%,
-        rgb(0 0 0 / max(0, calc(1 - var(--p) * 1.6))) 100%
-      );
-    /* Dither cell pitch: 8px at rest → ~48px fully dived (chunkier as
-       it leaves). The tile is 4x4 cells, so cell = size / 4. */
-    mask-size:
-      calc(32px + var(--p) * 160px) calc(32px + var(--p) * 160px),
-      100% 100%;
-    mask-repeat: repeat, no-repeat;
-    mask-composite: add;
-  }
-}
+/* REAL pixelation dissolve (replaces the old Bayer-dither mask, which
+   only painted a pixel TEXTURE over the type — user: "you're just
+   overlaying pixels on HTML"). App.tsx steps `data-hero-px` on <html>
+   as the eased dive progress crosses 0.08/0.26/0.44/0.62/0.80; each
+   step maps to an SVG mosaic filter defined in HeroSignature.tsx that
+   Gaussian-blurs the composition's OWN rendered pixels and resamples
+   them into cells (4→32px, further magnified by the dive's scale-up).
+   The content itself degrades into blocks as you zoom through it.
+   Bucket 0 = attribute absent = no filter, so the resting hero pays
+   nothing. Scroll-reversible: the buckets are a pure function of the
+   eased progress. */
+html[data-hero-px="1"] .hero-composition { filter: url(#hero-px-1); }
+html[data-hero-px="2"] .hero-composition { filter: url(#hero-px-2); }
+html[data-hero-px="3"] .hero-composition { filter: url(#hero-px-3); }
+html[data-hero-px="4"] .hero-composition { filter: url(#hero-px-4); }
+html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
 /* Opacity hand-off in two phases:
      1) LOAD-IN (0→1 over 600ms): a one-shot CSS animation on
         .is-visible runs at higher priority than normal cascade,
