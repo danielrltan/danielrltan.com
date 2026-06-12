@@ -65,14 +65,12 @@ const ROW_SPEEDS = [0.5, -0.5, 0.5];
 const TRAVEL_MULT = 30;
 // rAF lerp factor. 0.085 ≈ ~25 frames to 95% of target at 60fps
 // (~420ms catch-up). Same shape as the original.
+// NOTE: the trains deliberately do NOT use the sitewide pixel-grid
+// quantised writes (hero hover / marquees): an 8px-stepped slide over
+// PHOTOGRAPHS read as lag rather than pixel-art, per user. Continuous
+// imagery wants continuous motion; the stepped voice stays on type and
+// chrome.
 const LERP_K = 0.085;
-// PIXEL GRID for the row transforms (sitewide pixel-motion language:
-// smooth physics inside, quantised writes out — same recipe as the
-// hero wordmark hover). The lerp stays smooth in JS; the DOM only sees
-// the shift snapped to this step, so the trains tick frame-by-frame
-// like a film strip instead of gliding. Also a perf win: most rAF
-// ticks now write zero styles.
-const PX_GRID = 8;
 
 export const OtherPhotoTrains = memo(function OtherPhotoTrains({
   photos,
@@ -87,10 +85,6 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
   // PERF: visibility flag toggled by IntersectionObserver. The rAF
   // loop short-circuits when the rack isn't on screen.
   const visibleRef = useRef<boolean>(false);
-  // Cached strip widths (px) for the %→px grid snap, + the last
-  // quantised value actually written per row.
-  const rowWidthRef = useRef<number[]>([0, 0, 0]);
-  const lastQpxRef = useRef<number[]>([NaN, NaN, NaN]);
 
   // PERF: 4× repeat = 48 cards/row × 3 rows = 144 DOM nodes. Card width
   // is clamp(220, 22vw, 340) and rows travel ~70% of strip width across
@@ -131,28 +125,6 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
       return Array.from({ length: reps }, () => chunk).flat();
     });
   }, [items]);
-
-  // Measure strip widths after layout (and re-measure on resize / when
-  // the real photo manifest swaps the strips). Reading offsetWidth in
-  // the rAF tick would force layout every frame; cached here it's free.
-  useEffect(() => {
-    let raf = 0;
-    const measure = () => {
-      raf = 0;
-      for (let i = 0; i < ROWS; i++) {
-        rowWidthRef.current[i] = rowRefs.current[i]?.offsetWidth ?? 0;
-      }
-    };
-    const schedule = () => {
-      if (raf === 0) raf = requestAnimationFrame(measure);
-    };
-    schedule();
-    window.addEventListener("resize", schedule, { passive: true });
-    return () => {
-      window.removeEventListener("resize", schedule);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [rowStrips]);
 
   // IntersectionObserver: only run the lerp loop while the rack is
   // on screen. Combined with the settled-early-out below, the rAF
@@ -215,20 +187,7 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
         currentShiftRef.current[i] = next;
         const row = rowRefs.current[i];
         if (row) {
-          // Quantised write: convert the smooth % shift to px, snap to
-          // the pixel grid, and only touch the DOM when the snapped
-          // value changes (see PX_GRID note above). Falls back to the
-          // raw % write until the width cache is populated.
-          const w = rowWidthRef.current[i]!;
-          if (w > 0) {
-            const q = Math.round(((next / 100) * w) / PX_GRID) * PX_GRID;
-            if (q !== lastQpxRef.current[i]) {
-              lastQpxRef.current[i] = q;
-              row.style.transform = `translate3d(${-q}px, 0, 0)`;
-            }
-          } else {
-            row.style.transform = `translate3d(${-next}%, 0, 0)`;
-          }
+          row.style.transform = `translate3d(${-next}%, 0, 0)`;
         }
       }
       loopRaf = requestAnimationFrame(tick);

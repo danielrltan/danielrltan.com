@@ -948,14 +948,18 @@
   .other-trains {
     gap: clamp(8px, 1.4vh, 14px);
   }
-  /* SQUARE CARD IN PORTRAIT: height is vh-driven so three rows + gaps fit
-     the ~61vh band (3×13.5vh + 2 gaps); the side length follows from the
-     base rule's aspect-ratio:1. ~138px max keeps several tiles in view as
-     the row slides. */
+  /* SQUARE CARD IN PORTRAIT: sized to FILL the train band. The band is
+     100svh - 26vh header - 13vh foot ≈ 61svh; three rows + two gaps
+     should consume it. The old 13.5vh rows used only ~366px of a
+     ~515px band (user: "the squares don't fill out the screen") —
+     19svh rows land 3×rows + gaps within a few px of the band height
+     on both tall (844) and short (640) phones. svh so the size doesn't
+     jump when the URL bar collapses; vh fallback for older engines. */
   .other-train-card {
     /* Square (aspect-ratio:1 inherited from the base rule); height
        drives the side length. */
-    height: clamp(92px, 13.5vh, 138px);
+    height: clamp(112px, 19vh, 190px);
+    height: clamp(112px, 19svh, 190px);
     padding: 10px;
   }
   .other-train-card-label {
