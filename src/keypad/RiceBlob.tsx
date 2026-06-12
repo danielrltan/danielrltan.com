@@ -107,6 +107,13 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uGlow;
   uniform float uActive;
   uniform float uGlowOpacity;
+  // Interaction pulse: x = age (seconds, -1 = idle), yz = origin in
+  // canvas UV. A shockwave ring expanding through the rice field.
+  uniform vec3 uPulse;
+  uniform float uPulseStrength;
+  // 0..1: cursor is over an interactive part (cap/dial); the rice pool
+  // charges orange while hot.
+  uniform float uHot;
 
   float hash21(vec2 p) {
     p = fract(p * vec2(443.897, 441.423));
@@ -211,6 +218,26 @@ const FRAGMENT = /* glsl */ `
     // scene look unfinished.
     glow *= uGlowOpacity;
 
+    // ----- Interaction shockwave -----
+    // A ring expanding from the last press point (landing thud, cap
+    // press, dial spin), Gaussian-profiled and exponentially decaying.
+    // Lives in the SAME glow field as the ambient blobs so it reads as
+    // the field reacting, not a separate effect. Gated by
+    // uGlowOpacity so pre-landing presses stay invisible.
+    if (uPulse.x >= 0.0) {
+      vec2 pd = (uv - uPulse.yz) * uAspect;
+      float ringR = uPulse.x * 1.5;
+      float ring = exp(-pow((length(pd) - ringR) / 0.09, 2.0));
+      glow += ring * exp(-uPulse.x * 3.0) * uPulseStrength * 0.45 * uGlowOpacity;
+    }
+    // ----- Hot-cursor charge -----
+    // While hovering an interactive part, the rice pool itself charges
+    // toward the accent: the cursor feels electric exactly where the
+    // device can be touched.
+    glow += (1.0 - smoothstep(0.0, uBlobRadius * 1.9, dist))
+      * uHot * 0.25 * uActive * uGlowOpacity;
+    glow = clamp(glow, 0.0, 0.62);
+
     // Composite: orange tint first, then rice grains on top of the
     // tinted bg (so dots remain crisp gray over the orange field).
     vec3 tintedBg = mix(uBg, uGlow, glow);
@@ -242,9 +269,19 @@ interface Props {
    *  each frame for a soft fade. Keypad.tsx ramps this from 0 to
    *  1 once the keypad's drop-in animation has finished. */
   glowOpacityRef?: React.MutableRefObject<number>;
+  /** Last interaction pulse (landing thud / cap press / dial spin):
+   *  start = performance.now() stamp (-1 idle), origin in canvas UV. */
+  pulseRef?: React.MutableRefObject<{
+    start: number;
+    strength: number;
+    x: number;
+    y: number;
+  }>;
+  /** Cursor currently over an interactive part (cap/dial). */
+  hotRef?: React.MutableRefObject<boolean>;
 }
 
-export function RiceBlob({ cursorRef, glowOpacityRef }: Props) {
+export function RiceBlob({ cursorRef, glowOpacityRef, pulseRef, hotRef }: Props) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   const { size, camera } = useThree();
@@ -264,6 +301,9 @@ export function RiceBlob({ cursorRef, glowOpacityRef }: Props) {
       uGlow: { value: new THREE.Color(GLOW_COLOR) },
       uActive: { value: 0 },
       uGlowOpacity: { value: 0 },
+      uPulse: { value: new THREE.Vector3(-1, 0.5, 0.5) },
+      uPulseStrength: { value: 0 },
+      uHot: { value: 0 },
     }),
     [],
   );
@@ -318,6 +358,28 @@ export function RiceBlob({ cursorRef, glowOpacityRef }: Props) {
     const glowK = 1 - Math.exp(-dt * 2.2);
     mat.uniforms.uGlowOpacity.value +=
       (targetGlow - mat.uniforms.uGlowOpacity.value) * glowK;
+
+    // Interaction pulse: age computed here from the stamped wall-clock
+    // so the ring expands at a fixed real-time rate; expires after the
+    // ring has fully decayed (~1.4s at decay rate 3).
+    const pulse = pulseRef?.current;
+    const uPulse = mat.uniforms.uPulse.value as THREE.Vector3;
+    if (pulse && pulse.start > 0) {
+      const age = (performance.now() - pulse.start) / 1000;
+      if (age < 1.4) {
+        uPulse.set(age, pulse.x, pulse.y);
+        mat.uniforms.uPulseStrength.value = pulse.strength;
+      } else {
+        uPulse.x = -1;
+      }
+    } else {
+      uPulse.x = -1;
+    }
+    // Hot-cursor charge eases in/out (never bound directly to the
+    // event, per the fixed-rate rule).
+    const hotK = 1 - Math.exp(-dt * 10);
+    mat.uniforms.uHot.value +=
+      ((hotRef?.current ? 1 : 0) - mat.uniforms.uHot.value) * hotK;
   });
 
   // Base geometry (24, 16): useFrame above repositions, orients,

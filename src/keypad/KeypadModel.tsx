@@ -199,10 +199,11 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   // Clone + traverse synchronously so caps & dial are known before
   // the first render returns. Hit-volume meshes need their world
   // positions on mount.
-  const { cloned, recenterOffset, sphereRadius, caps, dial } = useMemo(() => {
+  const { cloned, recenterOffset, sphereRadius, caps, dial, screenMat } = useMemo(() => {
     const cl = scene.clone(true);
     const capMap: Record<string, CapState> = {};
     let dialObj: THREE.Object3D | null = null;
+    let screenMaterial: THREE.Material | null = null;
     // Shading fix: force flatShading off and recompute vertex
     // normals on every mesh. Per the user's instruction this stays
     // STRICTLY at the geometry/normal level: no subdivision, no
@@ -228,6 +229,15 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
         // gets renamed again, console will warn and list available
         // node names (see warning block below).
         dialObj = obj;
+      } else if (name === "Cube006") {
+        // Display screen: captured (and its material CLONED so the
+        // useGLTF cache stays pristine) for the interaction flash —
+        // the OLED blips brighter on cap/dial presses.
+        const sm = obj as THREE.Mesh;
+        if (sm.isMesh && sm.material && !Array.isArray(sm.material)) {
+          sm.material = (sm.material as THREE.Material).clone();
+          screenMaterial = sm.material;
+        }
       }
       const m = obj as THREE.Mesh;
       if (m.isMesh) {
@@ -302,6 +312,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       sphereRadius: sphere.radius,
       caps: capMap,
       dial: dialObj as THREE.Object3D | null,
+      screenMat: screenMaterial as THREE.Material | null,
     };
   }, [scene]);
 
@@ -345,10 +356,27 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     });
   }, [onReady]);
 
+  // OLED interaction flash: presses blip the display brighter, then
+  // decay (~7/s). Works on standard (emissive lift) and basic (color
+  // scale) materials; the screen material is a private clone, so the
+  // cache and siblings are untouched.
+  const screenFlashRef = useRef(0);
+
   useFrame((_, dt) => {
     const map = capsRef.current;
     const now = performance.now();
     const k = 1 - Math.exp(-dt * PRESS_LERP_RATE);
+
+    if (screenMat && screenFlashRef.current > 0) {
+      screenFlashRef.current =
+        screenFlashRef.current < 0.004
+          ? 0
+          : screenFlashRef.current * Math.exp(-dt * 7);
+      const f = screenFlashRef.current;
+      const sm = screenMat as THREE.MeshStandardMaterial;
+      if (sm.emissive) sm.emissive.setScalar(f * 0.85);
+      else (screenMat as THREE.MeshBasicMaterial).color.setScalar(1 + f * 0.8);
+    }
     for (const name in map) {
       const c = map[name]!;
       let target = c.hovered ? 0.45 : 0;
@@ -389,10 +417,20 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     if (c) c.hovered = false;
     emitCursorHover(false);
   };
+  // Interaction pulse out to the scene (RiceBlob shockwave ring) —
+  // same window-event pattern as keypad-cursor-hover.
+  const emitInteract = (strength: number) => {
+    window.dispatchEvent(
+      new CustomEvent("keypad-interact", { detail: { strength } }),
+    );
+  };
+
   const handleCapClick = (name: string) => (e: any) => {
     e.stopPropagation();
     const c = capsRef.current[name];
     if (c) c.pressedAt = performance.now();
+    screenFlashRef.current = 0.85;
+    emitInteract(1.0);
     const url = SOCIAL_URLS[name];
     if (!url) return;
     window.open(url, "_blank", "noopener,noreferrer");
@@ -413,6 +451,8 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     // with a strobing dial that visually freezes.
     const next = dialVelRef.current + DIAL_KICK;
     dialVelRef.current = Math.min(next, DIAL_MAX_VEL);
+    screenFlashRef.current = Math.min(1, screenFlashRef.current + 0.45);
+    emitInteract(0.7);
   };
 
   // Two-level grouping: outer scales the whole keypad to fit the

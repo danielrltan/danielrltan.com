@@ -171,6 +171,39 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
     };
   }, [isMobile]);
 
+  // INTERACTION ENERGY (the wow pass): presses radiate a shockwave
+  // ring through the rice field, and the pool charges orange while the
+  // cursor is over an interactive part. Both flow through the SAME
+  // backdrop shader the cursor already lives in, so every effect reads
+  // as one system. Pulses are stamped at the live cursor position
+  // (viewport UV — the convention the RiceBlob shader already uses).
+  const pulseRef = useRef({ start: -1, strength: 0, x: 0.5, y: 0.5 });
+  const hotRef = useRef(false);
+  useEffect(() => {
+    const onInteract = (e: Event) => {
+      if (PREFERS_REDUCED_MOTION) return;
+      const ev = e as CustomEvent<{ strength?: number }>;
+      pulseRef.current = {
+        start: performance.now(),
+        strength: ev.detail?.strength ?? 1,
+        x: cursorRef.current.x,
+        y: cursorRef.current.y,
+      };
+      canvasInvalidateRef.current?.();
+    };
+    const onHover = (e: Event) => {
+      const ev = e as CustomEvent<{ hot?: boolean }>;
+      hotRef.current = !!ev.detail?.hot;
+      canvasInvalidateRef.current?.();
+    };
+    window.addEventListener("keypad-interact", onInteract);
+    window.addEventListener("keypad-cursor-hover", onHover);
+    return () => {
+      window.removeEventListener("keypad-interact", onInteract);
+      window.removeEventListener("keypad-cursor-hover", onHover);
+    };
+  }, []);
+
   // Tune HUD lives outside the Canvas (DOM overlay). Reads camera
   // + model state via a shared ref written each frame by SceneContents.
   const tuneStateRef = useRef<TuneState>({
@@ -235,6 +268,8 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
           tuneStateRef={tuneStateRef}
           transformMode={transformMode}
           visibleRef={visibleRef}
+          pulseRef={pulseRef}
+          hotRef={hotRef}
         />
       </Canvas>
       {TUNE_MODE && (
@@ -336,6 +371,8 @@ function SceneContents({
   tuneStateRef,
   transformMode,
   visibleRef,
+  pulseRef,
+  hotRef,
 }: {
   cursorRef: React.MutableRefObject<CursorState>;
   isMobile: boolean;
@@ -344,6 +381,13 @@ function SceneContents({
   tuneStateRef: React.MutableRefObject<TuneState>;
   transformMode: TuneTransformMode;
   visibleRef: React.MutableRefObject<boolean>;
+  pulseRef: React.MutableRefObject<{
+    start: number;
+    strength: number;
+    x: number;
+    y: number;
+  }>;
+  hotRef: React.MutableRefObject<boolean>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   // Track the group as REACT STATE too (not just ref) so the
@@ -366,6 +410,7 @@ function SceneContents({
   // the spin naturally over the back half of the drop.
   const kickDialRef = useRef<((v: number) => void) | null>(null);
   const hasAutoSpunRef = useRef(false);
+  const hasLandedPulseRef = useRef(false);
   const { camera, invalidate } = useThree();
   // Fit is now self-contained inside KeypadModel. It computes its
   // own bounding-sphere-based scale against the camera frustum, so
@@ -462,11 +507,27 @@ function SceneContents({
       hasAutoSpunRef.current = true;
       kickDialRef.current(12);
     }
-    // Reset the auto-spin latch when the user scrolls fully back
-    // above the pin (pin progress = 0). Re-entering replays the drop
-    // + dial kick fresh.
-    if (pinP <= 0.001 && hasAutoSpunRef.current) {
+    // LANDING THUD: the moment the drop settles, one strong shockwave
+    // ring radiates through the rice field from beneath the keypad —
+    // the device visibly displaces the space it lands in. Same pulse
+    // channel the press interactions use.
+    if (!hasLandedPulseRef.current && eased >= 0.995) {
+      hasLandedPulseRef.current = true;
+      if (!PREFERS_REDUCED_MOTION) {
+        pulseRef.current = {
+          start: performance.now(),
+          strength: 1.35,
+          x: 0.5,
+          y: 0.58,
+        };
+      }
+    }
+    // Reset the auto-spin + landing latches when the user scrolls fully
+    // back above the pin (pin progress = 0). Re-entering replays the
+    // drop, dial kick, and thud fresh.
+    if (pinP <= 0.001) {
       hasAutoSpunRef.current = false;
+      hasLandedPulseRef.current = false;
     }
 
     if (isMobile) {
@@ -510,7 +571,12 @@ function SceneContents({
 
   return (
     <>
-      <RiceBlob cursorRef={cursorRef} glowOpacityRef={glowOpacityRef} />
+      <RiceBlob
+        cursorRef={cursorRef}
+        glowOpacityRef={glowOpacityRef}
+        pulseRef={pulseRef}
+        hotRef={hotRef}
+      />
       {/* Cool paper-white ambient (was #f4f3f0 warm), which cast a
           warm/muddy tint that clashed with the site's cool palette.
           #f4f5f7 keeps the same brightness but reads cool/neutral. */}
