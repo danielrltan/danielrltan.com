@@ -30,10 +30,15 @@
   overflow: hidden;
   white-space: nowrap;
   opacity: 0.08;
-  font-family: var(--font-display, system-ui, sans-serif);
-  font-weight: 800;
-  font-size: clamp(120px, 18vw, 280px);
-  letter-spacing: -0.02em;
+  /* OffBit pixel display (was Geist 800): the giant ghost categories
+     join the sitewide big-type voice — a Geist watermark read as a
+     different site (user: "doesn't match the pixel style"). Zero
+     tracking per the pixel-glyph rule; size trimmed ~8% since OffBit
+     runs optically larger. */
+  font-family: var(--font-pixel, monospace);
+  font-weight: 700;
+  font-size: clamp(110px, 16.5vw, 256px);
+  letter-spacing: 0;
   line-height: 0.9;
   color: var(--ink);
 }
@@ -55,6 +60,12 @@
   box-sizing: border-box;
   max-width: 1680px;
   margin: 0 auto;
+  /* Re-enable pointer events: <main> is a pointer-events:none
+     pass-through (so the room canvas stays interactive) and each
+     section must opt its content back in. This section NEVER did —
+     every card hover was dead, and pointers over the trophy wall fell
+     through to the invisible hero wordmark's hit island below. */
+  pointer-events: auto;
 }
 
 /* Heading band. */
@@ -196,11 +207,13 @@
 .bp-tile-inner {
   position: relative;
   flex: 1;
-  background: color-mix(in srgb, var(--bg-surface) 82%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  /* Solid surface + SHARP corners (was translucent glass at radius
+     14px): the trophy wall joins the spec-sheet voice — hard edges,
+     hairline border, flat ground. The glassmorphism card was the
+     "doesn't match the pixel style" read. */
+  background: var(--bg-surface);
   border: 1px solid var(--ink-hairline);
-  border-radius: var(--r-card, 14px);
+  border-radius: 0;
   padding: var(--space-4h); /* 18 20→20, on-grid */
   display: flex;
   flex-direction: column;
@@ -248,6 +261,57 @@
     box-shadow: 0 12px 36px -16px var(--accent-tint);
     transform: rotate(0deg);
   }
+
+  /* FEATURED-card hover: the significant trophies get a live pixel
+     treatment (user request). Two parts, both stepped so the motion
+     ticks like hardware rather than glides:
+       1. an accent DITHER FIELD (8px checker) crawling diagonally in
+          2px steps across the card face — the "pixel shader" wash;
+       2. the accent outline PULSING between 1px and 3px on a discrete
+          two-frame clock.
+     The wash is interactive chrome (a highlight layer), kept at low
+     alpha so the 17:1 ink type stays fully legible through it. */
+  .bp-tile--featured .bp-tile-inner::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    background-image: repeating-conic-gradient(
+      var(--accent) 0% 25%,
+      transparent 0% 50%
+    );
+    background-size: 16px 16px; /* 8px checker cells */
+    transition: opacity var(--t-fast) ease;
+  }
+  .bp-tile--featured .bp-tile-inner:hover::after {
+    opacity: 0.14;
+    animation: bp-dither-crawl 0.9s steps(8) infinite;
+  }
+  .bp-tile--featured .bp-tile-inner:hover {
+    animation: bp-featured-pulse 1.2s steps(2, jump-none) infinite;
+  }
+}
+
+@keyframes bp-dither-crawl {
+  to {
+    background-position: 16px 16px;
+  }
+}
+@keyframes bp-featured-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--accent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-tile--featured .bp-tile-inner:hover,
+  .bp-tile--featured .bp-tile-inner:hover::after {
+    animation: none;
+  }
 }
 
 .bp-tile-cat {
@@ -277,10 +341,13 @@
 
 .bp-tile-metric {
   display: block;
-  font-family: var(--font-display, system-ui, sans-serif);
-  font-size: clamp(28px, 3vw, 36px);
+  /* OffBit pixel display (was Geist): the pulled-out metric is the
+     card's DISPLAY type, and display type sitewide is the pixel face.
+     Zero tracking (pixel glyphs collide under negative). */
+  font-family: var(--font-pixel, monospace);
+  font-size: clamp(26px, 2.8vw, 34px);
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   /* Large bold metric (28-36px, e.g. "Finalist", "1st"): large-text 3:1
      bar, so the brighter on-brand --accent-text-lg (~3.4:1) instead of the
      muddy small-text --accent-text (~5:1). */

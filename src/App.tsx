@@ -325,6 +325,17 @@ function installScrollChoreography(): {
 
     root.style.setProperty("--hero-opacity", heroOpacity.toFixed(3));
     root.style.setProperty("--hero-to-about", heroToAbout.toFixed(3));
+    // Hero hit-testability follows its visibility. The wordmark + bottom
+    // chips re-enable pointer-events inside the none'd hero layer (for
+    // the inhale hover / scroll button), but <main> is ALSO a
+    // pointer-events:none pass-through — so once the hero faded out,
+    // its invisible wordmark kept catching pointers anywhere a section
+    // below didn't explicitly opt in (found via a dead trophy-wall
+    // hover that resolved to .hero-mega-wordmark).
+    root.style.setProperty(
+      "--hero-pointer-events",
+      heroOpacity < 0.05 ? "none" : "auto",
+    );
     applyHeroPx(heroToAbout);
     root.style.setProperty("--canvas-opacity", finalCanvasOpacity.toFixed(3));
     root.style.setProperty("--canvas-pointer-events", canvasInteractive);

@@ -671,6 +671,10 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
       uMap: { value: map },
       uOpacity: { value: 0 },
       uTime: { value: 0 },
+      // Page-transition glitch intensity 0..1: pulsed by the Scene on
+      // project open/close/switch, decaying over ~400ms. Drives the
+      // slice-tear / chroma-split / noise burst below.
+      uGlitch: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -683,9 +687,34 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
       uniform sampler2D uMap;
       uniform float uOpacity;
       uniform float uTime;
+      uniform float uGlitch;
       varying vec2 vUv;
       void main() {
-        vec3 col = texture2D(uMap, vUv).rgb;
+        // PAGE-TRANSITION GLITCH (uGlitch 0..1, decaying pulse): the
+        // tube loses sync for a beat when "switching pages" —
+        //   1. horizontal SLICE TEAR: random rows shear sideways, the
+        //      row pattern re-rolling at ~24Hz;
+        //   2. a small whole-frame vertical jog (vsync slip);
+        //   3. RGB chroma split that widens with the glitch;
+        //   4. a broadband noise burst.
+        // All of it displaces/samples the screen's OWN pixels.
+        vec2 uv = vUv;
+        if (uGlitch > 0.001) {
+          float row = floor(uv.y * 36.0);
+          float h = fract(sin(row * 91.7 + floor(uTime * 24.0) * 7.3) * 43758.5453);
+          float tear = (h - 0.5) * 0.20 * uGlitch * step(0.62, h);
+          uv.x = fract(uv.x + tear);
+          uv.y = fract(uv.y + 0.012 * uGlitch * sin(uTime * 60.0));
+        }
+        float ca = 0.006 * uGlitch;
+        vec3 col;
+        col.r = texture2D(uMap, uv + vec2(ca, 0.0)).r;
+        col.g = texture2D(uMap, uv).g;
+        col.b = texture2D(uMap, uv - vec2(ca, 0.0)).b;
+        if (uGlitch > 0.001) {
+          float n = fract(sin(dot(uv + uTime, vec2(12.9898, 78.233))) * 43758.5453);
+          col += (n - 0.5) * 0.35 * uGlitch;
+        }
 
         // RASTER LINES: ~96 fat scanlines (was 210 hairlines at 6%
         // depth — invisible at viewing distance). Trapezoid profile:
@@ -1873,6 +1902,28 @@ function Scene({
     invalidate();
   }, [imageVersion, invalidate]);
 
+  // CRT PAGE-TRANSITION GLITCH: stamp the pulse whenever the "page"
+  // changes (project opened, closed, or switched). The useFrame below
+  // decays uGlitch from 1 → 0 over ~400ms — a brief sync-loss tear,
+  // chroma split and noise burst on the screen shader. The undefined
+  // sentinel skips the mount run so loading the section never glitches.
+  const glitchStartRef = useRef(0);
+  const prevSelectedRef = useRef<MacProject | null | undefined>(undefined);
+  useEffect(() => {
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (
+      !reduced &&
+      prevSelectedRef.current !== undefined &&
+      prevSelectedRef.current !== selected
+    ) {
+      glitchStartRef.current = performance.now();
+      invalidate();
+    }
+    prevSelectedRef.current = selected;
+  }, [selected, invalidate]);
+
   useFrame((_, dt) => {
     // PERF: short-circuit when off-screen. With frameloop="demand" on
     // the canvas, this stops the entire WebGL submit pipeline while
@@ -2187,6 +2238,14 @@ function Scene({
       // Ticks only while this scene's frameloop runs (i.e. while the
       // section is on screen), so the effects pause for free off-screen.
       mat.uniforms.uTime!.value = performance.now() / 1000;
+      // Glitch pulse: exponential decay from the last page transition.
+      // e^-9t ≈ 0.027 at 400ms; clamped to zero past the window so the
+      // uniform isn't written forever.
+      const since = (performance.now() - glitchStartRef.current) / 1000;
+      const g = since < 0.4 ? Math.exp(-since * 9) : 0;
+      if (Math.abs((mat.uniforms.uGlitch!.value as number) - g) > 0.002) {
+        mat.uniforms.uGlitch!.value = g;
+      }
     }
   });
 

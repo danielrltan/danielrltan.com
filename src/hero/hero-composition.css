@@ -259,7 +259,11 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
      used below. */
   align-items: flex-start;
   padding-left: 4vw;
-  pointer-events: auto;
+  /* Hit-testable only while the hero is actually visible: the scroll
+     choreography drops this to `none` once --hero-opacity fades, so the
+     invisible wordmark can't swallow pointers from sections lower on
+     the page (main is a pointer-events:none pass-through). */
+  pointer-events: var(--hero-pointer-events, auto);
 }
 
 .hero-mega-text {
@@ -389,7 +393,9 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   grid-template-rows: auto auto;
   gap: 14px 18px;
   align-items: end;
-  pointer-events: auto;
+  /* Same visibility-gated hit-testing as the wordmark: an invisible
+     scroll button must not be clickable from sections below. */
+  pointer-events: var(--hero-pointer-events, auto);
   /* No scroll-bound transform here. The dive-in on the composition
      root carries the meta row out with the rest of the hero. Single
      gesture, no per-element timing. */
