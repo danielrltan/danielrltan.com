@@ -12,9 +12,12 @@
   display: flex;
   align-items: center;
   overflow: hidden;
-  background: var(--wrapper-bg);
-  border-top: 1px solid rgba(13, 14, 16, 0.07);
-  border-bottom: 1px solid rgba(13, 14, 16, 0.07);
+  /* ACCENT BAND (user: the bar wasn't differentiated — tie it to the
+     keypad's colour). The bridge is now a solid orange block, echoing
+     the keypad's accent hardware + the loading scrim, so the contact
+     handoff reads as its own deliberate beat. Hairlines dropped: the
+     colour IS the edge. */
+  background: var(--accent);
   z-index: 0;
 }
 
@@ -48,17 +51,20 @@
   /* Downsized 1.2x: 48/9vw/130 → 40/7.5vw/108. */
   font-size: clamp(40px, 7.5vw, 108px);
   letter-spacing: -0.02em;
+  /* Ink on the accent band (~6.9:1). The old white text-shadow was a
+     paper-ground artifact; on orange it just haloed. */
   color: var(--wrapper-ink);
   text-transform: lowercase;
   padding-right: 0.32em;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .st-bullet {
   font-family: var(--font-pixel);
   font-weight: 700;
   font-size: clamp(40px, 7.5vw, 108px);
-  color: var(--accent);
+  /* Bullets flip to the page ground so they still punctuate against
+     the now-accent band. */
+  color: var(--bg-page, #eef0f3);
   padding-right: 0.32em;
   transform: translateY(-0.05em);
 }
