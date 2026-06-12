@@ -144,10 +144,9 @@ const POST_FRAG = /* glsl */ `
   uniform sampler2D uScene;
   uniform vec2 uGrid;
   uniform float uTileCount;
-  uniform vec3 uShadow;
   uniform vec3 uBase;
-  uniform vec3 uLit;
-  uniform vec3 uHot;
+  uniform vec3 uRingShadow;
+  uniform vec3 uRingLit;
   uniform vec3 uPaletteDir;
   varying vec2 vUv;
 
@@ -200,40 +199,40 @@ const POST_FRAG = /* glsl */ `
     vec4 s = texture2D(uScene, (cell + 0.5) / uGrid);
     float dith = bayer4(cell);
 
+    // INVERTED figure-ground (user direction): the FIELD is the bold
+    // orange element; the RING reads as white carved through it.
     vec3 col;
     float a;
     if (s.a > 0.5) {
-      // LUMINANCE -> TILE: ordered-dither quantization into the ramp.
-      float lum = s.b;
+      // INVERTED density: key-lit facets blank out (the white page is
+      // the highlight); shadow facets fill with pale warm tiles. The
+      // volume reads through the density gradient + the warm tint.
+      float density = 1.0 - s.b;
       float idx = clamp(
-        floor(lum * uTileCount + (dith - 0.5)),
+        floor(density * uTileCount + (dith - 0.5)),
         0.0,
         uTileCount - 1.0
       );
       float mask = tileMask(idx, cellUv);
 
-      // PER-FACE NORMAL -> PALETTE: reconstruct the facet normal, dot
-      // it with the key-light axis, quantize into discrete bands so
-      // adjacent facets snap to distinct tones (the volumetric read).
+      // PER-FACE NORMAL -> PALETTE, within the white family: shadow
+      // facets warm toward pale peach, lit facets stay pure white.
       vec2 nxy = s.rg * 2.0 - 1.0;
       float nz = sqrt(max(0.0, 1.0 - dot(nxy, nxy)));
       float t = clamp(dot(vec3(nxy, nz), uPaletteDir) * 0.5 + 0.5, 0.0, 1.0);
       float tq = floor(t * 4.0 + 0.5) / 4.0;
-      col = tq < 0.5
-        ? mix(uShadow, uBase, tq * 2.0)
-        : mix(uBase, uLit, (tq - 0.5) * 2.0);
-      // Specular tips flash hot at peak luminance.
-      col = mix(col, uHot, smoothstep(0.9, 1.0, lum) * 0.65);
-      a = mask;
+      col = mix(uRingShadow, uRingLit, tq);
+      a = mask * 0.92;
     } else {
-      // Ambient field: sparse faint tiles over empty cells so the
-      // hero keeps its full-bleed texture. Mostly small squares, the
-      // occasional diagonal.
+      // BOLD orange field: full-saturation accent tiles everywhere the
+      // ring isn't. Weighted toward the heavier shapes (diagonals,
+      // outline boxes, cross-hatch) so the field reads as a confident
+      // texture, not dust.
       float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
-      float fieldIdx = h > 0.8 ? 2.0 : 1.0;
+      float fieldIdx = h < 0.4 ? 1.0 : (h < 0.75 ? 2.0 : (h < 0.92 ? 4.0 : 3.0));
       float mask = tileMask(fieldIdx, cellUv);
       col = uBase;
-      a = mask * 0.30;
+      a = mask * 0.78;
     }
 
     gl_FragColor = vec4(col, a);
@@ -393,11 +392,9 @@ function RingScene({
       stencilBuffer: false,
     });
 
-    // Palette: the orange family already on the page. uBase is the
-    // brand accent (prop). LIGHT-PAGE direction: key-lit faces ADVANCE
-    // (deep saturated orange), shadow faces recede, but only to a mid
-    // peach: every band has to stay unmistakably orange or the ring
-    // loses its mass. THREE.Color converts sRGB hex -> linear under
+    // INVERTED palette (user direction): the field is bold accent
+    // orange; the ring is the white family, warming to pale peach on
+    // its shadow facets. THREE.Color converts sRGB hex -> linear under
     // ColorManagement; colorspace_fragment converts back on output.
     const postMaterial = new THREE.ShaderMaterial({
       vertexShader: POST_VERT,
@@ -406,10 +403,12 @@ function RingScene({
         uScene: { value: rt.texture },
         uGrid: { value: new THREE.Vector2(4, 4) },
         uTileCount: { value: TILE_COUNT },
-        uShadow: { value: new THREE.Color("#ef9663") },
         uBase: { value: new THREE.Color(color) },
-        uLit: { value: new THREE.Color("#c44a12") },
-        uHot: { value: new THREE.Color("#ff7a30") },
+        // Ring tints stay a hair off pure white: the ring must read
+        // WHITE (user direction); the volumetric shading comes from
+        // tile DENSITY, the tint only whispers warmth on shadow faces.
+        uRingShadow: { value: new THREE.Color("#fbeadd") },
+        uRingLit: { value: new THREE.Color("#ffffff") },
         uPaletteDir: { value: keyDir.clone() },
       },
       // Premultiplied output written raw into the alpha canvas.

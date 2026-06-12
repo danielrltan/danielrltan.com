@@ -169,9 +169,10 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   z-index: 0;
   /* Resting opacity. The ring's reveal is JS-driven (HeroGlyphRing's
      entrance: crossfade-in face-on → tilt, gated on the loading screen
-     clearing) via the canvas element's opacity, so the wrap sits at
-     its resting 0.55. */
-  opacity: 0.55;
+     clearing) via the canvas element's opacity. 0.7 (was 0.55): the
+     inverted bold-orange field needs the extra presence; per-tile
+     alphas in the shader do the fine balancing. */
+  opacity: 0.7;
 }
 
 .hero-glyph-ring {
