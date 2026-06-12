@@ -321,9 +321,11 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
 }
 .hero-mega-char {
   display: inline-block;
-  /* Inhale tracking: the per-letter translate3d + scale is written every
-     frame by the rAF spring in HeroSignature. NO CSS transition on
-     transform — it would fight the spring and smear the motion. */
+  /* Inhale tracking: HeroSignature's rAF spring lerps smoothly in JS
+     but writes the translate3d QUANTISED to a pixel grid (~2% of the
+     font size), so glyphs hop in discrete steps that match the OffBit
+     pixel voice. NO CSS transition on transform — it would re-smooth
+     the very steps the quantisation creates. */
   transform-origin: 50% 60%;
   will-change: transform;
 }

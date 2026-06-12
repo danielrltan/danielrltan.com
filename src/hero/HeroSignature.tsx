@@ -97,10 +97,12 @@ export function HeroSignature() {
   // Inhale tracking: per-letter proximity spread.
   //
   // Replaces the old white "matrix" spotlight (white-on-white over the
-  // orange wordmark read as a muddy haze). Now each GLYPH is pushed
+  // orange wordmark read as a muddy haze). Each GLYPH is pushed
   // outward from its line's horizontal centre, the push scaled by how
-  // close the cursor is (2D proximity) plus a small global hover bias,
-  // with a subtle weight-lift scale. Letters keep the accent colour.
+  // close the cursor is (2D proximity) plus a small global hover bias.
+  // Motion is quantised to a pixel grid before it reaches the DOM (see
+  // GRID below) so the spread hops in discrete steps, on-voice with
+  // the pixel font. Letters keep the accent colour.
   //
   // A spring-eased rAF loop lerps each glyph's current offset toward its
   // target; the loop self-stops once everything is hovering-off AND
@@ -128,10 +130,9 @@ export function HeroSignature() {
       dir: number; // signed distance from line centre: <0 left, >0 right
       cx: number; // cached REST centre x (client coords)
       cy: number; // cached REST centre y (client coords)
-      cur: number; // current x offset (px)
+      cur: number; // current x offset (px, smooth internal spring value)
       tgt: number; // target x offset (px)
-      sCur: number; // current scale
-      sTgt: number; // target scale
+      qx: number; // last QUANTISED offset written to the DOM
     };
     const glyphs: Glyph[] = [];
     lineEls.forEach((lineEl) => {
@@ -147,8 +148,7 @@ export function HeroSignature() {
           cy: 0,
           cur: 0,
           tgt: 0,
-          sCur: 1,
-          sTgt: 1,
+          qx: 0,
         });
       });
     });
@@ -159,11 +159,19 @@ export function HeroSignature() {
     let MAX_PUSH = 24;
     let BASE_PUSH = 9;
     let SIGMA = 170;
+    // PIXEL GRID: the spring's smooth value is quantised to this step
+    // before it touches the DOM, so glyphs MOVE in discrete pixel jumps
+    // (matching the OffBit pixel-art voice) instead of sub-pixel
+    // smoothing. ~2% of the font size ≈ a visible fraction of one glyph
+    // block: stepped enough to read as pixel motion, fine enough that
+    // the spread's shape survives.
+    let GRID = 4;
     const readFont = () => {
       const fs = parseFloat(getComputedStyle(textEl).fontSize) || 200;
       MAX_PUSH = fs * 0.11; // peak outward shove at the cursor
       BASE_PUSH = fs * 0.04; // gentle global airy bias while hovering
       SIGMA = fs * 0.85; // proximity falloff radius
+      GRID = Math.max(2, Math.round(fs * 0.02));
     };
     readFont();
 
@@ -182,7 +190,9 @@ export function HeroSignature() {
       rectsRaf = 0;
       for (const g of glyphs) {
         const r = g.el.getBoundingClientRect();
-        g.cx = r.left + r.width / 2 - g.cur;
+        // Subtract the QUANTISED offset (what is actually applied to the
+        // DOM), not the smooth spring value, to recover the rest centre.
+        g.cx = r.left + r.width / 2 - g.qx;
         g.cy = r.top + r.height / 2;
       }
     };
@@ -199,7 +209,6 @@ export function HeroSignature() {
       for (const g of glyphs) {
         if (!hovering) {
           g.tgt = 0;
-          g.sTgt = 1;
           continue;
         }
         const dx = g.cx - pointerX;
@@ -207,31 +216,36 @@ export function HeroSignature() {
         const prox = Math.exp(-(dx * dx + dy * dy) / (2 * SIGMA * SIGMA));
         const push = BASE_PUSH + prox * MAX_PUSH;
         g.tgt = g.dir * push;
-        g.sTgt = 1 + prox * 0.05;
       }
     };
 
+    // The spring lerps smoothly in JS, but the DOM only ever sees the
+    // value SNAPPED to the pixel grid — and only when the snapped value
+    // actually changes. Glyphs therefore hop grid-step by grid-step
+    // (the pixel-art read), and most frames write zero styles: strictly
+    // cheaper than the old per-frame sub-pixel transform on every
+    // glyph. The fractional scale lift (1→1.05) was removed with the
+    // smoothing: non-integer scaling of pixel glyphs blurs their blocks,
+    // which is the exact effect this rework is killing.
     const tick = () => {
       let moving = false;
       for (const g of glyphs) {
         g.cur += (g.tgt - g.cur) * 0.16;
-        g.sCur += (g.sTgt - g.sCur) * 0.16;
-        if (
-          Math.abs(g.tgt - g.cur) > 0.05 ||
-          Math.abs(g.sTgt - g.sCur) > 0.001
-        ) {
-          moving = true;
+        if (Math.abs(g.tgt - g.cur) > 0.05) moving = true;
+        const qx = Math.round(g.cur / GRID) * GRID;
+        if (qx !== g.qx) {
+          g.qx = qx;
+          g.el.style.transform = `translate3d(${qx}px,0,0)`;
         }
-        g.el.style.transform = `translate3d(${g.cur.toFixed(2)}px,0,0) scale(${g.sCur.toFixed(3)})`;
       }
       if (moving || hovering) {
         rafId = window.requestAnimationFrame(tick);
       } else {
-        // Settle to exact rest so transforms don't linger at sub-px values.
+        // Settle to exact rest.
         for (const g of glyphs) {
           g.cur = 0;
-          g.sCur = 1;
-          g.el.style.transform = "translate3d(0,0,0) scale(1)";
+          g.qx = 0;
+          g.el.style.transform = "translate3d(0,0,0)";
         }
         rafId = 0;
       }
@@ -261,7 +275,6 @@ export function HeroSignature() {
       hovering = false;
       for (const g of glyphs) {
         g.tgt = 0;
-        g.sTgt = 1;
       }
       schedule();
     };
