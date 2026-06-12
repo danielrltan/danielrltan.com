@@ -686,19 +686,54 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
       varying vec2 vUv;
       void main() {
         vec3 col = texture2D(uMap, vUv).rgb;
-        // Scanlines: ~210 lines across the face, drifting slowly so
-        // they read as live raster rather than a static texture.
-        float scan = 0.94 + 0.06 * sin(vUv.y * 210.0 * 6.2832 + uTime * 1.5);
-        // Refresh band: a soft bright bar rolling upward every ~7s.
-        float roll = fract(vUv.y + uTime * 0.14);
-        float band = 1.0 + 0.05 * exp(-pow((roll - 0.5) * 9.0, 2.0));
+
+        // RASTER LINES: ~96 fat scanlines (was 210 hairlines at 6%
+        // depth — invisible at viewing distance). Trapezoid profile:
+        // a bright line core with a soft DARK SEAM between rows, the
+        // way a real tube's beam rows actually read. The whole raster
+        // crawls slowly downward so it reads as live scan, not print.
+        float line = vUv.y * 96.0 + uTime * 0.8;
+        float ph = fract(line);
+        float scan = 0.70 + 0.30 *
+          (smoothstep(0.03, 0.36, ph) * (1.0 - smoothstep(0.64, 0.97, ph)));
+
+        // INTERLACE SHIMMER: odd/even line fields trade ~3% brightness
+        // on alternating ticks — the gentle row-flicker of an
+        // interlaced tube. Field clock ~12Hz, far below strobe range.
+        float odd = mod(floor(line), 2.0);
+        float fieldClock = step(0.5, fract(uTime * 12.0));
+        float interlace = 1.0 - 0.03 * abs(odd - fieldClock);
+
+        // APERTURE GRILLE: faint vertical RGB phosphor triads. Pure
+        // chroma texture (no geometry), reads as tube glass up close.
+        float gx = vUv.x * 320.0 * 6.2832;
+        vec3 triad = vec3(
+          0.96 + 0.04 * cos(gx),
+          0.96 + 0.04 * cos(gx + 2.094),
+          0.96 + 0.04 * cos(gx + 4.189)
+        );
+
+        // REFRESH BAND: a soft bright bar rolling DOWN the face every
+        // ~6s (doubled presence vs the old 5%), with a faint dark
+        // retrace shadow trailing just behind it.
+        float roll = fract(vUv.y - uTime * 0.16);
+        float band = 1.0 + 0.10 * exp(-pow((roll - 0.5) * 8.0, 2.0))
+                         - 0.045 * exp(-pow((roll - 0.62) * 12.0, 2.0));
+
         // Corner vignette: tube glass falloff.
         float d = distance(vUv, vec2(0.5));
-        float vig = 1.0 - 0.16 * smoothstep(0.34, 0.72, d);
-        // Faint supply flicker (sub-2%, two incommensurate sines so it
-        // never reads as a loop).
-        float flick = 1.0 + 0.012 * sin(uTime * 47.0) * sin(uTime * 13.7);
-        gl_FragColor = vec4(col * scan * band * vig * flick, uOpacity);
+        float vig = 1.0 - 0.18 * smoothstep(0.32, 0.72, d);
+
+        // Supply flicker (sub-2%, two incommensurate sines so it never
+        // reads as a loop).
+        float flick = 1.0 + 0.018 * sin(uTime * 47.0) * sin(uTime * 13.7);
+
+        vec3 outCol = col * scan * interlace * band * vig * flick * triad;
+        // PHOSPHOR LIFT: the seams must not crush detail to black — a
+        // touch of unmodulated bleed keeps text legible through the
+        // raster, like real phosphor glow spilling between rows.
+        outCol += col * 0.10;
+        gl_FragColor = vec4(outCol, uOpacity);
         #include <colorspace_fragment>
       }
     `,
