@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { HeroSignature2D } from "./HeroSignature2D";
-import { HeroAsciiRing } from "./HeroAsciiRing";
+import { HeroGlyphRing } from "./HeroGlyphRing";
 import { HeroIgnition } from "./HeroIgnition";
 import { type SignatureData } from "./signatureGeometry";
 import { useAssembly } from "../loading";
@@ -374,7 +374,7 @@ export function HeroSignature() {
         <h1 className="hero-sr-heading">Daniel Tan, Software Engineer</h1>
 
         <div className="hero-ring-wrap" aria-hidden>
-          <HeroAsciiRing color="#e87040" spinDuration={26} />
+          <HeroGlyphRing color="#e87040" spinDuration={26} />
         </div>
 
         {/* One-shot ASCII blast on load, centred on the ring; the ring then

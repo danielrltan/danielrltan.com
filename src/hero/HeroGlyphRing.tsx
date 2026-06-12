@@ -3,15 +3,14 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 
 /**
- * Big bold glyph ring: hero's primary motion centerpiece.
+ * Big bold tile ring: hero's primary motion centerpiece.
  *
- * APPROACH: GPU glyph-grid dither post-process (replaces AsciiEffect).
- * ---------------------------------------------------------------------
- * The old version was three's AsciiEffect: a synchronous GPU->CPU
- * getImageData readback every frame feeding a DOM <table> of glyphs.
- * This version is a pure-GPU two-pass pipeline:
+ * APPROACH: GPU geometric-tile dither post-process. NO ASCII, no text
+ * glyphs, no font atlas: the tile vocabulary is procedural geometry
+ * drawn in-shader: small squares, diagonal lines, cross-hatch, outline
+ * boxes, filled squares. Two passes:
  *
- *   PASS 1 (scene -> tiny render target, ONE TEXEL PER GLYPH CELL):
+ *   PASS 1 (scene -> tiny render target, ONE TEXEL PER TILE CELL):
  *     The torus renders with a raw ShaderMaterial that encodes
  *       R,G = flat per-face view-space normal.xy (dFdx/dFdy of the
  *             view position, so every facet is constant -> faceted)
@@ -19,26 +18,24 @@ import * as THREE from "three";
  *       A   = coverage (1 where the torus is, 0 elsewhere)
  *
  *   PASS 2 (fullscreen quad -> canvas):
- *     For each screen pixel: find its glyph cell, read the cell's
+ *     For each screen pixel: find its tile cell, read the cell's
  *     texel, then
- *       - LUMINANCE -> GLYPH: Bayer-dithered quantization picks a
- *         glyph from a canvas-baked atlas ramp (" .:-=+*x#%@").
+ *       - LUMINANCE -> TILE: Bayer-dithered quantization picks a tile
+ *         from the density ramp (empty -> small square -> diagonal ->
+ *         cross -> outline box -> box+slash -> inset square -> full
+ *         square). Hard step() edges: crisp pixel shapes, on-voice
+ *         with the sharp-corner system.
  *       - PER-FACE NORMAL -> PALETTE: the facet normal dotted with
  *         the key-light direction is quantized into discrete bands
- *         across the orange family (shadow -> accent -> lit -> hot),
- *         which is what gives the ring its volumetric shading.
- *     Empty cells render a faint sparse glyph field so the page keeps
- *     the textured backdrop the old table gave it.
- *
- * No readback, no DOM table, no 30fps cap: the whole thing is one
- * small RT render plus one fullscreen draw.
+ *         across the orange family, giving the volumetric shading.
+ *     Empty cells render a faint sparse tile field so the page keeps
+ *     its full-bleed texture.
  *
  * CURSOR-DRIVEN DEFORMATION
  * -------------------------
- * Unchanged from the AsciiEffect version, now living in the pass-1
- * vertex shader directly: uMouseNdc/uMouseStrength/uTime/uFalloff
- * displace vertices along their normals with a smooth NDC falloff +
- * a low-frequency ripple, so the surface bulges liquidly toward the
+ * uMouseNdc/uMouseStrength/uTime/uFalloff displace vertices along
+ * their normals with a smooth NDC falloff + a low-frequency ripple in
+ * the pass-1 vertex shader, so the surface bulges liquidly toward the
  * cursor. No React state in the loop; refs + uniforms only.
  */
 
@@ -52,47 +49,20 @@ interface Props {
 // PERF (mobile): the post pass scales with canvas pixels, so coarse
 // devices cap DPR at 1 (vs up to 2x desktop). Tessellation also drops:
 // with flat per-face normals the facet size IS the look, and chunkier
-// facets read fine (arguably better) on a small screen.
+// facets read fine on a small screen.
 const IS_SMALL_SCREEN =
   typeof window !== "undefined" &&
   window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
 
-// Glyph cell size in CSS px. The grid (and the pass-1 render target)
-// is the container size divided by this.
-const CELL_PX = 9;
+// Tile cell size in CSS px. The grid (and the pass-1 render target)
+// is the container size divided by this. Geometric tiles need a touch
+// more room than text glyphs did to read as shapes.
+const CELL_PX = 10;
 
-// Luminance ramp, sparse -> dense. Index 0 is a SPACE: the darkest
-// faces dissolve into nothing, which is what makes the dither read as
-// a dissolving volume instead of a solid cut-out.
-const GLYPH_RAMP = " .:-=+*x#%@";
-
-/** Canvas-baked glyph atlas: GLYPH_RAMP in one horizontal strip, white
- *  on transparent; the post shader samples its alpha as the glyph mask. */
-function buildGlyphAtlas(): THREE.CanvasTexture {
-  const N = GLYPH_RAMP.length;
-  const TILE = 64;
-  const cv = document.createElement("canvas");
-  cv.width = N * TILE;
-  cv.height = TILE;
-  const ctx = cv.getContext("2d")!;
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `700 ${Math.round(TILE * 0.72)}px ui-monospace, Menlo, Consolas, "Courier New", monospace`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  for (let i = 0; i < N; i++) {
-    ctx.fillText(GLYPH_RAMP[i]!, i * TILE + TILE / 2, TILE / 2 + TILE * 0.04);
-  }
-  const tex = new THREE.CanvasTexture(cv);
-  // No mips: tiles would bleed into their neighbours at low mip levels.
-  // Cells are ~9-18 device px, plain linear is clean enough.
-  tex.minFilter = THREE.LinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  tex.generateMipmaps = false;
-  tex.wrapS = THREE.ClampToEdgeWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  return tex;
-}
+// Number of tiles in the density ramp (must match tileMask in the
+// post shader): empty, small square, diagonal, cross, outline box,
+// box + slash, inset square, full square.
+const TILE_COUNT = 8;
 
 // ---------------------------------------------------------------------
 // PASS 1: torus material. Outputs data, not color: flat normal.xy in
@@ -149,17 +119,18 @@ const RING_FRAG = /* glsl */ `
     vec3 v = normalize(-vViewPos);
     vec3 h = normalize(uKeyDir + v);
     float spec = pow(max(dot(n, h), 0.0), 36.0);
-    // Generous floor + fill so even away-facing facets keep mid-ramp
-    // glyph density: the ring must hold its bold mass on the light
-    // page; the palette bands carry the volume, density carries form.
-    float lum = clamp(0.18 + diff * 0.85 + fill * 0.38 + spec * 0.5, 0.0, 1.0);
+    // Moderate floor: away-facing facets thin into diagonals / small
+    // squares while key-lit facets pack into filled squares. The wide
+    // density range is what makes the volume read; the palette bands
+    // reinforce it.
+    float lum = clamp(0.10 + diff * 0.92 + fill * 0.30 + spec * 0.5, 0.0, 1.0);
 
     gl_FragColor = vec4(n.xy * 0.5 + 0.5, lum, 1.0);
   }
 `;
 
 // ---------------------------------------------------------------------
-// PASS 2: fullscreen glyph-grid dither.
+// PASS 2: fullscreen geometric-tile dither.
 // ---------------------------------------------------------------------
 const POST_VERT = /* glsl */ `
   varying vec2 vUv;
@@ -171,9 +142,8 @@ const POST_VERT = /* glsl */ `
 
 const POST_FRAG = /* glsl */ `
   uniform sampler2D uScene;
-  uniform sampler2D uGlyphs;
   uniform vec2 uGrid;
-  uniform float uGlyphCount;
+  uniform float uTileCount;
   uniform vec3 uShadow;
   uniform vec3 uBase;
   uniform vec3 uLit;
@@ -192,6 +162,37 @@ const POST_FRAG = /* glsl */ `
     return (4.0 * bayer2(floor(p / 2.0)) + bayer2(p) + 0.5) / 16.0;
   }
 
+  // Procedural geometric tiles, density ramp 0..7. p is cell-local UV
+  // in [0,1]^2. Hard step() edges on purpose: crisp pixel shapes (the
+  // site's sharp-corner voice), no font, no texture.
+  float tileMask(float idx, vec2 p) {
+    vec2 a = abs(p - 0.5);
+    float box = max(a.x, a.y);          // Chebyshev distance: squares
+    float d1 = abs(p.x + p.y - 1.0);    // diagonal (rising)
+    // NOTE: never end a GLSL comment with a backslash; it line-splices.
+    float d2 = abs(p.x - p.y);          // diagonal (falling)
+    float inTile = step(box, 0.42);     // keep shapes off the cell seam
+
+    if (idx < 0.5) {
+      return 0.0;                                        // empty
+    } else if (idx < 1.5) {
+      return step(box, 0.13);                            // small square
+    } else if (idx < 2.5) {
+      return step(d1, 0.11) * inTile;                    // diagonal /
+    } else if (idx < 3.5) {
+      return max(step(d1, 0.10), step(d2, 0.10)) * inTile; // cross-hatch X
+    } else if (idx < 4.5) {
+      return step(box, 0.40) - step(box, 0.26);          // outline box
+    } else if (idx < 5.5) {
+      float frame = step(box, 0.40) - step(box, 0.26);   // box + slash
+      float slash = step(d1, 0.10) * step(box, 0.26);
+      return clamp(frame + slash, 0.0, 1.0);
+    } else if (idx < 6.5) {
+      return step(box, 0.30);                            // inset square
+    }
+    return step(box, 0.44);                              // full square
+  }
+
   void main() {
     vec2 g = vUv * uGrid;
     vec2 cell = floor(g);
@@ -202,17 +203,14 @@ const POST_FRAG = /* glsl */ `
     vec3 col;
     float a;
     if (s.a > 0.5) {
-      // LUMINANCE -> GLYPH: ordered-dither quantization into the ramp.
+      // LUMINANCE -> TILE: ordered-dither quantization into the ramp.
       float lum = s.b;
       float idx = clamp(
-        floor(lum * uGlyphCount + (dith - 0.5)),
+        floor(lum * uTileCount + (dith - 0.5)),
         0.0,
-        uGlyphCount - 1.0
+        uTileCount - 1.0
       );
-      float mask = texture2D(
-        uGlyphs,
-        vec2((idx + cellUv.x) / uGlyphCount, cellUv.y)
-      ).a;
+      float mask = tileMask(idx, cellUv);
 
       // PER-FACE NORMAL -> PALETTE: reconstruct the facet normal, dot
       // it with the key-light axis, quantize into discrete bands so
@@ -224,18 +222,16 @@ const POST_FRAG = /* glsl */ `
       col = tq < 0.5
         ? mix(uShadow, uBase, tq * 2.0)
         : mix(uBase, uLit, (tq - 0.5) * 2.0);
-      // Specular tips flash hot (near-white peach) at peak luminance.
+      // Specular tips flash hot at peak luminance.
       col = mix(col, uHot, smoothstep(0.9, 1.0, lum) * 0.65);
       a = mask;
     } else {
-      // Ambient field: sparse faint glyphs over empty cells so the
-      // hero keeps its full-bleed texture (the old table's backdrop).
+      // Ambient field: sparse faint tiles over empty cells so the
+      // hero keeps its full-bleed texture. Mostly small squares, the
+      // occasional diagonal.
       float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
-      float fieldIdx = h > 0.78 ? 3.0 : 1.0; // mostly '.', sometimes '-'
-      float mask = texture2D(
-        uGlyphs,
-        vec2((fieldIdx + cellUv.x) / uGlyphCount, cellUv.y)
-      ).a;
+      float fieldIdx = h > 0.8 ? 2.0 : 1.0;
+      float mask = tileMask(fieldIdx, cellUv);
       col = uBase;
       a = mask * 0.30;
     }
@@ -248,12 +244,12 @@ const POST_FRAG = /* glsl */ `
   }
 `;
 
-export function HeroAsciiRing({
+export function HeroGlyphRing({
   color = "#e87040",
   spinDuration = 26,
 }: Props) {
   return (
-    <div className="hero-ascii-ring" aria-hidden>
+    <div className="hero-glyph-ring" aria-hidden>
       <Canvas
         // CRITICAL: measure layout size (offsetWidth), NOT the
         // transformed bounding box. The hero composition scales up to
@@ -364,8 +360,8 @@ function RingScene({
   const mouseStrengthSmoothedRef = useRef(0);
 
   // ---------------------------------------------------------------
-  // Pipeline objects: ring material, render target, glyph atlas, post
-  // scene. All imperative, memoised once, disposed on unmount.
+  // Pipeline objects: ring material, render target, post scene. All
+  // imperative, memoised once, disposed on unmount.
   // ---------------------------------------------------------------
   const pipeline = useMemo(() => {
     const keyDir = new THREE.Vector3(-2.2, 1.6, 3.0).normalize();
@@ -389,7 +385,7 @@ function RingScene({
       },
     });
 
-    // One texel per glyph cell; nearest both ways (it's a data buffer).
+    // One texel per tile cell; nearest both ways (it's a data buffer).
     const rt = new THREE.WebGLRenderTarget(4, 4, {
       minFilter: THREE.NearestFilter,
       magFilter: THREE.NearestFilter,
@@ -397,26 +393,19 @@ function RingScene({
       stencilBuffer: false,
     });
 
-    const atlas = buildGlyphAtlas();
-
     // Palette: the orange family already on the page. uBase is the
-    // brand accent (prop); shadow/lit/hot are fixed family stops.
-    // THREE.Color converts sRGB hex -> linear under ColorManagement;
-    // the post shader's colorspace_fragment converts back on output.
+    // brand accent (prop). LIGHT-PAGE direction: key-lit faces ADVANCE
+    // (deep saturated orange), shadow faces recede, but only to a mid
+    // peach: every band has to stay unmistakably orange or the ring
+    // loses its mass. THREE.Color converts sRGB hex -> linear under
+    // ColorManagement; colorspace_fragment converts back on output.
     const postMaterial = new THREE.ShaderMaterial({
       vertexShader: POST_VERT,
       fragmentShader: POST_FRAG,
       uniforms: {
         uScene: { value: rt.texture },
-        uGlyphs: { value: atlas },
         uGrid: { value: new THREE.Vector2(4, 4) },
-        uGlyphCount: { value: GLYPH_RAMP.length },
-        // LIGHT-PAGE palette direction: on the cool-white page, faces
-        // toward the key light ADVANCE (deep saturated orange) and
-        // shadow faces recede, but only to a mid peach: every band has
-        // to stay unmistakably orange or the ring loses its mass. (A
-        // near-page pale stop read as a washed gray band; "lit =
-        // lighter" before that washed the whole ring to white.)
+        uTileCount: { value: TILE_COUNT },
         uShadow: { value: new THREE.Color("#ef9663") },
         uBase: { value: new THREE.Color(color) },
         uLit: { value: new THREE.Color("#c44a12") },
@@ -438,7 +427,7 @@ function RingScene({
     postScene.add(postQuad);
     const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-    return { ringMaterial, rt, atlas, postMaterial, postScene, postQuad, postCam };
+    return { ringMaterial, rt, postMaterial, postScene, postQuad, postCam };
     // color is captured at mount; the brand accent doesn't change live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -587,7 +576,7 @@ function RingScene({
     // PASS 1: torus -> cell-grid data target.
     gl.setRenderTarget(pipeline.rt);
     gl.render(scene, camera);
-    // PASS 2: glyph-grid dither -> canvas.
+    // PASS 2: geometric-tile dither -> canvas.
     gl.setRenderTarget(null);
     gl.render(pipeline.postScene, pipeline.postCam);
   }, 1);
@@ -599,7 +588,6 @@ function RingScene({
       pipeline.postMaterial.dispose();
       pipeline.postQuad.geometry.dispose();
       pipeline.rt.dispose();
-      pipeline.atlas.dispose();
     };
   }, [pipeline]);
 

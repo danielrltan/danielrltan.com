@@ -167,14 +167,14 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 0;
-  /* Resting opacity. The ring's reveal is JS-driven (HeroAsciiRing's
+  /* Resting opacity. The ring's reveal is JS-driven (HeroGlyphRing's
      entrance: crossfade-in face-on → tilt, gated on the loading screen
      clearing) via the canvas element's opacity, so the wrap sits at
      its resting 0.55. */
   opacity: 0.55;
 }
 
-.hero-ascii-ring {
+.hero-glyph-ring {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -182,8 +182,8 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   pointer-events: none;
   /* No scroll-bound transform/filter here. The composition root
      handles the dive-in transform; the ring moves as part of the
-     same rigid body. (The glyph rendering is a WebGL post-process now;
-     the old AsciiEffect <table> styling is gone with it.) */
+     same rigid body. (Tile rendering is a WebGL post-process: squares,
+     outline boxes and diagonals drawn in-shader, no text glyphs.) */
 }
 
 @media (prefers-reduced-motion: reduce) {
