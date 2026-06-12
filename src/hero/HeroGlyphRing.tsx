@@ -119,11 +119,12 @@ const RING_FRAG = /* glsl */ `
     vec3 v = normalize(-vViewPos);
     vec3 h = normalize(uKeyDir + v);
     float spec = pow(max(dot(n, h), 0.0), 36.0);
-    // Moderate floor: away-facing facets thin into diagonals / small
-    // squares while key-lit facets pack into filled squares. The wide
-    // density range is what makes the volume read; the palette bands
-    // reinforce it.
-    float lum = clamp(0.10 + diff * 0.92 + fill * 0.30 + spec * 0.5, 0.0, 1.0);
+    // SPECULAR-DOMINANT, like the original AsciiEffect Phong setup
+    // (near-black base 0x202020, white specular, shininess 36): the
+    // diffuse terms stay low so brightness only spikes in compact
+    // specular streaks. A diffuse-dominant mix saturated half the
+    // ring to max density - the "solid orange wall" the user flagged.
+    float lum = clamp(0.06 + diff * 0.30 + fill * 0.12 + spec * 0.9, 0.0, 1.0);
 
     gl_FragColor = vec4(n.xy * 0.5 + 0.5, lum, 1.0);
   }
