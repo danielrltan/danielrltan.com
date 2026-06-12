@@ -12,12 +12,14 @@
   display: flex;
   align-items: center;
   overflow: hidden;
-  /* ACCENT BAND (user: the bar wasn't differentiated — tie it to the
-     keypad's colour). The bridge is now a solid orange block, echoing
-     the keypad's accent hardware + the loading scrim, so the contact
-     handoff reads as its own deliberate beat. Hairlines dropped: the
-     colour IS the edge. */
-  background: var(--accent);
+  /* CHARCOAL BAND (v2 — the full-accent orange block read terrible,
+     per user; they want grey but differentiated). The bridge inverts
+     to the deep cool-ink surface — the same dark ground as the
+     keypad's OLED screen right below it and the Mac CRT — so it
+     stands clearly apart from the cool-white sections on either side
+     while staying in the grey family. Hairlines stay dropped: the
+     value shift IS the edge. */
+  background: var(--ink, #0d0e10);
   z-index: 0;
 }
 
@@ -51,9 +53,8 @@
   /* Downsized 1.2x: 48/9vw/130 → 40/7.5vw/108. */
   font-size: clamp(40px, 7.5vw, 108px);
   letter-spacing: -0.02em;
-  /* Ink on the accent band (~6.9:1). The old white text-shadow was a
-     paper-ground artifact; on orange it just haloed. */
-  color: var(--wrapper-ink);
+  /* Page-white type on the charcoal band (~17:1). */
+  color: var(--bg-page, #eef0f3);
   text-transform: lowercase;
   padding-right: 0.32em;
 }
@@ -62,9 +63,9 @@
   font-family: var(--font-pixel);
   font-weight: 700;
   font-size: clamp(40px, 7.5vw, 108px);
-  /* Bullets flip to the page ground so they still punctuate against
-     the now-accent band. */
-  color: var(--bg-page, #eef0f3);
+  /* The accent survives only as punctuation — small orange squares
+     between phrases, like the keypad's orange side buttons. */
+  color: var(--accent);
   padding-right: 0.32em;
   transform: translateY(-0.05em);
 }
