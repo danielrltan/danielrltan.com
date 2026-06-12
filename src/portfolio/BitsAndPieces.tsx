@@ -430,19 +430,39 @@ export function BitsAndPieces() {
     // every frame for nothing. A persistent observer gates it; entering the
     // viewport schedules one refresh so the transform is never stale.
     let marqueeVisible = false;
+    // PIXEL-STEPPED slide (sitewide pixel-motion language): the strip's
+    // scroll-coupled travel is snapped to a 12px grid before it touches
+    // the DOM, so the giant ghost categories TICK across the section in
+    // discrete jumps instead of gliding sub-pixel. Strip width is cached
+    // (scrollWidth forces layout; once + on resize is free), and the
+    // transform is only written when the snapped value changes.
+    const MARQUEE_GRID = 12;
+    let stripW = 0;
+    let lastQ = NaN;
+    const measureStrip = () => {
+      stripW = marqueeRef.current?.scrollWidth ?? 0;
+    };
     const update = () => {
       if (!marqueeVisible) return;
+      if (stripW === 0) measureStrip();
       const r = el.getBoundingClientRect();
       const vh = window.innerHeight || 1;
       const p = (vh - r.top) / (vh + r.height);
       const clamped = Math.max(0, Math.min(1, p));
-      if (marqueeRef.current) {
-        marqueeRef.current.style.transform = `translate3d(${-clamped * 36}%, 0, 0)`;
+      const q =
+        Math.round((clamped * 0.36 * stripW) / MARQUEE_GRID) * MARQUEE_GRID;
+      if (q !== lastQ && marqueeRef.current) {
+        lastQ = q;
+        marqueeRef.current.style.transform = `translate3d(${-q}px, 0, 0)`;
       }
     };
     const onScroll = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(update);
+    };
+    const onResize = () => {
+      measureStrip();
+      onScroll();
     };
     const visIo = new IntersectionObserver(
       (entries) => {
@@ -454,12 +474,12 @@ export function BitsAndPieces() {
     );
     visIo.observe(el);
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
+    window.addEventListener("resize", onResize, { passive: true });
     return () => {
       io.disconnect();
       visIo.disconnect();
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
       cancelAnimationFrame(raf);
     };
   }, []);

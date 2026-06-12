@@ -389,7 +389,11 @@ export function Work() {
         const p = self.progress;
 
         const bar = progressBarRef.current;
-        if (bar) bar.style.transform = `scaleX(${p})`;
+        // Pixel-stepped fill: the section progress advances in 28
+        // discrete cells (like a hardware loading bar) instead of a
+        // continuous glide — the pixel-motion voice on chrome that is
+        // already a progress METER.
+        if (bar) bar.style.transform = `scaleX(${Math.round(p * 28) / 28})`;
 
         // Handoff: keep the ledger fully opaque through the end of the
         // pin. The old "exit dissolve" faded it to 0 over the last 10%,

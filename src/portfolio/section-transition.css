@@ -29,7 +29,12 @@
   align-items: center;
   white-space: nowrap;
   width: max-content;
-  animation: st-marquee-scroll 38s linear infinite;
+  /* steps() instead of linear: the loop advances in 320 discrete jumps
+     (≈8px each at desktop track width, scaling with the type), so the
+     giant pixel-font phrase TICKS across the band like a hardware
+     marquee instead of gliding sub-pixel. Same distance + duration, so
+     the read speed is unchanged. */
+  animation: st-marquee-scroll 38s steps(320) infinite;
 }
 
 @keyframes st-marquee-scroll {

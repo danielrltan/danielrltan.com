@@ -173,8 +173,11 @@
   white-space: nowrap;
   /* Triple-content slide: -33.33% positions the second copy at the
      original starting point, making the loop seamless. 42s is slow
-     enough to read each chip without feeling stalled. */
-  animation: tech-ticker-slide 42s linear infinite;
+     enough to read each chip without feeling stalled. steps() so the
+     chips tick across in ~4px jumps (350 steps over the one-copy
+     travel) instead of gliding — the flat marquee inherits the CRT's
+     pixel-motion language. Distance + duration unchanged. */
+  animation: tech-ticker-slide 42s steps(350) infinite;
   will-change: transform;
 }
 @keyframes tech-ticker-slide {

@@ -224,10 +224,12 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   }
 }
 
-/* Scroll-cue bob: the down arrow nudges downward on a slow loop to
-   read as "scroll down" without shouting. */
+/* Scroll-cue bob: the down arrow hops downward on a slow loop to read
+   as "scroll down" without shouting. steps(2) on each half makes it a
+   three-frame sprite hop (2px lands) instead of a smooth ease — the
+   pixel-motion voice at micro scale. */
 @keyframes hero-scroll-bob {
-  0%, 100% { transform: translateY(-1px); opacity: 0.75; }
+  0%, 100% { transform: translateY(-2px); opacity: 0.75; }
   50% { transform: translateY(2px); opacity: 1; }
 }
 
@@ -534,7 +536,9 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   font-size: 13px;
   line-height: 1;
   color: var(--accent);
-  animation: hero-scroll-bob 2.2s var(--ease-soft) infinite;
+  /* steps(2) per keyframe segment = discrete 2px hops (see the
+     hero-scroll-bob note above). */
+  animation: hero-scroll-bob 2.2s steps(2) infinite;
   flex-shrink: 0;
 }
 .hero-scroll-label {
