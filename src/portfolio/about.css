@@ -120,10 +120,10 @@
   pointer-events: none;
   background:
     radial-gradient(
-      ellipse 58vw 54vh at calc(100% - 22vw) 16vh,
-      rgba(238, 240, 243, 0.94) 0%,
-      rgba(238, 240, 243, 0.78) 38%,
-      rgba(238, 240, 243, 0) 70%
+      ellipse 62vw 56vh at calc(100% - 22vw) 14vh,
+      rgba(238, 240, 243, 0.97) 0%,
+      rgba(238, 240, 243, 0.86) 42%,
+      rgba(238, 240, 243, 0) 74%
     ),
     linear-gradient(
       to top,
@@ -131,6 +131,41 @@
       rgba(238, 240, 243, 0.6) 14vh,
       rgba(238, 240, 243, 0) 30vh
     );
+}
+
+/* Frosted zones hugging the text blocks: a blurred, feather-masked
+   backdrop patch behind the lede and the spec strip. The blur reads as
+   depth-of-field fog over the render (no hard edge anywhere, so it
+   never becomes a card), and it guarantees legibility at widths where
+   the room runs underneath the full text block — the wash alone left
+   the lede sitting on raw render (user: "why is it completely
+   transparent?"). z-index:1 on the hosts keeps each ::before inside
+   its own stacking context, under its text, above the wash. */
+.portfolio-about .about-lede,
+.portfolio-about .about-grid {
+  z-index: 1;
+}
+.portfolio-about .about-lede::before,
+.portfolio-about .about-grid::before {
+  content: "";
+  position: absolute;
+  inset: -30px -36px;
+  z-index: -1;
+  pointer-events: none;
+  background: rgba(238, 240, 243, 0.58);
+  -webkit-backdrop-filter: blur(18px) saturate(108%);
+  backdrop-filter: blur(18px) saturate(108%);
+  /* Feather every edge so the patch dissolves into the wash. */
+  mask-image: radial-gradient(
+    ellipse 100% 100% at 50% 50%,
+    black 52%,
+    transparent 98%
+  );
+  -webkit-mask-image: radial-gradient(
+    ellipse 100% 100% at 50% 50%,
+    black 52%,
+    transparent 98%
+  );
 }
 
 /* DOM-real <h2> for assistive tech + SEO. Visually hidden because the
@@ -408,9 +443,11 @@
     inset: auto;
     width: auto;
   }
-  /* No room behind the phone layout; the atmosphere scrim is dead
-     weight on the flat page ground. */
-  .portfolio-about .about-col::before {
+  /* No room behind the phone layout; the atmosphere scrim and the
+     frosted text patches are dead weight on the flat page ground. */
+  .portfolio-about .about-col::before,
+  .portfolio-about .about-lede::before,
+  .portfolio-about .about-grid::before {
     display: none;
   }
 
