@@ -225,19 +225,22 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
                       }
                 }
               >
-                {/* Real <img> instead of background-image (PERF,
-                    load-bearing): CSS backgrounds can't lazy-load or
-                    decode async, so all ~36 unique WebPs decoded in one
-                    synchronous burst the moment the section first
-                    painted — the scroll-entry jank. loading="lazy"
-                    defers offscreen cards entirely and decoding="async"
-                    keeps the decode off the scroll frame. */}
+                {/* Real <img> instead of background-image (PERF):
+                    decoding="async" keeps the WebP decode off the
+                    scroll frame (the old CSS backgrounds decoded in one
+                    synchronous burst at first paint — the entry jank).
+                    Deliberately NOT loading="lazy": the strips are
+                    ~10k px wide and translate horizontally, so lazily
+                    loaded cards slid into view as blank white squares
+                    before their fetch caught up (user: images load
+                    terribly). Eager fetch matches the old
+                    background-image behaviour; the images are cached
+                    long before the user scrolls here. */}
                 {p.src && (
                   <img
                     className="other-train-photo"
                     src={p.src}
                     alt=""
-                    loading="lazy"
                     decoding="async"
                     draggable={false}
                   />
