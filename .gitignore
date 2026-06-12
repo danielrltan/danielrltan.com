@@ -77,3 +77,6 @@ public/*.original.glb
 # Raw photo drops — only the optimized public/photos/ output is committed.
 /photos-inbox/*
 !/photos-inbox/README.md
+
+# Local asset backup (kept out of public/ so it never ships in dist)
+room.original.glb.bak

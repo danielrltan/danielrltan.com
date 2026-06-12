@@ -504,17 +504,16 @@ export default function App() {
       void import("./other/HobbiesScene");
       void import("./keypad/KeypadScene");
     };
-    const ric = (
-      window as unknown as {
-        requestIdleCallback?: (cb: () => void) => number;
-      }
-    ).requestIdleCallback;
-    if (typeof ric === "function") {
-      ric(warm);
-    } else {
-      const t = setTimeout(warm, 1500);
-      return () => clearTimeout(t);
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(warm);
+      return () => w.cancelIdleCallback?.(id);
     }
+    const t = setTimeout(warm, 1500);
+    return () => clearTimeout(t);
   }, [roomLoaded]);
 
   useEffect(() => {
@@ -935,14 +934,52 @@ function ShadowGate({
   }, [gl, invalidate, roomAsleep, resetKey]);
 
   // Any pointerdown on the room canvas may begin a drag/throw; re-arm.
+  // While the pointer stays HELD, every move keeps extending the window:
+  // the fixed 3s window alone froze the shadow mid-drag on long holds
+  // (the object kept moving, its cast shadow stayed parked).
   useEffect(() => {
     const el = gl.domElement;
+    let held = false;
     const rearm = () => {
       activeUntilRef.current = performance.now() + SHADOW_REARM_SECONDS * 1000;
     };
-    el.addEventListener("pointerdown", rearm, { passive: true });
-    return () => el.removeEventListener("pointerdown", rearm);
+    const onDown = () => {
+      held = true;
+      rearm();
+    };
+    const onMove = () => {
+      if (held) rearm();
+    };
+    const onUp = () => {
+      held = false;
+      rearm(); // settle window after release (throw still in flight)
+    };
+    el.addEventListener("pointerdown", onDown, { passive: true });
+    el.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onUp, { passive: true });
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
   }, [gl]);
+
+  // Context-loss resilience: three's renderer handles the actual GPU
+  // re-initialisation on `webglcontextrestored`, but with this canvas
+  // often sitting at frameloop="never" (RoomFrameloopGate) nothing would
+  // request a frame after restore — the room would stay blank until the
+  // next scroll wake. Invalidate once and re-bake the frozen shadow map.
+  useEffect(() => {
+    const el = gl.domElement;
+    const onRestored = () => {
+      gl.shadowMap.needsUpdate = true;
+      activeUntilRef.current =
+        performance.now() + SHADOW_INITIAL_SECONDS * 1000;
+      invalidate();
+    };
+    el.addEventListener("webglcontextrestored", onRestored);
+    return () => el.removeEventListener("webglcontextrestored", onRestored);
+  }, [gl, invalidate]);
 
   useFrame(() => {
     if (performance.now() <= activeUntilRef.current) {

@@ -870,8 +870,9 @@ export function HobbiesScene({ activeIdxRef, hobbyIds }: HobbiesSceneProps) {
     if (!hobbyIds) return;
     const sceneIds = HOBBIES.map((h) => h.id);
     if (
-      sceneIds.length !== hobbyIds.length ||
-      sceneIds.some((id, i) => id !== hobbyIds[i])
+      import.meta.env.DEV &&
+      (sceneIds.length !== hobbyIds.length ||
+        sceneIds.some((id, i) => id !== hobbyIds[i]))
     ) {
       console.warn(
         "[HobbiesScene] hobby roster mismatch with parent",

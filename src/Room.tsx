@@ -766,7 +766,7 @@ export function Room() {
 
   // Drive the desk mouse mesh every frame (cursor-follow). Gated on
   // sceneReady so nothing moves during the intro idle/transition.
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!sceneReadyRef?.current) return;
 
     const mouse = mouseMeshRef.current;
@@ -780,16 +780,11 @@ export function Room() {
       const targetX = rest.restX + p.x * range;
       const targetZ = rest.restZ - p.y * range;
 
-      mouse.position.x = THREE.MathUtils.lerp(
-        mouse.position.x,
-        targetX,
-        0.12,
-      );
-      mouse.position.z = THREE.MathUtils.lerp(
-        mouse.position.z,
-        targetZ,
-        0.12,
-      );
+      // Frame-rate-independent ease (≈ the old 0.12/frame at 60Hz; the
+      // raw per-frame factor tracked ~2x faster on 120Hz displays).
+      const k = 1 - Math.exp(-delta * 7.7);
+      mouse.position.x = THREE.MathUtils.lerp(mouse.position.x, targetX, k);
+      mouse.position.z = THREE.MathUtils.lerp(mouse.position.z, targetZ, k);
     }
   });
 

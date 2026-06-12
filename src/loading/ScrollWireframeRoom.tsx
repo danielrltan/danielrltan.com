@@ -172,17 +172,41 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
     const p = progressRef.current;
 
     // Pixel-art resolution gate (see RES_STEPS). Only touches the
-    // renderer when the quantised fraction actually changes.
+    // renderer when the quantised fraction (or the actual renderer
+    // ratio) drifts from what we want.
     if (!isMobileRef.current) {
       const frac = resolutionFraction(p);
-      if (frac !== fracRef.current) {
-        fracRef.current = frac;
+      if (frac < 1) {
         if (baseDprRef.current === 0) baseDprRef.current = gl.getPixelRatio();
-        setDpr(baseDprRef.current * frac);
-        // Nearest-neighbour upscale while sub-res: this is what turns
-        // the low-res buffer into crisp chunky pixels instead of a
-        // bilinear smear. Cleared at full res so the room stays soft.
-        gl.domElement.style.imageRendering = frac < 1 ? "pixelated" : "";
+        const want = baseDprRef.current * frac;
+        // DESYNC GUARD (load-bearing): R3F's Canvas re-applies its `dpr`
+        // PROP on every App re-render (fiber's configure() calls setDpr
+        // whenever viewport.dpr differs from the prop), silently
+        // resetting our stepped ratio to full res mid-beat — e.g. the
+        // roomLoaded/sceneReady state cascade on a reload-at-offset, or
+        // a hover flipping setMoveableHover. Comparing against the LIVE
+        // renderer ratio (cheap property read) instead of only our own
+        // last-set fraction re-asserts the step on the next frame after
+        // any such clobber.
+        if (Math.abs(gl.getPixelRatio() - want) > 0.001) {
+          fracRef.current = frac;
+          setDpr(want);
+          // Nearest-neighbour upscale while sub-res: this is what turns
+          // the low-res buffer into crisp chunky pixels instead of a
+          // bilinear smear.
+          gl.domElement.style.imageRendering = "pixelated";
+        } else if (frac !== fracRef.current) {
+          fracRef.current = frac;
+        }
+      } else if (fracRef.current !== 1) {
+        // Leaving the beat: restore full res once, then DROP the base
+        // capture so the next beat re-samples it — browser zoom may
+        // change devicePixelRatio between beats, and a stale base would
+        // otherwise fight R3F's legitimate full-res value.
+        fracRef.current = 1;
+        if (baseDprRef.current > 0) setDpr(baseDprRef.current);
+        gl.domElement.style.imageRendering = "";
+        baseDprRef.current = 0;
       }
     }
     // Wireframes assemble 0.00→0.30, hold 0.30→0.48, then crossfade

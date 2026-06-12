@@ -34,7 +34,10 @@ const BASE_INTENSITY = 0.6;
 const HOVER_BONUS = 1;
 const HOVER_PULSE_DEPTH = .5;
 const PULSE_RATE = 2;
-const FADE_RATE = 0.025;
+// Fade rate per SECOND (frame-rate independent: applied as
+// 1 - exp(-dt * rate); ≈ the old 0.025/frame at 60Hz, which faded
+// visibly ~2x faster on 120Hz displays — slow fades expose this most).
+const FADE_RATE = 1.52;
 
 /**
  * Rounded-box hover glow. Inverted-hull style (BackSide + slightly larger
@@ -97,8 +100,9 @@ export function GlowBox({
   const baseRef = useRef(0);
   const hoverRef = useRef(0);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const u = material.uniforms;
+    const fade = 1 - Math.exp(-delta * FADE_RATE);
     // Ref is read here (not at render time) so the glow reacts to the
     // scene-ready transition without needing a re-render.
     const enabled = sceneReadyRef?.current === true;
@@ -106,12 +110,12 @@ export function GlowBox({
     baseRef.current = THREE.MathUtils.lerp(
       baseRef.current,
       enabled ? base : 0,
-      FADE_RATE,
+      fade,
     );
     hoverRef.current = THREE.MathUtils.lerp(
       hoverRef.current,
       enabled && hover ? HOVER_BONUS : 0,
-      FADE_RATE,
+      fade,
     );
     // Idle pulse modulates the BASE intensity only. Hover bonus is
     // additive and constant so hovering reads as a sustained brightness

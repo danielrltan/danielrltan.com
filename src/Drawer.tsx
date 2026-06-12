@@ -19,7 +19,10 @@ export interface DrawerData {
 // Drawer slides toward -Z (away from the dresser, which is on the +Z wall).
 const MAX_OPEN = 0.3;
 const HALFWAY_OFFSET = 0.15;
-const SNAP_LERP = 0.15;
+// Snap rate per SECOND (frame-rate independent: applied as
+// 1 - exp(-dt * rate), ≈ the old 0.15/frame at 60Hz; the raw
+// per-frame lerp ran ~2x faster on 120Hz displays).
+const SNAP_RATE = 9.7;
 const SNAP_EPSILON = 0.001;
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -68,7 +71,7 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
     });
   };
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!rb.current) return;
 
     if (dragging.current) {
@@ -98,11 +101,11 @@ export function Drawer({ drawer }: { drawer: DrawerData }) {
     }
 
     if (snapping.current) {
-      // Lerp ~0.15 per frame until within 0.001 of target.
+      // Frame-rate-independent ease toward the target (see SNAP_RATE).
       currentZ.current = THREE.MathUtils.lerp(
         currentZ.current,
         targetZ.current,
-        SNAP_LERP,
+        1 - Math.exp(-delta * SNAP_RATE),
       );
       if (Math.abs(currentZ.current - targetZ.current) < SNAP_EPSILON) {
         currentZ.current = targetZ.current;

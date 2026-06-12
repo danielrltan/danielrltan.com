@@ -252,10 +252,10 @@ const ORBIT_BASE_RADIUS = 2.65;
  *   legible. lookAt holds the screen center (y=0.8) so the screen stays
  *   dead-centered as the camera pushes in from the landed pose.
  * ──────────────────────────────────────────────────────────────── */
-// Fixed-rate lerp factor per frame for the detail-zoom approach. ~0.12
-// gives a brisk-but-eased ~0.4s settle at 60fps without binding the
-// camera straight to the open/closed flag.
-const DETAIL_LERP = 0.12;
+// Detail-zoom ease rate per SECOND (frame-rate independent: applied as
+// 1 - exp(-dt * rate); ≈ the old 0.12/frame at 60Hz, which ran ~2x
+// faster on 120Hz displays). ~0.4s settle.
+const DETAIL_RATE = 7.7;
 // How much of the viewport HEIGHT the screen face should fill in the
 // dead-on detail view. <1 leaves a sliver of PC bezel around the screen
 // (desirable, it reads as "looking at the device"). The camera distance
@@ -2036,7 +2036,7 @@ function Scene({
     const canOpen = narrow || pinProgressRef.current >= THRESHOLDS.bootEnd;
     const detailTarget = selected && canOpen ? 1 : 0;
     detailZoomRef.current +=
-      (detailTarget - detailZoomRef.current) * DETAIL_LERP;
+      (detailTarget - detailZoomRef.current) * (1 - Math.exp(-dt * DETAIL_RATE));
     if (detailZoomRef.current < 0.0005) detailZoomRef.current = 0;
     // Asymptotic lerp never hits 1 exactly; snap it so the detail reveal
     // (and the blurb's typing) actually completes instead of stalling ~98%.

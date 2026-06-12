@@ -28,7 +28,12 @@
   top: 0;
   left: 0;
   width: 100vw;
+  /* svh with vh fallback: on iOS the URL bar is visible at the top of
+     the page (where the hero lives), and a bare 100vh overlay extends
+     UNDER it — hiding the bottom meta/scroll chips. svh sizes to the
+     small viewport so the bottom row is always on screen. */
   height: 100vh;
+  height: 100svh;
   pointer-events: none;
   z-index: 3;
   display: grid;

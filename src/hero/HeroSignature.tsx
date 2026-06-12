@@ -35,12 +35,24 @@ export function HeroSignature() {
 
   useEffect(() => {
     let cancelled = false;
+    // FAILURE FALLBACK: if signature.json can't load (offline, 404, CDN
+    // hiccup), data stays null, HeroSignature2D never draws, and
+    // onComplete never fires — which would strand the phase machine in
+    // "drawing" and the wordmark would NEVER compose (the page unlocks
+    // via climaxDone regardless, so the user would just see an empty
+    // hero). Treat a failed fetch as "drawing finished" so the
+    // composition still lands; only the signature flourish is lost.
+    const fail = () => {
+      if (!cancelled) setDrawingComplete(true);
+    };
     fetch("/signature.json")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!cancelled && d) setData(d as SignatureData);
+        if (cancelled) return;
+        if (d) setData(d as SignatureData);
+        else fail();
       })
-      .catch(() => {});
+      .catch(fail);
     return () => {
       cancelled = true;
     };

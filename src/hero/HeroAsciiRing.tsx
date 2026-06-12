@@ -402,7 +402,14 @@ function RingScene({
     const container = canvasEl.parentElement;
     if (!container) return;
 
+    // PERF: these are document-level listeners on a component that
+    // never unmounts, and getBoundingClientRect forces layout. Skip the
+    // read entirely while the ring is scrolled out (offscreenRef) — the
+    // uniforms it feeds aren't rendered then anyway. (A resize-cached
+    // rect would be wrong here: the rect is transform-dependent during
+    // the dive scale, so it must be read live while on screen.)
     const onMove = (e: PointerEvent) => {
+      if (offscreenRef.current) return;
       const rect = container.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
@@ -413,6 +420,7 @@ function RingScene({
       mouseStrengthTargetRef.current = 0;
     };
     const onTouch = (e: TouchEvent) => {
+      if (offscreenRef.current) return;
       if (!e.touches.length) return;
       const t = e.touches[0]!;
       const rect = container.getBoundingClientRect();
@@ -540,13 +548,17 @@ function RingScene({
     const spinPerSec = (Math.PI * 2) / spinDuration;
     torus.rotation.y += spinPerSec * dt;
 
-    // Viscous cursor lerp: uniform inertia at 0.12/frame is what makes
-    // the deformation feel liquid (drag behind the cursor, settles back
-    // smoothly when the cursor stops).
-    mouseSmoothedRef.current.lerp(mouseTargetRef.current, 0.12);
+    // Viscous cursor lerp: uniform inertia is what makes the deformation
+    // feel liquid (drag behind the cursor, settles back smoothly when
+    // the cursor stops). Frame-rate independent: ≈ the old 0.12 / 0.08
+    // per-frame factors at 60Hz, which dragged ~2x faster on 120Hz.
+    mouseSmoothedRef.current.lerp(
+      mouseTargetRef.current,
+      1 - Math.exp(-dt * 7.7),
+    );
     mouseStrengthSmoothedRef.current +=
       (mouseStrengthTargetRef.current - mouseStrengthSmoothedRef.current) *
-      0.08;
+      (1 - Math.exp(-dt * 5.0));
 
     // Push to the live shader uniforms. We read from material.userData
     // .shader if available (preferred: that's the post-compile copy),

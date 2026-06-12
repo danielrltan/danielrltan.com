@@ -273,19 +273,23 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
         m.receiveShadow = true;
       }
     });
-    if (Object.keys(capMap).length < SOCIAL_KEYS.length) {
-      const missing = SOCIAL_KEYS.filter((k) => !capMap[k]);
-      console.warn("[keypad] expected social keycap nodes missing:", missing);
-    }
-    if (!dialObj) {
-      const names: string[] = [];
-      cl.traverse((o) => {
-        if (o.name) names.push(o.name);
-      });
-      console.warn(
-        "[keypad] dial node 'knob' not found in GLB. Available nodes:",
-        names,
-      );
+    // Dev-only diagnostics: these guard against a re-exported GLB
+    // renaming nodes. In prod they'd just be devtools noise.
+    if (import.meta.env.DEV) {
+      if (Object.keys(capMap).length < SOCIAL_KEYS.length) {
+        const missing = SOCIAL_KEYS.filter((k) => !capMap[k]);
+        console.warn("[keypad] expected social keycap nodes missing:", missing);
+      }
+      if (!dialObj) {
+        const names: string[] = [];
+        cl.traverse((o) => {
+          if (o.name) names.push(o.name);
+        });
+        console.warn(
+          "[keypad] dial node 'knob' not found in GLB. Available nodes:",
+          names,
+        );
+      }
     }
     const box = new THREE.Box3().setFromObject(cl);
     const center = new THREE.Vector3();

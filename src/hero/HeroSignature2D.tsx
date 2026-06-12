@@ -92,7 +92,7 @@ export function HeroSignature2D({
     // and on 3× retina the 2× cap was allocating a 5760×3240 backing
     // buffer (75MB GPU mem) for a low-opacity persistent background.
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    const resize = () => {
+    const sizeCanvas = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
       canvas.width = w * dpr;
@@ -101,12 +101,28 @@ export function HeroSignature2D({
       canvas.style.height = `${h}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
-    resize();
-    window.addEventListener("resize", resize);
+    sizeCanvas();
 
-    // Compute target rect in CSS pixels.
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    // Layout is RECOMPUTED on resize (it used to be captured once: a
+    // rotation/resize re-allocated the canvas buffer — which clears
+    // it — and the strokes were gone for good, with any in-flight draw
+    // continuing at stale coordinates). Everything position-dependent
+    // lives in this mutable object; events are stored NORMALIZED and
+    // mapped through it at draw time, so a resize can recompute the
+    // rect + brush and replay the strokes drawn so far.
+    const layout = {
+      x0: 0,
+      y0: 0,
+      targetW: 1,
+      targetH: 1,
+      brushRadius: MIN_BRUSH_RADIUS,
+      stepPx: 1,
+      brushCanvas: document.createElement("canvas"),
+    };
+
+    const computeLayout = () => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
     // Event coords (nx, ny) are ALREADY normalized to [0,1] WITHIN the
     // signature's bounding box. SignatureCapture stores them as
     // `(clientX - bounds.minX) / boundsWidth`. The `bounds` field is in
@@ -118,72 +134,72 @@ export function HeroSignature2D({
     // p.x (a [0,1] value), as a previous revision did, pushed every
     // stroke ~137 units negative, collapsing the entire signature into
     // a single pixel in the top-left corner of the viewport.
-    const captureW = data.bounds ? data.bounds.maxX - data.bounds.minX : 1;
-    const captureH = data.bounds ? data.bounds.maxY - data.bounds.minY : 1;
-    // Aspect-ratio guard: if bounds are degenerate (single point or
-    // missing), fall back to the natural ~16:9 signature aspect so we
-    // don't divide by zero or render a zero-height target rect.
-    const aspect =
-      captureW > 0 && captureH > 0 ? captureW / captureH : 16 / 9;
-    // Width ratio adapts to viewport: on a narrow portrait phone the
-    // 0.45 desktop ratio renders a timid ~175px gesture dwarfed by the
-    // giant wordmark. Widen it toward 0.72 of the viewport on phones so
-    // the persistent signature still reads as a confident background
-    // mark the wordmark "loads around", while staying centered (same
-    // anchor as desktop) so the loading→settled position never jumps.
-    const widthRatio = resolveWidthRatio(vw, vh);
-    let targetW = vw * widthRatio;
-    // Overflow guard: never let the signature's drawn rect exceed the
-    // viewport on either axis. The portrait width-ratio (0.72) is safe
-    // for the captured signature's wide aspect, but clamp height to a
-    // generous fraction of vh (and back-derive width) so a future, more
-    // square capture can't draw the gesture past the top/bottom edges.
-    const MAX_H = vh * 0.7;
-    if (targetW / aspect > MAX_H) targetW = MAX_H * aspect;
-    const targetH = targetW / aspect;
-    const x0 = (vw - targetW) / 2;
-    const y0 = vh * TARGET_VERTICAL_CENTER - targetH / 2;
+      const captureW = data.bounds ? data.bounds.maxX - data.bounds.minX : 1;
+      const captureH = data.bounds ? data.bounds.maxY - data.bounds.minY : 1;
+      // Aspect-ratio guard: if bounds are degenerate (single point or
+      // missing), fall back to the natural ~16:9 signature aspect so we
+      // don't divide by zero or render a zero-height target rect.
+      const aspect =
+        captureW > 0 && captureH > 0 ? captureW / captureH : 16 / 9;
+      // Width ratio adapts to viewport: on a narrow portrait phone the
+      // 0.45 desktop ratio renders a timid ~175px gesture dwarfed by the
+      // giant wordmark. Widen it toward 0.72 of the viewport on phones so
+      // the persistent signature still reads as a confident background
+      // mark the wordmark "loads around", while staying centered (same
+      // anchor as desktop) so the loading→settled position never jumps.
+      const widthRatio = resolveWidthRatio(vw, vh);
+      let targetW = vw * widthRatio;
+      // Overflow guard: never let the signature's drawn rect exceed the
+      // viewport on either axis.
+      const MAX_H = vh * 0.7;
+      if (targetW / aspect > MAX_H) targetW = MAX_H * aspect;
+      layout.targetW = targetW;
+      layout.targetH = targetW / aspect;
+      layout.x0 = (vw - targetW) / 2;
+      layout.y0 = vh * TARGET_VERTICAL_CENTER - layout.targetH / 2;
 
-    // Brush radius scales with the drawn rect (see STROKE_WIDTH_RATIO)
-    // so the stroke weight relative to the letterforms is the same on
-    // every screen. Stamp spacing scales with the radius for constant
-    // overlap density.
-    const brushRadius = Math.max(
-      MIN_BRUSH_RADIUS,
-      targetW * STROKE_WIDTH_RATIO,
-    );
-    const stepPx = Math.max(1, brushRadius * STEP_RATIO);
+      // Brush radius scales with the drawn rect (see STROKE_WIDTH_RATIO)
+      // so the stroke weight relative to the letterforms is the same on
+      // every screen. Stamp spacing scales with the radius for constant
+      // overlap density.
+      layout.brushRadius = Math.max(
+        MIN_BRUSH_RADIUS,
+        targetW * STROKE_WIDTH_RATIO,
+      );
+      layout.stepPx = Math.max(1, layout.brushRadius * STEP_RATIO);
 
-    // Pre-bake a single radial-gradient brush stamp; drawImage'd per
-    // stroke segment. Soft falloff so individual stamps blend into a
-    // continuous-looking stroke instead of beading.
-    const brushSize = Math.max(2, Math.ceil(brushRadius * 2 * dpr));
-    const brushCanvas = document.createElement("canvas");
-    brushCanvas.width = brushSize;
-    brushCanvas.height = brushSize;
-    const bctx = brushCanvas.getContext("2d")!;
-    const grad = bctx.createRadialGradient(
-      brushSize / 2,
-      brushSize / 2,
-      0,
-      brushSize / 2,
-      brushSize / 2,
-      brushSize / 2,
-    );
-    grad.addColorStop(0.0, STROKE_COLOR);
-    grad.addColorStop(0.6, STROKE_COLOR);
-    grad.addColorStop(1.0, "rgba(255,255,255,0)");
-    bctx.fillStyle = grad;
-    bctx.fillRect(0, 0, brushSize, brushSize);
+      // (Re)bake the radial-gradient brush stamp at the current radius;
+      // drawImage'd per stroke segment. Soft falloff so individual
+      // stamps blend into a continuous stroke instead of beading.
+      const brushSize = Math.max(2, Math.ceil(layout.brushRadius * 2 * dpr));
+      layout.brushCanvas = document.createElement("canvas");
+      layout.brushCanvas.width = brushSize;
+      layout.brushCanvas.height = brushSize;
+      const bctx = layout.brushCanvas.getContext("2d")!;
+      const grad = bctx.createRadialGradient(
+        brushSize / 2,
+        brushSize / 2,
+        0,
+        brushSize / 2,
+        brushSize / 2,
+        brushSize / 2,
+      );
+      grad.addColorStop(0.0, STROKE_COLOR);
+      grad.addColorStop(0.6, STROKE_COLOR);
+      grad.addColorStop(1.0, "rgba(255,255,255,0)");
+      bctx.fillStyle = grad;
+      bctx.fillRect(0, 0, brushSize, brushSize);
+    };
+    computeLayout();
 
     const stamp = (x: number, y: number) => {
       ctx.globalAlpha = STAMP_ALPHA;
       ctx.drawImage(
-        brushCanvas,
-        x - brushRadius,
-        y - brushRadius,
-        brushRadius * 2,
-        brushRadius * 2,
+        layout.brushCanvas,
+        x - layout.brushRadius,
+        y - layout.brushRadius,
+        layout.brushRadius * 2,
+        layout.brushRadius * 2,
       );
     };
 
@@ -201,46 +217,65 @@ export function HeroSignature2D({
 
     // Flatten strokes back into ordered events for simple playback;
     // gives us the same draw cadence as the footer's SignatureReplay
-    // without forking the whole code path.
+    // without forking the whole code path. Coordinates stay NORMALIZED
+    // [0,1] here and are mapped through `layout` at draw time, so a
+    // resize can recompute the rect and replay losslessly.
     type FlatEv = { type: "down" | "move" | "up"; t: number; x: number; y: number };
     const flat: FlatEv[] = [];
     for (const stroke of strokes) {
       for (let i = 0; i < stroke.points.length; i++) {
         const p = stroke.points[i]!;
-        flat.push({
-          type: i === 0 ? "down" : "move",
-          t: p.t,
-          x: x0 + p.x * targetW,
-          y: y0 + p.y * targetH,
-        });
+        flat.push({ type: i === 0 ? "down" : "move", t: p.t, x: p.x, y: p.y });
       }
       const last = stroke.points[stroke.points.length - 1]!;
       flat.push({ type: "up", t: last.t, x: 0, y: 0 });
     }
 
-    // Stamp one flattened event (shared by the timed playback and the
-    // reduced-motion one-shot path).
+    // Stamp one flattened event (shared by the timed playback, the
+    // reduced-motion one-shot path, and the resize replay).
     const drawEvent = (ev: FlatEv) => {
+      const px = layout.x0 + ev.x * layout.targetW;
+      const py = layout.y0 + ev.y * layout.targetH;
       if (ev.type === "down") {
-        stamp(ev.x, ev.y);
-        lastX = ev.x;
-        lastY = ev.y;
+        stamp(px, py);
+        lastX = px;
+        lastY = py;
       } else if (ev.type === "move" && lastX != null && lastY != null) {
-        const dx = ev.x - lastX;
-        const dy = ev.y - lastY;
+        const dx = px - lastX;
+        const dy = py - lastY;
         const dist = Math.hypot(dx, dy);
-        const steps = Math.max(1, Math.ceil(dist / stepPx));
+        const steps = Math.max(1, Math.ceil(dist / layout.stepPx));
         for (let i = 1; i <= steps; i++) {
           const t = i / steps;
           stamp(lastX + dx * t, lastY + dy * t);
         }
-        lastX = ev.x;
-        lastY = ev.y;
+        lastX = px;
+        lastY = py;
       } else if (ev.type === "up") {
         lastX = null;
         lastY = null;
       }
     };
+
+    // Resize/rotation: the buffer realloc CLEARS the canvas, so resize
+    // used to wipe the signature for good (and an in-flight draw kept
+    // painting at stale coordinates). Now: re-size the buffer, recompute
+    // the layout + brush, and REPLAY every event drawn so far at the new
+    // geometry. The in-flight playback continues seamlessly because
+    // events are normalized and mapped at draw time.
+    let resizeRaf = 0;
+    const onResize = () => {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        sizeCanvas();
+        computeLayout();
+        lastX = null;
+        lastY = null;
+        for (let i = 0; i < lastEventIdx; i++) drawEvent(flat[i]!);
+      });
+    };
+    window.addEventListener("resize", onResize);
 
     // Reduced motion: skip the stroke-by-stroke animation. Paint the
     // whole signature in one synchronous pass and signal completion so
@@ -252,10 +287,13 @@ export function HeroSignature2D({
     ).matches;
     if (reducedMotion) {
       for (const ev of flat) drawEvent(ev);
+      // Mark the whole stream as drawn so a later resize replays it all.
+      lastEventIdx = flat.length;
       completed = true;
       onComplete();
       return () => {
-        window.removeEventListener("resize", resize);
+        window.removeEventListener("resize", onResize);
+        if (resizeRaf) cancelAnimationFrame(resizeRaf);
       };
     }
 
@@ -281,7 +319,8 @@ export function HeroSignature2D({
 
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", onResize);
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
     };
     // We intentionally re-run only on data change. Speed multiplier
     // changes after first render are ignored; first-paint timing

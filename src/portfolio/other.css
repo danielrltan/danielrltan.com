@@ -50,7 +50,12 @@
 
 .portfolio-other {
   position: relative;
+  /* svh with vh fallback: this section PINS on mobile, and with bare
+     100vh its height (and pin geometry) changed every time the iOS URL
+     bar collapsed mid-scrub, shifting the trains/caption/dots layout.
+     svh is constant under browser-chrome changes. */
   height: 100vh;
+  height: 100svh;
   overflow: hidden;
   /* Cool retro-futurism wrapper: radial gradient stays in the cool-
      grey family (--bg-page → --bg-deep) per the design-system rule

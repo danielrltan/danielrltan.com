@@ -402,8 +402,12 @@ canvas {
    canvases in normal flow), leaving the page un-scrollable with no
    visual cue. Scroll must always win on touch: allow vertical pan
    everywhere; horizontal / multi-touch gestures still reach the scene.
-   (keypad.css already shipped this exact fix for its own canvas.) */
-@media (pointer: coarse) {
+   (keypad.css already shipped this exact fix for its own canvas.)
+   any-pointer (not pointer): a touchscreen laptop's PRIMARY pointer is
+   the mouse, so `pointer: coarse` misses it — but its touch input hits
+   the same trap. touch-action only affects touch, so this is free for
+   the mouse path. */
+@media (any-pointer: coarse) {
   canvas {
     touch-action: pan-y;
   }
