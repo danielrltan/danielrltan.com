@@ -373,10 +373,11 @@ export function Other() {
     // auto-advance. The section reads top-to-bottom in one screen.
     if (PREFERS_REDUCED_MOTION) {
       setBeatAHead(1);
-      setBeatAProgress(0.5); // neutral train frame
+      beatAProgressRef.current = 0.5; // neutral train frame
       setBeatAOpacity(1);
       setHeadProgress(1);
       setBeatBOpacity(1);
+      setBeatBLive(true); // static layout: 3D scene always live
       focusRef.current = 0;
       activeIdxRef.current = 0;
       setActiveIndex(0);
@@ -557,7 +558,8 @@ export function Other() {
       0,
       Math.min(1, (p - BEAT_A_REEL_START) / (BEAT_A_REEL_END - BEAT_A_REEL_START))
     );
-    setBeatAProgress(aT);
+    beatAProgressRef.current = aT;
+    setBeatBLive(p > HANDOFF_START - 0.05);
     const aFadeIn = smoothstep(0, 0.10, aT);
     const aFadeOut = 1 - smoothstep(HANDOFF_START, HANDOFF_END, p);
     setBeatAOpacity(Math.min(aFadeIn, aFadeOut));
