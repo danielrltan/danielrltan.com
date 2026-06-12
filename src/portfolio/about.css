@@ -313,8 +313,10 @@
 }
 
 /* Tablet (≤900px): the 42vw pinned-right panel collapses to ~157px on a
-   phone (illegible). Between 720–900px give it room and centre it. */
-@media (max-width: 900px) and (min-width: 721px) {
+   phone (illegible). Between 769-900px give it room and centre it.
+   (Lower bound moved 721 → 769: the room canvas hides below 768 on the
+   App.tsx choreography, so ≤768 uses the mobile build-out below.) */
+@media (max-width: 900px) and (min-width: 769px) {
   .portfolio-about .about-col {
     width: min(560px, 70vw);
     margin-right: auto;
@@ -360,8 +362,10 @@
    axis to a short translateY rise and pulls the reveal beats earlier/
    tighter for this breakpoint so a thumb-scrub lands the whole block
    without a long drip. The resting layout is top-anchored (header → body)
-   rather than the desktop bottom-of-viewport rail. */
-@media (max-width: 720px) {
+   rather than the desktop bottom-of-viewport rail. (Breakpoint 768:
+   matches App.tsx's canvas-fade/physics-pause cutoff and About.tsx's
+   `mobile` matchMedia, so layout + schedule + canvas always agree.) */
+@media (max-width: 768px) {
   .portfolio-about {
     /* svh tracks the visible viewport under mobile browser chrome. */
     height: 100svh;

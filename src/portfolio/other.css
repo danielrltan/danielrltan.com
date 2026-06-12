@@ -851,10 +851,15 @@
      no horizontal scroll. Strip width is capped so it never overflows. */
   .other-dots {
     bottom: 5vh;
-    left: 50%;
+    /* Left-anchored (not centered): the fixed JumpToTop circle parks in
+       the bottom-right corner and was sitting on the last dot's 44px
+       hit box. Anchoring at the 6vw gutter and reserving ~68px on the
+       right keeps every dot tappable; the strip also now aligns with
+       the left-aligned caption above it. */
+    left: 6vw;
     right: auto;
-    transform: translateX(-50%);
-    width: min(92vw, 430px);
+    transform: none;
+    width: min(92vw - 68px, 430px);
     gap: 0;
     justify-content: space-between;
   }
@@ -941,6 +946,11 @@
     flex-direction: column;
     align-items: stretch;
     gap: var(--space-2);
+    /* FAB clearance: the fixed JumpToTop circle (~48px + inset) parks in
+       the bottom-right corner on phones and was covering the right end
+       of the scrub label / CURATED RECENTS line. Inset the whole foot
+       column so both right-aligned rows stay legible. */
+    padding-right: 68px;
   }
   .other-gallery-scrub {
     max-width: none;

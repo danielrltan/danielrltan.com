@@ -647,6 +647,14 @@
     padding-bottom: 8px;
   }
   .hero-meta {
+    /* width:auto (not the desktop max-content): an explicit
+       max-content width can never shrink, so the grid's 1fr column
+       inflated to the chip's one-line width and pushed the scroll
+       arrow chip off the right edge on ≤375px phones. Auto lets the
+       chip shrink and its fields wrap to two rows instead. */
+    width: auto;
+    min-width: 0;
+    justify-self: start;
     flex-wrap: wrap;
     gap: 6px 12px;
     padding: 9px 13px;

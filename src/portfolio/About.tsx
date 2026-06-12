@@ -32,6 +32,13 @@ gsap.registerPlugin(ScrollTrigger);
  */
 
 const PIN_DURATION_PX = 1700;
+/* Mobile pin is MUCH shorter. The 1700px desktop pin exists to pace the
+   room/wireframe reveal beats — but the room canvas is faded out on
+   phones (see about.css note), so most of that scrub was a blank page:
+   ~550px of empty viewport before the card rose, and ~640px of pinned
+   dwell after everything had revealed. 900px paces the compressed
+   mobile schedule below with no dead air on either side. */
+const MOBILE_PIN_DURATION_PX = 900;
 // Panel slide-in window. WIDENED 0.55-0.62 (a 0.07 slice ≈ 119px of scroll,
 // which whipped in even with scrub:1 — scrub floors the FULL progress sweep,
 // not this narrow sub-range) to 0.15-0.58 (~0.43 of the pin ≈ 730px), so the
@@ -54,14 +61,15 @@ const LEDE_REVEAL_AT = 0.63;
    portrait, and it keeps the room + wordmark visible above the card
    the whole time. Row thresholds stay ordered so the stagger still
    reads top-to-bottom, just over a much shorter scrub band. */
-const MOBILE_PANEL_SLIDE_START = 0.4;
+const MOBILE_PANEL_SLIDE_START = 0.25;
 const MOBILE_PANEL_SLIDE_END = 0.5;
 const MOBILE_LEDE_REVEAL_AT = 0.5;
 const MOBILE_ROW_START = 0.52;
-const MOBILE_ROW_STEP = 0.025;
-/* Wordmark appears a touch earlier on mobile so it has presence over
-   the room before the card rises. */
-const MOBILE_EYEBROW_AT = 0.32;
+const MOBILE_ROW_STEP = 0.05;
+/* Wordmark lands almost immediately on mobile: there is no room reveal
+   to wait for (canvas hidden), so any later and the pin opens on a
+   blank page. */
+const MOBILE_EYEBROW_AT = 0.12;
 
 interface Beat {
   /** pin-progress threshold at which this beat is fully revealed. */
@@ -108,7 +116,7 @@ export function About() {
      first paint. */
   const [mobile, setMobile] = useState(() =>
     typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia("(max-width: 720px)").matches
+      ? window.matchMedia("(max-width: 768px)").matches
       : false,
   );
 
@@ -123,7 +131,12 @@ export function About() {
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
-    const mql = window.matchMedia("(max-width: 720px)");
+    /* 768 matches the room-canvas mobile fade + RoomPhysics pause
+       breakpoint (App.tsx) AND the about.css mobile block: below it the
+       room never shows during this pin, so the short mobile schedule
+       must kick in (at the old 720 the 721-768 band got the long
+       desktop pin over a hidden room = dead scroll). */
+    const mql = window.matchMedia("(max-width: 768px)");
     const apply = () => setMobile(mql.matches);
     apply();
     mql.addEventListener("change", apply);
@@ -136,7 +149,7 @@ export function About() {
     const st = ScrollTrigger.create({
       trigger: el,
       start: "top top",
-      end: `+=${PIN_DURATION_PX}`,
+      end: `+=${mobile ? MOBILE_PIN_DURATION_PX : PIN_DURATION_PX}`,
       pin: true,
       pinSpacing: true,
       // Rate-limit: scrub:1 (a ~1s catch-up lerp), NOT scrub:true (which is
@@ -161,7 +174,9 @@ export function About() {
       obs.disconnect();
       st.kill();
     };
-  }, []);
+    // Re-create the pin when the breakpoint flips so the pin duration
+    // matches the layout (mirrors the Work/Keypad pattern).
+  }, [mobile]);
 
   const slideStart = mobile ? MOBILE_PANEL_SLIDE_START : PANEL_SLIDE_START;
   const slideEnd = mobile ? MOBILE_PANEL_SLIDE_END : PANEL_SLIDE_END;
