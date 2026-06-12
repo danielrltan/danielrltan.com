@@ -49,15 +49,15 @@ function usePrefersReducedMotion() {
 
 // Three-beat choreography needs breathing room: STACK (0.00→0.22),
 // ORBIT (0.22→0.55), LAND+EXPLORE (0.55→1.00).
-// Bumped 1800 → 2600 → 6200px. The big jump is the "scroll lock": at
-// 2600px a hard mouse/trackpad flick has enough momentum to scroll the
-// whole pin in one gesture and shoot out the bottom before the snap can
-// engage (once the scroll leaves the pinned range there's nothing to
-// snap to). At 6200px a single flick can't clear it — you land INSIDE
-// the pin, where the snap then settles you onto the booted CRT. So the
-// effective "threshold" to get past the projects section is now ~2.4×
-// higher.
-const PIN_DURATION_PX = 6200;
+// Bumped 1800 → 2600 → 6200px, then trimmed to 5400: at 6200 the
+// entry beat (floating cards) demanded ~1360px of scroll before
+// anything committed, which read as the section refusing the wheel
+// (user: stubborn at first, too much to give it). 5400 keeps the
+// scroll-lock property — a single hard flick still can't clear the
+// pin, the nearest-beat snap still settles every rest on a composed
+// pose — while shaving ~13% off every beat's scroll cost (entry beat
+// ~1360 → ~1190px).
+const PIN_DURATION_PX = 5400;
 
 // ?tune=mac skips the pin so OrbitControls inside MacintoshScene can
 // drive the camera freely for re-framing.
