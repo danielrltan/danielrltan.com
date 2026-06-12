@@ -12,7 +12,10 @@
   display: flex;
   align-items: center;
   overflow: hidden;
-  background: var(--wrapper-bg);
+  /* Pure white band (user direction): pops against the two elevated
+     near-white neighbours (bp gradient ends at --bg-elevated, keypad
+     is --bg-elevated). Hairlines keep the band's edges legible. */
+  background: var(--bg-surface, #ffffff);
   border-top: 1px solid rgba(13, 14, 16, 0.07);
   border-bottom: 1px solid rgba(13, 14, 16, 0.07);
   z-index: 0;

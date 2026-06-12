@@ -1,9 +1,10 @@
 /* Keypad section: full-width band that breaks out of the right-
    column layout used by every other portfolio section. The keypad
-   is the entire stage; no copy, no card chrome. Background uses the
-   site's cool page token so it stays cohesive with the rest of the
-   palette (was #f3f3f3, a flat neutral grey that read muddy/warm
-   against the cool --bg-page #eef0f3 everywhere else). */
+   is the entire stage; no copy, no card chrome. Background matches
+   the trophy room (bp) section's --bg-elevated (user direction), so
+   the white transition banner reads as a bright band framed by two
+   identical elevated tones. RiceBlob.tsx BG_COLOR must stay in sync
+   (the shader backdrop paints over this CSS bg inside the canvas). */
 
 .keypad-section {
   /* Section is exactly one viewport tall in its un-pinned form.
@@ -15,7 +16,7 @@
   display: block;
   height: 100vh;
   padding: 0;
-  background: var(--bg-page);
+  background: var(--bg-elevated, #f7f8fa);
   position: relative;
 }
 
@@ -28,13 +29,13 @@
    of the other canvas here"). Painting the spacer the same cream as
    the section makes the transition read as one continuous band. */
 .pin-spacer:has(> .keypad-section) {
-  background: var(--bg-page);
+  background: var(--bg-elevated, #f7f8fa);
 }
 
-/* Kill the odd-row warm orange gradient; keypad wants the cool
-   page tone to read uninterrupted. */
+/* Kill the odd-row warm orange gradient; keypad wants the elevated
+   tone to read uninterrupted. */
 .keypad-section:nth-of-type(odd) {
-  background: var(--bg-page);
+  background: var(--bg-elevated, #f7f8fa);
 }
 
 .keypad-stage {

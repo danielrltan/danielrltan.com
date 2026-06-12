@@ -40,12 +40,13 @@ const _planePos = new THREE.Vector3();
  * so we don't need exact frustum math.
  */
 
-// Cool page tone (= --bg-page #eef0f3). This shader is the full-screen
-// backdrop BEHIND the keypad, so it overrides the CSS section bg. It
-// was #f3f3f3 (flat warm/neutral grey) which is what read "muddy/warm"
-// against the cool palette everywhere else. Canvas shaders can't read
-// CSS vars, so the token value is inlined.
-const BG_COLOR = "#eef0f3";
+// Elevated tone (= --bg-elevated #f7f8fa, same as the trophy room /
+// bp section bg per user direction, so the white transition banner
+// reads as a bright band framed by two identical tones). This shader
+// is the full-screen backdrop BEHIND the keypad, so it overrides the
+// CSS section bg and must stay in sync with keypad.css. Canvas
+// shaders can't read CSS vars, so the token value is inlined.
+const BG_COLOR = "#f7f8fa";
 // Cool neutral grey rice (was #C4C4C4 warm-neutral), nudged toward the
 // cool stack so the grain doesn't warm the backdrop.
 const RICE_COLOR = "#c3c6cc";
