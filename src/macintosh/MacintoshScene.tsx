@@ -1476,72 +1476,6 @@ function wrapText(
   return lines;
 }
 
-/**
- * Spinning ASCII torus for the boot screen: the classic donut.c
- * projection, rendered as text rows straight into the CRT canvas (no
- * second WebGL context; VT323 is monospace so rows align). Spin is
- * driven by bootProgress, i.e. scrubbed by the pin like everything
- * else in this section, so it needs no extra repaint loop: every
- * bootProgress step (~30Hz while scrolling) re-poses the torus.
- */
-const DONUT_LUMA = ".,-~:;=!*#%@";
-function drawBootDonut(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  bootProgress: number,
-) {
-  const COLS = 48;
-  const ROWS = 20;
-  // Two-axis spin across the boot window (~1.5 turns + a tumble).
-  const A = 1.1 + bootProgress * 9.0;
-  const B = 0.6 + bootProgress * 4.5;
-
-  const buf: string[] = new Array(COLS * ROWS).fill(" ");
-  const zbuf: number[] = new Array(COLS * ROWS).fill(0);
-  const R1 = 1, R2 = 2, K2 = 5;
-  const K1 = (COLS * K2 * 3) / (8 * (R1 + R2));
-  const cosA = Math.cos(A), sinA = Math.sin(A);
-  const cosB = Math.cos(B), sinB = Math.sin(B);
-  for (let th = 0; th < Math.PI * 2; th += 0.07) {
-    const cosT = Math.cos(th), sinT = Math.sin(th);
-    for (let ph = 0; ph < Math.PI * 2; ph += 0.03) {
-      const cosP = Math.cos(ph), sinP = Math.sin(ph);
-      const circleX = R2 + R1 * cosT;
-      const circleY = R1 * sinT;
-      const x = circleX * (cosB * cosP + sinA * sinB * sinP) - circleY * cosA * sinB;
-      const y = circleX * (sinB * cosP - sinA * cosB * sinP) + circleY * cosA * cosB;
-      const z = K2 + cosA * circleX * sinP + circleY * sinA;
-      const ooz = 1 / z;
-      const xp = Math.floor(COLS / 2 + K1 * ooz * x);
-      const yp = Math.floor(ROWS / 2 - K1 * 0.5 * ooz * y);
-      if (xp < 0 || xp >= COLS || yp < 0 || yp >= ROWS) continue;
-      const idx = xp + yp * COLS;
-      if (ooz <= zbuf[idx]!) continue;
-      const lum =
-        cosP * cosT * sinB - cosA * cosT * sinP - sinA * sinT +
-        cosB * (cosA * sinT - cosT * sinA * sinP);
-      zbuf[idx] = ooz;
-      const li = Math.max(0, Math.floor(lum * 8));
-      buf[idx] = DONUT_LUMA[Math.min(li, DONUT_LUMA.length - 1)]!;
-    }
-  }
-
-  // Centered in the area below the type-in lines.
-  const fontSize = Math.max(14, Math.round(h * 0.034));
-  ctx.font = `${fontSize}px ${PIXEL_FONT}`;
-  ctx.textBaseline = "top";
-  ctx.textAlign = "left";
-  const cw = ctx.measureText("M").width;
-  const lineH = Math.round(fontSize * 0.92);
-  const x0 = Math.round((w - COLS * cw) / 2);
-  const y0 = Math.round(170 + (h - 170 - ROWS * lineH) / 2);
-  ctx.fillStyle = CRT_ACCENT;
-  for (let r = 0; r < ROWS; r++) {
-    ctx.fillText(buf.slice(r * COLS, (r + 1) * COLS).join(""), x0, y0 + r * lineH);
-  }
-}
-
 function drawScreen(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -1561,9 +1495,10 @@ function drawScreen(
   const showDesktop = bootProgress >= 0.95;
   if (!showDesktop) {
     // Boot voice: version string, mount line, READY. The "(it works
-    // this time)" quip that shipped with the taste sweep was cut per
-    // user (reads as the machine apologizing); the pixel type on the
-    // CRT carries the personality on its own.
+    // this time)" quip was cut per user (reads as the machine
+    // apologizing), and the spinning ASCII donut that filled the lower
+    // screen went the same way ("looks really stupid") — the type-in
+    // boot text alone carries the beat.
     const lines = [
       "DANIEL_OS v2.6",
       "mounting projects.dir ... ok",
@@ -1584,7 +1519,6 @@ function drawScreen(
       ctx.fillText(line.slice(0, take), 40, y);
       y += 42;
     }
-    drawBootDonut(ctx, w, h, bootProgress);
     return;
   }
 
