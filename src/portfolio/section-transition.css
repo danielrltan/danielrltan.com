@@ -12,13 +12,9 @@
   display: flex;
   align-items: center;
   overflow: hidden;
-  /* GRAPHITE BAND (v3: full ink read as BLACK, not the grey the user
-     asked for; accent orange was rejected before that). A mid cool
-     graphite — unambiguously grey, still dark enough to cut cleanly
-     against the cool-white sections on either side and to echo the
-     keypad's dark screen below. Hairlines stay dropped: the value
-     shift IS the edge. */
-  background: #383e46;
+  background: var(--wrapper-bg);
+  border-top: 1px solid rgba(13, 14, 16, 0.07);
+  border-bottom: 1px solid rgba(13, 14, 16, 0.07);
   z-index: 0;
 }
 
@@ -52,18 +48,16 @@
   /* Downsized 1.2x: 48/9vw/130 → 40/7.5vw/108. */
   font-size: clamp(40px, 7.5vw, 108px);
   letter-spacing: -0.02em;
-  /* Page-white type on the charcoal band (~17:1). */
-  color: var(--bg-page, #eef0f3);
+  color: var(--wrapper-ink);
   text-transform: lowercase;
   padding-right: 0.32em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .st-bullet {
   font-family: var(--font-pixel);
   font-weight: 700;
   font-size: clamp(40px, 7.5vw, 108px);
-  /* The accent survives only as punctuation — small orange squares
-     between phrases, like the keypad's orange side buttons. */
   color: var(--accent);
   padding-right: 0.32em;
   transform: translateY(-0.05em);
