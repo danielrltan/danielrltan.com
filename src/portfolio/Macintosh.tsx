@@ -226,21 +226,21 @@ export function Macintosh() {
       // instead of teleporting; the snap below still settles on release.
       scrub: 1,
       anticipatePin: 1,
-      // Snap & settle on the landed CRT. Beats: STACK 0.00→0.22,
-      // ORBIT 0.22→0.55, LAND+EXPLORE 0.55→1.00. snapTo catches the
-      // scroll once it settles: only the very start (<0.18, barely into
-      // the stack) rests at the stacked entry pose; past that it eases
-      // all the way to ~0.9 — the fully-booted, tiles-live CRT with a
-      // little buffer before the 1.0 release. The low escape threshold
-      // means a flick that lands ANYWHERE meaningfully inside the pin
-      // gets pulled onto the screen rather than bouncing back to the
-      // stack. Combined with the long PIN_DURATION (a flick can't clear
-      // the pin in one gesture), this is the "scroll lock". Snap fires
-      // after wheel/touch velocity drops (delay), so a deliberate,
-      // sustained scroll still plays the full cinematic and carries on
-      // through the release.
+      // Snap & settle on the NEAREST beat. Beats: STACK 0.00→0.22,
+      // ORBIT 0.22→0.55, LAND+EXPLORE 0.55→1.00 (0.9 = booted CRT with
+      // a buffer before release). The previous binary snap
+      // (`value < 0.18 ? 0 : 0.9`) teleported ~4500px the moment a
+      // settle landed past 18% of the pin — skipping the entire
+      // stack/orbit/boot cinematic and dumping the user on the project
+      // tiles (user: "broken, it just jumps to the photo part").
+      // Snapping to the nearest beat keeps the scroll-lock intent (the
+      // 6200px pin still can't be cleared in one flick, and every
+      // settle lands on a meaningful pose) without ever leaping more
+      // than ~one beat. Snap still fires only after wheel/touch
+      // velocity drops, so a deliberate sustained scroll plays the
+      // full cinematic and carries on through the release.
       snap: {
-        snapTo: (value) => (value < 0.18 ? 0 : 0.9),
+        snapTo: [0, 0.22, 0.55, 0.9],
         duration: { min: 0.3, max: 0.8 },
         delay: 0.04,
         ease: "power2.inOut",
