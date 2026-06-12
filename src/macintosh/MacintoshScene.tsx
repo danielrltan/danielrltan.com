@@ -1206,12 +1206,11 @@ function drawProjectDetail(
   ctx.lineTo(w, barH + 0.5);
   ctx.stroke();
 
-  // Close control: a sharp square outline with a SIGNATURE × glyph,
-  // top-left. The two arms are deliberately mismatched — one quiet
-  // dim-ink stroke, one bold ORANGE stroke that overshoots the box
-  // corner as an angled slash. It reads as a hand-marked "strike-out"
-  // rather than a default OS ×, giving the window chrome a POV without
-  // changing the (DOM-overlaid) hit target.
+  // Close control: a sharp square outline with a clean symmetric ×,
+  // top-left. (An earlier "signature strike-out" variant mismatched the
+  // two arms — one dim, one orange overshooting the box — which read as
+  // a rendering glitch rather than a flourish; user: "fix this cross".)
+  // Both arms accent orange, equal weight, contained inside the box.
   const closeSz = Math.round(barH * 0.42);
   const closeX = PAD;
   const closeY = Math.round((barH - closeSz) / 2);
@@ -1219,22 +1218,16 @@ function drawProjectDetail(
   ctx.lineWidth = 1.5;
   ctx.strokeRect(closeX, closeY, closeSz, closeSz);
   const g = Math.round(closeSz * 0.3);
-  // Quiet arm: top-left → bottom-right, dim ink.
-  ctx.strokeStyle = CRT_TEXT_DIM;
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = CRT_ACCENT;
+  ctx.lineWidth = 2;
+  ctx.lineCap = "square";
   ctx.beginPath();
   ctx.moveTo(closeX + g, closeY + g);
   ctx.lineTo(closeX + closeSz - g, closeY + closeSz - g);
-  ctx.stroke();
-  // Signature arm: bottom-left → top-right, ORANGE, overshooting the box
-  // corner so it reads as an angled slash through the glyph.
-  const over = Math.round(closeSz * 0.22);
-  ctx.strokeStyle = CRT_ACCENT;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
   ctx.moveTo(closeX + g, closeY + closeSz - g);
-  ctx.lineTo(closeX + closeSz - g + over, closeY + g - over);
+  ctx.lineTo(closeX + closeSz - g, closeY + g);
   ctx.stroke();
+  ctx.lineCap = "butt";
 
   // Breadcrumb path: mono, the one place mono suits (a system label).
   const crumbX = closeX + closeSz + 16;
