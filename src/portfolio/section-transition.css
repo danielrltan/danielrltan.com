@@ -12,14 +12,13 @@
   display: flex;
   align-items: center;
   overflow: hidden;
-  /* CHARCOAL BAND (v2 — the full-accent orange block read terrible,
-     per user; they want grey but differentiated). The bridge inverts
-     to the deep cool-ink surface — the same dark ground as the
-     keypad's OLED screen right below it and the Mac CRT — so it
-     stands clearly apart from the cool-white sections on either side
-     while staying in the grey family. Hairlines stay dropped: the
-     value shift IS the edge. */
-  background: var(--ink, #0d0e10);
+  /* GRAPHITE BAND (v3: full ink read as BLACK, not the grey the user
+     asked for; accent orange was rejected before that). A mid cool
+     graphite — unambiguously grey, still dark enough to cut cleanly
+     against the cool-white sections on either side and to echo the
+     keypad's dark screen below. Hairlines stay dropped: the value
+     shift IS the edge. */
+  background: #383e46;
   z-index: 0;
 }
 
