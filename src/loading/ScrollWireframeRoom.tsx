@@ -19,6 +19,34 @@ const UNIT_EDGES = new THREE.EdgesGeometry(UNIT_BOX);
 
 const WIREFRAME_COLOR = new THREE.Color("#e87040");
 
+/* PIXEL-ART RESOLUTION STEPS for the wireframe beat. While the cover
+   dome hides the room (p < ~0.5) the whole canvas renders at a
+   FRACTION of its base pixel ratio and the browser upscales it
+   nearest-neighbour (image-rendering: pixelated): the wireframe's
+   lines become genuinely chunky, stair-stepped pixels — real low-res
+   rendering, not an overlay. The fraction steps UP as the assembly
+   completes (a resolution boot sequence), reaching full res at 0.46,
+   safely before the dome starts revealing the room at 0.50. Each
+   entry: [progress upper bound, fraction of base DPR]. Quantised so
+   the buffer realloc (setDpr → setSize) happens a handful of times
+   per scroll-through, never per frame. Floor 0.14: below that the
+   1px wireframe lines fall between samples and drop out. */
+const RES_STEPS: Array<[number, number]> = [
+  [0.12, 0.14],
+  [0.22, 0.17],
+  [0.3, 0.21],
+  [0.34, 0.28],
+  [0.38, 0.38],
+  [0.42, 0.54],
+  [0.46, 0.74],
+];
+function resolutionFraction(p: number): number {
+  for (const [limit, frac] of RES_STEPS) {
+    if (p < limit) return frac;
+  }
+  return 1;
+}
+
 function hashName(s: string): number {
   let h = 2166136261 >>> 0;
   for (let i = 0; i < s.length; i++) {
@@ -53,6 +81,30 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
   const coverRef = useRef<THREE.Mesh>(null);
   const coverMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const { camera } = useThree();
+  const gl = useThree((s) => s.gl);
+  const setDpr = useThree((s) => s.setDpr);
+  // Base pixel ratio captured on first change (R3F has applied the
+  // configured dpr by the first frame); 0 = not captured yet.
+  const baseDprRef = useRef(0);
+  // Currently-applied resolution fraction; 1 = full res.
+  const fracRef = useRef(1);
+  // Phones: the canvas is faded out for the whole wireframe window
+  // (App.tsx mobile choreography), so stepping the buffer there is
+  // pure churn. Read once; the 768 breakpoint matches useIsMobile.
+  const isMobileRef = useRef(
+    typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 768px)").matches,
+  );
+
+  // Restore full resolution if this component ever unmounts mid-beat.
+  useEffect(() => {
+    return () => {
+      if (fracRef.current !== 1 && baseDprRef.current > 0) {
+        setDpr(baseDprRef.current);
+        gl.domElement.style.imageRendering = "";
+      }
+    };
+  }, [gl, setDpr]);
   // Previous-frame env value for the per-mesh early-out.
   // When env transitions INTO 0 we do one final pass to zero all meshes,
   // then skip the O(n) loop every subsequent frame until env changes.
@@ -118,6 +170,21 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
     }
     if (entries.length === 0 && !coverMatRef.current) return;
     const p = progressRef.current;
+
+    // Pixel-art resolution gate (see RES_STEPS). Only touches the
+    // renderer when the quantised fraction actually changes.
+    if (!isMobileRef.current) {
+      const frac = resolutionFraction(p);
+      if (frac !== fracRef.current) {
+        fracRef.current = frac;
+        if (baseDprRef.current === 0) baseDprRef.current = gl.getPixelRatio();
+        setDpr(baseDprRef.current * frac);
+        // Nearest-neighbour upscale while sub-res: this is what turns
+        // the low-res buffer into crisp chunky pixels instead of a
+        // bilinear smear. Cleared at full res so the room stays soft.
+        gl.domElement.style.imageRendering = frac < 1 ? "pixelated" : "";
+      }
+    }
     // Wireframes assemble 0.00→0.30, hold 0.30→0.48, then crossfade
     // out 0.48→0.56 while the cover dome reveals the room behind it
     // with a longer fade (0.50→0.62). The previous 2%-pin cut from
