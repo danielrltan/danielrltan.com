@@ -147,6 +147,8 @@ const POST_FRAG = /* glsl */ `
   uniform vec3 uBase;
   uniform vec3 uRingShadow;
   uniform vec3 uRingLit;
+  uniform vec3 uLitOrange;
+  uniform vec3 uHotOrange;
   uniform vec3 uPaletteDir;
   varying vec2 vUv;
 
@@ -204,25 +206,41 @@ const POST_FRAG = /* glsl */ `
     vec3 col;
     float a;
     if (s.a > 0.5) {
-      // INVERTED density: key-lit facets blank out (the white page is
-      // the highlight); shadow facets fill with pale warm tiles. The
-      // volume reads through the density gradient + the warm tint.
-      float density = 1.0 - s.b;
-      float idx = clamp(
-        floor(density * uTileCount + (dith - 0.5)),
-        0.0,
-        uTileCount - 1.0
-      );
-      float mask = tileMask(idx, cellUv);
-
-      // PER-FACE NORMAL -> PALETTE, within the white family: shadow
-      // facets warm toward pale peach, lit facets stay pure white.
+      float lum = s.b;
+      // PER-FACE NORMAL -> palette factor, shared by both ring modes.
       vec2 nxy = s.rg * 2.0 - 1.0;
       float nz = sqrt(max(0.0, 1.0 - dot(nxy, nxy)));
       float t = clamp(dot(vec3(nxy, nz), uPaletteDir) * 0.5 + 0.5, 0.0, 1.0);
       float tq = floor(t * 4.0 + 0.5) / 4.0;
-      col = mix(uRingShadow, uRingLit, tq);
-      a = mask * 0.92;
+
+      // ORANGE REFLECTIONS (user direction): cells in the lit/specular
+      // zone flip to the accent family with the normal-banded shading,
+      // dithered at the boundary so the reflection halftones into the
+      // white body instead of cutting a hard seam.
+      float refl = smoothstep(0.55, 0.82, lum);
+      if (refl > dith) {
+        float idx = clamp(
+          floor(lum * uTileCount + (dith - 0.5)),
+          0.0,
+          uTileCount - 1.0
+        );
+        float mask = tileMask(idx, cellUv);
+        col = mix(uBase, uLitOrange, tq);
+        col = mix(col, uHotOrange, smoothstep(0.92, 1.0, lum) * 0.7);
+        a = mask * 0.96;
+      } else {
+        // WHITE BODY: inverted density (darker facets fill with
+        // near-white tiles, brighter ones blank toward the page).
+        float density = 1.0 - lum;
+        float idx = clamp(
+          floor(density * uTileCount + (dith - 0.5)),
+          0.0,
+          uTileCount - 1.0
+        );
+        float mask = tileMask(idx, cellUv);
+        col = mix(uRingShadow, uRingLit, tq);
+        a = mask * 0.92;
+      }
     } else {
       // BOLD orange field: full-saturation accent tiles everywhere the
       // ring isn't. Weighted toward the heavier shapes (diagonals,
@@ -404,11 +422,15 @@ function RingScene({
         uGrid: { value: new THREE.Vector2(4, 4) },
         uTileCount: { value: TILE_COUNT },
         uBase: { value: new THREE.Color(color) },
-        // Ring tints stay a hair off pure white: the ring must read
-        // WHITE (user direction); the volumetric shading comes from
-        // tile DENSITY, the tint only whispers warmth on shadow faces.
+        // Ring tints stay a hair off pure white: the ring body reads
+        // WHITE; the volumetric shading comes from tile DENSITY, the
+        // tint only whispers warmth on shadow faces.
         uRingShadow: { value: new THREE.Color("#fbeadd") },
         uRingLit: { value: new THREE.Color("#ffffff") },
+        // Orange reflection bands on the lit/specular facets (the v1
+        // treatment, layered back onto the white body per user call).
+        uLitOrange: { value: new THREE.Color("#c2480f") },
+        uHotOrange: { value: new THREE.Color("#ff7a30") },
         uPaletteDir: { value: keyDir.clone() },
       },
       // Premultiplied output written raw into the alpha canvas.
