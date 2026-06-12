@@ -446,14 +446,14 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
 .hero-meta {
   font-family: var(--font-mono);
   color: var(--ink);
-  background: rgba(238, 240, 243, 0.86);
-  -webkit-backdrop-filter: blur(10px) saturate(120%);
-  backdrop-filter: blur(10px) saturate(120%);
+  /* Flat spec-sheet chip (was a rounded blur-glass pill — the soft
+     glassmorphism read the user flagged; every other chip on the site
+     has gone sharp + solid since the pixel pass). Solid page surface
+     knocks back the ASCII ring underneath without any blur. */
+  background: var(--bg-page, #eef0f3);
   padding: 9px 16px;
-  border-radius: var(--r-chip);
-  box-shadow:
-    0 0 0 1px var(--ink-hairline),
-    0 8px 24px -16px rgba(13, 14, 16, 0.25);
+  border: 1px solid var(--ink-hairline);
+  border-radius: 0;
   width: max-content;
   max-width: 100%;
   display: inline-flex;
@@ -519,22 +519,15 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   text-transform: uppercase;
   color: var(--ink);
   transition:
-    box-shadow var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out),
     transform var(--t-fast) var(--ease-out);
-  /* Pill chip: mirrors .hero-meta so both bottom-corner elements read
-     as one system against the orange ASCII ring. The scroll cluster
-     previously had only a text-shadow halo and the ring bled through;
-     the cool-white backdrop-blur chip knocks back the ASCII directly
-     behind it. (Replaces the prior text-shadow halo; the chip bg now
-     does the legibility work.) */
-  background: rgba(238, 240, 243, 0.86);
-  -webkit-backdrop-filter: blur(10px) saturate(120%);
-  backdrop-filter: blur(10px) saturate(120%);
+  /* Flat chip: mirrors .hero-meta so both bottom-corner elements read
+     as one system against the orange ASCII ring — solid sharp surface,
+     hairline border, no blur, no pill radius (spec-sheet voice). */
+  background: var(--bg-page, #eef0f3);
   padding: 9px 16px;
-  border-radius: var(--r-chip);
-  box-shadow:
-    0 0 0 1px var(--ink-hairline),
-    0 8px 24px -16px rgba(13, 14, 16, 0.25);
+  border: 1px solid var(--ink-hairline);
+  border-radius: 0;
   /* Scroll affordance lands just after the meta row: same 0.80s
      starting beat but with a tiny stagger so the bottom row reads
      as one unit settling together rather than two simultaneous
@@ -563,12 +556,10 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   font-weight: 600;
   letter-spacing: 0.18em;
 }
-/* Hover/active feedback for the scroll button: subtle lift, no layout
-   shift (transform only). */
+/* Hover/active feedback for the scroll button: accent border + a
+   1px lift, no layout shift (transform only), no soft shadow. */
 .hero-scroll:hover {
-  box-shadow:
-    0 0 0 1px var(--accent),
-    0 10px 28px -16px rgba(13, 14, 16, 0.32);
+  border-color: var(--accent);
   transform: translateY(-1px);
 }
 .hero-scroll:active {
