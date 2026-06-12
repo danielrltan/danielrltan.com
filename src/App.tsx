@@ -136,7 +136,11 @@ function installScrollChoreography(): {
   }
 
   const root = document.documentElement;
-  const isMobileQuery = window.matchMedia("(max-width: 720px)");
+  // 768 matches useIsMobile's breakpoint, so the canvas fade + the
+  // pointer-events gate below cover exactly the devices on which
+  // RoomPhysics is paused (was 720, leaving 721-768px widths with a
+  // hit-testable but physics-dead room canvas).
+  const isMobileQuery = window.matchMedia("(max-width: 768px)");
 
   // Raw scroll-derived targets. computeTargets() reproduces the exact
   // math/thresholds the old update() used (no easing applied here);
@@ -287,7 +291,16 @@ function installScrollChoreography(): {
 
     // Pointer-events stays a hard threshold but is derived from the
     // EASED canvas opacity so it flips in step with the visible fade.
-    const canvasInteractive = finalCanvasOpacity < 0.05 ? "none" : "auto";
+    // MOBILE: the room canvas is NEVER hit-testable. RoomPhysics is
+    // paused on phones (no drag/throw to receive), but the wrapper
+    // still flipped to `auto` while the wireframe beat was visible —
+    // and since the canvas spans the full fixed viewport with
+    // touch-action:none + OrbitControls' one-finger rotate, every
+    // swipe in that scroll window was swallowed and the page read as
+    // completely stuck. Sections (<main>) are pointer-events:none
+    // pass-throughs, so there was nothing above it to save the touch.
+    const canvasInteractive =
+      t.isMobile || finalCanvasOpacity < 0.05 ? "none" : "auto";
 
     root.style.setProperty("--hero-opacity", heroOpacity.toFixed(3));
     root.style.setProperty("--hero-to-about", heroToAbout.toFixed(3));

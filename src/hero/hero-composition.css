@@ -588,18 +588,12 @@
 /* ─────────────────────────────────────────────────────────────────────
  * MOBILE / TABLET (≤768px): portrait-first build-out.
  * ────────────────────────────────────────────────────────────────────
- * Goal: keep the desktop identity (giant orange asymmetric DANIEL/TAN
- * diagonal, ASCII ring behind, persistent signature, bottom meta +
- * scroll) on a narrow tall viewport WITHOUT horizontal scroll or
- * clipping the wordmark.
- *
- * The desktop asymmetry is `.hero-mega-line-2 { transform: translateX(22%) }`.
- * On a 390px viewport that 22% of TAN's own width, stacked on a
- * `width:max-content` flex column, pushes TAN's right edge past the
- * composition box and it visually clips against the root's
- * `overflow:hidden`. So portrait REDUCES the stagger (smaller translate)
- * and tightens the type so both words sit fully inside the frame while
- * still pouring diagonally down-and-right. */
+ * Goal: MONUMENTAL name. The desktop diagonal stagger retires on
+ * portrait; the wordmark becomes a justified poster block where BOTH
+ * lines span the content width edge-to-edge (DANIEL ~24vw, TAN ~47vw),
+ * the ASCII ring recedes to a quieter backdrop, the signature ghost
+ * stays anchored behind, and the meta + scroll chips keep the bottom
+ * corners. */
 @media (max-width: 768px) {
   .hero-composition {
     /* Side padding pulled in (4vw) so the wordmark gets max width; safe-
@@ -616,19 +610,32 @@
     padding-left: 0;
   }
   .hero-mega-text {
-    /* Bounded so DANIEL (6 glyphs, the widest line) always fits 92vw in
-       the pixel face at zero tracking; the cap stops it ballooning on
-       the 768px tablet width. */
-    font-size: clamp(50px, 15.5vw, 108px);
+    /* MONUMENTAL redesign (user: the old mobile hero was "lackluster",
+       the name "very small" — "make it take up the entire page"). The
+       name becomes a JUSTIFIED POSTER BLOCK: each line is sized so it
+       spans the full content width edge-to-edge. This base size is
+       DANIEL's (6 glyphs, ~24vw); TAN is overridden below. No px
+       ceiling — the point is that the name scales WITH the viewport;
+       the floor only guards sub-320px oddities. The per-line vw values
+       are measured against OffBit's real advance widths for these exact
+       glyph runs (the text never changes), so the fit holds on every
+       device width by construction. */
+    /* Measured: DANIEL in OffBit 700 is 3.074em wide, content box is
+       100vw - 2*4vw padding = 92vw → font = 92/3.074 ≈ 29.9vw. */
+    font-size: max(56px, 29.8vw);
     letter-spacing: 0;
+    line-height: 0.85;
   }
   .hero-mega-line-2 {
-    /* Tame the diagonal for portrait: a small right shift (8%) keeps the
-       asymmetric DANIEL→TAN step without driving TAN off the right edge.
-       Slightly deeper vertical overlap reads as a tighter stacked
-       diagonal on the taller canvas. */
-    transform: translateX(8%);
-    margin-top: -0.04em;
+    /* TAN: 3 glyphs sized up so its width matches DANIEL's 6 — the
+       justified-block move that makes the lockup monumental instead of
+       a small left-ragged stack. No translateX: both lines run full
+       width, so the desktop diagonal device retires on portrait. */
+    /* Measured: TAN is 1.886em wide → font = 92/1.886 ≈ 48.7vw. */
+    font-size: max(110px, 48.6vw);
+    transform: none;
+    margin-top: 0.02em;
+    align-self: flex-start;
   }
   /* Bottom row stays a single row (meta left, scroll right), mirrors
      desktop so the scroll affordance keeps the bottom-RIGHT corner,
@@ -658,22 +665,35 @@
   }
   .hero-scroll {
     font-size: 10px;
-    gap: 9px;
-    /* ≥44×44 touch target: pad up to a comfortable hit area while the
-       visible pill stays compact. */
+    /* Arrow-only square chip: the meta chip needs nearly the full row
+       at phone widths, so the SCROLL label + index would squeeze the
+       button into a clipped sliver. The bobbing accent arrow alone is
+       the affordance (aria-label carries the semantics). */
+    gap: 0;
     min-height: 44px;
-    padding: 11px 16px;
+    min-width: 44px;
+    justify-content: center;
+    padding: 11px 13px;
     /* Kill the 300ms tap delay so the scroll feels instant on touch. */
     touch-action: manipulation;
   }
-  /* Portrait: the oversized ring is square-ish (130vw default reads as a
-     thin horizontal sliver on a tall viewport). Make it tall so the
-     tilted disc fills the narrow column and reads as a presence behind
-     the type rather than a slice. Sized off the LONGER axis (vmax) and
-     centered. */
+  .hero-scroll-label,
+  .hero-scroll-idx {
+    display: none;
+  }
+  .hero-scroll-arrow {
+    font-size: 16px;
+  }
+  /* Ring: still a presence, but the monumental type owns the frame now.
+     Slightly smaller + quieter than the old 150vmax wash so the glyph
+     edges stay crisp against the ASCII texture. */
   .hero-ring-wrap {
-    width: 150vmax;
-    height: 150vmax;
+    width: 135vmax;
+    height: 135vmax;
+    /* Quieter than desktop's 0.55: at phone size the dense ASCII field
+       sits directly under every glyph, and at 0.5+ it muddied the
+       wordmark's pixel edges. */
+    opacity: 0.35;
   }
 }
 
@@ -681,16 +701,11 @@
    wordmark + stagger a touch more so 6-glyph DANIEL never crowds the
    edges, and pull the ring tighter so it isn't an overwhelming wash. */
 @media (max-width: 400px) {
-  .hero-mega-text {
-    font-size: clamp(46px, 15vw, 76px);
-    letter-spacing: 0;
-  }
-  .hero-mega-line-2 {
-    transform: translateX(6%);
-  }
+  /* The vw-proportional justified block fits every width by
+     construction; only the ring + chrome need narrowing here. */
   .hero-ring-wrap {
-    width: 140vmax;
-    height: 140vmax;
+    width: 125vmax;
+    height: 125vmax;
   }
   .hero-meta {
     /* On the very narrowest screens let the two fields wrap to two rows
@@ -705,6 +720,12 @@
 @media (max-height: 480px) and (max-width: 900px) {
   .hero-mega-text {
     font-size: clamp(40px, 11vh, 84px);
+  }
+  .hero-mega-line-2 {
+    /* Landscape kills the justified block (47vw of TAN would be ~2x the
+       viewport height): both lines revert to the same vh-led size. */
+    font-size: inherit;
+    margin-top: -0.04em;
   }
   .hero-ring-wrap {
     width: 120vmax;

@@ -78,37 +78,6 @@ export function FooterSignature({
     };
     setupCanvas();
 
-    // Pre-bake the brush stamp once so the replay loop just blits it.
-    const brushSize = brushRadius * 2;
-    const brushCanvas = document.createElement("canvas");
-    brushCanvas.width = brushSize * dpr;
-    brushCanvas.height = brushSize * dpr;
-    const bctx = brushCanvas.getContext("2d")!;
-    bctx.scale(dpr, dpr);
-    const grad = bctx.createRadialGradient(
-      brushRadius,
-      brushRadius,
-      0,
-      brushRadius,
-      brushRadius,
-      brushRadius,
-    );
-    grad.addColorStop(0, `rgba(${color}, ${STAMP_ALPHA})`);
-    grad.addColorStop(0.55, `rgba(${color}, ${STAMP_ALPHA * 0.85})`);
-    grad.addColorStop(1, `rgba(${color}, 0)`);
-    bctx.fillStyle = grad;
-    bctx.fillRect(0, 0, brushSize, brushSize);
-
-    const stamp = (x: number, y: number) => {
-      ctx.drawImage(
-        brushCanvas,
-        x - brushRadius,
-        y - brushRadius,
-        brushSize,
-        brushSize,
-      );
-    };
-
     let cancelled = false;
     let raf = 0;
     // Cache the fetched gesture so resize/orientation changes can REPAINT
@@ -154,6 +123,37 @@ export function FooterSignature({
       const projectX = (nx: number) => x0 + nx * targetW;
       const projectY = (ny: number) => y0 + ny * targetH;
 
+      // Stroke weight scales with the DRAWN width so the gesture keeps
+      // the same stroke-to-letterform ratio at every column width. The
+      // brushRadius prop is the radius at the reference width (the
+      // drawn width when the h*0.7 height cap binds, i.e. the desktop
+      // footer column it was tuned on); when a narrow mobile column
+      // shrinks targetW below that, the stroke shrinks with it instead
+      // of fattening relative to the letterforms.
+      const refW = h * 0.7 * aspect;
+      const r = Math.max(2, brushRadius * (targetW / Math.max(1, refW)));
+      const step = Math.max(1, STEP_PX * (r / brushRadius));
+
+      // Bake the brush stamp at the effective radius; the replay loop
+      // just blits it. (Re-baked per render: the tiny offscreen canvas
+      // is cheap and resize repaints need the recomputed radius.)
+      const brushSize = r * 2;
+      const brushCanvas = document.createElement("canvas");
+      brushCanvas.width = Math.max(2, Math.ceil(brushSize * dpr));
+      brushCanvas.height = Math.max(2, Math.ceil(brushSize * dpr));
+      const bctx = brushCanvas.getContext("2d")!;
+      bctx.scale(dpr, dpr);
+      const grad = bctx.createRadialGradient(r, r, 0, r, r, r);
+      grad.addColorStop(0, `rgba(${color}, ${STAMP_ALPHA})`);
+      grad.addColorStop(0.55, `rgba(${color}, ${STAMP_ALPHA * 0.85})`);
+      grad.addColorStop(1, `rgba(${color}, 0)`);
+      bctx.fillStyle = grad;
+      bctx.fillRect(0, 0, brushSize, brushSize);
+
+      const stamp = (x: number, y: number) => {
+        ctx.drawImage(brushCanvas, x - r, y - r, brushSize, brushSize);
+      };
+
       let nextIdx = 0;
       let lastX: number | null = null;
       let lastY: number | null = null;
@@ -172,7 +172,7 @@ export function FooterSignature({
             const dx = px - lastX;
             const dy = py - lastY;
             const dist = Math.hypot(dx, dy);
-            const steps = Math.max(1, Math.ceil(dist / STEP_PX));
+            const steps = Math.max(1, Math.ceil(dist / step));
             for (let i = 1; i <= steps; i++) {
               const t = i / steps;
               stamp(lastX + dx * t, lastY + dy * t);

@@ -396,6 +396,19 @@ canvas {
   touch-action: none;
 }
 
+/* MOBILE SCROLL TRAP FIX: on touch devices, any full-viewport canvas
+   with touch-action:none silently eats every vertical swipe that lands
+   on it (the room canvas during the About beat, the Mac/Hobbies scene
+   canvases in normal flow), leaving the page un-scrollable with no
+   visual cue. Scroll must always win on touch: allow vertical pan
+   everywhere; horizontal / multi-touch gestures still reach the scene.
+   (keypad.css already shipped this exact fix for its own canvas.) */
+@media (pointer: coarse) {
+  canvas {
+    touch-action: pan-y;
+  }
+}
+
 /* Hide the custom cursor while the LoadingScreen is up. The main thread
    is heavily blocked during scene init (shader compile / texture upload),
    which makes the parallax-tracked cursor visibly stutter. The overlay

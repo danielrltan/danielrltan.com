@@ -32,12 +32,25 @@ interface Props {
 
 // White on the orange loading backdrop.
 const STROKE_COLOR = "#ffffff";
-const BRUSH_RADIUS = 14;
+// Stroke weight as a FRACTION of the signature's drawn width, not a
+// fixed pixel radius. The old constant 14px radius was tuned on a
+// 1920px desktop where the drawn rect is 864px wide (stroke ≈ 3% of
+// the gesture); on a 390px phone the rect shrinks to ~280px but the
+// brush didn't, so the stroke ballooned to ~10% of the gesture and
+// the signature read as illegible blobs. Deriving the radius from
+// targetW keeps the stroke-to-letterform ratio identical on every
+// viewport: the signature now LOOKS the same at every size.
+const STROKE_WIDTH_RATIO = 14 / 864;
+// Floor so the stroke never goes hairline-thin on tiny viewports.
+const MIN_BRUSH_RADIUS = 3;
 // Single stamp pass: no soft fade halo, no glow. The signature is
 // already on a saturated orange background; over-blurring the stroke
 // makes the gesture look like a smudge rather than a confident mark.
 const STAMP_ALPHA = 0.95;
-const STEP_PX = 4;
+// Stamp spacing as a fraction of the brush radius (the tuned 4px/14px
+// pair) so stamp-overlap density — and therefore the stroke's edge
+// quality — stays constant as the radius scales.
+const STEP_RATIO = 4 / 14;
 
 // Target signature size as a fraction of viewport width. The 3D hero
 // will expand from this baseline to a larger ratio during the
@@ -91,39 +104,6 @@ export function HeroSignature2D({
     resize();
     window.addEventListener("resize", resize);
 
-    // Pre-bake a single radial-gradient brush stamp; drawImage'd per
-    // stroke segment. Soft falloff so individual stamps blend into a
-    // continuous-looking stroke instead of beading.
-    const brushSize = BRUSH_RADIUS * 2 * dpr;
-    const brushCanvas = document.createElement("canvas");
-    brushCanvas.width = brushSize;
-    brushCanvas.height = brushSize;
-    const bctx = brushCanvas.getContext("2d")!;
-    const grad = bctx.createRadialGradient(
-      brushSize / 2,
-      brushSize / 2,
-      0,
-      brushSize / 2,
-      brushSize / 2,
-      brushSize / 2,
-    );
-    grad.addColorStop(0.0, STROKE_COLOR);
-    grad.addColorStop(0.6, STROKE_COLOR);
-    grad.addColorStop(1.0, "rgba(255,255,255,0)");
-    bctx.fillStyle = grad;
-    bctx.fillRect(0, 0, brushSize, brushSize);
-
-    const stamp = (x: number, y: number) => {
-      ctx.globalAlpha = STAMP_ALPHA;
-      ctx.drawImage(
-        brushCanvas,
-        x - BRUSH_RADIUS,
-        y - BRUSH_RADIUS,
-        BRUSH_RADIUS * 2,
-        BRUSH_RADIUS * 2,
-      );
-    };
-
     // Compute target rect in CSS pixels.
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -163,6 +143,49 @@ export function HeroSignature2D({
     const targetH = targetW / aspect;
     const x0 = (vw - targetW) / 2;
     const y0 = vh * TARGET_VERTICAL_CENTER - targetH / 2;
+
+    // Brush radius scales with the drawn rect (see STROKE_WIDTH_RATIO)
+    // so the stroke weight relative to the letterforms is the same on
+    // every screen. Stamp spacing scales with the radius for constant
+    // overlap density.
+    const brushRadius = Math.max(
+      MIN_BRUSH_RADIUS,
+      targetW * STROKE_WIDTH_RATIO,
+    );
+    const stepPx = Math.max(1, brushRadius * STEP_RATIO);
+
+    // Pre-bake a single radial-gradient brush stamp; drawImage'd per
+    // stroke segment. Soft falloff so individual stamps blend into a
+    // continuous-looking stroke instead of beading.
+    const brushSize = Math.max(2, Math.ceil(brushRadius * 2 * dpr));
+    const brushCanvas = document.createElement("canvas");
+    brushCanvas.width = brushSize;
+    brushCanvas.height = brushSize;
+    const bctx = brushCanvas.getContext("2d")!;
+    const grad = bctx.createRadialGradient(
+      brushSize / 2,
+      brushSize / 2,
+      0,
+      brushSize / 2,
+      brushSize / 2,
+      brushSize / 2,
+    );
+    grad.addColorStop(0.0, STROKE_COLOR);
+    grad.addColorStop(0.6, STROKE_COLOR);
+    grad.addColorStop(1.0, "rgba(255,255,255,0)");
+    bctx.fillStyle = grad;
+    bctx.fillRect(0, 0, brushSize, brushSize);
+
+    const stamp = (x: number, y: number) => {
+      ctx.globalAlpha = STAMP_ALPHA;
+      ctx.drawImage(
+        brushCanvas,
+        x - brushRadius,
+        y - brushRadius,
+        brushRadius * 2,
+        brushRadius * 2,
+      );
+    };
 
     const strokes = eventsToStrokes(data.events);
     // Total recorded duration drives the playback timeline. Each stroke
@@ -206,7 +229,7 @@ export function HeroSignature2D({
         const dx = ev.x - lastX;
         const dy = ev.y - lastY;
         const dist = Math.hypot(dx, dy);
-        const steps = Math.max(1, Math.ceil(dist / STEP_PX));
+        const steps = Math.max(1, Math.ceil(dist / stepPx));
         for (let i = 1; i <= steps; i++) {
           const t = i / steps;
           stamp(lastX + dx * t, lastY + dy * t);

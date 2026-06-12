@@ -872,17 +872,27 @@
      anchor) so it sits at the end of the stacked column. */
   .portfolio-work .work-resume {
     position: relative;
+    /* top MUST be reset too: the desktop rule pins the CTA with
+       `top: clamp(40px, 5.5vh, 64px)`, and on a relative box that
+       leaks through as a ~50px downward visual shift — the CTA sat in
+       a dead band below the header and its arrow collided with the
+       first stint's FINTECH / CURRENTLY chips. */
+    top: auto;
     right: auto;
     bottom: auto;
-    border-top: 1px solid var(--ink-hairline);
+    /* No border-top: the header's border-bottom already rules this
+       seam; a second parallel hairline 60px below read as a hollow
+       dead band (the "cooked" gap on small screens). */
+    border-top: none;
     border-left: none;
     align-self: flex-start;
     /* min-height + box-sizing guarantee ≥44px regardless of font line
-       box; padding gives a comfortable tap area + generous left/right. */
+       box; padding gives a comfortable tap area. Left padding 0 so the
+       label aligns to the column edge like every other element. */
     min-height: 48px;
     box-sizing: border-box;
-    padding: 14px 20px;
-    margin-top: clamp(20px, 6vw, 36px);
+    padding: 14px 20px 14px 0;
+    margin-top: 0;
     font-size: 12px;
   }
 }
@@ -951,6 +961,7 @@
 }
 .portfolio-work.is-reduced-motion .work-resume {
   position: relative;
+  top: auto; /* desktop top-pin leaks through on a relative box */
   right: auto;
   bottom: auto;
   opacity: 1;
