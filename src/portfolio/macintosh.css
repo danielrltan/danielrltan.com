@@ -582,6 +582,12 @@
     padding-block: 0;
     padding-left: max(6vw, var(--safe-left, 0px));
     padding-right: max(6vw, var(--safe-right, 0px));
+    /* Re-enable input: <main> is a pointer-events:none pass-through and
+       NOTHING above this list opted back in, so real taps never reached
+       the buttons (programmatic .click() in tests masked it — the same
+       invisible-input bug as the trophy wall). The user-reported
+       "OPEN buttons don't even work". */
+    pointer-events: auto;
   }
   .mac-project-list li {
     margin: 0;
@@ -595,7 +601,9 @@
     padding: 12px 16px;
     background: var(--bg-surface, #fff);
     border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
-    border-radius: var(--r-card, 14px);
+    /* Sharp corners: the rows join the spec-sheet voice (rounded cards
+       are off-theme since the pixel pass). */
+    border-radius: 0;
     text-align: left;
     cursor: pointer;
     font: inherit;

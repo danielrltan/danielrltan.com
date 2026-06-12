@@ -143,6 +143,21 @@ export function Macintosh() {
   const openProject = (p: MacProject) => {
     openerFocusRef.current = document.activeElement as HTMLElement | null;
     setSelected(p);
+    // NARROW: the detail renders ON the CRT, which sits ABOVE the tap
+    // list in the stacked layout — often scrolled out of view when the
+    // user taps a row. Without this, a successful tap looked like
+    // "nothing happened, the list just vanished" (the reported broken
+    // OPEN buttons, together with the pointer-events fix in the CSS).
+    if (staticLanded) {
+      const stage = sectionRef.current?.querySelector(".mac-stage");
+      const reduce = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      stage?.scrollIntoView({
+        behavior: reduce ? "auto" : "smooth",
+        block: "center",
+      });
+    }
   };
   // Centralised close: clear the project, then restore focus to the
   // opener with preventScroll. THE JITTER FIX: a bare prevFocus.focus()
