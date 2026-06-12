@@ -251,14 +251,28 @@ export function About() {
             so this is the section's only programmatic heading: it must
             exist even though it's not painted. */}
         <h2 className="about-sr-heading">About Daniel Tan</h2>
-        <p
-          className={`about-lede${ledeRevealed ? " is-revealed" : ""}`}
-        >
-          I&rsquo;m Daniel, a <span className="accent">software developer</span> in
-          Toronto who likes building the parts of products that feel
-          alive. Right now that&rsquo;s AI tooling, agentic systems, and
-          interactive 3D on the web.
-        </p>
+        {/* Intro row: portrait + lede. The photo fills the dead space
+            left of the blurb (user request); same reveal beat as the
+            lede so the pair lands as one unit. */}
+        <div className={`about-intro-row${ledeRevealed ? " is-revealed" : ""}`}>
+          <img
+            className="about-portrait"
+            src="/images/Me.jpg"
+            alt="Daniel Tan"
+            width={800}
+            height={800}
+            loading="lazy"
+            decoding="async"
+          />
+          <p
+            className={`about-lede${ledeRevealed ? " is-revealed" : ""}`}
+          >
+            I&rsquo;m Daniel, a <span className="accent">software developer</span> in
+            Toronto who likes building the parts of products that feel
+            alive. Right now that&rsquo;s AI tooling, agentic systems, and
+            interactive 3D on the web.
+          </p>
+        </div>
         <dl className="about-grid">
           {ROWS.map((row, index) => (
             <div

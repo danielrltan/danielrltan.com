@@ -185,6 +185,41 @@
   margin-bottom: 0;
 }
 
+/* Intro row: square portrait left of the lede (fills the dead space
+   the user flagged). Spec-sheet treatment: sharp corners, hairline
+   border, no drop shadow. The row carries the photo's reveal on the
+   same beat as the lede. */
+.about-intro-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  margin: 0 0 var(--space-6, 32px);
+}
+.about-intro-row .about-lede {
+  margin-bottom: 0;
+}
+.about-portrait {
+  flex: 0 0 auto;
+  width: 128px;
+  /* height:auto re-enables aspect-ratio: the JSX height attribute is a
+     presentational hint that otherwise pins the box to 800px tall. */
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--ink-hairline);
+  border-radius: 0;
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 700ms var(--ease-soft),
+    transform 700ms var(--ease-soft);
+}
+.about-intro-row.is-revealed .about-portrait {
+  opacity: 1;
+  transform: none;
+}
+
 /* Lede paragraph: reveals at the start of the pin. */
 .about-lede {
   font-family: var(--font-display, "Geist", "Inter", sans-serif);
@@ -424,6 +459,15 @@
     margin-bottom: var(--space-4, 16px);
   }
 
+  /* Portrait shrinks to a bio-chip beside the opening lines so the
+     lede keeps a readable measure on a narrow card. */
+  .about-intro-row {
+    gap: 14px;
+  }
+  .about-portrait {
+    width: 92px;
+  }
+
   /* Scoped under .portfolio-about so it outranks the shared
      `.portfolio-section p { font-size:17px }` rule (which otherwise wins on
      specificity and pins the lede to 17px). Keeps the lede ≥18px on phones. */
@@ -511,6 +555,7 @@
 @media (prefers-reduced-motion: reduce) {
   .about-floating-eyebrow,
   .about-lede,
+  .about-portrait,
   .about-row {
     transition: none !important;
   }
@@ -518,6 +563,7 @@
   .about-floating-eyebrow.is-visible,
   .about-lede,
   .about-lede.is-revealed,
+  .about-portrait,
   .about-row,
   .about-row.is-revealed {
     opacity: 1 !important;
