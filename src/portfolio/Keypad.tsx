@@ -316,7 +316,7 @@ export function Keypad() {
             decorative — the real links live in the .sr-only block above,
             and this never intercepts a click meant for the dial/caps. */}
         <div className="keypad-hint" aria-hidden="true">
-          <span className="keypad-hint-eyebrow">06 — Elsewhere</span>
+          <span className="keypad-hint-eyebrow">06 / Elsewhere</span>
           <span className="keypad-hint-cue">Tap a glyph to connect</span>
         </div>
         {mounted ? (

@@ -35,13 +35,10 @@ export function TechStackTicker() {
   return (
     <div className="tech-ticker" aria-hidden>
       <div className="tech-ticker-track">
+        {/* Label-only chips: the per-tech colored dot was the canonical
+            vibe-coded badge tell (user call). */}
         {repeated.map((logo, i) => (
-          <div
-            key={i}
-            className="tech-ticker-chip"
-            style={{ "--chip-color": logo.color } as React.CSSProperties}
-          >
-            <span className="tech-ticker-dot" />
+          <div key={i} className="tech-ticker-chip">
             <span className="tech-ticker-label">{logo.label}</span>
           </div>
         ))}

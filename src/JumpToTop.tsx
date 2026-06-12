@@ -56,13 +56,12 @@ export function JumpToTop() {
         width: 44,
         height: 44,
         padding: 0,
-        background: "rgba(238, 240, 243, 0.82)",
-        backdropFilter: "blur(10px) saturate(120%)",
-        WebkitBackdropFilter: "blur(10px) saturate(120%)",
+        // Flat sharp square, matching the sitewide shape lock (radius 0)
+        // and the flat chip language; the glass circle was off-voice.
+        background: "var(--bg-surface, #ffffff)",
         border: "1px solid var(--ink-hairline)",
-        borderRadius: 999,
-        boxShadow:
-          "0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 8px 24px -16px rgba(13, 14, 16, 0.25)",
+        borderRadius: 0,
+        boxShadow: "0 8px 24px -16px rgba(13, 14, 16, 0.25)",
         color: "var(--ink)",
         cursor: "pointer",
         opacity: visible ? 1 : 0,

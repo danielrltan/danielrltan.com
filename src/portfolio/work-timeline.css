@@ -29,8 +29,8 @@
            .work-ticker-stack    → absolute column, slides via --ticker-offset
              .work-ticker-row    → one row per year (year glyph only)
                .work-ticker-year → big Geist year label
-           .work-ticker-marker  → single fixed orange dot at centre,
-                                   in the gutter clear of the digits
+           (gutter marker dot removed: the orange active year IS the
+            indicator; decorative dots are the vibe-coded tell)
        .work-stage         → absolutely-layered stints (cross-fade)
      .work-ledger-foot     → STINT counter + section progress bar */
 
@@ -293,45 +293,12 @@
   font-weight: 600;
 }
 
-/* Active-year marker: a SINGLE small orange dot pinned to the
-   frame's vertical centre, in the far-left gutter. It sits ABOVE the
-   sliding stack (z-index) and never moves. The year digits are
-   indented past it (.work-ticker-row padding-left) so the dot has
-   clear horizontal clearance and NEVER overlaps or touches the
-   number. The dot is just a quiet anchor; the active year rendered
-   in accent orange is the real indicator.
-
-   Decluttered: the previous crosshair had a hairline that cut
-   straight THROUGH the year digits plus a date-range caption crammed
-   under the active year. Both were removed; the line was the main
-   clutter and the caption duplicated the full date range already
-   shown in each stint's meta row. */
-.work-ticker-marker {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  pointer-events: none;
-  z-index: 4;
-}
-.work-ticker-marker-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  flex-shrink: 0;
-  box-shadow: 0 0 0 3px var(--bg-page), 0 0 12px rgba(232, 112, 64, 0.55);
-  animation: work-ticker-dot-pulse 1.8s ease-in-out infinite;
-}
-@keyframes work-ticker-dot-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50%      { transform: scale(0.7); opacity: 0.62; }
-}
-
-/* (Removed .work-ticker-axis-label: the "YEAR · TICKER" caption under
-   the ticker was noise; the orange active year + dot are self-evident.) */
+/* (Removed .work-ticker-marker + its pulsing gutter dot: decorative
+   status dots are the canonical vibe-coded tell. The active year in
+   accent orange is the indicator; it needs no anchor. The earlier
+   crosshair hairline and "YEAR · TICKER" caption were removed for the
+   same reason. .work-ticker-row keeps its padding-left indent purely
+   as breathing room.) */
 
 /* ===============================================================
    STAGE: magazine spread per stint
@@ -418,13 +385,8 @@
   opacity: 1;
   transform: translate3d(0, 0, 0);
 }
-.work-stint-brand-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  display: inline-block;
-}
+/* (No .work-stint-brand-dot: the accent-colored sector text reads as
+   a chapter label on its own; a dot beside it is a vibe-coded tell.) */
 .work-stint-brand-text {
   /* The brand text mirrors the section eyebrow; accent orange
      wins because we want it to read as a chapter label. */
@@ -445,18 +407,8 @@
   border-radius: 0;
   font-weight: 700;
 }
-.work-stint-current-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #fff;
-  display: inline-block;
-  animation: work-current-pulse 1.6s ease-in-out infinite;
-}
-@keyframes work-current-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.5; transform: scale(0.78); }
-}
+/* (No .work-stint-current-dot: the solid accent badge already says
+   "live"; a flashing dot inside it is a vibe-coded tell.) */
 
 /* Giant company headline: OffBit pixel display (was Geist 500 at
    -0.055em — the "minimalist, off-theme" read the user flagged). The
@@ -1085,9 +1037,5 @@
   .work-ticker-row,
   .work-ticker-year {
     transition: none !important;
-  }
-  .work-stint-current-dot,
-  .work-ticker-marker-dot {
-    animation: none !important;
   }
 }

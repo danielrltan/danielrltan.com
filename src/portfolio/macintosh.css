@@ -72,8 +72,9 @@
   opacity: 1;
 }
 
-/* Loading state shown over the stage until mac.glb resolves. Cool
-   palette chip (white surface, ink text, accent dot): no warm hex. */
+/* Loading state shown over the stage until mac.glb resolves. Flat
+   spec-sheet chip (solid white, hairline, sharp corners) matching the
+   hero chips: glass blur + pill radius were off the pixel voice. */
 .mac-loading {
   position: absolute;
   top: 50%;
@@ -84,11 +85,9 @@
   align-items: center;
   gap: 10px;
   padding: 10px 18px;
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(10px) saturate(120%);
-  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  background: var(--bg-surface, #ffffff);
   border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
-  border-radius: var(--r-chip, 999px);
+  border-radius: 0;
   font-family: var(--font-mono, sans-serif);
   font-size: 11px;
   letter-spacing: 0.14em;
@@ -96,16 +95,19 @@
   color: var(--ink-muted, rgba(13, 14, 16, 0.62));
   pointer-events: none;
 }
+/* Terminal-cursor block, not a pulsing round dot (decorative status
+   dots = the vibe-coded tell; a steps(2) cursor blink is the loading
+   idiom this CRT context actually earns). */
 .mac-loading-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: 0;
   background: var(--accent, #e87040);
-  animation: mac-loading-pulse 1s ease-in-out infinite;
+  animation: mac-loading-blink 1s steps(2, jump-none) infinite;
 }
-@keyframes mac-loading-pulse {
-  0%, 100% { opacity: 0.35; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1.15); }
+@keyframes mac-loading-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
 }
 @media (prefers-reduced-motion: reduce) {
   .mac-loading-dot {
@@ -185,28 +187,23 @@
   100% { transform: translate3d(-33.333%, 0, 0); }
 }
 
+/* Flat spec-sheet chips matching the hero meta chips: solid surface,
+   hairline, sharp corners. The previous glass pill with a colored dot
+   per tech was the canonical vibe-coded badge (user call: dots are
+   the biggest tell); the label alone carries the chip. */
 .tech-ticker-chip {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 18px 10px 14px;
-  background: rgba(255, 255, 255, 0.62);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border: 1px solid rgba(13, 14, 16, 0.08);
-  border-radius: 999px;
+  padding: 10px 16px;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
+  border-radius: 0;
   font-family: var(--font-display, "Geist", "Inter", sans-serif);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.005em;
   color: var(--wrapper-ink, #0d0e10);
-}
-.tech-ticker-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--chip-color, #999);
 }
 .tech-ticker-label {
   line-height: 1;

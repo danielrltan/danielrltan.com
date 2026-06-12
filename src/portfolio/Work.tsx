@@ -548,18 +548,10 @@ export function Work() {
                 ))}
               </div>
 
-              {/* Active-year marker: a SINGLE small orange dot in the
-                  left gutter, sitting in clear horizontal clearance to
-                  the LEFT of the year digits (never overlapping them).
-                  The active year rendered in accent orange is the
-                  primary indicator; the dot is a quiet anchor. The
-                  crosshair LINE-through-the-digits and the date-range
-                  caption were removed: the line cut straight through
-                  the number and the caption duplicated the full date
-                  range already shown in each stint's meta row. */}
-              <div className="work-ticker-marker" aria-hidden>
-                <span className="work-ticker-marker-dot" />
-              </div>
+              {/* (Removed the gutter marker dot: decorative status dots
+                  are the canonical vibe-coded tell. The active year
+                  rendered in accent orange IS the indicator; it needs
+                  no anchor.) */}
             </div>
           </aside>
 
@@ -639,14 +631,14 @@ function WorkStintSpread({
         {stint.year}
       </span>
 
+      {/* No decorative dots in the sector eyebrow or the Currently
+          badge: colored status dots next to labels are the canonical
+          vibe-coded tell (user call). The accent color + solid badge
+          carry the state on their own. */}
       <div className="work-stint-brand">
-        <span className="work-stint-brand-dot" aria-hidden />
         <span className="work-stint-brand-text">{stint.brand}</span>
         {stint.current && (
-          <span className="work-stint-current">
-            <span className="work-stint-current-dot" aria-hidden />
-            Currently
-          </span>
+          <span className="work-stint-current">Currently</span>
         )}
       </div>
 
@@ -654,18 +646,20 @@ function WorkStintSpread({
         {stint.where}
       </h3>
 
+      {/* "/" separators, not "•": two bullets per line is a dot chain
+          (the vibe-coded tell), and "/" is the eyebrow voice sitewide. */}
       <div className="work-stint-meta">
         {stint.role && <span className="work-stint-role">{stint.role}</span>}
         {stint.location && (
           <>
             <span className="work-stint-sep" aria-hidden>
-              •
+              /
             </span>
             <span className="work-stint-location">{stint.location}</span>
           </>
         )}
         <span className="work-stint-sep" aria-hidden>
-          •
+          /
         </span>
         <span className="work-stint-when">{stint.when}</span>
       </div>

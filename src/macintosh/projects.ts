@@ -31,7 +31,9 @@ export const MAC_PROJECTS: MacProject[] = [
   {
     id: "cognetech",
     title: "Cognetech",
-    meta: "Jan 2026 · Python · FastAPI · Multimodal",
+    // Meta lines ration the middle dot to ONE per line (date · stack);
+    // a "a · b · c · d" separator chain is the AI spec-sheet tell.
+    meta: "Jan 2026 · Python, FastAPI, Multimodal",
     blurb:
       "AI-powered video indexing + semantic search tool for clinical footage. Auto-generates timestamped behavioural annotations, cutting psychologists' manual review from hours to seconds. Python/FastAPI backend integrating TwelveLabs video models, with NO patient data storage. End-to-end (React + Three.js, deployed on Vercel/Railway).",
     tags: ["Python", "FastAPI", "Semantic Search", "Multimodal", "React"],
@@ -42,7 +44,7 @@ export const MAC_PROJECTS: MacProject[] = [
   {
     id: "revamp",
     title: "Revamp",
-    meta: "Jul 2025 · C++ · Python · QNX",
+    meta: "Jul 2025 · C++, Python, QNX",
     blurb:
       "Hack The 6ix Finalist. Plug-and-play universal BMS for second-life EV modules running on a QNX RTOS Raspberry Pi edge node. Normalised mixed-OEM telemetry and exposed a centralised fleet dashboard. Cloud analytics pipeline with FastAPI + MongoDB Atlas, Gemini-powered state-of-health estimation, physics-based PyBaMM simulator streaming packed binary over TCP for ~20K cells.",
     tags: ["C++", "Python", "React", "QNX", "MongoDB", "Gemini"],
@@ -53,7 +55,7 @@ export const MAC_PROJECTS: MacProject[] = [
   {
     id: "portfolio",
     title: "Interactive 3D Portfolio",
-    meta: "2026 · React · R3F · Rapier",
+    meta: "2026 · React, R3F, Rapier",
     blurb:
       "This site. Hand-modelled isometric bedroom in Blender, brought to life with React Three Fiber + Rapier physics. Real keyboard typing, mouse cursor following, throwable objects, scroll-driven camera, signature replay.",
     tags: ["React", "TypeScript", "R3F", "Rapier", "GLSL"],
@@ -68,7 +70,7 @@ export const MAC_PROJECTS: MacProject[] = [
   {
     id: "weaver",
     title: "Weaver",
-    meta: "Nov 2025 · React · FastAPI · Gemini",
+    meta: "Nov 2025 · React, FastAPI, Gemini",
     blurb:
       "Hack Western 12 submission. A collaborative AI ideation canvas that replaces linear chats with visual, branching conversation graphs: every idea is a node, every reply a branch, so context never collapses the way it does in a long thread. React + React Flow front end over a FastAPI + Supabase (Postgres) backend, with WebSocket sync for up to four people drawing on one board in real time. Gemini powers the LLM response at each node.",
     tags: ["React", "React Flow", "FastAPI", "Supabase", "WebSockets", "Gemini"],

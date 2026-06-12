@@ -206,8 +206,11 @@ export function Footer() {
             <dl className="footer-meta">
               <div>
                 <dt className="footer-meta-key">Stack</dt>
+                {/* Commas, not a middle-dot chain: the · is rationed to
+                    one per line sitewide (separator chains read as AI
+                    spec-sheet slop). */}
                 <dd className="footer-meta-val">
-                  React · TypeScript · Three.js · R3F
+                  React, TypeScript, Three.js, R3F
                 </dd>
               </div>
               <div>
