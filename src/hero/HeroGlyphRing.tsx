@@ -180,6 +180,21 @@ const POST_FRAG = /* glsl */ `
     return (4.0 * bayer2(floor(p / 2.0)) + bayer2(p) + 0.5) / 16.0;
   }
 
+  // Smooth value noise (for the calm field density below).
+  float vhash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = vhash(i);
+    float b = vhash(i + vec2(1.0, 0.0));
+    float c = vhash(i + vec2(0.0, 1.0));
+    float d = vhash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+
   // Procedural geometric tiles, density ramp 0..7. p is cell-local UV
   // in [0,1]^2. Hard step() edges on purpose: crisp pixel shapes (the
   // site's sharp-corner voice), no font, no texture.
@@ -259,15 +274,24 @@ const POST_FRAG = /* glsl */ `
         a = mask * 0.92;
       }
     } else {
-      // BOLD orange field: full-saturation accent tiles everywhere the
-      // ring isn't. Weighted toward the heavier shapes (diagonals,
-      // outline boxes, cross-hatch) so the field reads as a confident
-      // texture, not dust.
-      float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
-      float fieldIdx = h < 0.4 ? 1.0 : (h < 0.75 ? 2.0 : (h < 0.92 ? 4.0 : 3.0));
-      float mask = tileMask(fieldIdx, cellUv);
+      // CALM orange field. WAS a random salad of small squares,
+      // diagonal slashes, X cross-hatches and outline boxes all mixed
+      // per cell - which read as messy directional noise (the user's
+      // "looks like pubic hair" call: the scattered slashes + X's are
+      // the hair). Now ONE ordered glyph, the small square, gated by a
+      // smooth breathing density so the field reads as clean pixel dust
+      // with calm gaps - texture that supports the ring + wordmark
+      // instead of competing with them. No diagonals, no crosses.
+      float dens = vnoise(cell * 0.11);
+      // Sparse: only the denser clusters light; smoothstep gives the
+      // squares a soft halftone fade at cluster edges, not a hard cutoff.
+      float present = smoothstep(0.50, 0.66, dens);
+      // A rare, slightly larger square in the densest cores for a little
+      // life - still a square, so the field stays orderly.
+      float fieldIdx = dens > 0.82 ? 6.0 : 1.0;
+      float mask = tileMask(fieldIdx, cellUv) * present;
       col = uBase;
-      a = mask * 0.78;
+      a = mask * 0.82;
     }
 
     gl_FragColor = vec4(col, a);
