@@ -1588,18 +1588,37 @@ function wrapText(
 }
 
 /* ─────────────────────────────────────────────────────────────────
- * FLOAT-BEAT SCREENSAVER: a spinning ASCII sphere ("hydron") painted
- * onto the CRT while the Mac floats (BEATs 1-2), in the hero's monotone
- * orange-on-dark ASCII voice. A tiny software rasterizer samples a unit
- * sphere, rotates it on two axes by wall-clock time, z-buffers the
- * nearest sample per character cell, and shades each cell by a Lambert
- * term (normal·light) mapped to a glyph ramp + an orange→warm-white tint.
- * Repainted ~30Hz off `floatSpin` while floatActive; `t` is sampled from
- * the clock at paint time so the spin is smooth regardless of tick jitter.
- * The CRT overlay shader (scanlines/roll/vignette) rides on top, so it
- * reads as a live tube running a demo, not a flat image.
+ * FLOAT-BEAT SCREENSAVER: a spinning ASCII ICOSAHEDRON ("hydron")
+ * painted onto the CRT while the Mac floats (BEATs 1-2), in the hero's
+ * monotone orange-on-dark ASCII voice. A tiny software rasterizer
+ * FLAT-SHADES each of the 20 triangular faces by its own (rotated) face
+ * normal · light, z-buffered per character cell — so each facet catches
+ * a distinct, changing brightness as it tumbles (a smooth sphere's
+ * normal is rotationally symmetric, so its lighting never changed and
+ * the spin was invisible). Repainted ~30Hz off `floatSpin`; `t` is
+ * sampled from the clock at paint time so the spin is smooth regardless
+ * of tick jitter. The CRT overlay shader (scanlines/roll/vignette) rides
+ * on top, so it reads as a live tube running a demo.
  * ──────────────────────────────────────────────────────────────── */
 const ASCII_SPHERE_RAMP = ".,-~:;=!*$#@";
+// Unit icosahedron: 12 vertices (golden-ratio rectangles) + 20 faces.
+const _ICO_PHI = (1 + Math.sqrt(5)) / 2;
+const ICO_VERTS: [number, number, number][] = (
+  [
+    [-1, _ICO_PHI, 0], [1, _ICO_PHI, 0], [-1, -_ICO_PHI, 0], [1, -_ICO_PHI, 0],
+    [0, -1, _ICO_PHI], [0, 1, _ICO_PHI], [0, -1, -_ICO_PHI], [0, 1, -_ICO_PHI],
+    [_ICO_PHI, 0, -1], [_ICO_PHI, 0, 1], [-_ICO_PHI, 0, -1], [-_ICO_PHI, 0, 1],
+  ] as [number, number, number][]
+).map(([x, y, z]) => {
+  const inv = 1 / Math.hypot(x, y, z);
+  return [x * inv, y * inv, z * inv] as [number, number, number];
+});
+const ICO_FACES: [number, number, number][] = [
+  [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+  [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+  [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+  [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+];
 function drawAsciiSphere(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -1617,7 +1636,7 @@ function drawAsciiSphere(
   const rows = Math.max(1, Math.floor(h / cellH));
   const N = cols * rows;
   const lum = new Float32Array(N).fill(-2); // <-1 ⇒ empty cell
-  const zb = new Float32Array(N).fill(-1e9); // 1/depth: larger ⇒ nearer
+  const zb = new Float32Array(N).fill(-1e9); // depth: larger ⇒ nearer
 
   // Two-axis tumble.
   const A = t * 0.55;
@@ -1636,39 +1655,70 @@ function drawAsciiSphere(
   const Ly = ly * linv;
   const Lz = lz * linv;
 
-  // Sphere radius in PIXELS (equal on both axes ⇒ perfectly round even
-  // though cells aren't square). Then converted to cell deltas per sample.
-  const Rpx = Math.min(w, h) * 0.42;
+  // Circumradius in PIXELS (equal on both axes ⇒ undistorted even though
+  // cells aren't square). 45% smaller than the old sphere per request.
+  const Rpx = Math.min(w, h) * 0.231;
   const cxPx = w / 2;
   const cyPx = h / 2;
 
-  const PHI = 74;
-  const THETA = 150;
-  for (let i = 0; i <= PHI; i++) {
-    const phi = (i / PHI) * Math.PI;
-    const sp = Math.sin(phi);
-    const cp = Math.cos(phi);
-    for (let j = 0; j < THETA; j++) {
-      const theta = (j / THETA) * Math.PI * 2;
-      // Unit-sphere point == its own normal.
-      const x0 = sp * Math.cos(theta);
-      const y0 = cp;
-      const z0 = sp * Math.sin(theta);
-      // Rotate about Y (B) then X (A).
-      const x1 = x0 * cB + z0 * sB;
-      const z1 = -x0 * sB + z0 * cB;
-      const y2 = y0 * cA - z1 * sA;
-      const z2 = y0 * sA + z1 * cA; // larger ⇒ nearer camera
-      const x2 = x1;
-      const sx = Math.round((cxPx + x2 * Rpx) / cellW);
-      const sy = Math.round((cyPx - y2 * Rpx) / cellH);
-      if (sx < 0 || sx >= cols || sy < 0 || sy >= rows) continue;
-      const idx = sy * cols + sx;
-      if (z2 > zb[idx]!) {
-        zb[idx] = z2;
-        // Lambert term; floored so the unlit silhouette still reads.
-        const L = x2 * Lx + y2 * Ly + z2 * Lz;
-        lum[idx] = Math.max(0.08, L);
+  // Rotate every vertex once; cache rotated coords (for normals) + its
+  // projection to cell space (cx in columns, cy in rows, depth).
+  const rv: [number, number, number][] = ICO_VERTS.map(([x, y, z]) => {
+    const x1 = x * cB + z * sB;
+    const z1 = -x * sB + z * cB;
+    const y2 = y * cA - z1 * sA;
+    const z2 = y * sA + z1 * cA; // larger ⇒ nearer camera
+    return [x1, y2, z2];
+  });
+  const pj: [number, number, number][] = rv.map(([x, y, z]) => [
+    (cxPx + x * Rpx) / cellW,
+    (cyPx - y * Rpx) / cellH,
+    z,
+  ]);
+
+  for (const [ia, ib, ic] of ICO_FACES) {
+    const a = rv[ia]!;
+    const b = rv[ib]!;
+    const c = rv[ic]!;
+    // Rotated face normal (cross of two edges).
+    const e1x = b[0] - a[0], e1y = b[1] - a[1], e1z = b[2] - a[2];
+    const e2x = c[0] - a[0], e2y = c[1] - a[1], e2z = c[2] - a[2];
+    let nx = e1y * e2z - e1z * e2y;
+    let ny = e1z * e2x - e1x * e2z;
+    let nz = e1x * e2y - e1y * e2x;
+    const nl = Math.hypot(nx, ny, nz) || 1;
+    nx /= nl; ny /= nl; nz /= nl;
+    if (nz <= 0) continue; // back-face: occluded by the front faces anyway
+    // Flat Lambert term, floored so a grazing facet still reads.
+    const L = Math.max(0.12, nx * Lx + ny * Ly + nz * Lz);
+
+    // Rasterize the triangle in cell space (edge functions + z-buffer).
+    const pa = pj[ia]!, pb = pj[ib]!, pc = pj[ic]!;
+    const minX = Math.max(0, Math.floor(Math.min(pa[0], pb[0], pc[0])));
+    const maxX = Math.min(cols - 1, Math.ceil(Math.max(pa[0], pb[0], pc[0])));
+    const minY = Math.max(0, Math.floor(Math.min(pa[1], pb[1], pc[1])));
+    const maxY = Math.min(rows - 1, Math.ceil(Math.max(pa[1], pb[1], pc[1])));
+    const denom =
+      (pb[1] - pc[1]) * (pa[0] - pc[0]) + (pc[0] - pb[0]) * (pa[1] - pc[1]);
+    if (Math.abs(denom) < 1e-6) continue;
+    for (let yy = minY; yy <= maxY; yy++) {
+      for (let xx = minX; xx <= maxX; xx++) {
+        const fx = xx + 0.5;
+        const fy = yy + 0.5;
+        const w0 =
+          ((pb[1] - pc[1]) * (fx - pc[0]) + (pc[0] - pb[0]) * (fy - pc[1])) /
+          denom;
+        const w1 =
+          ((pc[1] - pa[1]) * (fx - pc[0]) + (pa[0] - pc[0]) * (fy - pc[1])) /
+          denom;
+        const w2 = 1 - w0 - w1;
+        if (w0 < -0.001 || w1 < -0.001 || w2 < -0.001) continue;
+        const depth = w0 * pa[2] + w1 * pb[2] + w2 * pc[2];
+        const idx = yy * cols + xx;
+        if (depth > zb[idx]!) {
+          zb[idx] = depth;
+          lum[idx] = L;
+        }
       }
     }
   }
