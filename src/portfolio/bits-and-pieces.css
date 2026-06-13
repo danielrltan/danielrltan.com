@@ -5,10 +5,10 @@
 
 .portfolio-bp {
   position: relative;
-  /* No pin; section grows to fit all cards. Was previously
-     100vh + overflow:hidden, which clipped the bottom half of the
-     grid. */
-  min-height: 100vh;
+  /* No pin; section sizes to its content (header + stats + cards +
+     the layout's own padding). A forced min-height:100vh left a big
+     dead gap below the last card row on tall viewports (user), so the
+     floor is dropped - the bp-layout padding gives the breathing room. */
   width: 100%;
   /* Cool palette: var(--bg-page) → var(--bg-elevated). Was warm
      cream gradient (#f4f1ea → #f8f5ee), off-palette. */
@@ -56,7 +56,7 @@
   display: grid;
   grid-template-rows: auto auto auto;
   gap: 0;
-  padding: 9vh 6vw 9vh;
+  padding: 9vh 6vw 6vh;
   box-sizing: border-box;
   max-width: 1680px;
   margin: 0 auto;
