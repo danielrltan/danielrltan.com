@@ -169,6 +169,23 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
     }
   }, [shown]);
 
+  // 3D depth: the panel is a perspective slab that parallax-tilts toward the
+  // cursor and folds in on open. tiltRef holds the eased state; pointerTgtRef
+  // the normalized cursor (-1..1). Both driven in the canvas rAF below.
+  const tiltRef = useRef({ rx: 0, ry: 0, open: 0 });
+  const pointerTgtRef = useRef({ x: 0, y: 0 });
+  const shownRef = useRef(false);
+  shownRef.current = shown;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onMove = (e: PointerEvent) => {
+      pointerTgtRef.current.x = (e.clientX / window.innerWidth) * 2 - 1;
+      pointerTgtRef.current.y = (e.clientY / window.innerHeight) * 2 - 1;
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
+
   // ── canvas: glyph field + CRT passes (rAF while mounted) ──────────────
   useEffect(() => {
     if (!mounted) return;
@@ -328,6 +345,31 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
       ctx.fillStyle = wc;
       ctx.fillRect(0, 0, W, H);
 
+      // ── 3D depth: fold-in + cursor parallax tilt of the whole slab ──────
+      const panel = panelRef.current;
+      if (panel) {
+        const tilt = tiltRef.current;
+        const openTarget = shownRef.current ? 1 : 0;
+        tilt.open += (openTarget - tilt.open) * 0.16;
+        if (reduced) {
+          panel.style.transform = "none";
+        } else {
+          const pt = pointerTgtRef.current;
+          // Parallax target scaled by openness so it doesn't tilt while folded.
+          const tgtRy = pt.x * 7 * tilt.open;
+          const tgtRx = -pt.y * 5 * tilt.open;
+          tilt.ry += (tgtRy - tilt.ry) * 0.1;
+          tilt.rx += (tgtRx - tilt.rx) * 0.1;
+          // Folds back from the top edge when closing (open 0 -> -60deg).
+          const foldX = (1 - tilt.open) * -60;
+          const baseY = -7;
+          const baseX = 4;
+          panel.style.transform =
+            `rotateY(${(baseY + tilt.ry).toFixed(2)}deg) ` +
+            `rotateX(${(baseX + tilt.rx + foldX).toFixed(2)}deg)`;
+        }
+      }
+
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
@@ -407,12 +449,8 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
         aria-hidden
       />
       <div
-        ref={panelRef}
-        className="crt-menu"
+        className="crt-menu-stage"
         data-open={shown ? "true" : "false"}
-        role="menu"
-        aria-label="Section navigation"
-        onKeyDown={onKeyDown}
         style={{
           position: "fixed",
           top,
@@ -420,9 +458,20 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
           width: panelW,
           height: PANEL_H,
           zIndex: 60,
+        }}
+      >
+      <div
+        ref={panelRef}
+        className="crt-menu"
+        role="menu"
+        aria-label="Section navigation"
+        onKeyDown={onKeyDown}
+        style={{
+          position: "absolute",
+          inset: 0,
           background: SURFACE,
           border: `1px solid rgba(232,112,64,0.45)`,
-          boxShadow: "0 16px 40px -20px rgba(13,14,16,0.5)",
+          boxShadow: "0 22px 48px -22px rgba(13,14,16,0.6)",
           overflow: "hidden",
           userSelect: "none",
           color: TEXT,
@@ -504,11 +553,18 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
                   alignItems: "center",
                   gap: 7,
                   padding: "0 10px 0 12px",
-                  background: "transparent",
+                  // Active channel pops FORWARD off the slab (a lifted plate
+                  // with its own shadow) so the tuned row reads with depth.
+                  background: isActive ? SURFACE : "transparent",
                   border: "none",
                   borderLeft: isActive
                     ? `3px solid ${ACCENT}`
                     : "3px solid transparent",
+                  boxShadow: isActive
+                    ? "0 6px 16px -6px rgba(232,112,64,0.55)"
+                    : "none",
+                  transform: isActive ? "scale(1.035)" : "none",
+                  zIndex: isActive ? 2 : 1,
                   color: isActive ? TEXT : TEXT_DIM,
                   cursor: "pointer",
                   textAlign: "left",
@@ -594,6 +650,7 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
             );
           })}
         </div>
+      </div>
       </div>
     </>
   );

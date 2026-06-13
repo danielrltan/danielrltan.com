@@ -69,18 +69,23 @@
   opacity: 1;
 }
 
-/* ---- Panel: blooms scaleY from the top edge (a tube striking on). ---- */
-.crt-menu {
-  transform-origin: top center;
-  transform: scaleY(0);
+/* ---- Stage: perspective container. The panel is a real 3D slab tilted
+   inside it; it parallax-tilts toward the cursor and folds in on open
+   (transforms driven per-frame in JS — see CrtChannelMenu). ---- */
+.crt-menu-stage {
+  perspective: 1000px;
   opacity: 0;
   pointer-events: none;
-  transition: transform 190ms cubic-bezier(0.16, 1, 0.3, 1), opacity 120ms ease;
+  transition: opacity 160ms ease;
 }
-.crt-menu[data-open="true"] {
-  transform: scaleY(1);
+.crt-menu-stage[data-open="true"] {
   opacity: 1;
   pointer-events: auto;
+}
+.crt-menu {
+  transform-origin: 50% 6%;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 /* One-shot accent over-bright "strike" flash on power-on (a white flash
    would be invisible on the white tube). */
@@ -91,7 +96,7 @@
   opacity: 0;
   pointer-events: none;
 }
-.crt-menu[data-open="true"] .crt-menu-flash {
+.crt-menu-stage[data-open="true"] .crt-menu-flash {
   animation: crt-strike 220ms ease-out 1;
 }
 @keyframes crt-strike {
@@ -121,15 +126,9 @@
   .nav-open-hint {
     transition: none;
   }
-  /* Opacity-only open/close: no bloom, no flash. */
-  .crt-menu {
-    transform: none;
-    transition: opacity 120ms ease;
-  }
-  .crt-menu[data-open="true"] {
-    transform: none;
-  }
-  .crt-menu[data-open="true"] .crt-menu-flash {
+  /* Opacity-only open/close: no fold, no tilt, no flash (JS sets a flat
+     transform under reduced motion). */
+  .crt-menu-stage[data-open="true"] .crt-menu-flash {
     animation: none;
   }
 }

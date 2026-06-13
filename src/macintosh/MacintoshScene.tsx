@@ -810,7 +810,13 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
       }
     `,
     transparent: true,
-    depthTest: false,
+    // depthTest TRUE so the orbiting skill cards that swing IN FRONT of the
+    // Mac occlude the screen instead of the screen (renderOrder 999) always
+    // painting over them as a black rectangle. The overlay sits a hair in
+    // front of the black screen mesh (nudged along the face normal), so it
+    // still passes the depth test over its own housing. depthWrite stays
+    // false (it's the topmost transparent layer).
+    depthTest: true,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
