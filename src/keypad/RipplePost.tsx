@@ -85,9 +85,9 @@ export function stampPulse(
   ch.next = (ch.next + 1) % PULSE_SLOTS;
 }
 
-// Seconds a ripple lives before its slot frees. Past this the wave has
-// expanded off-screen and decayed to nothing.
-const PULSE_LIFE = 1.2;
+// Seconds a ripple lives before its slot frees. Long, because the wave
+// now expands slowly and fades gently (fluid, not snappy).
+const PULSE_LIFE = 2.6;
 
 const POST_VERT = /* glsl */ `
   varying vec2 vUv;
@@ -156,16 +156,17 @@ const POST_FRAG = /* glsl */ `
       float r = length(d);
       vec2 dir = r > 1e-4 ? d / r : vec2(0.0);
 
-      float front = r - 1.25 * t;          // signed dist to the leading ring
-      // NARROW annulus (was 0.13): a tight band so the ripple SWEEPS
-      // THROUGH the keypad like a travelling wavefront, instead of a
-      // wide ring engulfing the whole device at once (which read as a
-      // global jelly-melt rather than a ripple passing through).
-      float w = 0.075;
+      // SLOW + FLUID (user: the snappy version was too aggressive). A
+      // leisurely expansion (speed 0.55 vs 1.25), a WIDE soft band, a
+      // LOW oscillation frequency (broad gentle swells, not tight rings)
+      // and a slow gentle decay make it read like a fluid wave through
+      // water rather than a sharp shock.
+      float front = r - 0.55 * t;          // signed dist to the leading ring
+      float w = 0.14;                       // wide soft annulus
       float env = exp(-(front * front) / (2.0 * w * w));
-      float osc = sin(front * 60.0);        // concentric rings in the wake
-      float decay = exp(-t * 2.6) / (1.0 + r * 2.0);
-      float amp = 0.011 * uPulseStr[i];
+      float osc = sin(front * 26.0);        // broad, fluid swells
+      float decay = exp(-t * 1.3) / (1.0 + r * 1.5);
+      float amp = 0.013 * uPulseStr[i];
 
       disp += dir * osc * env * decay * amp;
       caustic += env * decay * uPulseStr[i];

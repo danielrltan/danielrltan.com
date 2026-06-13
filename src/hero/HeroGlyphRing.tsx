@@ -161,6 +161,7 @@ const POST_FRAG = /* glsl */ `
   uniform sampler2D uScene;
   uniform vec2 uGrid;
   uniform float uTileCount;
+  uniform float uTime;
   uniform vec3 uBase;
   uniform vec3 uRingShadow;
   uniform vec3 uRingLit;
@@ -274,21 +275,24 @@ const POST_FRAG = /* glsl */ `
         a = mask * 0.92;
       }
     } else {
-      // CALM orange field. WAS a random salad of small squares,
-      // diagonal slashes, X cross-hatches and outline boxes all mixed
-      // per cell - which read as messy directional noise (the user's
-      // "looks like pubic hair" call: the scattered slashes + X's are
-      // the hair). Now ONE ordered glyph, the small square, gated by a
-      // smooth breathing density so the field reads as clean pixel dust
-      // with calm gaps - texture that supports the ring + wordmark
-      // instead of competing with them. No diagonals, no crosses.
-      float dens = vnoise(cell * 0.11);
-      // Sparse: only the denser clusters light; smoothstep gives the
-      // squares a soft halftone fade at cluster edges, not a hard cutoff.
-      float present = smoothstep(0.50, 0.66, dens);
-      // A rare, slightly larger square in the densest cores for a little
-      // life - still a square, so the field stays orderly.
-      float fieldIdx = dens > 0.82 ? 6.0 : 1.0;
+      // ABSTRACT large-scale orange haze (user: big blobs, not a small
+      // camo pattern). Two LOW-frequency octaves give soft continent-
+      // sized blobs (feature ~600px / ~260px), then a Bayer HALFTONE
+      // turns the smooth density into dot COVERAGE - so the orange fades
+      // dot-by-dot across hundreds of px with no visible blob edge,
+      // reading as one abstract wash rather than discrete clumps. Mostly
+      // the small square so it stays a clean dust field; the densest
+      // cores use a slightly larger square to feel like solid orange
+      // pooling, dissolving outward into sparse dust.
+      // The two octaves DRIFT at different velocities, so the haze both
+      // slides AND morphs (their sum reshapes over time) - a slow
+      // abstract cloud, never a static pattern.
+      float n =
+        vnoise(cell * 0.016 + uTime * vec2(0.055, 0.028)) * 0.65 +
+        vnoise(cell * 0.038 + uTime * vec2(-0.031, 0.044)) * 0.35;
+      float cov = smoothstep(0.38, 0.98, n);   // wide ramp = gradual fade
+      float present = step(dith, cov);          // ordered-dither coverage
+      float fieldIdx = cov > 0.80 ? 6.0 : 1.0;  // denser cores, bigger dot
       float mask = tileMask(fieldIdx, cellUv) * present;
       col = uBase;
       a = mask * 0.82;
@@ -462,6 +466,7 @@ function RingScene({
         uScene: { value: rt.texture },
         uGrid: { value: new THREE.Vector2(4, 4) },
         uTileCount: { value: TILE_COUNT },
+        uTime: { value: 0 },
         uBase: { value: new THREE.Color(color) },
         // Ring tints stay a hair off pure white: the ring body reads
         // WHITE; the volumetric shading comes from tile DENSITY, the
@@ -632,6 +637,8 @@ function RingScene({
     (u.uMouseNdc!.value as THREE.Vector2).copy(mouseSmoothedRef.current);
     u.uMouseStrength!.value = mouseStrengthSmoothedRef.current;
     u.uTime!.value = now;
+    // Drift the abstract orange haze in the post field (slow morph).
+    pipeline.postMaterial.uniforms.uTime!.value = now;
 
     wasOffscreenRef.current = false;
 
