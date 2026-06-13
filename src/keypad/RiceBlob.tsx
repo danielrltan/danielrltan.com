@@ -61,6 +61,14 @@ const RICE_COLOR = "#c3c6cc";
 // that read off-brand + warm against the cool palette. The brand orange
 // keeps the rice-pool glow cohesive with every other accent on the site.
 const GLOW_COLOR = "#e87040";
+// Hover-charge color: a warmer, more YELLOW amber than the brand
+// orange (user: make it more yellow so it reads as a cohesive warm
+// energy filling the keypad, not a hard orange blob).
+const HOT_COLOR = "#f7a833";
+// Rice grains invert to this light warm tone under the hover charge so
+// they contrast against the amber instead of muddying (grey-on-amber
+// had almost no separation).
+const RICE_HOT_COLOR = "#fff4e2";
 
 // Larger, more legible rice grains. Fewer cells (so each cell is
 // bigger) + larger fill fraction (so each dot fills more of its
@@ -106,10 +114,12 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uBg;
   uniform vec3 uRice;
   uniform vec3 uGlow;
+  uniform vec3 uHotColor;   // yellow-amber hover charge
+  uniform vec3 uRiceHot;    // light rice under the charge (contrast)
   uniform float uActive;
   uniform float uGlowOpacity;
-  // 0..1: cursor is over an interactive part (cap/dial); the rice pool
-  // charges orange while hot.
+  // 0..1: cursor is over an interactive part (cap/dial); the WHOLE
+  // keypad warms with a flowy yellow charge while hot.
   uniform float uHot;
 
   float hash21(vec2 p) {
@@ -215,18 +225,26 @@ const FRAGMENT = /* glsl */ `
     // scene look unfinished.
     glow *= uGlowOpacity;
 
-    // ----- Hot-cursor charge -----
-    // While hovering an interactive part, the rice pool itself charges
-    // toward the accent: the cursor feels electric exactly where the
-    // device can be touched.
-    glow += (1.0 - smoothstep(0.0, uBlobRadius * 1.9, dist))
-      * uHot * 0.25 * uActive * uGlowOpacity;
-    glow = clamp(glow, 0.0, 0.62);
+    // ----- Hover charge: warm envelope around the WHOLE keypad -----
+    // Hovering ANY interactive part (cap/dial) charges a large, soft,
+    // YELLOW-amber glow centered on the DEVICE (not the cursor, so it
+    // never jumps as the pointer moves) - a flowy warmth filling the
+    // whole pool. uHot eases slowly in JS for the flow; the big radius
+    // (vs the old cursor-local blob) is what spreads it past the knob.
+    vec2 hotCenter = vec2(0.5, 0.5);
+    float hotD = length((uv - hotCenter) * uAspect);
+    float hotField = pow(max(0.0, 1.0 - hotD / 0.62), 1.5)
+      * uHot * uActive * uGlowOpacity;
 
-    // Composite: orange tint first, then rice grains on top of the
-    // tinted bg (so dots remain crisp gray over the orange field).
+    // Composite: ambient orange tint, then the yellow hover charge over
+    // the top.
     vec3 tintedBg = mix(uBg, uGlow, glow);
-    vec3 col = mix(tintedBg, uRice, a);
+    tintedBg = mix(tintedBg, uHotColor, clamp(hotField * 0.5, 0.0, 0.5));
+    // Rice grains INVERT toward light under the charge so they contrast
+    // against the warm glow instead of muddying into it (grey-on-amber
+    // had almost no separation).
+    vec3 riceCol = mix(uRice, uRiceHot, clamp(hotField * 1.6, 0.0, 1.0));
+    vec3 col = mix(tintedBg, riceCol, a);
     gl_FragColor = vec4(col, 1.0);
     // COLOUR-COORDINATION FIX (user-flagged "messy / pink, not
     // coordinated"): this raw ShaderMaterial wrote its mixed colour
@@ -276,6 +294,8 @@ export function RiceBlob({ cursorRef, glowOpacityRef, hotRef }: Props) {
       uBg: { value: new THREE.Color(BG_COLOR) },
       uRice: { value: new THREE.Color(RICE_COLOR) },
       uGlow: { value: new THREE.Color(GLOW_COLOR) },
+      uHotColor: { value: new THREE.Color(HOT_COLOR) },
+      uRiceHot: { value: new THREE.Color(RICE_HOT_COLOR) },
       uActive: { value: 0 },
       uGlowOpacity: { value: 0 },
       uHot: { value: 0 },
@@ -334,9 +354,10 @@ export function RiceBlob({ cursorRef, glowOpacityRef, hotRef }: Props) {
     mat.uniforms.uGlowOpacity.value +=
       (targetGlow - mat.uniforms.uGlowOpacity.value) * glowK;
 
-    // Hot-cursor charge eases in/out (never bound directly to the
-    // event, per the fixed-rate rule).
-    const hotK = 1 - Math.exp(-dt * 10);
+    // Hover charge eases in/out SLOWLY (was dt*10, which snapped) so
+    // the warm envelope flows in and out instead of popping. Never
+    // bound directly to the event, per the fixed-rate rule.
+    const hotK = 1 - Math.exp(-dt * 2.5);
     mat.uniforms.uHot.value +=
       ((hotRef?.current ? 1 : 0) - mat.uniforms.uHot.value) * hotK;
   });
