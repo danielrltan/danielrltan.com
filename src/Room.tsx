@@ -16,21 +16,15 @@ import * as THREE from "three";
  *   - emissive materials (glow strips, sunbeam, light bar) -> the emissive
  *     colour as the basic colour (so the glow still reads with no lights)
  *   - flat-colour materials -> MeshBasicMaterial(baseColor)
- *   - glass / mirror pieces -> plain transparent (opacity 0.2,
- *     depthWrite:false), NO env map (cosmetic reflection skipped)
+ *
+ * Mirrors and glass are NOT special-cased: the bake already handles them
+ * (their reflection / tint is in the atlas, and the genuinely transparent
+ * covers carry their own BLEND alpha + opacity from the GLB). We just
+ * preserve those source settings - no env map, no forced transparency
+ * (an earlier override wrongly made the baked mirrors see-through).
  */
 
 const ROOM_URL = "/room-optimized.glb";
-
-// Glass / mirror pieces: rendered as plain transparent (no env map).
-// Keyed by BOTH material name and node name so a renamed mesh still hits.
-const GLASS_MATERIALS = new Set(["mat_glass_simple", "mat_blk_glass"]);
-const GLASS_NODES = new Set([
-  "pc_case_glass",
-  "th_mirror_round",
-  "th_mirror_standing",
-  "th_record_player_glass",
-]);
 
 // Don't re-flag a shared atlas texture's colorspace twice (harmless, but
 // avoids a redundant GPU re-upload).
@@ -46,24 +40,11 @@ function asSRGB(tex: THREE.Texture) {
  * Convert one GLTF (MeshStandard) material to an UNLIT MeshBasicMaterial
  * that preserves the baked look without needing scene lights.
  */
-function toBakedMaterial(
-  src: THREE.Material,
-  meshName: string,
-): THREE.MeshBasicMaterial {
+function toBakedMaterial(src: THREE.Material): THREE.MeshBasicMaterial {
   const std = src as THREE.MeshStandardMaterial;
   const basic = new THREE.MeshBasicMaterial();
   basic.name = std.name;
   basic.side = std.side ?? THREE.FrontSide;
-
-  // Glass / mirror: plain transparent, no map, no reflection.
-  if (GLASS_MATERIALS.has(std.name) || GLASS_NODES.has(meshName)) {
-    if (std.color) basic.color.copy(std.color);
-    basic.transparent = true;
-    basic.opacity = 0.2;
-    basic.depthWrite = false;
-    basic.side = THREE.DoubleSide;
-    return basic;
-  }
 
   if (std.map) {
     // Baked-lighting atlas surface.
@@ -85,12 +66,14 @@ function toBakedMaterial(
     if (std.color) basic.color.copy(std.color);
   }
 
-  // Carry transparency / cutout / opacity so blended pieces (sunbeam)
-  // and any alpha-tested foliage still read correctly.
+  // Carry transparency / cutout / opacity straight from the GLB so the
+  // genuinely transparent pieces (glass covers, sunbeam) and any
+  // alpha-tested cutouts read exactly as authored. Transparent surfaces
+  // get depthWrite:false (standard) so they sort correctly.
   basic.transparent = std.transparent;
   basic.opacity = std.opacity ?? 1;
   basic.alphaTest = std.alphaTest ?? 0;
-  basic.depthWrite = std.depthWrite ?? true;
+  basic.depthWrite = basic.transparent ? false : std.depthWrite ?? true;
   basic.toneMapped = false;
   return basic;
 }
@@ -110,7 +93,7 @@ export function Room() {
       // No pointer interaction in a view-only scene.
       mesh.raycast = () => {};
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      const next = mats.map((m) => toBakedMaterial(m, mesh.name));
+      const next = mats.map((m) => toBakedMaterial(m));
       mesh.material = next.length === 1 ? next[0]! : next;
     });
     return cloned;
