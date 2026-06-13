@@ -143,8 +143,17 @@ const FRAGMENT = /* glsl */ `
     // so vUv and uCursor are in the same convention.
     vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
 
-    // Aspect-corrected grid: uses uAspect so cells stay square.
-    vec2 gridUv = vec2(uv.x * uAspect.x, uv.y * uAspect.y);
+    // Aspect-corrected grid, ADVECTED by a slow flow field so the grains
+    // visibly circulate like particles suspended in moving liquid, instead
+    // of a static dot texture merely revealed through a moving mask (the
+    // "image/GIF behind it" the static version read as). Two scrolling
+    // noise lookups give a divergent-ish drift that swirls the grains.
+    float ft = uTime * 0.35;
+    vec2 flow = vec2(
+      noise2(uv * 3.5 + vec2(0.0, ft)) - 0.5,
+      noise2(uv * 3.5 + vec2(ft + 11.0, 0.0)) - 0.5
+    ) * 0.055;
+    vec2 gridUv = vec2((uv.x + flow.x) * uAspect.x, (uv.y + flow.y) * uAspect.y);
     vec2 cell = fract(gridUv * uGridCount) - 0.5;
     float dotMask = 1.0 - smoothstep(
       uDotRadius - 0.02,
@@ -158,20 +167,29 @@ const FRAGMENT = /* glsl */ `
     // liquid. Built from distance fields so the membrane OUTLINE is a
     // clean constant-width ring (abs(sd) band), guaranteed visible.
     float bt = uTime;
-    // Main body: edge wobbles with angle + time like a liquid surface.
+    // Main body: edge wobbles harder with angle + time so the surface
+    // visibly churns like a liquid (was barely-perceptible amplitudes).
     vec2 dm = (uv - uCursor) * uAspect;
     float angM = atan(dm.y, dm.x);
     float rMain = uBlobRadius
-      + sin(angM * 3.0 + bt * 1.3) * 0.015
-      + sin(angM * 5.0 - bt * 0.9) * 0.009;
+      + sin(angM * 3.0 + bt * 1.6) * 0.030
+      + sin(angM * 5.0 - bt * 1.1) * 0.018
+      + sin(angM * 2.0 + bt * 0.7) * 0.012;
     float sdMain = length(dm) - rMain;
-    // Orbiting droplet that drifts around the cursor and merges in.
-    vec2 sc = uCursor + vec2(cos(bt * 0.8), sin(bt * 1.05)) * 0.11;
-    float sdSat = length((uv - sc) * uAspect) - uBlobRadius * 0.42;
-    // Smooth-union (polynomial smin) -> gooey neck where they meet.
-    float k = 0.07;
-    float hsm = clamp(0.5 + 0.5 * (sdSat - sdMain) / k, 0.0, 1.0);
-    float sd = mix(sdSat, sdMain, hsm) - k * hsm * (1.0 - hsm);
+    // TWO orbiting droplets at different rates: they swing out, neck, and
+    // merge back into the body so the glob constantly reforms (the gooey
+    // metaball motion that reads as "liquid", not a static disc).
+    vec2 sc1 = uCursor + vec2(cos(bt * 0.9), sin(bt * 1.15)) * 0.12;
+    float sdSat1 = length((uv - sc1) * uAspect) - uBlobRadius * 0.5;
+    vec2 sc2 = uCursor + vec2(cos(bt * 1.3 + 2.1), sin(bt * 0.8 + 2.1)) * 0.09;
+    float sdSat2 = length((uv - sc2) * uAspect) - uBlobRadius * 0.36;
+    // Sequential smooth-unions (polynomial smin) -> gooey necks.
+    float k = 0.08;
+    float sd = sdMain;
+    float h1 = clamp(0.5 + 0.5 * (sdSat1 - sd) / k, 0.0, 1.0);
+    sd = mix(sdSat1, sd, h1) - k * h1 * (1.0 - h1);
+    float h2 = clamp(0.5 + 0.5 * (sdSat2 - sd) / k, 0.0, 1.0);
+    sd = mix(sdSat2, sd, h2) - k * h2 * (1.0 - h2);
     // Fill (inside sd<0) + a constant-width membrane ring at sd=0.
     float blob = smoothstep(0.006, -0.006, sd) * uActive;
     float outline = (1.0 - smoothstep(0.0, 0.014, abs(sd))) * uActive;
