@@ -51,6 +51,16 @@ const PARALLAX_X = THREE.MathUtils.degToRad(15);
 const PARALLAX_Y = THREE.MathUtils.degToRad(15);
 const PARALLAX_LERP_RATE = 6;
 
+// Cartoony WOBBLE: pressing the knob jiggles the WHOLE keypad with a
+// fast decaying oscillation on rotation (x + z, slightly out of phase
+// for an organic shake) plus a squash-and-stretch scale pulse. Tuned to
+// settle in ~0.9s. Layered on top of the tilt/float each frame.
+const WOBBLE_DURATION = 1.0; // seconds before the slot frees
+const WOBBLE_FREQ = 22; // rad/s (~3.5 Hz jiggle)
+const WOBBLE_DAMP = 7.5; // exponential decay rate
+const WOBBLE_ROT_AMP = THREE.MathUtils.degToRad(7); // peak tilt jiggle
+const WOBBLE_SCALE_AMP = 0.05; // peak squash-and-stretch
+
 // prefers-reduced-motion: read once at module load. When set, the idle
 // float below is fully disabled (the keypad holds a dead-still pose).
 const PREFERS_REDUCED_MOTION =
@@ -416,7 +426,22 @@ function SceneContents({
   const kickDialRef = useRef<((v: number) => void) | null>(null);
   const hasAutoSpunRef = useRef(false);
   const hasLandedPulseRef = useRef(false);
+  // performance.now() stamp of the last knob press (-1 = idle); drives
+  // the whole-keypad cartoony wobble in the frame loop.
+  const wobbleStartRef = useRef(-1);
   const { camera, invalidate } = useThree();
+
+  // Knob press -> jiggle the whole device. KeypadModel dispatches
+  // "keypad-knob-press" on dial click; gated by reduced motion.
+  useEffect(() => {
+    const onKnob = () => {
+      if (PREFERS_REDUCED_MOTION) return;
+      wobbleStartRef.current = performance.now();
+      invalidate();
+    };
+    window.addEventListener("keypad-knob-press", onKnob);
+    return () => window.removeEventListener("keypad-knob-press", onKnob);
+  }, [invalidate]);
   // Fit is now self-contained inside KeypadModel. It computes its
   // own bounding-sphere-based scale against the camera frustum, so
   // the wrapping group here only handles ORIENTATION (base tilt +
@@ -504,6 +529,34 @@ function SceneContents({
     g.position.y +=
       Math.sin((ft / FLOAT_BOB_PERIOD) * Math.PI * 2) * FLOAT_BOB_AMP * floatGate;
 
+    // Cartoony knob-press WOBBLE: a fast decaying oscillation layered on
+    // top of the rotation (x + z, out of phase) plus a squash-stretch
+    // scale pulse. Always applied (set to neutral when idle) so the
+    // group scale resets cleanly after the jiggle settles.
+    let wobX = 0;
+    let wobZ = 0;
+    let wobScaleXZ = 1;
+    let wobScaleY = 1;
+    const wStart = wobbleStartRef.current;
+    if (wStart > 0) {
+      const age = (performance.now() - wStart) / 1000;
+      if (age < WOBBLE_DURATION) {
+        const decay = Math.exp(-age * WOBBLE_DAMP);
+        wobX = Math.sin(age * WOBBLE_FREQ) * WOBBLE_ROT_AMP * decay;
+        wobZ =
+          Math.sin(age * WOBBLE_FREQ * 1.27 + 1.1) *
+          WOBBLE_ROT_AMP *
+          0.85 *
+          decay;
+        const sq = Math.sin(age * WOBBLE_FREQ) * WOBBLE_SCALE_AMP * decay;
+        wobScaleY = 1 - sq; // squash down...
+        wobScaleXZ = 1 + sq * 0.5; // ...bulge sideways
+      } else {
+        wobbleStartRef.current = -1;
+      }
+    }
+    g.scale.set(wobScaleXZ, wobScaleY, wobScaleXZ);
+
     // Auto-spin the dial mid-drop. Fires ONCE at local >= 0.3 so the
     // dial is mid-rotation when the keypad lands. KeypadModel's
     // DIAL_DAMP decays it naturally over the remaining drop frames,
@@ -537,9 +590,9 @@ function SceneContents({
       // there is no face-tracking parallax; this static base tilt IS the
       // desktop look at rest. The idle float (bob on position above +
       // pitch/roll sway here) keeps it gently alive in place.
-      g.rotation.x = BASE_TILT_X + floatPitch;
+      g.rotation.x = BASE_TILT_X + floatPitch + wobX;
       g.rotation.y = BASE_TILT_Y;
-      g.rotation.z = BASE_TILT_Z + floatRoll;
+      g.rotation.z = BASE_TILT_Z + floatRoll + wobZ;
       return;
     }
 
@@ -562,11 +615,12 @@ function SceneContents({
     const k = 1 - Math.exp(-dt * PARALLAX_LERP_RATE);
     tiltState.current.x += (targetX - tiltState.current.x) * k;
     tiltState.current.y += (targetY - tiltState.current.y) * k;
-    // Cursor-tracked tilt + the idle float sway riding on top, so the
-    // keypad keeps a gentle life even when the cursor is still.
-    g.rotation.x = tiltState.current.x + floatPitch;
+    // Cursor-tracked tilt + the idle float sway + the knob-press wobble
+    // riding on top, so the keypad keeps a gentle life even when the
+    // cursor is still.
+    g.rotation.x = tiltState.current.x + floatPitch + wobX;
     g.rotation.y = tiltState.current.y;
-    g.rotation.z = BASE_TILT_Z + floatRoll;
+    g.rotation.z = BASE_TILT_Z + floatRoll + wobZ;
   });
 
   return (

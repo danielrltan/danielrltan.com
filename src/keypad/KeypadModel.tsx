@@ -483,6 +483,8 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     dialVelRef.current = Math.min(next, DIAL_MAX_VEL);
     screenFlashRef.current = Math.min(1, screenFlashRef.current + 0.45);
     emitInteract(0.7);
+    // Jiggle the whole device (KeypadScene listens and wobbles the group).
+    window.dispatchEvent(new CustomEvent("keypad-knob-press"));
   };
 
   // Two-level grouping: outer scales the whole keypad to fit the
