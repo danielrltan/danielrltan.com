@@ -163,6 +163,8 @@ const POST_FRAG = /* glsl */ `
   uniform float uTileCount;
   uniform float uTime;
   uniform vec3 uBase;
+  uniform vec3 uFieldBase;   // orange field background (inverted look)
+  uniform vec3 uFieldBlob;   // lighter-orange haze pooling in the field
   uniform vec3 uRingShadow;
   uniform vec3 uRingLit;
   uniform vec3 uLitOrange;
@@ -284,18 +286,24 @@ const POST_FRAG = /* glsl */ `
       // the small square so it stays a clean dust field; the densest
       // cores use a slightly larger square to feel like solid orange
       // pooling, dissolving outward into sparse dust.
-      // The two octaves DRIFT at different velocities, so the haze both
-      // slides AND morphs (their sum reshapes over time) - a slow
-      // abstract cloud, never a static pattern.
+      // INVERTED figure-ground (user): the field BASE is orange and the
+      // blobs are a LIGHTER orange haze pooling within it - light-on-
+      // orange, not orange-on-white. Solid field (a = 1) so the hero
+      // reads as an orange surface. Still ASCII tile dust: light-orange
+      // SQUARES dithered into the orange base, denser than before (less
+      // sparse). HUGE soft blobs (~1200px) drifting at two velocities so
+      // the haze is gradient-like and slowly morphs.
       float n =
-        vnoise(cell * 0.016 + uTime * vec2(0.055, 0.028)) * 0.65 +
-        vnoise(cell * 0.038 + uTime * vec2(-0.031, 0.044)) * 0.35;
-      float cov = smoothstep(0.38, 0.98, n);   // wide ramp = gradual fade
-      float present = step(dith, cov);          // ordered-dither coverage
-      float fieldIdx = cov > 0.80 ? 6.0 : 1.0;  // denser cores, bigger dot
-      float mask = tileMask(fieldIdx, cellUv) * present;
-      col = uBase;
-      a = mask * 0.82;
+        vnoise(cell * 0.008 + uTime * vec2(0.018, 0.010)) * 0.6 +
+        vnoise(cell * 0.017 + uTime * vec2(-0.011, 0.015)) * 0.4;
+      // Coverage floor of 0.32 so light-orange dots pepper the WHOLE
+      // field (no solid-base patches), rising to full in blob cores -
+      // less sparse, evenly textured.
+      float cov = 0.32 + smoothstep(0.30, 0.92, n) * 0.68;
+      float present = step(dith, cov);           // ordered-dither coverage
+      float mask = tileMask(1.0, cellUv) * present;
+      col = mix(uFieldBase, uFieldBlob, mask);
+      a = 1.0;
     }
 
     gl_FragColor = vec4(col, a);
@@ -468,6 +476,11 @@ function RingScene({
         uTileCount: { value: TILE_COUNT },
         uTime: { value: 0 },
         uBase: { value: new THREE.Color(color) },
+        // Inverted field: the brand accent orange as the BASE (same
+        // #e87040 used everywhere, per user), with a VERY light orange
+        // blob haze dithered over it.
+        uFieldBase: { value: new THREE.Color(color) },
+        uFieldBlob: { value: new THREE.Color("#ffe7d4") },
         // Ring tints stay a hair off pure white: the ring body reads
         // WHITE; the volumetric shading comes from tile DENSITY, the
         // tint only whispers warmth on shadow faces.

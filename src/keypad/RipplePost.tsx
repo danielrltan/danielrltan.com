@@ -186,7 +186,7 @@ const POST_FRAG = /* glsl */ `
     // the distortion also reads as energy, not just geometry.
     hdr *= 1.0 + clamp(caustic, 0.0, 1.0) * 0.06;
 
-    vec3 col = lin2srgb(ACESFilmic(hdr));
+    vec3 col = lin2srgb(hdr);
     gl_FragColor = vec4(col, alpha);
   }
 `;

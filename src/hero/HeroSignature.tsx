@@ -78,17 +78,13 @@ export function HeroSignature() {
     return () => window.clearTimeout(t);
   }, [phase]);
 
-  // Keep the 2D signature mounted even after the composition lands.
-  // During loading it draws at full opacity on the orange scrim;
-  // after settling, it lingers in the background at low opacity as a
-  // ghosted gesture behind the wordmark. User explicitly wants the
-  // signature to PERSIST in the EXACT same screen position as during
-  // loading, "everything kinda loads around it", so we leave it as
-  // a fixed-position anchor at low (but visible) opacity. 0.14 reads
-  // as "there but quiet" -- bumped from 0.10 so the gesture registers
-  // without competing with the wordmark.
+  // The 2D signature draws at full opacity on the orange loading scrim,
+  // fades through the transition, then DISAPPEARS once settled (user:
+  // remove the watermark behind the hero). The persistent low-opacity
+  // ghost behind the wordmark is gone; the signature is purely a
+  // loading-screen flourish now.
   const twoDOpacity =
-    phase === "drawing" ? 1 : phase === "transition" ? 0.5 : 0.14;
+    phase === "drawing" ? 1 : phase === "transition" ? 0.5 : 0;
   // Z-index hand-off. While drawing/crossfading, the signature paints
   // ON TOP of the orange scrim (z 5, above the composition at z 3).
   // Once settled it drops BEHIND the composition (z 1, under the
