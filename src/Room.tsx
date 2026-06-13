@@ -5,7 +5,8 @@ import * as THREE from "three";
 /**
  * Static baked bedroom diorama.
  *
- * The room is now PURELY VIEW-ONLY: the GLB (`room-optimized.glb`) ships
+ * The room is now PURELY VIEW-ONLY: the GLB (`room-optimized.web.glb`,
+ * gltf-transform optimized: webp textures @4096, meshopt) ships
  * with all lighting + shadow baked into its texture atlases, so every
  * mesh renders UNLIT (MeshBasicMaterial). There are no scene lights, no
  * physics, no interactivity - the scroll-driven camera fly-through
@@ -24,7 +25,7 @@ import * as THREE from "three";
  * (an earlier override wrongly made the baked mirrors see-through).
  */
 
-const ROOM_URL = "/room-optimized.glb";
+const ROOM_URL = "/room-optimized.web.glb";
 
 // Don't re-flag a shared atlas texture's colorspace twice (harmless, but
 // avoids a redundant GPU re-upload).

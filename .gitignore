@@ -73,6 +73,10 @@ pnpm-debug.log*
 /.scratch/
 # Pristine GLB backups from optimize-assets.mjs (huge — keep out of git)
 public/*.original.glb
+# Raw re-baked room source (~38 MB). The committed/shipped room is the
+# gltf-transform output room-optimized.web.glb (~4 MB); this is the
+# heavy source it's optimized FROM — keep it local, never commit/ship.
+public/room-optimized.glb
 
 # Raw photo drops — only the optimized public/photos/ output is committed.
 /photos-inbox/*
