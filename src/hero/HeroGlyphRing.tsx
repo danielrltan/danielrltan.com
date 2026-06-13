@@ -131,16 +131,16 @@ const RING_FRAG = /* glsl */ `
     float fill = max(dot(n, uFillDir), 0.0);
     vec3 v = normalize(-vViewPos);
     vec3 h = normalize(uKeyDir + v);
-    float spec = pow(max(dot(n, h), 0.0), 36.0);
-    // SPECULAR-DOMINANT, matching the original AsciiEffect Phong rig
-    // exactly: near-black base 0x202020 (~0.125) x light intensities
-    // (key 2.4 / fill 0.9) gives diffuse ~0.30 / fill ~0.11, and the
-    // WHITE specular is multiplied by the key's full 2.4 intensity -
-    // so the highlight CLAMPS into a broad blazing band rather than a
-    // thin streak. That over-driven, clipped shine is the point: the
-    // tile quantization eats subtle gradients, so the gloss must be
-    // exaggerated to read (user: "the shine should be very evident").
-    float lum = clamp(0.06 + diff * 0.30 + fill * 0.12 + spec * 2.4, 0.0, 1.0);
+    // BROAD DISPERSED SHINE (user-tuned, two failed extremes first):
+    //   pow 36 x 0.9  -> shine too subtle to read through the tiles;
+    //   pow 36 x 2.4  -> clipped into ONE solid saturated glob.
+    // A LOW exponent widens the lobe so the highlight stretches along
+    // the tube's curvature, and the moderate amplitude keeps the peak
+    // just at clamp - so the Bayer ramp gets a real gradient to chew
+    // on: dense orange at the hot core halftoning out through every
+    // tile density. The dispersion is what defines the ring's form.
+    float spec = pow(max(dot(n, h), 0.0), 12.0);
+    float lum = clamp(0.06 + diff * 0.30 + fill * 0.12 + spec * 1.25, 0.0, 1.0);
 
     gl_FragColor = vec4(n.xy * 0.5 + 0.5, lum, 1.0);
   }
