@@ -12,8 +12,10 @@ import * as THREE from "three";
  *
  *   PASS 1 (scene -> tiny render target, ONE TEXEL PER TILE CELL):
  *     The torus renders with a raw ShaderMaterial that encodes
- *       R,G = flat per-face view-space normal.xy (dFdx/dFdy of the
- *             view position, so every facet is constant -> faceted)
+ *       R,G = SMOOTH interpolated view-space normal.xy (flat dFdx/dFdy
+ *             per-face normals were the visible low-poly facets the
+ *             user rejected; smooth normals restore the glossy Phong
+ *             read of the original AsciiEffect ring)
  *       B   = lit luminance (key + fill + spec, computed in-shader)
  *       A   = coverage (1 where the torus is, 0 elsewhere)
  *
@@ -25,9 +27,10 @@ import * as THREE from "three";
  *         cross -> outline box -> box+slash -> inset square -> full
  *         square). Hard step() edges: crisp pixel shapes, on-voice
  *         with the sharp-corner system.
- *       - PER-FACE NORMAL -> PALETTE: the facet normal dotted with
- *         the key-light direction is quantized into discrete bands
- *         across the orange family, giving the volumetric shading.
+ *       - NORMAL -> PALETTE: the normal dotted with the key-light
+ *         direction is quantized into discrete bands across the
+ *         orange family - volumetric shading that follows the smooth
+ *         curvature as contour bands.
  *     Empty cells render a faint sparse tile field so the page keeps
  *     its full-bleed texture.
  *
@@ -47,9 +50,10 @@ interface Props {
 }
 
 // PERF (mobile): the post pass scales with canvas pixels, so coarse
-// devices cap DPR at 1 (vs up to 2x desktop). Tessellation also drops:
-// with flat per-face normals the facet size IS the look, and chunkier
-// facets read fine on a small screen.
+// devices cap DPR at 1 (vs up to 2x desktop). Tessellation also drops
+// (24x160 vs 40x260): the tile grid re-quantizes the surface into 10px
+// cells, so the coarser smooth-shaded mesh is visually indistinguishable
+// at phone sizes while cutting pass-1 vertex work.
 const IS_SMALL_SCREEN =
   typeof window !== "undefined" &&
   window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
@@ -77,6 +81,7 @@ const RING_VERT = /* glsl */ `
   uniform float uPullAmp;
   uniform float uRippleAmp;
   varying vec3 vViewPos;
+  varying vec3 vNormal;
 
   void main() {
     vec3 transformed = position;
@@ -99,6 +104,10 @@ const RING_VERT = /* glsl */ `
 
     vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
     vViewPos = mvPosition.xyz;
+    // SMOOTH interpolated normal (view space). The displacement rides
+    // along the normal, so the resting normal stays a good approximation
+    // (same simplification the original Phong setup made).
+    vNormal = normalize(normalMatrix * normal);
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
@@ -107,24 +116,31 @@ const RING_FRAG = /* glsl */ `
   uniform vec3 uKeyDir;
   uniform vec3 uFillDir;
   varying vec3 vViewPos;
+  varying vec3 vNormal;
 
   void main() {
-    // FLAT per-face normal from screen-space derivatives of the view
-    // position: constant across each facet, which is what lets the
-    // post pass shift the palette per face.
-    vec3 n = normalize(cross(dFdx(vViewPos), dFdy(vViewPos)));
+    // SMOOTH interpolated normal (was flat dFdx/dFdy per-face normals:
+    // the visible low-poly facets the user rejected). The post pass
+    // still quantizes normal-vs-light into discrete palette bands, so
+    // the volumetric banding survives - it just follows the smooth
+    // curvature now, and the specular reads as a glossy gliding
+    // highlight like the original Phong setup.
+    vec3 n = normalize(vNormal);
 
     float diff = max(dot(n, uKeyDir), 0.0);
     float fill = max(dot(n, uFillDir), 0.0);
     vec3 v = normalize(-vViewPos);
     vec3 h = normalize(uKeyDir + v);
     float spec = pow(max(dot(n, h), 0.0), 36.0);
-    // SPECULAR-DOMINANT, like the original AsciiEffect Phong setup
-    // (near-black base 0x202020, white specular, shininess 36): the
-    // diffuse terms stay low so brightness only spikes in compact
-    // specular streaks. A diffuse-dominant mix saturated half the
-    // ring to max density - the "solid orange wall" the user flagged.
-    float lum = clamp(0.06 + diff * 0.30 + fill * 0.12 + spec * 0.9, 0.0, 1.0);
+    // SPECULAR-DOMINANT, matching the original AsciiEffect Phong rig
+    // exactly: near-black base 0x202020 (~0.125) x light intensities
+    // (key 2.4 / fill 0.9) gives diffuse ~0.30 / fill ~0.11, and the
+    // WHITE specular is multiplied by the key's full 2.4 intensity -
+    // so the highlight CLAMPS into a broad blazing band rather than a
+    // thin streak. That over-driven, clipped shine is the point: the
+    // tile quantization eats subtle gradients, so the gloss must be
+    // exaggerated to read (user: "the shine should be very evident").
+    float lum = clamp(0.06 + diff * 0.30 + fill * 0.12 + spec * 2.4, 0.0, 1.0);
 
     gl_FragColor = vec4(n.xy * 0.5 + 0.5, lum, 1.0);
   }
@@ -617,13 +633,17 @@ function RingScene({
     /* Tilt group + torus: torus spins on local Y inside the tilted
        parent so the silhouette actually changes over time. Starts
        face-on; the entrance tilts it back to the resting lean.
-       DELIBERATELY LOW TESSELLATION: with flat per-face normals the
-       facets are the visual unit; ~16 degree facets give each face a
-       readable palette band of its own. */
+       SMOOTH TESSELLATION (AsciiEffect-era counts): the surface is
+       smooth-shaded now, so the mesh must be dense enough that neither
+       the silhouette nor the interpolated normals read as polygons -
+       the earlier 22x120 "facets are the look" mesh is exactly the
+       low-poly read the user rejected. The tile grid re-quantizes
+       everything to 10px cells anyway, so the extra vertices cost only
+       the pass-1 vertex stage. */
     <group ref={tiltGroupRef} rotation={[0, 0, 0]}>
       <mesh ref={torusRef} material={pipeline.ringMaterial}>
         <torusGeometry
-          args={IS_SMALL_SCREEN ? [1.25, 0.3, 16, 88] : [1.25, 0.3, 22, 120]}
+          args={IS_SMALL_SCREEN ? [1.25, 0.3, 24, 160] : [1.25, 0.3, 40, 260]}
         />
       </mesh>
     </group>
