@@ -162,8 +162,8 @@ const ORBIT_SWEEP = Math.PI * 0.8;
 // `spinFactor` so it damps to 0 across the settle window (square to camera
 // before the descent + CRT boot). Amplitudes are modest so the tipped-up
 // screen never turns away from the viewer.
-const PARALLAX_YAW = THREE.MathUtils.degToRad(27);
-const PARALLAX_PITCH = THREE.MathUtils.degToRad(15);
+const PARALLAX_YAW = THREE.MathUtils.degToRad(10.8);
+const PARALLAX_PITCH = THREE.MathUtils.degToRad(6);
 const PARALLAX_RATE = 4.0;
 
 // Uniform up-scale on the whole Mac group (model + screen click planes
