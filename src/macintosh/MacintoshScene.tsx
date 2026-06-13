@@ -153,6 +153,25 @@ const MAC_SPIN_AMP = 0.42;
 // without whipping around or tracking raw wheel steps 1:1.
 const ORBIT_SWEEP = Math.PI * 0.8;
 
+// CURSOR PARALLAX (float beats). Replaces the old fixed Y-axis sine sway:
+// during BEATs 1-2 the Mac TURNS TOWARD the cursor — yaw tracks the
+// horizontal cursor position, pitch the vertical — so it reads as the
+// object "watching" the pointer (parallax), not idly oscillating on one
+// axis. The applied rotation eases toward the target (PARALLAX_RATE) so a
+// fast flick glides instead of snapping, and the whole effect is scaled by
+// `spinFactor` so it damps to 0 across the settle window (square to camera
+// before the descent + CRT boot). Amplitudes are modest so the tipped-up
+// screen never turns away from the viewer.
+const PARALLAX_YAW = THREE.MathUtils.degToRad(27);
+const PARALLAX_PITCH = THREE.MathUtils.degToRad(15);
+const PARALLAX_RATE = 4.0;
+
+// Uniform up-scale on the whole Mac group (model + screen click planes
+// together, so tile hit-testing + the detail-zoom solve stay aligned). A
+// "tiny bit bigger" per the user — the landed CRT fills a touch more of
+// the frame without overflowing the close dolly framing.
+const MAC_GROUP_SCALE = 1.07;
+
 // Float pose for BEATs 1-2: a 3/4 product-shot view of the Mac's cube
 // housing with the SCREEN FACE TIPPED UP toward the viewer/camera.
 //
@@ -1121,6 +1140,13 @@ function useScreenTexture(
   // UI renders horizontally squished. Defaults to the prior 780/550 until
   // the real geometry is published by MacBody.
   screenAspect: number,
+  // True during the float beats (before CRT boot): paint the spinning
+  // ASCII sphere screensaver instead of the boot/desktop UI. `floatSpin`
+  // is a ~30Hz counter that ticks while floatActive so this hook re-runs
+  // and the sphere animates (its value is otherwise unused — the spin time
+  // is read from the clock at paint).
+  floatActive: boolean,
+  floatSpin: number,
 ): THREE.CanvasTexture {
   // PERF (GPU texture leak fix):
   //   OLD: every dependency change (bootProgress/hoverIndex/detailReveal/...
@@ -1197,11 +1223,15 @@ function useScreenTexture(
   // (drawScreen/drawProjectDetail both fully repaint, so no clear is needed.)
   if (selected && detailReveal > 0.04) {
     drawProjectDetail(ctx, w, h, selected, detailReveal);
+  } else if (floatActive) {
+    drawAsciiSphere(ctx, w, h, performance.now() / 1000);
   } else {
     drawScreen(ctx, w, h, projects, bootProgress, hoverIndex);
   }
   // `imageVersion` is referenced so a late thumbnail decode forces a repaint.
   void imageVersion;
+  // `floatSpin` is referenced so the ~30Hz float tick re-runs this paint.
+  void floatSpin;
   texture.needsUpdate = true;
   return texture;
 }
@@ -1557,6 +1587,111 @@ function wrapText(
   return lines;
 }
 
+/* ─────────────────────────────────────────────────────────────────
+ * FLOAT-BEAT SCREENSAVER: a spinning ASCII sphere ("hydron") painted
+ * onto the CRT while the Mac floats (BEATs 1-2), in the hero's monotone
+ * orange-on-dark ASCII voice. A tiny software rasterizer samples a unit
+ * sphere, rotates it on two axes by wall-clock time, z-buffers the
+ * nearest sample per character cell, and shades each cell by a Lambert
+ * term (normal·light) mapped to a glyph ramp + an orange→warm-white tint.
+ * Repainted ~30Hz off `floatSpin` while floatActive; `t` is sampled from
+ * the clock at paint time so the spin is smooth regardless of tick jitter.
+ * The CRT overlay shader (scanlines/roll/vignette) rides on top, so it
+ * reads as a live tube running a demo, not a flat image.
+ * ──────────────────────────────────────────────────────────────── */
+const ASCII_SPHERE_RAMP = ".,-~:;=!*$#@";
+function drawAsciiSphere(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  t: number,
+) {
+  ctx.fillStyle = CRT_BASE;
+  ctx.fillRect(0, 0, w, h);
+
+  // Character cell metrics (VT323 is narrow — advance ≈ 0.46em).
+  const fontPx = Math.max(20, Math.round(h * 0.05));
+  const cellW = fontPx * 0.46;
+  const cellH = fontPx * 0.92;
+  const cols = Math.max(1, Math.floor(w / cellW));
+  const rows = Math.max(1, Math.floor(h / cellH));
+  const N = cols * rows;
+  const lum = new Float32Array(N).fill(-2); // <-1 ⇒ empty cell
+  const zb = new Float32Array(N).fill(-1e9); // 1/depth: larger ⇒ nearer
+
+  // Two-axis tumble.
+  const A = t * 0.55;
+  const B = t * 0.34;
+  const cA = Math.cos(A);
+  const sA = Math.sin(A);
+  const cB = Math.cos(B);
+  const sB = Math.sin(B);
+
+  // Key light from the upper-front-left (normalized).
+  const lx = -0.35;
+  const ly = 0.62;
+  const lz = 0.7;
+  const linv = 1 / Math.hypot(lx, ly, lz);
+  const Lx = lx * linv;
+  const Ly = ly * linv;
+  const Lz = lz * linv;
+
+  // Sphere radius in PIXELS (equal on both axes ⇒ perfectly round even
+  // though cells aren't square). Then converted to cell deltas per sample.
+  const Rpx = Math.min(w, h) * 0.42;
+  const cxPx = w / 2;
+  const cyPx = h / 2;
+
+  const PHI = 74;
+  const THETA = 150;
+  for (let i = 0; i <= PHI; i++) {
+    const phi = (i / PHI) * Math.PI;
+    const sp = Math.sin(phi);
+    const cp = Math.cos(phi);
+    for (let j = 0; j < THETA; j++) {
+      const theta = (j / THETA) * Math.PI * 2;
+      // Unit-sphere point == its own normal.
+      const x0 = sp * Math.cos(theta);
+      const y0 = cp;
+      const z0 = sp * Math.sin(theta);
+      // Rotate about Y (B) then X (A).
+      const x1 = x0 * cB + z0 * sB;
+      const z1 = -x0 * sB + z0 * cB;
+      const y2 = y0 * cA - z1 * sA;
+      const z2 = y0 * sA + z1 * cA; // larger ⇒ nearer camera
+      const x2 = x1;
+      const sx = Math.round((cxPx + x2 * Rpx) / cellW);
+      const sy = Math.round((cyPx - y2 * Rpx) / cellH);
+      if (sx < 0 || sx >= cols || sy < 0 || sy >= rows) continue;
+      const idx = sy * cols + sx;
+      if (z2 > zb[idx]!) {
+        zb[idx] = z2;
+        // Lambert term; floored so the unlit silhouette still reads.
+        const L = x2 * Lx + y2 * Ly + z2 * Lz;
+        lum[idx] = Math.max(0.08, L);
+      }
+    }
+  }
+
+  ctx.font = `${fontPx}px ${PIXEL_FONT}`;
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+  const last = ASCII_SPHERE_RAMP.length - 1;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const L = lum[r * cols + c]!;
+      if (L < -1) continue;
+      const g = Math.pow(Math.min(1, L), 0.8);
+      const ch = ASCII_SPHERE_RAMP[Math.min(last, Math.round(g * last))]!;
+      const rr = Math.round(232 + (255 - 232) * g);
+      const gg = Math.round(112 + (240 - 112) * g);
+      const bb = Math.round(64 + (220 - 64) * g);
+      ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
+      ctx.fillText(ch, c * cellW, r * cellH);
+    }
+  }
+}
+
 function drawScreen(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -1903,7 +2038,22 @@ function Scene({
   // UI maps 1:1 onto the screen plane (no horizontal squish). Starts at
   // the prior fixed 780/550 until the real value arrives.
   const [screenAspect, setScreenAspect] = useState(780 / 550);
+  // Float-beat screensaver gate + animation tick (see useScreenTexture).
+  const [floatActive, setFloatActive] = useState(false);
+  const [floatSpin, setFloatSpin] = useState(0);
   const lastTickRef = useRef(0);
+  // Normalized cursor position (-1..1 each axis; top = -1) for the float
+  // parallax. Ref, not state, so the per-frame read never re-renders.
+  const pointerRef = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onMove = (e: PointerEvent) => {
+      pointerRef.current.x = (e.clientX / window.innerWidth) * 2 - 1;
+      pointerRef.current.y = (e.clientY / window.innerHeight) * 2 - 1;
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
 
   // Preload the project thumbnails; the version bumps as each decodes so
   // the CanvasTexture rebuilds and the artwork paints in.
@@ -1917,6 +2067,8 @@ function Scene({
     detailReveal,
     imageVersion,
     screenAspect,
+    floatActive,
+    floatSpin,
   );
   const { invalidate, camera, size } = useThree();
 
@@ -2018,12 +2170,22 @@ function Scene({
         (THRESHOLDS.spinSettleEnd - THRESHOLDS.spinSettleStart),
     );
     const spinFactor = 1 - settleT;
-    // Advance the sway PHASE (not the angle) so pausing the settle never
-    // accumulates an unbounded rotation; the phase only matters mod 2π.
-    macSelfSpinRef.current += dt * MAC_SPIN_RATE * spinFactor;
+    // CURSOR PARALLAX: turn the Mac toward the pointer (yaw ← cursor X,
+    // pitch ← cursor Y) during the float beats, eased toward the target so
+    // it glides. A faint idle sway keeps it alive when the pointer is
+    // still. Everything scales by spinFactor so it unwinds to square-on as
+    // the descent begins. Phase advances regardless so the idle term is
+    // continuous.
+    macSelfSpinRef.current += dt * MAC_SPIN_RATE;
     if (macSpinRef.current) {
-      macSpinRef.current.rotation.y =
-        Math.sin(macSelfSpinRef.current) * MAC_SPIN_AMP * spinFactor;
+      const g = macSpinRef.current;
+      const idle = Math.sin(macSelfSpinRef.current) * MAC_SPIN_AMP * 0.12;
+      const targetYaw =
+        (pointerRef.current.x * PARALLAX_YAW + idle) * spinFactor;
+      const targetPitch = pointerRef.current.y * PARALLAX_PITCH * spinFactor;
+      const k = 1 - Math.exp(-PARALLAX_RATE * Math.min(dt, 0.05));
+      g.rotation.y += (targetYaw - g.rotation.y) * k;
+      g.rotation.x += (targetPitch - g.rotation.x) * k;
     }
 
     // ── SHADOW PLATE ──────────────────────────────────────────────
@@ -2055,6 +2217,12 @@ function Scene({
     if (now - lastTickRef.current >= 33) {
       lastTickRef.current = now;
       setBootProgress((prev) => (Math.abs(prev - newBoot) > 0.02 ? newBoot : prev));
+      // Float-beat screensaver gate: on before the CRT boot, while no
+      // project is open and not on the narrow/landed path. Tick floatSpin
+      // so useScreenTexture re-runs and the ASCII sphere animates.
+      const fa = !narrow && !selected && p < THRESHOLDS.bootStart;
+      setFloatActive((prev) => (prev === fa ? prev : fa));
+      if (fa) setFloatSpin((s) => (s + 1) % 1000000);
       const dz = detailZoomRef.current;
       // Snap to exactly 0 once closed (texture falls back to the tile grid)
       // AND exactly 1 once fully open. Without the ==1 case, the throttled
@@ -2254,9 +2422,18 @@ function Scene({
     // overlay only adds the picture on top of it.
     const mat = overlayMatRef.current;
     if (mat) {
+      // The screen now powers on EARLY (during the float) to run the ASCII
+      // sphere screensaver, then carries the boot type-in + desktop. So the
+      // overlay opacity is max(power-on ramp, boot ramp): a quick power-on at
+      // the start of the float, held at full through boot/desktop.
+      const screenOn = clamp01((p - 0.02) / 0.05);
+      const targetOpacity = Math.max(screenOn, newBoot);
       // Cheap guard against re-writing the same value every frame.
-      if (Math.abs((mat.uniforms.uOpacity!.value as number) - newBoot) > 0.005) {
-        mat.uniforms.uOpacity!.value = newBoot;
+      if (
+        Math.abs((mat.uniforms.uOpacity!.value as number) - targetOpacity) >
+        0.005
+      ) {
+        mat.uniforms.uOpacity!.value = targetOpacity;
       }
       // CRT clock: drives the scanline drift / refresh roll / flicker.
       // Ticks only while this scene's frameloop runs (i.e. while the
@@ -2320,7 +2497,11 @@ function Scene({
           The screen click-plane is OUTSIDE the tilt + spin so it stays
           axis-aligned to the camera; clicks always land on tile
           coordinates in screen-space, not on rotated UVs. */}
-      <group ref={macGroupRef} position={[0, MAC_HOVER_Y, 0]}>
+      <group
+        ref={macGroupRef}
+        position={[0, MAC_HOVER_Y, 0]}
+        scale={[MAC_GROUP_SCALE, MAC_GROUP_SCALE, MAC_GROUP_SCALE]}
+      >
         <group ref={macTiltRef}>
           <group ref={macSpinRef}>
             <MacBody
