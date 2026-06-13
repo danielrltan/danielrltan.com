@@ -152,22 +152,29 @@ const FRAGMENT = /* glsl */ `
       length(cell)
     );
 
-    // Distance from cursor in aspect-corrected screen-space, so the
-    // blob is a true circle regardless of canvas aspect ratio.
-    vec2 d = (uv - uCursor) * uAspect;
-    float dist = length(d);
-
-    // Noise-warp the blob edge so it feels like flowing rice fluid
-    // rather than a hard circle.
-    float n = noise2(d * 4.0 + uTime * 0.35) - 0.5;
-    float warpedDist = dist + n * 0.05;
-
-    float blob = 1.0 - smoothstep(
-      uBlobRadius - uBlobFeather,
-      uBlobRadius + uBlobFeather,
-      warpedDist
-    );
-    blob *= uActive;
+    // ----- Liquid blob (signed-distance + smooth union) -----
+    // A wobbly fluid body at the cursor PLUS an orbiting droplet that
+    // smooth-merges into it - so the glob bulges, necks and floats like
+    // liquid. Built from distance fields so the membrane OUTLINE is a
+    // clean constant-width ring (abs(sd) band), guaranteed visible.
+    float bt = uTime;
+    // Main body: edge wobbles with angle + time like a liquid surface.
+    vec2 dm = (uv - uCursor) * uAspect;
+    float angM = atan(dm.y, dm.x);
+    float rMain = uBlobRadius
+      + sin(angM * 3.0 + bt * 1.3) * 0.015
+      + sin(angM * 5.0 - bt * 0.9) * 0.009;
+    float sdMain = length(dm) - rMain;
+    // Orbiting droplet that drifts around the cursor and merges in.
+    vec2 sc = uCursor + vec2(cos(bt * 0.8), sin(bt * 1.05)) * 0.11;
+    float sdSat = length((uv - sc) * uAspect) - uBlobRadius * 0.42;
+    // Smooth-union (polynomial smin) -> gooey neck where they meet.
+    float k = 0.07;
+    float hsm = clamp(0.5 + 0.5 * (sdSat - sdMain) / k, 0.0, 1.0);
+    float sd = mix(sdSat, sdMain, hsm) - k * hsm * (1.0 - hsm);
+    // Fill (inside sd<0) + a constant-width membrane ring at sd=0.
+    float blob = smoothstep(0.006, -0.006, sd) * uActive;
+    float outline = (1.0 - smoothstep(0.0, 0.014, abs(sd))) * uActive;
 
     // Grain drift inside the blob: second noise modulates dot alpha
     // so individual grains seem to flow. Higher floor (0.75 vs 0.55)
@@ -240,11 +247,17 @@ const FRAGMENT = /* glsl */ `
     // the top.
     vec3 tintedBg = mix(uBg, uGlow, glow);
     tintedBg = mix(tintedBg, uHotColor, clamp(hotField * 0.5, 0.0, 0.5));
+    // Liquid fill: a warm tint INSIDE the glob so it reads as a body of
+    // fluid, not just a field of dots.
+    tintedBg = mix(tintedBg, uGlow, blob * 0.28);
     // Rice grains INVERT toward light under the charge so they contrast
     // against the warm glow instead of muddying into it (grey-on-amber
     // had almost no separation).
     vec3 riceCol = mix(uRice, uRiceHot, clamp(hotField * 1.6, 0.0, 1.0));
     vec3 col = mix(tintedBg, riceCol, a);
+    // Membrane outline: a crisp accent ring tracing the liquid's edge -
+    // the surface-tension skin that makes the glob read as fluid.
+    col = mix(col, uGlow, outline * 0.85);
     gl_FragColor = vec4(col, 1.0);
     // COLOUR-COORDINATION FIX (user-flagged "messy / pink, not
     // coordinated"): this raw ShaderMaterial wrote its mixed colour
