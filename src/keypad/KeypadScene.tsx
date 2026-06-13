@@ -3,12 +3,13 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, TransformControls } from "@react-three/drei";
 import * as THREE from "three";
 import { KeypadModel, type KeypadModelApi } from "./KeypadModel";
+import { RiceBlob } from "./RiceBlob";
 import {
-  RiceBlob,
+  RipplePost,
   createPulseChannel,
-  stampRicePulse,
+  stampPulse,
   type PulseChannel,
-} from "./RiceBlob";
+} from "./RipplePost";
 import { useIsMobile } from "../useIsMobile";
 
 // Tuning mode: pass ?tune=keypad in the URL to enable OrbitControls
@@ -190,8 +191,9 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
       const ev = e as CustomEvent<{ strength?: number }>;
       // Ring-buffer stamp: rapid presses each spawn their OWN ripple
       // (in-flight waves always complete; nothing restarts from the
-      // middle on spam clicks).
-      stampRicePulse(
+      // middle on spam clicks). The RipplePost reads this channel and
+      // refracts the whole viewport from the press point.
+      stampPulse(
         pulsesRef.current,
         ev.detail?.strength ?? 1,
         cursorRef.current.x,
@@ -517,7 +519,7 @@ function SceneContents({
     if (!hasLandedPulseRef.current && eased >= 0.995) {
       hasLandedPulseRef.current = true;
       if (!PREFERS_REDUCED_MOTION) {
-        stampRicePulse(pulsesRef.current, 1.35, 0.5, 0.58);
+        stampPulse(pulsesRef.current, 1.35, 0.5, 0.58);
       }
     }
     // Reset the auto-spin + landing latches when the user scrolls fully
@@ -572,9 +574,16 @@ function SceneContents({
       <RiceBlob
         cursorRef={cursorRef}
         glowOpacityRef={glowOpacityRef}
-        pulsesRef={pulsesRef}
         hotRef={hotRef}
       />
+      {/* Screen-space spacetime ripple. Takes over the render loop
+          (scene -> FBO -> refracted fullscreen pass), so it is mounted
+          ONLY outside tune mode, where R3F's auto-render must stay live
+          for OrbitControls / TransformControls. Press ripples refract
+          the entire viewport - keypad, grains and screen alike. */}
+      {!TUNE_MODE && (
+        <RipplePost pulsesRef={pulsesRef} samples={isMobile ? 0 : 4} />
+      )}
       {/* Cool paper-white ambient (was #f4f3f0 warm), which cast a
           warm/muddy tint that clashed with the site's cool palette.
           #f4f5f7 keeps the same brightness but reads cool/neutral. */}
