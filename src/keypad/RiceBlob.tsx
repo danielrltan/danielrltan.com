@@ -47,9 +47,14 @@ const _planePos = new THREE.Vector3();
 // CSS section bg and must stay in sync with keypad.css. Canvas
 // shaders can't read CSS vars, so the token value is inlined.
 const BG_COLOR = "#f7f8fa";
-// Cool neutral grey rice (was #C4C4C4 warm-neutral), nudged toward the
-// cool stack so the grain doesn't warm the backdrop.
-const RICE_COLOR = "#c3c6cc";
+// White rice grains (user). They sit on the orange fluid fill INSIDE the
+// blob, so white reads as bright foam/bubbles suspended in the liquid.
+const RICE_COLOR = "#ffffff";
+
+// Number of metaballs in the cursor TRAIL. The head tracks the cursor; each
+// following ball lags toward the one ahead, so the chain stretches into a
+// liquid trail when you move and collapses to a single blob when you stop.
+const TRAIL_N = 12;
 // Brand orange. Painted in the SAME shader as the rice (not a separate
 // transparent plane) so it composites correctly behind the keypad.
 // three.js puts transparent objects after all opaque ones regardless
@@ -104,7 +109,8 @@ const VERTEX = /* glsl */ `
 
 const FRAGMENT = /* glsl */ `
   varying vec2 vUv;
-  uniform vec2 uCursor;   // 0..1 canvas-normalized, Y-down
+  uniform vec2 uTrail[${TRAIL_N}]; // cursor trail, [0] = head (0..1, Y-down)
+  uniform vec2 uVel;      // smoothed cursor velocity (for grain drag)
   uniform vec2 uAspect;   // canvas aspect (x = width/min, y = height/min)
   uniform float uTime;
   uniform float uBlobRadius;
@@ -143,17 +149,11 @@ const FRAGMENT = /* glsl */ `
     // so vUv and uCursor are in the same convention.
     vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
 
-    // Aspect-corrected grid, ADVECTED by a slow flow field so the grains
-    // visibly circulate like particles suspended in moving liquid, instead
-    // of a static dot texture merely revealed through a moving mask (the
-    // "image/GIF behind it" the static version read as). Two scrolling
-    // noise lookups give a divergent-ish drift that swirls the grains.
-    float ft = uTime * 0.35;
-    vec2 flow = vec2(
-      noise2(uv * 3.5 + vec2(0.0, ft)) - 0.5,
-      noise2(uv * 3.5 + vec2(ft + 11.0, 0.0)) - 0.5
-    ) * 0.055;
-    vec2 gridUv = vec2((uv.x + flow.x) * uAspect.x, (uv.y + flow.y) * uAspect.y);
+    // Aspect-corrected grain grid, DRAGGED by cursor velocity so the grains
+    // lag behind the motion (the liquid reacts to HOW you move) and settle
+    // when the cursor stops. Clamped so a fast flick doesn't tear the grid.
+    vec2 gdrag = clamp(uVel * 0.04, vec2(-0.05), vec2(0.05));
+    vec2 gridUv = vec2((uv.x - gdrag.x) * uAspect.x, (uv.y - gdrag.y) * uAspect.y);
     vec2 cell = fract(gridUv * uGridCount) - 0.5;
     float dotMask = 1.0 - smoothstep(
       uDotRadius - 0.02,
@@ -167,29 +167,26 @@ const FRAGMENT = /* glsl */ `
     // liquid. Built from distance fields so the membrane OUTLINE is a
     // clean constant-width ring (abs(sd) band), guaranteed visible.
     float bt = uTime;
-    // Main body: edge wobbles harder with angle + time so the surface
-    // visibly churns like a liquid (was barely-perceptible amplitudes).
-    vec2 dm = (uv - uCursor) * uAspect;
-    float angM = atan(dm.y, dm.x);
-    float rMain = uBlobRadius
-      + sin(angM * 3.0 + bt * 1.6) * 0.030
-      + sin(angM * 5.0 - bt * 1.1) * 0.018
-      + sin(angM * 2.0 + bt * 0.7) * 0.012;
-    float sdMain = length(dm) - rMain;
-    // TWO orbiting droplets at different rates: they swing out, neck, and
-    // merge back into the body so the glob constantly reforms (the gooey
-    // metaball motion that reads as "liquid", not a static disc).
-    vec2 sc1 = uCursor + vec2(cos(bt * 0.9), sin(bt * 1.15)) * 0.12;
-    float sdSat1 = length((uv - sc1) * uAspect) - uBlobRadius * 0.5;
-    vec2 sc2 = uCursor + vec2(cos(bt * 1.3 + 2.1), sin(bt * 0.8 + 2.1)) * 0.09;
-    float sdSat2 = length((uv - sc2) * uAspect) - uBlobRadius * 0.36;
-    // Sequential smooth-unions (polynomial smin) -> gooey necks.
-    float k = 0.08;
-    float sd = sdMain;
-    float h1 = clamp(0.5 + 0.5 * (sdSat1 - sd) / k, 0.0, 1.0);
-    sd = mix(sdSat1, sd, h1) - k * h1 * (1.0 - h1);
-    float h2 = clamp(0.5 + 0.5 * (sdSat2 - sd) / k, 0.0, 1.0);
-    sd = mix(sdSat2, sd, h2) - k * h2 * (1.0 - h2);
+    // Liquid TRAIL: smooth-union (polynomial smin) of a chain of metaballs.
+    // uTrail[0] is the cursor head; each later ball lags toward the one
+    // ahead (updated in JS), so when you MOVE the cursor the chain stretches
+    // into a tapering liquid trail that follows your path, and when you stop
+    // it flows back together into a single blob. This is the reactivity:
+    // the shape is driven by how the cursor actually moved, not a canned loop.
+    float k = 0.085;
+    float sd = 1e9;
+    for (int i = 0; i < ${TRAIL_N}; i++) {
+      float fi = float(i) / float(${TRAIL_N});
+      vec2 d = (uv - uTrail[i]) * uAspect;
+      // Radius tapers toward the tail so the trail thins like a droplet wake.
+      float ang = atan(d.y, d.x);
+      float r = uBlobRadius * (1.0 - fi * 0.55)
+        + sin(ang * 3.0 + bt * 1.5 - fi * 6.2) * 0.012
+        + sin(ang * 5.0 - bt * 1.0) * 0.006;
+      float di = length(d) - r;
+      float h = clamp(0.5 + 0.5 * (di - sd) / k, 0.0, 1.0);
+      sd = mix(di, sd, h) - k * h * (1.0 - h);
+    }
     // Fill (inside sd<0) + a constant-width membrane ring at sd=0.
     float blob = smoothstep(0.006, -0.006, sd) * uActive;
     float outline = (1.0 - smoothstep(0.0, 0.014, abs(sd))) * uActive;
@@ -265,9 +262,10 @@ const FRAGMENT = /* glsl */ `
     // the top.
     vec3 tintedBg = mix(uBg, uGlow, glow);
     tintedBg = mix(tintedBg, uHotColor, clamp(hotField * 0.5, 0.0, 0.5));
-    // Liquid fill: a warm tint INSIDE the glob so it reads as a body of
-    // fluid, not just a field of dots.
-    tintedBg = mix(tintedBg, uGlow, blob * 0.28);
+    // Liquid fill: a stronger warm body INSIDE the glob so it reads as
+    // actual orange fluid (and the white grains pop as foam against it,
+    // rather than washing out on the near-white bg).
+    tintedBg = mix(tintedBg, uGlow, blob * 0.5);
     // Rice grains INVERT toward light under the charge so they contrast
     // against the warm glow instead of muddying into it (grey-on-amber
     // had almost no separation).
@@ -315,7 +313,10 @@ export function RiceBlob({ cursorRef, glowOpacityRef, hotRef }: Props) {
 
   const uniforms = useMemo(
     () => ({
-      uCursor: { value: new THREE.Vector2(-2, -2) },
+      uTrail: {
+        value: Array.from({ length: TRAIL_N }, () => new THREE.Vector2(-2, -2)),
+      },
+      uVel: { value: new THREE.Vector2(0, 0) },
       uAspect: { value: new THREE.Vector2(1, 1) },
       uTime: { value: 0 },
       uBlobRadius: { value: BLOB_RADIUS },
@@ -367,16 +368,39 @@ export function RiceBlob({ cursorRef, glowOpacityRef, hotRef }: Props) {
     }
     mat.uniforms.uTime.value = (performance.now() - startMs) / 1000;
 
-    // Fixed-rate lerp toward cursor target; never bind a uniform
-    // directly to a per-event value.
-    const uv = mat.uniforms.uCursor.value as THREE.Vector2;
+    // ── Cursor TRAIL update (the reactivity) ──────────────────────────
+    // Head (trail[0]) chases the cursor quickly; each following ball lags
+    // toward the one ahead. Moving fast spreads the chain into a trail;
+    // stopping lets it flow back together. All fixed-rate lerps (never
+    // bound directly to a per-event value, per project rule).
+    const trail = mat.uniforms.uTrail.value as THREE.Vector2[];
     const t = cursorRef.current;
-    const k = 1 - Math.exp(-dt * CURSOR_LERP_RATE);
-    uv.x += (t.x - uv.x) * k;
-    uv.y += (t.y - uv.y) * k;
+    const dtc = Math.min(dt, 0.05);
+    const head = trail[0]!;
+    const prevHeadX = head.x;
+    const prevHeadY = head.y;
+    const kHead = 1 - Math.exp(-dtc * CURSOR_LERP_RATE);
+    head.x += (t.x - head.x) * kHead;
+    head.y += (t.y - head.y) * kHead;
+    // Follower chain: laggier than the head so a visible trail forms.
+    const kChain = 1 - Math.exp(-dtc * 16);
+    for (let i = 1; i < TRAIL_N; i++) {
+      const p = trail[i]!;
+      const a = trail[i - 1]!;
+      p.x += (a.x - p.x) * kChain;
+      p.y += (a.y - p.y) * kChain;
+    }
+    // Smoothed head velocity (units/sec) for the grain drag.
+    const vel = mat.uniforms.uVel.value as THREE.Vector2;
+    const instVx = (head.x - prevHeadX) / dtc;
+    const instVy = (head.y - prevHeadY) / dtc;
+    const kVel = 1 - Math.exp(-dtc * 12);
+    vel.x += (instVx - vel.x) * kVel;
+    vel.y += (instVy - vel.y) * kVel;
+
     mat.uniforms.uActive.value += (
       (t.active ? 1 : 0) - mat.uniforms.uActive.value
-    ) * k;
+    ) * kHead;
     // Soft lerp toward target glow opacity. Slower coefficient than
     // the cursor-active follow so the fade-in reads as deliberate
     // rather than a snap.
