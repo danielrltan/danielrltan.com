@@ -632,6 +632,17 @@ function SceneContents({
         glowOpacityRef={glowOpacityRef}
         hotRef={hotRef}
       />
+      {/* A little of the same liquid floats IN FRONT of the keypad (desktop
+          only — a second full-screen shader is too heavy for mobile) so the
+          pool reads as 3D: liquid behind AND a few wisps over the device. */}
+      {!isMobile && (
+        <RiceBlob
+          cursorRef={cursorRef}
+          glowOpacityRef={glowOpacityRef}
+          hotRef={hotRef}
+          layer="front"
+        />
+      )}
       {/* Screen-space spacetime ripple. Takes over the render loop
           (scene -> FBO -> refracted fullscreen pass), so it is mounted
           ONLY outside tune mode, where R3F's auto-render must stay live

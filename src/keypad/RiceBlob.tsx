@@ -21,6 +21,10 @@ import * as THREE from "three";
 // and 12 + camera distance ~6.7 = 18.7 from camera, well within the
 // 50-unit far plane.
 const PLANE_DISTANCE_BEHIND_TARGET = 12;
+// Foreground plane sits BETWEEN the camera and the model (negative = toward
+// the camera from the model centroid at origin) so the front liquid wisps
+// render over the keypad.
+const FRONT_PLANE_DISTANCE = -2.6;
 
 // Module-scope scratch vectors: reused every frame instead of allocating
 // inside useFrame.  OLD: 2 Vector3 allocs/frame.  NEW: O(1) space, 0 allocs.
@@ -123,6 +127,8 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uHotColor;   // yellow-amber hover charge
   uniform vec3 uRiceHot;    // light rice under the charge (contrast)
   uniform float uActive;
+  uniform float uLayer;        // 0 = opaque backdrop, 1 = transparent front
+  uniform float uFrontOpacity; // overall opacity of the front wisps
   uniform float uGlowOpacity;
   // 0..1: cursor is over an interactive part (cap/dial); the WHOLE
   // keypad warms with a flowy yellow charge while hot.
@@ -173,16 +179,19 @@ const FRAGMENT = /* glsl */ `
     // into a tapering liquid trail that follows your path, and when you stop
     // it flows back together into a single blob. This is the reactivity:
     // the shape is driven by how the cursor actually moved, not a canned loop.
-    float k = 0.085;
+    // Larger smin radius (gooier) so adjacent balls fuse into one mercury
+    // body with smooth necks rather than reading as separate circles.
+    float k = 0.12;
     float sd = 1e9;
     for (int i = 0; i < ${TRAIL_N}; i++) {
       float fi = float(i) / float(${TRAIL_N});
       vec2 d = (uv - uTrail[i]) * uAspect;
-      // Radius tapers toward the tail so the trail thins like a droplet wake.
+      // Gentle taper toward the tail so the trail thins like a droplet wake
+      // (less aggressive than before so the tail stays connected, not pinched).
       float ang = atan(d.y, d.x);
-      float r = uBlobRadius * (1.0 - fi * 0.55)
-        + sin(ang * 3.0 + bt * 1.5 - fi * 6.2) * 0.012
-        + sin(ang * 5.0 - bt * 1.0) * 0.006;
+      float r = uBlobRadius * (1.0 - fi * 0.32)
+        + sin(ang * 3.0 + bt * 1.5 - fi * 6.2) * 0.010
+        + sin(ang * 5.0 - bt * 1.0) * 0.005;
       float di = length(d) - r;
       float h = clamp(0.5 + 0.5 * (di - sd) / k, 0.0, 1.0);
       sd = mix(di, sd, h) - k * h * (1.0 - h);
@@ -274,7 +283,17 @@ const FRAGMENT = /* glsl */ `
     // Membrane outline: a crisp accent ring tracing the liquid's edge -
     // the surface-tension skin that makes the glob read as fluid.
     col = mix(col, uGlow, outline * 0.85);
-    gl_FragColor = vec4(col, 1.0);
+
+    // BACK layer = opaque backdrop. FRONT layer = transparent: only a few
+    // faint orange liquid wisps (fill + membrane) of the trail float over
+    // the keypad, so the section reads as liquid in front AND behind it.
+    if (uLayer > 0.5) {
+      float cov = clamp(blob * 0.24 + outline * 0.9, 0.0, 1.0)
+        * uActive * uFrontOpacity;
+      gl_FragColor = vec4(uGlow, cov);
+    } else {
+      gl_FragColor = vec4(col, 1.0);
+    }
     // COLOUR-COORDINATION FIX (user-flagged "messy / pink, not
     // coordinated"): this raw ShaderMaterial wrote its mixed colour
     // straight to gl_FragColor with NO output-colorspace encode. Three's
@@ -303,9 +322,22 @@ interface Props {
   glowOpacityRef?: React.MutableRefObject<number>;
   /** Cursor currently over an interactive part (cap/dial). */
   hotRef?: React.MutableRefObject<boolean>;
+  /**
+   * "back" (default): the opaque cursor-fluid BACKDROP behind the keypad.
+   * "front": a transparent plane IN FRONT of the keypad showing only a few
+   * faint liquid wisps (fill + membrane) of the same trail, so a little of
+   * the liquid floats OVER the device for a 3D layered read.
+   */
+  layer?: "back" | "front";
 }
 
-export function RiceBlob({ cursorRef, glowOpacityRef, hotRef }: Props) {
+export function RiceBlob({
+  cursorRef,
+  glowOpacityRef,
+  hotRef,
+  layer = "back",
+}: Props) {
+  const isFront = layer === "front";
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   const { size, camera } = useThree();
@@ -329,10 +361,12 @@ export function RiceBlob({ cursorRef, glowOpacityRef, hotRef }: Props) {
       uHotColor: { value: new THREE.Color(HOT_COLOR) },
       uRiceHot: { value: new THREE.Color(RICE_HOT_COLOR) },
       uActive: { value: 0 },
+      uLayer: { value: isFront ? 1 : 0 },
+      uFrontOpacity: { value: 0.42 },
       uGlowOpacity: { value: 0 },
       uHot: { value: 0 },
     }),
-    [],
+    [isFront],
   );
 
   useFrame((_, dt) => {
@@ -356,7 +390,11 @@ export function RiceBlob({ cursorRef, glowOpacityRef, hotRef }: Props) {
       pc.getWorldDirection(_camDir);
       // World-origin is the scene's lookAt (KeypadModel recenters the
       // model centroid there). Plane sits behind it along camDir.
-      _planePos.copy(_camDir).multiplyScalar(PLANE_DISTANCE_BEHIND_TARGET);
+      _planePos
+        .copy(_camDir)
+        .multiplyScalar(
+          isFront ? FRONT_PLANE_DISTANCE : PLANE_DISTANCE_BEHIND_TARGET,
+        );
       mesh.position.copy(_planePos);
       mesh.lookAt(pc.position);
       // Visible size of the plane at its distance from the camera.
@@ -382,13 +420,26 @@ export function RiceBlob({ cursorRef, glowOpacityRef, hotRef }: Props) {
     const kHead = 1 - Math.exp(-dtc * CURSOR_LERP_RATE);
     head.x += (t.x - head.x) * kHead;
     head.y += (t.y - head.y) * kHead;
-    // Follower chain: laggier than the head so a visible trail forms.
-    const kChain = 1 - Math.exp(-dtc * 16);
+    // Follower chain as a CONSTANT-SPACING ROPE: each ball eases toward the
+    // one ahead, then its gap is clamped to MAX_GAP. The clamp is the key to
+    // a continuous, mercury-like trail — without it, fast moves open gaps
+    // wider than the balls overlap and the union breaks into discrete blobs
+    // (the "spawning / choppy" look). With a fixed max gap < ball overlap,
+    // the chain is always fused into one smooth body that stretches + flows.
+    const kChain = 1 - Math.exp(-dtc * 26);
+    const MAX_GAP = 0.04; // normalized; < ball overlap so the rope stays fused
     for (let i = 1; i < TRAIL_N; i++) {
       const p = trail[i]!;
       const a = trail[i - 1]!;
       p.x += (a.x - p.x) * kChain;
       p.y += (a.y - p.y) * kChain;
+      const dx = a.x - p.x;
+      const dy = a.y - p.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist > MAX_GAP) {
+        p.x = a.x - (dx / dist) * MAX_GAP;
+        p.y = a.y - (dy / dist) * MAX_GAP;
+      }
     }
     // Smoothed head velocity (units/sec) for the grain drag.
     const vel = mat.uniforms.uVel.value as THREE.Vector2;
@@ -422,7 +473,7 @@ export function RiceBlob({ cursorRef, glowOpacityRef, hotRef }: Props) {
   // perpendicular to the camera. Initial position doesn't matter;
   // useFrame overrides on the first tick.
   return (
-    <mesh ref={meshRef} renderOrder={-1}>
+    <mesh ref={meshRef} renderOrder={isFront ? 999 : -1}>
       <planeGeometry args={[24, 16]} />
       <shaderMaterial
         ref={matRef}
@@ -431,6 +482,7 @@ export function RiceBlob({ cursorRef, glowOpacityRef, hotRef }: Props) {
         fragmentShader={FRAGMENT}
         depthTest={false}
         depthWrite={false}
+        transparent={isFront}
       />
     </mesh>
   );
