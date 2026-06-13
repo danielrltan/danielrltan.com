@@ -3,7 +3,12 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, TransformControls } from "@react-three/drei";
 import * as THREE from "three";
 import { KeypadModel, type KeypadModelApi } from "./KeypadModel";
-import { RiceBlob } from "./RiceBlob";
+import {
+  RiceBlob,
+  createPulseChannel,
+  stampRicePulse,
+  type PulseChannel,
+} from "./RiceBlob";
 import { useIsMobile } from "../useIsMobile";
 
 // Tuning mode: pass ?tune=keypad in the URL to enable OrbitControls
@@ -177,18 +182,21 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
   // backdrop shader the cursor already lives in, so every effect reads
   // as one system. Pulses are stamped at the live cursor position
   // (viewport UV — the convention the RiceBlob shader already uses).
-  const pulseRef = useRef({ start: -1, strength: 0, x: 0.5, y: 0.5 });
+  const pulsesRef = useRef<PulseChannel>(createPulseChannel());
   const hotRef = useRef(false);
   useEffect(() => {
     const onInteract = (e: Event) => {
       if (PREFERS_REDUCED_MOTION) return;
       const ev = e as CustomEvent<{ strength?: number }>;
-      pulseRef.current = {
-        start: performance.now(),
-        strength: ev.detail?.strength ?? 1,
-        x: cursorRef.current.x,
-        y: cursorRef.current.y,
-      };
+      // Ring-buffer stamp: rapid presses each spawn their OWN ripple
+      // (in-flight waves always complete; nothing restarts from the
+      // middle on spam clicks).
+      stampRicePulse(
+        pulsesRef.current,
+        ev.detail?.strength ?? 1,
+        cursorRef.current.x,
+        cursorRef.current.y,
+      );
       canvasInvalidateRef.current?.();
     };
     const onHover = (e: Event) => {
@@ -268,7 +276,7 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
           tuneStateRef={tuneStateRef}
           transformMode={transformMode}
           visibleRef={visibleRef}
-          pulseRef={pulseRef}
+          pulsesRef={pulsesRef}
           hotRef={hotRef}
         />
       </Canvas>
@@ -371,7 +379,7 @@ function SceneContents({
   tuneStateRef,
   transformMode,
   visibleRef,
-  pulseRef,
+  pulsesRef,
   hotRef,
 }: {
   cursorRef: React.MutableRefObject<CursorState>;
@@ -381,12 +389,7 @@ function SceneContents({
   tuneStateRef: React.MutableRefObject<TuneState>;
   transformMode: TuneTransformMode;
   visibleRef: React.MutableRefObject<boolean>;
-  pulseRef: React.MutableRefObject<{
-    start: number;
-    strength: number;
-    x: number;
-    y: number;
-  }>;
+  pulsesRef: React.MutableRefObject<PulseChannel>;
   hotRef: React.MutableRefObject<boolean>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -514,12 +517,7 @@ function SceneContents({
     if (!hasLandedPulseRef.current && eased >= 0.995) {
       hasLandedPulseRef.current = true;
       if (!PREFERS_REDUCED_MOTION) {
-        pulseRef.current = {
-          start: performance.now(),
-          strength: 1.35,
-          x: 0.5,
-          y: 0.58,
-        };
+        stampRicePulse(pulsesRef.current, 1.35, 0.5, 0.58);
       }
     }
     // Reset the auto-spin + landing latches when the user scrolls fully
@@ -574,7 +572,7 @@ function SceneContents({
       <RiceBlob
         cursorRef={cursorRef}
         glowOpacityRef={glowOpacityRef}
-        pulseRef={pulseRef}
+        pulsesRef={pulsesRef}
         hotRef={hotRef}
       />
       {/* Cool paper-white ambient (was #f4f3f0 warm), which cast a

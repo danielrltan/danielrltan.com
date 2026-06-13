@@ -108,10 +108,12 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uGlow;
   uniform float uActive;
   uniform float uGlowOpacity;
-  // Interaction pulse: x = age (seconds, -1 = idle), yz = origin in
-  // canvas UV. A shockwave ring expanding through the rice field.
-  uniform vec3 uPulse;
-  uniform float uPulseStrength;
+  // Interaction shockwaves: up to 3 CONCURRENT ripples (ring buffer;
+  // rapid presses each spawn their own wave instead of restarting the
+  // last one). Per slot: x = age in seconds (-1 = idle), yz = origin
+  // in canvas UV; strength in the matching uPulseStr slot.
+  uniform vec3 uPulses[3];
+  uniform float uPulseStr[3];
   // 0..1: cursor is over an interactive part (cap/dial); the rice pool
   // charges orange while hot.
   uniform float uHot;
@@ -139,10 +141,38 @@ const FRAGMENT = /* glsl */ `
 
     // Aspect-corrected grid: uses uAspect so cells stay square.
     vec2 gridUv = vec2(uv.x * uAspect.x, uv.y * uAspect.y);
+    vec2 cellId = floor(gridUv * uGridCount);
     vec2 cell = fract(gridUv * uGridCount) - 0.5;
+
+    // ----- Interaction shockwaves (cell-quantized) -----
+    // Evaluated at the CELL CENTER so the wavefront lights whole rice
+    // grains - the field itself reacting - rather than sweeping a
+    // smooth elliptical gradient over it (the "cheap gradient ring"
+    // the user flagged). The profile is a wave, not a Gaussian: sharp
+    // leading edge, exponential wake trailing behind, with a per-cell
+    // shimmer so the wake sparkles grain by grain.
+    vec2 cellCenter = (cellId + 0.5) / uGridCount;
+    float wave = 0.0;
+    for (int i = 0; i < 3; i++) {
+      if (uPulses[i].x < 0.0) continue;
+      float age = uPulses[i].x;
+      vec2 pc = cellCenter - uPulses[i].yz * uAspect;
+      float front = age * 1.5 - length(pc);
+      float w = smoothstep(-0.022, 0.01, front) * exp(-max(front, 0.0) * 7.0);
+      wave += w * exp(-age * 2.8) * uPulseStr[i];
+    }
+    wave *= 0.8 + 0.4 * hash21(cellId);
+    // Gated by the reveal opacity like the glow, so pre-landing
+    // presses stay invisible.
+    wave = clamp(wave, 0.0, 1.25) * uGlowOpacity;
+
+    // Grains SWELL under the wavefront: the dot radius itself grows,
+    // so the wave physically displaces the field instead of just
+    // tinting it.
+    float dotR = uDotRadius * (1.0 + wave * 0.55);
     float dotMask = 1.0 - smoothstep(
-      uDotRadius - 0.02,
-      uDotRadius + 0.02,
+      dotR - 0.02,
+      dotR + 0.02,
       length(cell)
     );
 
@@ -171,8 +201,11 @@ const FRAGMENT = /* glsl */ `
 
     // Final alpha mult clamped to 1 so we don't extrapolate past
     // the rice color in mix(). 1.1 floor keeps the centers of dots
-    // fully solid (mix.t == 1 hits pure rice color).
-    float a = clamp(dotMask * blob * drift * 1.1, 0.0, 1.0);
+    // fully solid (mix.t == 1 hits pure rice color). The wave term
+    // REVEALS grains along the front independently of the cursor
+    // blob, so a ripple crossing empty field lights the grains it
+    // passes (works on touch devices with no hover cursor too).
+    float a = clamp(dotMask * (blob * drift * 1.1 + wave * 0.9), 0.0, 1.0);
 
     // ----- Orange fluid glow -----
     // Three large overlapping blobs anchored near canvas center, each
@@ -219,18 +252,9 @@ const FRAGMENT = /* glsl */ `
     // scene look unfinished.
     glow *= uGlowOpacity;
 
-    // ----- Interaction shockwave -----
-    // A ring expanding from the last press point (landing thud, cap
-    // press, dial spin), Gaussian-profiled and exponentially decaying.
-    // Lives in the SAME glow field as the ambient blobs so it reads as
-    // the field reacting, not a separate effect. Gated by
-    // uGlowOpacity so pre-landing presses stay invisible.
-    if (uPulse.x >= 0.0) {
-      vec2 pd = (uv - uPulse.yz) * uAspect;
-      float ringR = uPulse.x * 1.5;
-      float ring = exp(-pow((length(pd) - ringR) / 0.09, 2.0));
-      glow += ring * exp(-uPulse.x * 3.0) * uPulseStrength * 0.45 * uGlowOpacity;
-    }
+    // Shockwave energy joins the same glow field (computed above,
+    // cell-quantized, already gated by uGlowOpacity).
+    glow += wave * 0.38;
     // ----- Hot-cursor charge -----
     // While hovering an interactive part, the rice pool itself charges
     // toward the accent: the cursor feels electric exactly where the
@@ -241,8 +265,11 @@ const FRAGMENT = /* glsl */ `
 
     // Composite: orange tint first, then rice grains on top of the
     // tinted bg (so dots remain crisp gray over the orange field).
+    // Grains caught in a wave warm toward the accent, so the ripple
+    // reads as energy passing THROUGH the grains, not under them.
     vec3 tintedBg = mix(uBg, uGlow, glow);
-    vec3 col = mix(tintedBg, uRice, a);
+    vec3 grain = mix(uRice, uGlow, clamp(wave * 0.55, 0.0, 0.55));
+    vec3 col = mix(tintedBg, grain, a);
     gl_FragColor = vec4(col, 1.0);
     // COLOUR-COORDINATION FIX (user-flagged "messy / pink, not
     // coordinated"): this raw ShaderMaterial wrote its mixed colour
@@ -264,25 +291,75 @@ interface CursorState {
   active: boolean;
 }
 
+/** One interaction ripple: start = performance.now() stamp (-1 idle),
+ *  origin in canvas UV. */
+export interface RicePulse {
+  start: number;
+  strength: number;
+  x: number;
+  y: number;
+}
+
+/** Ring buffer of concurrent ripples. Rapid presses each take their
+ *  own slot, so an in-flight wave always completes instead of being
+ *  restarted from the middle (the spam-click bug). With PULSE_SLOTS
+ *  waves at ~1.4s life, stealing a live slot needs >2 clicks/s
+ *  sustained, and the stolen slot is always the most-faded one. */
+export const PULSE_SLOTS = 3;
+export interface PulseChannel {
+  slots: RicePulse[];
+  next: number;
+  lastAt: number;
+}
+
+export function createPulseChannel(): PulseChannel {
+  return {
+    slots: Array.from({ length: PULSE_SLOTS }, () => ({
+      start: -1,
+      strength: 0,
+      x: 0.5,
+      y: 0.5,
+    })),
+    next: 0,
+    lastAt: 0,
+  };
+}
+
+/** Stamp a new ripple into the channel's next slot (round-robin).
+ *  Presses within 70ms collapse into one wave: a single gesture can
+ *  emit pointer + synthetic events back-to-back, and two waves born
+ *  one frame apart read as a glitch, not as two ripples. */
+export function stampRicePulse(
+  ch: PulseChannel,
+  strength: number,
+  x: number,
+  y: number,
+) {
+  const now = performance.now();
+  if (now - ch.lastAt < 70) return;
+  ch.lastAt = now;
+  const slot = ch.slots[ch.next]!;
+  slot.start = now;
+  slot.strength = strength;
+  slot.x = x;
+  slot.y = y;
+  ch.next = (ch.next + 1) % PULSE_SLOTS;
+}
+
 interface Props {
   cursorRef: React.MutableRefObject<CursorState>;
   /** 0..1 target glow opacity. The shader uniform lerps toward this
    *  each frame for a soft fade. Keypad.tsx ramps this from 0 to
    *  1 once the keypad's drop-in animation has finished. */
   glowOpacityRef?: React.MutableRefObject<number>;
-  /** Last interaction pulse (landing thud / cap press / dial spin):
-   *  start = performance.now() stamp (-1 idle), origin in canvas UV. */
-  pulseRef?: React.MutableRefObject<{
-    start: number;
-    strength: number;
-    x: number;
-    y: number;
-  }>;
+  /** Concurrent interaction ripples (landing thud / cap press / dial
+   *  spin). Stamp via stampRicePulse. */
+  pulsesRef?: React.MutableRefObject<PulseChannel>;
   /** Cursor currently over an interactive part (cap/dial). */
   hotRef?: React.MutableRefObject<boolean>;
 }
 
-export function RiceBlob({ cursorRef, glowOpacityRef, pulseRef, hotRef }: Props) {
+export function RiceBlob({ cursorRef, glowOpacityRef, pulsesRef, hotRef }: Props) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   const { size, camera } = useThree();
@@ -302,8 +379,13 @@ export function RiceBlob({ cursorRef, glowOpacityRef, pulseRef, hotRef }: Props)
       uGlow: { value: new THREE.Color(GLOW_COLOR) },
       uActive: { value: 0 },
       uGlowOpacity: { value: 0 },
-      uPulse: { value: new THREE.Vector3(-1, 0.5, 0.5) },
-      uPulseStrength: { value: 0 },
+      uPulses: {
+        value: Array.from(
+          { length: PULSE_SLOTS },
+          () => new THREE.Vector3(-1, 0.5, 0.5),
+        ),
+      },
+      uPulseStr: { value: new Array(PULSE_SLOTS).fill(0) },
       uHot: { value: 0 },
     }),
     [],
@@ -360,21 +442,24 @@ export function RiceBlob({ cursorRef, glowOpacityRef, pulseRef, hotRef }: Props)
     mat.uniforms.uGlowOpacity.value +=
       (targetGlow - mat.uniforms.uGlowOpacity.value) * glowK;
 
-    // Interaction pulse: age computed here from the stamped wall-clock
-    // so the ring expands at a fixed real-time rate; expires after the
-    // ring has fully decayed (~1.4s at decay rate 3).
-    const pulse = pulseRef?.current;
-    const uPulse = mat.uniforms.uPulse.value as THREE.Vector3;
-    if (pulse && pulse.start > 0) {
-      const age = (performance.now() - pulse.start) / 1000;
-      if (age < 1.4) {
-        uPulse.set(age, pulse.x, pulse.y);
-        mat.uniforms.uPulseStrength.value = pulse.strength;
-      } else {
-        uPulse.x = -1;
+    // Interaction ripples: ages computed here from the stamped
+    // wall-clocks so each wave expands at a fixed real-time rate;
+    // a slot expires after its wave has fully decayed (~1.4s).
+    const ch = pulsesRef?.current;
+    const uPulses = mat.uniforms.uPulses.value as THREE.Vector3[];
+    const uStr = mat.uniforms.uPulseStr.value as number[];
+    for (let i = 0; i < PULSE_SLOTS; i++) {
+      const p = ch?.slots[i];
+      if (p && p.start > 0) {
+        const age = (performance.now() - p.start) / 1000;
+        if (age < 1.4) {
+          uPulses[i]!.set(age, p.x, p.y);
+          uStr[i] = p.strength;
+          continue;
+        }
       }
-    } else {
-      uPulse.x = -1;
+      uPulses[i]!.x = -1;
+      uStr[i] = 0;
     }
     // Hot-cursor charge eases in/out (never bound directly to the
     // event, per the fixed-rate rule).
