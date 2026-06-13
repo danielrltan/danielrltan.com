@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -89,7 +89,9 @@ const DOT_RADIUS = 0.13;
 // Blob radius / feather in aspect-corrected UV space. Bumped 1.2x
 // from 0.13 → 0.156 (and feather proportionally) per user feedback;
 // the rice pool reads bigger on screen, easier to spot under the cursor.
-const BLOB_RADIUS = 0.156;
+// Smaller mass (was 0.156): the pool read as one big slime blob. A tighter
+// radius + the filled mercury body below reads as a refined liquid droplet.
+const BLOB_RADIUS = 0.112;
 const BLOB_FEATHER = 0.096;
 
 // rAF damping rate for cursor follow. Was 11.0 (~91ms time constant)
@@ -129,6 +131,7 @@ const FRAGMENT = /* glsl */ `
   uniform float uActive;
   uniform float uLayer;        // 0 = opaque backdrop, 1 = transparent front
   uniform float uFrontOpacity; // overall opacity of the front wisps
+  uniform float uBurst;        // 0..1 knob-press dispersal impulse
   uniform float uGlowOpacity;
   // 0..1: cursor is over an interactive part (cap/dial); the WHOLE
   // keypad warms with a flowy yellow charge while hot.
@@ -138,6 +141,9 @@ const FRAGMENT = /* glsl */ `
     p = fract(p * vec2(443.897, 441.423));
     p += dot(p, p + 19.19);
     return fract(p.x * p.y);
+  }
+  float h1f(float n) {
+    return fract(sin(n * 91.345) * 47453.123);
   }
   float noise2(vec2 p) {
     vec2 i = floor(p);
@@ -179,19 +185,30 @@ const FRAGMENT = /* glsl */ `
     // into a tapering liquid trail that follows your path, and when you stop
     // it flows back together into a single blob. This is the reactivity:
     // the shape is driven by how the cursor actually moved, not a canned loop.
-    // Larger smin radius (gooier) so adjacent balls fuse into one mercury
-    // body with smooth necks rather than reading as separate circles.
-    float k = 0.12;
+    // Tighter smin (mercury, not stringy slime). The MAX_GAP rope clamp
+    // keeps the balls overlapping, so a smaller k stays continuous while
+    // reading as a refined cohesive liquid. On knob-press the BURST drops k
+    // toward a near-hard union so the body breaks into distinct droplets.
+    float k = mix(0.08, 0.025, uBurst);
     float sd = 1e9;
     for (int i = 0; i < ${TRAIL_N}; i++) {
       float fi = float(i) / float(${TRAIL_N});
-      vec2 d = (uv - uTrail[i]) * uAspect;
-      // Gentle taper toward the tail so the trail thins like a droplet wake
-      // (less aggressive than before so the tail stays connected, not pinched).
+      vec2 pos = uTrail[i];
+      // Knob-press BURST: each ball flies outward in a fixed per-ball
+      // direction and shrinks, dispersing the body into smaller scattered
+      // particles that flow back together as uBurst decays.
+      if (uBurst > 0.001) {
+        float ph = h1f(float(i) * 1.7 + 3.0) * 6.2831;
+        float mag = 0.55 + 0.45 * h1f(float(i) * 2.3 + 9.0);
+        pos += vec2(cos(ph), sin(ph)) * uBurst * 0.075 * mag;
+      }
+      vec2 d = (uv - pos) * uAspect;
+      // Gentle taper toward the tail; subtle surface wobble (mercury is
+      // smoother/tighter than the old wavy slime).
       float ang = atan(d.y, d.x);
-      float r = uBlobRadius * (1.0 - fi * 0.32)
-        + sin(ang * 3.0 + bt * 1.5 - fi * 6.2) * 0.010
-        + sin(ang * 5.0 - bt * 1.0) * 0.005;
+      float r = (uBlobRadius * (1.0 - fi * 0.30)) * (1.0 - uBurst * 0.4)
+        + sin(ang * 3.0 + bt * 1.5 - fi * 6.2) * 0.008
+        + sin(ang * 5.0 - bt * 1.0) * 0.004;
       float di = length(d) - r;
       float h = clamp(0.5 + 0.5 * (di - sd) / k, 0.0, 1.0);
       sd = mix(di, sd, h) - k * h * (1.0 - h);
@@ -206,10 +223,10 @@ const FRAGMENT = /* glsl */ `
     // and out as the noise field passes over them.
     float drift = 0.75 + 0.25 * noise2(gridUv * 6.0 + uTime * 0.6);
 
-    // Final alpha mult clamped to 1 so we don't extrapolate past
-    // the rice color in mix(). 1.1 floor keeps the centers of dots
-    // fully solid (mix.t == 1 hits pure rice color).
-    float a = clamp(dotMask * blob * drift * 1.1, 0.0, 1.0);
+    // Grain alpha. Trimmed (1.1 -> 0.7) so the grains read as light foam
+    // suspended IN the filled liquid rather than a dot field that hollows
+    // out the body — the fill (above) now carries the mercury mass.
+    float a = clamp(dotMask * blob * drift * 0.7, 0.0, 1.0);
 
     // ----- Orange fluid glow -----
     // Three large overlapping blobs anchored near canvas center, each
@@ -271,15 +288,22 @@ const FRAGMENT = /* glsl */ `
     // the top.
     vec3 tintedBg = mix(uBg, uGlow, glow);
     tintedBg = mix(tintedBg, uHotColor, clamp(hotField * 0.5, 0.0, 0.5));
-    // Liquid fill: a stronger warm body INSIDE the glob so it reads as
-    // actual orange fluid (and the white grains pop as foam against it,
-    // rather than washing out on the near-white bg).
-    tintedBg = mix(tintedBg, uGlow, blob * 0.5);
+    // Liquid fill: a FILLED warm body inside the glob so it reads as a solid
+    // droplet of fluid (mercury), not a hollow grain-dotted outline. Bumped
+    // 0.5 -> 0.74 per "not enough liquid filling".
+    tintedBg = mix(tintedBg, uGlow, blob * 0.74);
     // Rice grains INVERT toward light under the charge so they contrast
     // against the warm glow instead of muddying into it (grey-on-amber
     // had almost no separation).
     vec3 riceCol = mix(uRice, uRiceHot, clamp(hotField * 1.6, 0.0, 1.0));
     vec3 col = mix(tintedBg, riceCol, a);
+    // MERCURY SHEEN: a soft reflective highlight inside the body toward the
+    // upper-left of the head droplet, so the filled liquid reads as glossy
+    // metal rather than a flat fill.
+    vec2 sdir = normalize((uv - uTrail[0]) * uAspect + 0.0001);
+    float sheen = pow(clamp(dot(sdir, normalize(vec2(-0.6, 0.7))), 0.0, 1.0), 2.5)
+      * smoothstep(0.0, -0.05, sd) * uActive;
+    col = mix(col, vec3(1.0), sheen * 0.2);
     // Membrane outline: a crisp accent ring tracing the liquid's edge -
     // the surface-tension skin that makes the glob read as fluid.
     col = mix(col, uGlow, outline * 0.85);
@@ -343,6 +367,20 @@ export function RiceBlob({
   const { size, camera } = useThree();
   const startMs = useMemo(() => performance.now(), []);
 
+  // Knob-press dispersal: the dial dispatches "keypad-knob-press"; we stamp
+  // the time and the shader bursts the blob into scattered droplets that
+  // reform as the impulse decays. Skipped under reduced motion.
+  const burstStartRef = useRef(-1);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const onBurst = () => {
+      if (!reduced) burstStartRef.current = performance.now();
+    };
+    window.addEventListener("keypad-knob-press", onBurst);
+    return () => window.removeEventListener("keypad-knob-press", onBurst);
+  }, []);
+
   const uniforms = useMemo(
     () => ({
       uTrail: {
@@ -363,6 +401,7 @@ export function RiceBlob({
       uActive: { value: 0 },
       uLayer: { value: isFront ? 1 : 0 },
       uFrontOpacity: { value: 0.42 },
+      uBurst: { value: 0 },
       uGlowOpacity: { value: 0 },
       uHot: { value: 0 },
     }),
@@ -406,6 +445,14 @@ export function RiceBlob({
     }
     mat.uniforms.uTime.value = (performance.now() - startMs) / 1000;
 
+    // Knob-press dispersal impulse: 1 at click, exp-decays over ~0.9s.
+    const sinceBurst =
+      burstStartRef.current >= 0
+        ? (performance.now() - burstStartRef.current) / 1000
+        : 99;
+    mat.uniforms.uBurst.value =
+      sinceBurst < 0.9 ? Math.exp(-sinceBurst * 5.0) : 0;
+
     // ── Cursor TRAIL update (the reactivity) ──────────────────────────
     // Head (trail[0]) chases the cursor quickly; each following ball lags
     // toward the one ahead. Moving fast spreads the chain into a trail;
@@ -427,7 +474,7 @@ export function RiceBlob({
     // (the "spawning / choppy" look). With a fixed max gap < ball overlap,
     // the chain is always fused into one smooth body that stretches + flows.
     const kChain = 1 - Math.exp(-dtc * 26);
-    const MAX_GAP = 0.04; // normalized; < ball overlap so the rope stays fused
+    const MAX_GAP = 0.028; // tighter rope -> cohesive mercury, fused + compact
     for (let i = 1; i < TRAIL_N; i++) {
       const p = trail[i]!;
       const a = trail[i - 1]!;
