@@ -36,11 +36,12 @@ const PANEL_W_DESKTOP = 250;
 const CELL = 10; // glyph cell size, matches HeroGlyphRing CELL_PX
 const RAMP = 7; // density ramp length (tileMask 0..7)
 
-const INK = "#000000";
+const SURFACE = "#ffffff"; // white tube interior
 const ACCENT = "#e87040";
 const ACCENT_HOT = "#ff6a2a";
-const TEXT = "#eef2f7";
-const TEXT_DIM = "rgba(238, 242, 247, 0.74)"; // clears 4.5:1 on ink
+const TEXT = "#0d0e10"; // ink text on white
+const TEXT_DIM = "rgba(13, 14, 16, 0.6)"; // clears 4.5:1 on white
+const SEP = "rgba(13, 14, 16, 0.3)"; // "/" separators
 
 /* ── Ported house ASCII math (from HeroGlyphRing POST_FRAG) ───────────── */
 function bayer2(x: number, y: number): number {
@@ -225,7 +226,7 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
 
       // Tube interior.
       ctx.clearRect(0, 0, W, H);
-      ctx.fillStyle = INK;
+      ctx.fillStyle = SURFACE;
       ctx.fillRect(0, 0, W, H);
 
       const cols = Math.ceil(W / CELL);
@@ -262,63 +263,67 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
           let idx = Math.floor(d * RAMP + dith);
           if (idx <= 0) continue;
           if (idx > 7) idx = 7;
-          // Brightness: dim base field, brighter in the armed band / figure.
-          let a = 0.16 + (inArmed ? 0.22 : 0);
+          // Brightness: faint base field on white, denser in the armed band
+          // / figure. Alphas run higher than the black version so the orange
+          // tiles read against white.
+          let a = 0.2 + (inArmed ? 0.26 : 0);
           if (fig && gx < fig.cols && gy < fig.rows)
-            a += fig.grid[gy * fig.cols + gx]! * 0.22;
-          if (wipeY >= 0 && Math.abs(py - wipeY) < 26) a = 0.9;
-          a = Math.min(0.95, a);
+            a += fig.grid[gy * fig.cols + gx]! * 0.28;
+          if (wipeY >= 0 && Math.abs(py - wipeY) < 26) a = 0.95;
+          a = Math.min(0.98, a);
+          // Hot facets use the more saturated accent so they pop on white
+          // (a lighter peach would wash out).
           const hot = inArmed || (wipeY >= 0 && Math.abs(py - wipeY) < 26);
           ctx.strokeStyle = ctx.fillStyle = hot
-            ? `rgba(255,148,90,${a})`
+            ? `rgba(255,106,42,${a})`
             : `rgba(232,112,64,${a})`;
           drawTile(ctx, idx, px, py);
         }
       }
 
       if (!reduced) {
-        // Scanline crawl: dark lines drifting downward.
-        ctx.fillStyle = "rgba(0,0,0,0.16)";
+        // Scanline crawl: faint grey lines drifting downward (subtle on white).
+        ctx.fillStyle = "rgba(13,14,16,0.05)";
         const off = (t * 14) % 4;
         for (let y = off; y < H; y += 4) ctx.fillRect(0, y, W, 1.4);
 
-        // Refresh-roll: a soft bright band drifting down every ~3.6s.
+        // Refresh-roll: a soft shadow band drifting down every ~3.6s. Ink
+        // (darkening) rather than light so it reads on a white tube.
         const roll = ((now / 3600) % 1) * (H + 60) - 30;
         const grad = ctx.createLinearGradient(0, roll - 30, 0, roll + 30);
-        grad.addColorStop(0, "rgba(255,200,170,0)");
-        grad.addColorStop(0.5, "rgba(255,200,170,0.07)");
-        grad.addColorStop(1, "rgba(255,200,170,0)");
+        grad.addColorStop(0, "rgba(13,14,16,0)");
+        grad.addColorStop(0.5, "rgba(13,14,16,0.05)");
+        grad.addColorStop(1, "rgba(13,14,16,0)");
         ctx.fillStyle = grad;
         ctx.fillRect(0, roll - 30, W, 60);
 
-        // Tune chroma-split: brief horizontal slice offset on the armed row.
+        // Tune pulse: brief accent wash on the armed row (source-over so it
+        // reads as a tint on white, not a wash-out).
         const tuneT = tuneStartRef.current
           ? (now - tuneStartRef.current) / 200
           : 2;
         if (tuneT >= 0 && tuneT <= 1) {
-          ctx.globalCompositeOperation = "lighter";
-          ctx.fillStyle = `rgba(232,112,64,${0.1 * (1 - tuneT)})`;
+          ctx.fillStyle = `rgba(232,112,64,${0.09 * (1 - tuneT)})`;
           ctx.fillRect(3, armedY0, W, ROW_H);
-          ctx.globalCompositeOperation = "source-over";
         }
       }
 
-      // Corner vignette (tube glass falloff).
+      // Corner vignette: faint ink falloff at the edges (a screen rim).
       const vg = ctx.createRadialGradient(
         W / 2,
         H / 2,
-        Math.min(W, H) * 0.3,
+        Math.min(W, H) * 0.35,
         W / 2,
         H / 2,
         Math.max(W, H) * 0.72,
       );
-      vg.addColorStop(0, "rgba(0,0,0,0)");
-      vg.addColorStop(1, "rgba(0,0,0,0.5)");
+      vg.addColorStop(0, "rgba(13,14,16,0)");
+      vg.addColorStop(1, "rgba(13,14,16,0.1)");
       ctx.fillStyle = vg;
       ctx.fillRect(0, 0, W, H);
-      // Warm corner cast so accent pops.
+      // Warm corner cast so the accent reads warm.
       const wc = ctx.createRadialGradient(W, 0, 0, W, 0, Math.max(W, H));
-      wc.addColorStop(0, "rgba(232,112,64,0.07)");
+      wc.addColorStop(0, "rgba(232,112,64,0.06)");
       wc.addColorStop(1, "rgba(232,112,64,0)");
       ctx.fillStyle = wc;
       ctx.fillRect(0, 0, W, H);
@@ -415,9 +420,9 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
           width: panelW,
           height: PANEL_H,
           zIndex: 60,
-          background: INK,
-          border: `1px solid rgba(232,112,64,0.4)`,
-          boxShadow: "0 18px 50px -22px rgba(13,14,16,0.85)",
+          background: SURFACE,
+          border: `1px solid rgba(232,112,64,0.45)`,
+          boxShadow: "0 16px 40px -20px rgba(13,14,16,0.5)",
           overflow: "hidden",
           userSelect: "none",
           color: TEXT,
@@ -537,7 +542,7 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
                 </span>
                 <span
                   aria-hidden
-                  style={{ color: "rgba(238,242,247,0.34)", fontSize: 13 }}
+                  style={{ color: SEP, fontSize: 13 }}
                 >
                   /
                 </span>

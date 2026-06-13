@@ -82,11 +82,12 @@
   opacity: 1;
   pointer-events: auto;
 }
-/* One-shot white over-bright "strike" flash on power-on. */
+/* One-shot accent over-bright "strike" flash on power-on (a white flash
+   would be invisible on the white tube). */
 .crt-menu-flash {
   position: absolute;
   inset: 0;
-  background: #ffffff;
+  background: var(--accent);
   opacity: 0;
   pointer-events: none;
 }
@@ -95,7 +96,7 @@
 }
 @keyframes crt-strike {
   0% {
-    opacity: 0.16;
+    opacity: 0.14;
   }
   100% {
     opacity: 0;
