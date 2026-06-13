@@ -142,12 +142,16 @@ const RING_FRAG = /* glsl */ `
     // around the tube. The orange disperses evenly across the lit side
     // as a soft brushed sheen, no point.
     float ndoth = max(dot(n, h), 0.0);
-    // SIMPLE smooth specular (user: no stripes, just circular). A broad
-    // soft highlight (exp 7) runs evenly along the ring's curvature, so
-    // the orange disperses around the circular form as a gentle sheen -
-    // no anisotropic grooves/stripes, no sharp sun point.
-    float spec = pow(ndoth, 7.0);
-    float lum = clamp(0.06 + diff * 0.28 + fill * 0.12 + spec * 1.3, 0.0, 1.0);
+    // HIGHER ROUGHNESS (user: the reflection was too dense/tight). A
+    // WIDE low exponent (exp 3 vs 7) spreads the highlight into a broad,
+    // soft sheen, and a fine ISOTROPIC micro-grain (surface-relative, no
+    // directional stripes) scatters it so the metal reads brushed/matte
+    // rather than a tight mirror gloss. The orange disperses as a gentle
+    // grained sheen around the ring.
+    float spec = pow(ndoth, 3.0);
+    float grain = fract(sin(dot(floor(n.xy * 80.0), vec2(12.9898, 78.233))) * 43758.5453);
+    float rough = 0.82 + 0.18 * grain;
+    float lum = clamp(0.07 + diff * 0.26 + fill * 0.12 + spec * 0.85 * rough, 0.0, 1.0);
 
     gl_FragColor = vec4(n.xy * 0.5 + 0.5, lum, 1.0);
   }
