@@ -52,12 +52,14 @@ const PARALLAX_Y = THREE.MathUtils.degToRad(15);
 const PARALLAX_LERP_RATE = 6;
 
 // Cartoony WOBBLE: pressing the knob jiggles the WHOLE keypad with a
-// fast decaying oscillation on rotation (x + z, slightly out of phase
-// for an organic shake) plus a squash-and-stretch scale pulse. Tuned to
-// settle in ~0.9s. Layered on top of the tilt/float each frame.
-const WOBBLE_DURATION = 1.0; // seconds before the slot frees
-const WOBBLE_FREQ = 22; // rad/s (~3.5 Hz jiggle)
-const WOBBLE_DAMP = 7.5; // exponential decay rate
+// decaying oscillation on rotation (x + z, slightly out of phase for an
+// organic shake) plus a squash-and-stretch scale pulse. Pacing is tuned
+// to MATCH the RipplePost shockwave (slow fluid decay, ~1.8s) rather
+// than snapping faster than it - low frequency + gentle damping so the
+// sway and the ripple settle together. Layered on the tilt/float.
+const WOBBLE_DURATION = 2.2; // seconds before the slot frees
+const WOBBLE_FREQ = 12; // rad/s (~1.9 Hz, slow fluid sway)
+const WOBBLE_DAMP = 2.8; // gentle decay, matched to the shockwave
 const WOBBLE_ROT_AMP = THREE.MathUtils.degToRad(7); // peak tilt jiggle
 const WOBBLE_SCALE_AMP = 0.05; // peak squash-and-stretch
 
