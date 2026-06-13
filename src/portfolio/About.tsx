@@ -39,18 +39,19 @@ const PIN_DURATION_PX = 1700;
    dwell after everything had revealed. 900px paces the compressed
    mobile schedule below with no dead air on either side. */
 const MOBILE_PIN_DURATION_PX = 900;
-// Panel slide-in window. WIDENED 0.55-0.62 (a 0.07 slice ≈ 119px of scroll,
-// which whipped in even with scrub:1 — scrub floors the FULL progress sweep,
-// not this narrow sub-range) to 0.15-0.58 (~0.43 of the pin ≈ 730px), so the
-// panel eases in over a real stretch of scroll and lands just before the lede
-// (0.63) / rows reveal. The slide window is the real rate lever here, not scrub.
-const PANEL_SLIDE_START = 0.15;
-const PANEL_SLIDE_END = 0.58;
+// Panel slide-in window. The card must NOT slide in until the room has fully
+// rendered AND been held on screen for a beat (user: "they get a full view of
+// it for a few frames before it comes in"). The room finishes revealing at
+// pin progress ≈0.40 (cover-dome lift + roomOpacity fade, with the wireframe
+// assembly slowed below); we then hold the diorama solo from ~0.40 to
+// PANEL_SLIDE_START so the eye lands on it, then slide the panel in over a
+// real stretch of scroll. (Was 0.15→0.58, which slid the card in WHILE the
+// wireframes were still assembling, before the room had even appeared.)
+const PANEL_SLIDE_START = 0.52;
+const PANEL_SLIDE_END = 0.74;
 /* Lede is the top of the panel + the first thing read, so it must
-   reveal right after the panel lands, BEFORE the rows below it.
-   (Previously gated at 0.79, which popped it in last, after every
-   row had already appeared above an empty lede slot.) */
-const LEDE_REVEAL_AT = 0.63;
+   reveal right after the panel lands, BEFORE the rows below it. */
+const LEDE_REVEAL_AT = 0.78;
 /* Mobile (≤720px) reveal schedule. On a phone the same 1700px pin is
    scrubbed with a thumb, so the desktop drip (panel 0.55→0.62, then
    six staggered beats trailing out to 0.82) means a reader has to
@@ -87,22 +88,22 @@ const ROWS: Array<{ label: string; value: React.ReactNode; beat: Beat }> = [
         </a>
       </>
     ),
-    beat: { at: 0.66 },
+    beat: { at: 0.82 },
   },
   {
     label: "Studying",
     value: <>Computer Science &amp; Ivey Business School, Western</>,
-    beat: { at: 0.70 },
+    beat: { at: 0.86 },
   },
   {
     label: "Exploring",
     value: <>Gaussian splatting &amp; semantic segmentation</>,
-    beat: { at: 0.74 },
+    beat: { at: 0.90 },
   },
   {
     label: "Reach",
     value: <a href="mailto:hello@danielrltan.com">hello@danielrltan.com</a>,
-    beat: { at: 0.78 },
+    beat: { at: 0.94 },
   },
 ];
 
@@ -186,7 +187,10 @@ export function About() {
 
   const slideStart = mobile ? MOBILE_PANEL_SLIDE_START : PANEL_SLIDE_START;
   const slideEnd = mobile ? MOBILE_PANEL_SLIDE_END : PANEL_SLIDE_END;
-  const eyebrowAt = mobile ? MOBILE_EYEBROW_AT : 0.52;
+  // Desktop: the floating "About." wordmark lands as the room finishes
+  // revealing (≈0.40), so it heads the "full view of the room" hold beat
+  // BEFORE the card slides in.
+  const eyebrowAt = mobile ? MOBILE_EYEBROW_AT : 0.40;
   const ledeAt = mobile ? MOBILE_LEDE_REVEAL_AT : LEDE_REVEAL_AT;
   /* Row thresholds: on desktop each row carries its own authored beat;
      on mobile we re-space them off a tighter base so the whole list

@@ -32,13 +32,13 @@ const WIREFRAME_COLOR = new THREE.Color("#e87040");
    per scroll-through, never per frame. Floor 0.14: below that the
    1px wireframe lines fall between samples and drop out. */
 const RES_STEPS: Array<[number, number]> = [
-  [0.12, 0.14],
-  [0.22, 0.17],
-  [0.3, 0.21],
-  [0.34, 0.28],
-  [0.38, 0.38],
-  [0.42, 0.54],
-  [0.46, 0.74],
+  [0.16, 0.14],
+  [0.28, 0.17],
+  [0.38, 0.21],
+  [0.44, 0.28],
+  [0.49, 0.38],
+  [0.54, 0.54],
+  [0.58, 0.74],
 ];
 function resolutionFraction(p: number): number {
   for (const [limit, frac] of RES_STEPS) {
@@ -140,7 +140,9 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
       const hi = PHASE_THRESHOLDS[phaseIdx + 1] ?? 1;
       const jitter = hashName(m.name);
       const start = lo + (hi - lo) * jitter * 0.85;
-      const end = start + 0.08;
+      // Wider per-mesh pop window (was 0.08) so each wireframe eases up more
+      // gradually — part of slowing the whole assembly to build anticipation.
+      const end = start + 0.095;
 
       out.push({ mesh, material, phaseStart: start, phaseEnd: end });
     }
@@ -209,30 +211,31 @@ export function ScrollWireframeRoom({ progressRef }: Props) {
         baseDprRef.current = 0;
       }
     }
-    // Wireframes assemble 0.00→0.30, hold 0.30→0.48, then crossfade
-    // out 0.48→0.56 while the cover dome reveals the room behind it
-    // with a longer fade (0.50→0.62). The previous 2%-pin cut from
-    // 0.50→0.52 read as an instant swap; widening the dome fade to
-    // ~12% of pin gives the room a gentle fade-in instead of a pop.
+    // Wireframes assemble 0.00→0.40, hold 0.40→0.56, then crossfade
+    // out 0.56→0.64 while the cover dome reveals the room behind it.
+    // The whole sequence was slowed (was 0.30/0.48/0.56) to draw out the
+    // wireframe build and let anticipation grow before the room appears
+    // (user request). The room's own opacity (App.tsx roomOpacity) is
+    // already 1 well before the dome lifts, so it's ready behind the dome.
     let env: number;
-    if (p < 0.30) {
-      env = p / 0.30;
-    } else if (p < 0.48) {
-      env = 1;
+    if (p < 0.40) {
+      env = p / 0.40;
     } else if (p < 0.56) {
-      env = 1 - (p - 0.48) / 0.08;
+      env = 1;
+    } else if (p < 0.64) {
+      env = 1 - (p - 0.56) / 0.08;
     } else {
       env = 0;
     }
-    // Dome holds fully opaque until 0.50, then fades out over the
-    // 0.50→0.62 window. Room appearance is driven entirely by this
-    // ramp, softer and more cinematic than the old hard cut.
+    // Dome holds fully opaque until 0.54, then fades out over the
+    // 0.54→0.66 window so the room is fully revealed by ≈0.66 (later than
+    // the old 0.62, matching the slowed assembly above).
     let domeOpacity: number;
-    if (p < 0.50) {
+    if (p < 0.54) {
       domeOpacity = 1;
-    } else if (p < 0.62) {
+    } else if (p < 0.66) {
       // easeInOutCubic for a gentle in-and-out fade instead of linear.
-      const t = (p - 0.50) / 0.12;
+      const t = (p - 0.54) / 0.12;
       const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
       domeOpacity = 1 - eased;
     } else {

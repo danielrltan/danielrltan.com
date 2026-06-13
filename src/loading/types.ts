@@ -63,4 +63,4 @@ export const GLB_TOTAL_MB = 4.0;
  *  Compresses the whole assembly into the env-positive window so every
  *  phase has a chance to materialize before the 0.48→0.56 dissolve
  *  hands off to the cover-dome room reveal. */
-export const PHASE_THRESHOLDS = [0.0, 0.06, 0.14, 0.22, 0.30, 0.40];
+export const PHASE_THRESHOLDS = [0.0, 0.07, 0.16, 0.26, 0.36, 0.47];
