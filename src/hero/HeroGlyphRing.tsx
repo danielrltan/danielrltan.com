@@ -131,16 +131,23 @@ const RING_FRAG = /* glsl */ `
     float fill = max(dot(n, uFillDir), 0.0);
     vec3 v = normalize(-vViewPos);
     vec3 h = normalize(uKeyDir + v);
-    // BROAD DISPERSED SHINE (user-tuned, two failed extremes first):
-    //   pow 36 x 0.9  -> shine too subtle to read through the tiles;
-    //   pow 36 x 2.4  -> clipped into ONE solid saturated glob.
-    // A LOW exponent widens the lobe so the highlight stretches along
-    // the tube's curvature, and the moderate amplitude keeps the peak
-    // just at clamp - so the Bayer ramp gets a real gradient to chew
-    // on: dense orange at the hot core halftoning out through every
-    // tile density. The dispersion is what defines the ring's form.
-    float spec = pow(max(dot(n, h), 0.0), 12.0);
-    float lum = clamp(0.06 + diff * 0.30 + fill * 0.12 + spec * 1.25, 0.0, 1.0);
+    // BRUSHED METAL, SMOOTH (user: the previous version had a sharp
+    // "sun point"). That was an atan(n.y,n.x) groove: atan is singular
+    // where the normal faces the camera, so the streaks converged into
+    // one harsh hot spot. Fixed two ways: (1) a GENTLE broad specular
+    // (exp 2.5, low amplitude) so there is no sharp gloss peak, and the
+    // even DIFFUSE carries most of the brightness; (2) the brushed
+    // grooves come from the normal's vertical component - a smooth,
+    // singularity-free coordinate - raking fine horizontal streaks
+    // around the tube. The orange disperses evenly across the lit side
+    // as a soft brushed sheen, no point.
+    float ndoth = max(dot(n, h), 0.0);
+    // SIMPLE smooth specular (user: no stripes, just circular). A broad
+    // soft highlight (exp 7) runs evenly along the ring's curvature, so
+    // the orange disperses around the circular form as a gentle sheen -
+    // no anisotropic grooves/stripes, no sharp sun point.
+    float spec = pow(ndoth, 7.0);
+    float lum = clamp(0.06 + diff * 0.28 + fill * 0.12 + spec * 1.3, 0.0, 1.0);
 
     gl_FragColor = vec4(n.xy * 0.5 + 0.5, lum, 1.0);
   }
@@ -252,7 +259,9 @@ const POST_FRAG = /* glsl */ `
       // zone flip to the accent family with the normal-banded shading,
       // dithered at the boundary so the reflection halftones into the
       // white body instead of cutting a hard seam.
-      float refl = smoothstep(0.55, 0.82, lum);
+      // Soft wide threshold so the sheen fades gently into orange around
+      // the ring (no hard patch edge), body stays light metal.
+      float refl = smoothstep(0.50, 0.82, lum);
       if (refl > dith) {
         float idx = clamp(
           floor(lum * uTileCount + (dith - 0.5)),

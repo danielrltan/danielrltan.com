@@ -349,6 +349,36 @@ export function HeroSignature() {
               <feMorphology operator="dilate" radius={c / 2} />
             </filter>
           ))}
+          {/* ASCII outline: the wordmark's keyline is a DITHERED orange
+              dot-grid band around the glyphs (not a smooth line, which
+              read as cheap), echoing the symbol field. Dilate the glyph
+              alpha to a band, knock out the original to get the ring,
+              tile a small orange dot grid, and keep the dots only inside
+              the ring. White glyph composited on top. */}
+          <filter
+            id="hero-ascii-outline"
+            x="-12%"
+            y="-12%"
+            width="124%"
+            height="124%"
+            colorInterpolationFilters="sRGB"
+          >
+            <feMorphology
+              in="SourceAlpha"
+              operator="dilate"
+              radius="4.5"
+              result="dil"
+            />
+            <feComposite in="dil" in2="SourceAlpha" operator="out" result="ring" />
+            <feFlood floodColor="#e87040" x="1" y="1" width="2.4" height="2.4" />
+            <feComposite width="5" height="5" result="cell" />
+            <feTile in="cell" result="grid" />
+            <feComposite in="grid" in2="ring" operator="in" result="outline" />
+            <feMerge>
+              <feMergeNode in="outline" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
       </svg>
       {renderTwoD && (
@@ -406,11 +436,9 @@ export function HeroSignature() {
           {/* ROLE / LOC meta card removed (owner: useless + vibe-coded).
               The name + the work below carry the role; SEO/a11y keep it
               via the visually-hidden h1 above. */}
-          {/* Wayfinding cue (replaces the banned arrow + "SCROLL" + "01"):
-              the word NEXT (a destination, not the "scroll" gesture), a
-              hairline track with an accent segment that hops DOWNWARD on
-              a loop (the travel IS the signal, no arrow), and a
-              dot-matrix destination count. */}
+          {/* Simple down arrow (user: no text, just an arrow). The
+              chevron bobs gently downward on a loop to read as "scroll
+              down". aria-label carries the semantics. */}
           <button
             type="button"
             className="hero-next"
@@ -428,11 +456,7 @@ export function HeroSignature() {
               });
             }}
           >
-            <span className="hero-next-label">Next</span>
-            <span className="hero-next-rail" aria-hidden>
-              <span className="hero-next-seg" />
-            </span>
-            <span className="hero-next-count" aria-hidden>06</span>
+            <span className="hero-next-arrow" aria-hidden />
           </button>
         </div>
       </div>

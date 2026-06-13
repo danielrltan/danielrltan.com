@@ -133,6 +133,9 @@ html[data-hero-px="2"] .hero-composition { filter: url(#hero-px-2); }
 html[data-hero-px="3"] .hero-composition { filter: url(#hero-px-3); }
 html[data-hero-px="4"] .hero-composition { filter: url(#hero-px-4); }
 html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
+/* During the dive, the composition mosaic owns the look: drop the
+   wordmark's ASCII-outline filter so the two don't stack. */
+html[data-hero-px] .hero-mega-fill { filter: none; }
 /* Opacity hand-off in two phases:
      1) LOAD-IN (0→1 over 600ms): a one-shot CSS animation on
         .is-visible runs at higher priority than normal cascade,
@@ -296,22 +299,15 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
 .hero-mega-fill {
   position: relative;
   z-index: 2;
-  /* MONOTONE always-visible (user: orange + white only, no teal). SOLID
-     white fill stays bold over the dominant orange symbol field; an
-     ORANGE outline drawn via text-shadow (OUTSIDE the glyph, so it never
-     eats into the white) carries the letterform over the white ring
-     (where the white fill drops out and only the orange outline shows).
-     Two brand tones, legible over both regions, bold over the field. */
+  /* MONOTONE always-visible (user: orange + white only). SOLID white
+     fill reads bold over the orange symbol field; a DITHERED orange
+     dot-grid keyline (the #hero-ascii-outline SVG filter, not a smooth
+     line which read as cheap) carries the letterform over the white
+     ring and echoes the ASCII symbol field. */
   color: #ffffff;
   display: inline-block;
   -webkit-text-stroke: 0.008em #ffffff;
-  /* em-based so the outline scales with the clamp() font size. 8
-     directions = a clean blocky keyline around the pixel glyphs. */
-  text-shadow:
-    0.026em 0 var(--accent), -0.026em 0 var(--accent),
-    0 0.026em var(--accent), 0 -0.026em var(--accent),
-    0.019em 0.019em var(--accent), -0.019em 0.019em var(--accent),
-    0.019em -0.019em var(--accent), -0.019em -0.019em var(--accent);
+  filter: url(#hero-ascii-outline);
   /* See hero-ring-wrap for the full entrance choreography note.
      Wordmark fill enters FIRST at 0.40s: the persistent signature
      is already anchored from the loading phase, so the wordmark is
@@ -537,56 +533,36 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
     rgba(238, 240, 243, 0) 100%
   );
 }
-.hero-next-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.34em;
-  text-transform: uppercase;
-  color: var(--ink);
-}
-/* Static descent track: a 2px x 46px hairline channel. */
-.hero-next-rail {
+/* Simple down arrow (user: no text, just an arrow). The wrapper bobs
+   gently downward on a loop; the ::before is a crisp CSS chevron. */
+.hero-next-arrow {
+  display: block;
   position: relative;
-  width: 2px;
-  height: 46px;
-  background: var(--ink-hairline);
-  overflow: hidden;
+  width: 20px;
+  height: 20px;
+  animation: hero-next-bob 1.9s steps(4) infinite;
 }
-/* The travelling accent segment hops DOWN the track in 4 discrete
-   pixel steps (steps(4)) — the OffBit quantised-motion voice. The
-   downward travel IS the "scroll down" signal; no arrow. */
-.hero-next-seg {
+.hero-next-arrow::before {
+  content: "";
   position: absolute;
-  left: 0;
-  top: 0;
-  width: 2px;
+  left: 50%;
+  top: 40%;
+  width: 12px;
   height: 12px;
-  background: var(--accent);
-  animation: hero-next-descend 2.2s steps(4) infinite;
+  margin: -6px 0 0 -6px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(45deg);
 }
-@keyframes hero-next-descend {
-  0%   { transform: translateY(-12px); opacity: 0; }
-  18%  { opacity: 1; }
-  82%  { opacity: 1; }
-  100% { transform: translateY(46px); opacity: 0; }
-}
-/* Dot-matrix destination count: implies a journey of N sections.
-   Dimmed accent, darkened to clear 4.5:1 on the cool-white page. */
-.hero-next-count {
-  font-family: var(--font-dot);
-  font-size: 12px;
-  letter-spacing: 0.16em;
-  font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--accent) 66%, var(--ink));
+@keyframes hero-next-bob {
+  0%, 100% { transform: translateY(-3px); opacity: 0.55; }
+  50%      { transform: translateY(3px); opacity: 1; }
 }
 .hero-next:hover {
-  transform: translateY(-1px);
-}
-.hero-next:hover .hero-next-label {
-  color: var(--accent);
+  transform: translateY(1px);
 }
 .hero-next:active {
-  transform: translateY(0);
+  transform: translateY(2px);
 }
 .hero-next:focus-visible {
   outline: 2px solid var(--accent);
@@ -595,18 +571,8 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
 @media (prefers-reduced-motion: reduce) {
   .hero-next { transition: none; }
   .hero-next:hover { transform: none; }
-  /* Kill the travel; the track becomes a STATIC directional gradient
-     (solid accent at top, feathering to the hairline tone) — implies
-     "downward" with zero moving pixels. */
-  .hero-next-seg { display: none; }
-  .hero-next-rail {
-    background: linear-gradient(
-      to bottom,
-      var(--accent) 0%,
-      color-mix(in srgb, var(--accent) 40%, transparent) 45%,
-      var(--ink-hairline) 100%
-    );
-  }
+  /* No bob: the static chevron alone reads as "down". */
+  .hero-next-arrow { animation: none; opacity: 1; transform: none; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -695,23 +661,13 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   .hero-meta-sep {
     display: none;
   }
-  /* Wayfinding cue on phones: just the descending rail in a 44x44 tap
-     target (label + count drop; the moving line is the affordance,
-     aria-label carries the semantics). */
+  /* Down arrow in a 44x44 tap target on phones. */
   .hero-next {
     min-width: 44px;
     min-height: 44px;
     align-items: center;
     justify-content: center;
-    row-gap: 0;
     touch-action: manipulation;
-  }
-  .hero-next-label,
-  .hero-next-count {
-    display: none;
-  }
-  .hero-next-rail {
-    height: 28px;
   }
   /* Ring: still a presence, but the monumental type owns the frame now.
      Slightly smaller + quieter than the old 150vmax wash so the glyph
