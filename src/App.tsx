@@ -1,17 +1,15 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import type { RootState } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as THREE from "three";
-import { Lighting } from "./Lighting";
 import {
   END_POS,
   END_FOV,
   END_LOOK_AT,
   ORBIT_MAX_DISTANCE,
 } from "./IntroController";
-import { SceneStateProvider } from "./SceneState";
 import { GroundPlane } from "./GroundPlane";
 import { MoveableCursor } from "./MoveableCursor";
 import { JumpToTop } from "./JumpToTop";
@@ -22,12 +20,11 @@ import { track } from "./analytics";
 const SignatureCapture = lazy(() =>
   import("./SignatureCapture").then((m) => ({ default: m.SignatureCapture })),
 );
-// PERF: the Physics+Room subtree is the only consumer of @react-three/rapier
-// (2.3 MB minified / 840 kB gzipped, mostly base64-embedded WASM). Lazy-loading
-// it moves that chunk off the boot-critical path: the hero paints and becomes
-// interactive sooner, and the chunk streams in immediately after mount (the
-// room itself still gates on the GLB download, which index.html preloads).
-const RoomPhysics = lazy(() => import("./RoomPhysics"));
+// Room is lazy so its GLB-loading chunk streams in just after the hero
+// paints (the room itself still gates on the GLB download, which
+// index.html preloads). The room is now a static baked diorama - no
+// physics, so the heavy rapier WASM payload is gone entirely.
+const Room = lazy(() => import("./Room").then((m) => ({ default: m.Room })));
 import { AssemblyProvider } from "./loading";
 import { HeroSignature } from "./hero/HeroSignature";
 import { ScrollWireframeRoom } from "./loading/ScrollWireframeRoom";
@@ -417,12 +414,6 @@ export default function App() {
   // automatically when the room appears, not wait for a user gesture.
   const [roomLoaded, setRoomLoaded] = useState(false);
   const [moveableHover, setMoveableHover] = useState(false);
-  const [roomResetKey, setRoomResetKey] = useState(0);
-  // PERF: true once the room has scrolled fully out of view (past the
-  // About beat). Drives BOTH the Rapier <Physics paused> prop AND the
-  // room canvas frameloop so the entire room pipeline truly idles while
-  // the user is on Mac / Work / Other / etc. See RoomFrameloopGate.
-  const [roomAsleep, setRoomAsleep] = useState(false);
   const isMobile = useIsMobile();
 
   const scrollChoreoRef = useRef<ReturnType<typeof installScrollChoreography> | null>(null);
@@ -456,15 +447,10 @@ export default function App() {
     if (transitionStarted) completeTransition();
   }, [transitionStarted, completeTransition]);
 
-  const resetRoom = useCallback(() => {
-    track("room_reset");
-    setMoveableHover(false);
-    setRoomResetKey((k) => k + 1);
-  }, []);
-
-  /* Keypad canvas lives outside the room's SceneStateProvider scope,
-   * so it dispatches a window `keypad-cursor-hover` CustomEvent and
-   * we mirror it into shared moveableHover state. */
+  /* Keypad canvas dispatches a window `keypad-cursor-hover` CustomEvent
+   * and we mirror it into shared moveableHover state (drives the custom
+   * cursor's hot ring). This is the only thing left that flips it now
+   * that the room is non-interactive. */
   useEffect(() => {
     const onKeypadHover = (e: Event) => {
       const ev = e as CustomEvent<{ hot: boolean }>;
@@ -527,53 +513,20 @@ export default function App() {
     return () => clearTimeout(t);
   }, [roomLoaded]);
 
-  useEffect(() => {
-    if (!sceneReady) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== "KeyR" || e.repeat) return;
-      if (e.ctrlKey || e.metaKey) return;
-      const el = e.target;
-      if (
-        el instanceof HTMLElement &&
-        (el.isContentEditable || el.closest("input, textarea, select"))
-      ) {
-        return;
-      }
-      e.preventDefault();
-      resetRoom();
-    };
-    window.addEventListener("keydown", onKeyDown, { capture: true });
-    return () =>
-      window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [sceneReady, resetRoom]);
-
   // RoomLoadedSignal's effect depends on onLoaded; a new function each
   // render re-runs the effect and re-calls setRoomLoaded after it is
   // already true. setMoveableHover is a plain useState setter (stable).
   const handleRoomLoaded = useCallback(() => setRoomLoaded(true), []);
 
-  // Stable context value: a fresh object literal each render forces
-  // every SceneState consumer (DraggableRigidBody, Drawer, etc.) to
-  // re-render even though the contents are stable. The ref is stable;
-  // setMoveableHover is a stable useState setter.
-  const sceneContextValue = useMemo(
-    () => ({
-      sceneReadyRef,
-      setMoveableHover,
-    }),
-    [setMoveableHover]
-  );
-
-  // Avoid a per-render allocation of the WebGL config. antialias is
-  // resolved once (kept verbatim from the inline config to preserve
-  // rendered output exactly).
+  // Avoid a per-render allocation of the WebGL config.
   const glConfig = useMemo(
     () => ({
       antialias:
         typeof window !== "undefined" ? window.devicePixelRatio < 1.5 : true,
       alpha: true,
-      toneMapping: THREE.ACESFilmicToneMapping,
-      toneMappingExposure: 1.0,
+      // NO tone mapping: the baked room atlases already have AgX baked
+      // in; re-tonemapping would wash them out. (The room renders unlit.)
+      toneMapping: THREE.NoToneMapping,
       powerPreference: "high-performance" as const,
       // Z-fighting fix: many nearly-coplanar surfaces (mirror against
       // wall, cat on bed) under the iso camera need more depth precision
@@ -589,24 +542,8 @@ export default function App() {
   // verbatim from the inline arrow to avoid any behavior change.
   const handleCanvasCreated = useCallback(({ gl, camera }: RootState) => {
     gl.outputColorSpace = THREE.SRGBColorSpace;
-    (gl as unknown as { useLegacyLights?: boolean }).useLegacyLights = false;
     cameraRef.current = camera as THREE.PerspectiveCamera;
     camera.lookAt(END_LOOK_AT);
-    // PERF (single biggest win): freeze the shadow map. The room
-    // is a STATIC iso scene. The directional light, the room
-    // geometry, and every shadow caster sit still 99% of the
-    // time. With three's default `shadowMap.autoUpdate = true`
-    // the renderer re-rendered the ENTIRE caster set (~140 meshes)
-    // into the light's depth texture on EVERY frame, a full
-    // extra scene pass that roughly DOUBLED the room canvas's
-    // draw calls (measured 276/frame; ~138 of those were the
-    // redundant shadow pass). Turning autoUpdate OFF and only
-    // re-arming `needsUpdate` while something actually moves
-    // (intro settle + active drag/throw, see ShadowGate) keeps
-    // the baked shadow on screen while halving the per-frame cost
-    // of the heaviest, always-on canvas on the page.
-    gl.shadowMap.autoUpdate = false;
-    gl.shadowMap.needsUpdate = true;
   }, []);
 
   return (
@@ -655,15 +592,9 @@ export default function App() {
         >
           <Canvas
             camera={CAMERA_CONFIG}
-            // R3F-managed shadow map. Setting gl.shadowMap.enabled in
-            // onCreated alone is unreliable. R3F runs its own shadow
-            // setup pipeline after onCreated and explicitly disables
-            // the shadow map when no `shadows` prop is passed, which
-            // is why room geometry was casting nothing on the ground
-            // plane. PCF (not PCFSoft) keeps the per-pixel cost down
-            // while still giving us a legible directional-light cast
-            // shadow under the room.
-            shadows={{ type: THREE.PCFShadowMap }}
+            // No real-time shadows: the baked room is unlit
+            // MeshBasicMaterial (can't cast/receive). A fake painted
+            // shadow plane (FakeShadow) grounds it instead.
             // PERF: cap DPR by device class. Desktop caps at 1.25 (on
             // 2-3× retina the room canvas was rendering at 1.5×, ~44%
             // more fragment-shader work for little gain. The room is
@@ -677,8 +608,7 @@ export default function App() {
             gl={glConfig}
             onCreated={handleCanvasCreated}
           >
-            <SceneStateProvider value={sceneContextValue}>
-              <Suspense fallback={null}>
+            <Suspense fallback={null}>
                 <RoomLoadedSignal onLoaded={handleRoomLoaded} />
                 {/* PERF: the room canvas is only ever visible during the
                     hero intro + About beat (scroll ratio < ~3vh). Past
@@ -694,44 +624,17 @@ export default function App() {
                     scrolled out, freeing the budget for the Mac scene.
                     It re-wakes (and invalidates) the instant the user
                     scrolls back up. */}
-                <RoomFrameloopGate onSleepChange={setRoomAsleep} />
-                <ShadowGate roomAsleep={roomAsleep} resetKey={roomResetKey} />
-                <Lighting />
+                <RoomFrameloopGate />
                 <GroundPlane />
-                {/* Shadow catcher: the GroundPlane's custom
-                    ShaderMaterial doesn't include three's shadowmap
-                    chunks, so this transparent plane draws the shadow
-                    regions via shadowMaterial without occluding the
-                    rice-dot ground beneath. Driven by Lighting's
-                    directionalLight (castShadow + ±2.6 shadow cam).
-                    Opacity bumped 0.28 → 0.55 + color set to the
-                    design-system ink (#0d0e10) so the cast reads as
-                    a punchy, cool-ink shadow rather than a faint band.
-                    `color` on shadowMaterial sets the tinted shadow
-                    pixel; combined with the higher opacity this gives
-                    a hard-edged TE/industrial product-shot feel. */}
-                <mesh
-                  position={[0, 0.005, 0]}
-                  rotation={[-Math.PI / 2, 0, 0]}
-                  receiveShadow
-                  renderOrder={1}
-                >
-                  <planeGeometry args={[20, 20]} />
-                  <shadowMaterial
-                    transparent
-                    opacity={0.55}
-                    color="#0d0e10"
-                  />
-                </mesh>
-                {/* Physics + Room live in a lazy chunk (see RoomPhysics
-                    above) so rapier's WASM payload stays off the boot
-                    path. Room stays mounted + visible always; the
-                    ScrollWireframeRoom cover dome handles the
-                    wireframe-only beat so there's no pop-in seam. */}
-                <RoomPhysics
-                  paused={isMobile || roomAsleep}
-                  roomResetKey={roomResetKey}
-                />
+                {/* Fake contact shadow: the baked room is unlit
+                    MeshBasicMaterial and can't cast a real-time shadow,
+                    so a soft elliptical radial-gradient texture on a
+                    plane grounds it instead (no lights). */}
+                <FakeShadow />
+                {/* Static baked diorama. The ScrollWireframeRoom cover
+                    dome handles the wireframe-only beat so there's no
+                    pop-in seam. */}
+                <Room />
                 <ScrollWireframeRoom progressRef={aboutProgressRef} />
                 {sceneReady && (
                   <>
@@ -766,7 +669,6 @@ export default function App() {
                   </>
                 )}
               </Suspense>
-            </SceneStateProvider>
           </Canvas>
         </div>
 
@@ -831,11 +733,7 @@ const ROOM_SLEEP_RATIO = ROOM_FADE_OUT_END_VH + 0.25;
  * the wake edge it restores "always", invalidates one frame, and
  * un-pauses physics so scrolling back up resumes seamlessly.
  */
-function RoomFrameloopGate({
-  onSleepChange,
-}: {
-  onSleepChange: (asleep: boolean) => void;
-}) {
+function RoomFrameloopGate() {
   const setFrameloop = useThree((s) => s.setFrameloop);
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
@@ -847,12 +745,14 @@ function RoomFrameloopGate({
       if (shouldSleep && !asleep) {
         asleep = true;
         setFrameloop("never");
-        onSleepChange(true);
       } else if (!shouldSleep && asleep) {
         asleep = false;
         setFrameloop("always");
-        onSleepChange(false);
+        // Two frames on wake: a static MeshBasicMaterial scene needs one
+        // paint, and a second on the next rAF guards against a blank
+        // frame if the resize/layout hasn't settled.
         invalidate();
+        requestAnimationFrame(() => invalidate());
       }
     };
     const onScroll = () => {
@@ -867,136 +767,64 @@ function RoomFrameloopGate({
       window.removeEventListener("resize", onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [setFrameloop, invalidate, onSleepChange]);
+  }, [setFrameloop, invalidate]);
   return null;
 }
 
-// How long (seconds) to keep re-rendering the shadow map after an
-// interaction begins. Long enough to cover a drag gesture plus the
-// dragged/thrown body settling back to rest (REST_LINEAR_DAMPING in
-// DraggableRigidBody brings bodies to a stop in well under this).
-const SHADOW_REARM_SECONDS = 3.0;
-// Initial settle window after the room first mounts: covers the intro
-// hand-off and the first physics steps so the baked shadow reflects the
-// final resting pose of every body, not frame 0.
-const SHADOW_INITIAL_SECONDS = 2.5;
-
 /**
- * PERF gate for the directional-light shadow map. `gl.shadowMap.autoUpdate`
- * is forced OFF in onCreated; this component is the ONLY thing that
- * re-arms `gl.shadowMap.needsUpdate`, and only while something can
- * actually change the cast shadow:
- *
- *   1. For SHADOW_INITIAL_SECONDS after mount / reset: the scene is
- *      settling (intro hand-off + first physics steps).
- *   2. For SHADOW_REARM_SECONDS after any pointerdown on the room canvas
- *      (the only way a user moves a draggable / throwable caster).
- *   3. One frame when the room wakes from sleep (scroll back up) so the
- *      baked shadow is current after any off-screen physics drift.
- *
- * Outside those windows the shadow map is frozen: the baked depth texture
- * keeps drawing the existing cast shadow, but the ~140-mesh shadow render
- * pass is skipped entirely. This is the single largest per-frame win on
- * the always-on room canvas. `needsUpdate` is a one-shot flag (three
- * clears it after the next render), so we set it every frame inside an
- * active window rather than once.
+ * Fake contact shadow for the static baked room. The baked meshes are
+ * unlit MeshBasicMaterial (they neither cast nor receive real-time
+ * shadows), so this is a generated soft elliptical dark radial-gradient
+ * texture on a plane just under the room at floor height - no lights,
+ * cheap, fully controllable. Positioned so the fixed iso camera sees it
+ * grounding the room toward the viewer.
  */
-function ShadowGate({
-  roomAsleep,
-  resetKey,
-}: {
-  roomAsleep: boolean;
-  resetKey: number;
-}) {
-  const gl = useThree((s) => s.gl);
-  const invalidate = useThree((s) => s.invalidate);
-  // Timestamp (performance.now ms) until which the shadow keeps updating.
-  const activeUntilRef = useRef(0);
-
-  // DEV-only perf probe handle: lets instrumentation read/toggle the
-  // room renderer's shadow state to A/B the autoUpdate cost. Tree-shaken
-  // in prod builds (import.meta.env.DEV is statically false there).
-  const scene = useThree((s) => s.scene);
-  const camera = useThree((s) => s.camera);
-  useEffect(() => {
-    if (import.meta.env.DEV) {
-      const win = window as unknown as {
-        __roomGL?: THREE.WebGLRenderer;
-        __roomScene?: THREE.Scene;
-        __roomCam?: THREE.Camera;
-      };
-      win.__roomGL = gl;
-      win.__roomScene = scene;
-      win.__roomCam = camera;
-    }
-  }, [gl, scene, camera]);
-
-  // Initial settle window: re-armed whenever the room is (re)mounted or
-  // reset, and whenever it wakes from sleep so a scroll-back repaints a
-  // correct shadow.
-  useEffect(() => {
-    if (roomAsleep) return;
-    activeUntilRef.current = Math.max(
-      activeUntilRef.current,
-      performance.now() + SHADOW_INITIAL_SECONDS * 1000,
+function FakeShadow() {
+  const texture = useMemo(() => {
+    const SIZE = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext("2d")!;
+    const g = ctx.createRadialGradient(
+      SIZE / 2,
+      SIZE / 2,
+      0,
+      SIZE / 2,
+      SIZE / 2,
+      SIZE / 2,
     );
-    gl.shadowMap.needsUpdate = true;
-    invalidate();
-  }, [gl, invalidate, roomAsleep, resetKey]);
+    g.addColorStop(0, "rgba(13,14,16,0.6)");
+    g.addColorStop(0.55, "rgba(13,14,16,0.45)");
+    g.addColorStop(0.82, "rgba(13,14,16,0.16)");
+    g.addColorStop(1, "rgba(13,14,16,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, []);
 
-  // Any pointerdown on the room canvas may begin a drag/throw; re-arm.
-  // While the pointer stays HELD, every move keeps extending the window:
-  // the fixed 3s window alone froze the shadow mid-drag on long holds
-  // (the object kept moving, its cast shadow stayed parked).
-  useEffect(() => {
-    const el = gl.domElement;
-    let held = false;
-    const rearm = () => {
-      activeUntilRef.current = performance.now() + SHADOW_REARM_SECONDS * 1000;
-    };
-    const onDown = () => {
-      held = true;
-      rearm();
-    };
-    const onMove = () => {
-      if (held) rearm();
-    };
-    const onUp = () => {
-      held = false;
-      rearm(); // settle window after release (throw still in flight)
-    };
-    el.addEventListener("pointerdown", onDown, { passive: true });
-    el.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerup", onUp, { passive: true });
-    return () => {
-      el.removeEventListener("pointerdown", onDown);
-      el.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, [gl]);
+  useEffect(() => () => texture.dispose(), [texture]);
 
-  // Context-loss resilience: three's renderer handles the actual GPU
-  // re-initialisation on `webglcontextrestored`, but with this canvas
-  // often sitting at frameloop="never" (RoomFrameloopGate) nothing would
-  // request a frame after restore — the room would stay blank until the
-  // next scroll wake. Invalidate once and re-bake the frozen shadow map.
-  useEffect(() => {
-    const el = gl.domElement;
-    const onRestored = () => {
-      gl.shadowMap.needsUpdate = true;
-      activeUntilRef.current =
-        performance.now() + SHADOW_INITIAL_SECONDS * 1000;
-      invalidate();
-    };
-    el.addEventListener("webglcontextrestored", onRestored);
-    return () => el.removeEventListener("webglcontextrestored", onRestored);
-  }, [gl, invalidate]);
-
-  useFrame(() => {
-    if (performance.now() <= activeUntilRef.current) {
-      gl.shadowMap.needsUpdate = true;
-    }
-  });
-
-  return null;
+  // Centered under the room footprint (room AABB center x=-0.02, z=-0.17;
+  // size 4.7 x 5.1, floor at y~0) but sized LARGER (7 x 7.5) so the soft
+  // penumbra spills past the room's opaque carpet onto the bare dotted
+  // ground, reading as a contact shadow grounding the room. y just above
+  // the GroundPlane (y=0). Owner fine-tunes position/size/opacity.
+  return (
+    <mesh
+      position={[-0.02, 0.012, -0.17]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      renderOrder={1}
+    >
+      <planeGeometry args={[7, 7.5]} />
+      <meshBasicMaterial
+        map={texture}
+        transparent
+        depthWrite={false}
+        toneMapped={false}
+      />
+    </mesh>
+  );
 }

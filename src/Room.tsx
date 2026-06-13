@@ -1,852 +1,122 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useFrame } from "@react-three/fiber";
-import { Html, useGLTF } from "@react-three/drei";
-import { CuboidCollider, RigidBody } from "@react-three/rapier";
+import { useMemo } from "react";
+import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { DraggableRigidBody } from "./DraggableRigidBody";
-import { Drawer, type DrawerData } from "./Drawer";
-import { GlowBox } from "./GlowBox";
-import { useSceneReadyRef } from "./SceneState";
-
-// Drawer meshes are handled by Drawer.tsx (kinematic slide). They MUST NOT
-// go through DraggableRigidBody. The kinematic translation handler would
-// be overwritten by the dynamic body sync.
-const DRAWER_NAMES = new Set<string>([
-  "th_drawer_1",
-  "th_drawer_2",
-  "th_drawer_3",
-  "th_drawer_4",
-  "th_drawer_5",
-  "th_drawer_6",
-]);
-
-/** `th_*` meshes default to interactive; these are fixed statics instead. */
-const TH_STATIC_NAMES = new Set<string>(["th_keyboard_frame"]);
 
 /**
- * Moveables not named `th_*` that must be reparented to the clone root, or
- * `processNode` never sees them (e.g. `clk_mirror_round` under `shelf`).
+ * Static baked bedroom diorama.
+ *
+ * The room is now PURELY VIEW-ONLY: the GLB (`room-optimized.glb`) ships
+ * with all lighting + shadow baked into its texture atlases, so every
+ * mesh renders UNLIT (MeshBasicMaterial). There are no scene lights, no
+ * physics, no interactivity - the scroll-driven camera fly-through
+ * (ScrollCamera) is the only thing that animates the view.
+ *
+ * Material conversion (per mesh material):
+ *   - baked atlas materials (have a .map)  -> MeshBasicMaterial(map), sRGB
+ *   - emissive materials (glow strips, sunbeam, light bar) -> the emissive
+ *     colour as the basic colour (so the glow still reads with no lights)
+ *   - flat-colour materials -> MeshBasicMaterial(baseColor)
+ *   - glass / mirror pieces -> plain transparent (opacity 0.2,
+ *     depthWrite:false), NO env map (cosmetic reflection skipped)
  */
-const EXTRA_THROWABLE_NAMES = new Set<string>(["clk_mirror_round"]);
 
-/**
- * Skip DraggableRigidBody proximity wake-up for these names. They sit against
- * fixed desk geometry (e.g. `th_keyboard_frame`); waking them when another
- * throwable moves nearby turns them dynamic while still overlapping that
- * trimesh → Rapier contact jitter.
- */
-const TH_NO_PROXIMITY_WAKE = new Set<string>([
-  "th_wristrest",
-  // Wall-mounted dome mirror: proximity-wake would let the standing mirror
-  // knock it off its bracket just by being dragged past.
-  "clk_mirror_round",
+const ROOM_URL = "/room-optimized.glb";
+
+// Glass / mirror pieces: rendered as plain transparent (no env map).
+// Keyed by BOTH material name and node name so a renamed mesh still hits.
+const GLASS_MATERIALS = new Set(["mat_glass_simple", "mat_blk_glass"]);
+const GLASS_NODES = new Set([
+  "pc_case_glass",
+  "th_mirror_round",
+  "th_mirror_standing",
+  "th_record_player_glass",
 ]);
 
-const ROOM_URL = "/room.glb";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const ROOM = {
-  cx: 0.076,
-  cz: 0.098,
-  hw: 2.25,
-  hd: 2.25,
-  floorY: 0.025,
-  ceilY: 2.8,
-  wallH: 1.4,
-} as const;
-
-type Triple = [number, number, number];
-type Quat = [number, number, number, number];
-
-interface CuboidSpec {
-  pos: Triple;
-  half: Triple;
-}
-
-const MIN_HALF = 0.02;
-const MIN_VOLUME = 1e-6;
-
-const BOUNDARIES: ReadonlyArray<CuboidSpec> = [
-  { pos: [ROOM.cx, ROOM.floorY - 0.1, ROOM.cz], half: [ROOM.hw, 0.1, ROOM.hd] },
-  { pos: [ROOM.cx, ROOM.ceilY + 0.1, ROOM.cz], half: [ROOM.hw, 0.1, ROOM.hd] },
-  { pos: [ROOM.cx, ROOM.wallH, -2.303], half: [ROOM.hw, ROOM.wallH, 0.15] },
-  { pos: [-2.324, ROOM.wallH, ROOM.cz], half: [0.15, ROOM.wallH, ROOM.hd] },
-  { pos: [2.476, ROOM.wallH, ROOM.cz], half: [0.15, ROOM.wallH, ROOM.hd] },
-  { pos: [ROOM.cx, ROOM.wallH, 2.498], half: [ROOM.hw, ROOM.wallH, 0.15] },
-];
-
-const HARDCODED_STATICS: ReadonlyArray<{ name: string } & CuboidSpec> = [
-  // Desk surface: thickened from 0.012 to 0.05 half-Y (top still at
-  // 1.2369 = 1.1869 + 0.05) so fast tiny props (wristrest, pens, etc.)
-  // can't tunnel through the slab between physics steps.
-  { name: "desk_surface",     pos: [2.1863, 1.1869, -1.0111],  half: [0.3618, 0.05, 0.8502] },
-
-  // ----- Dresser shell -----
-  // Thin (thickness 0.02) outer panels + center divider + horizontal shelves
-  // between the three drawer rows. No front face (that side is open so
-  // items can be dropped into open drawer cavities). The drawers themselves
-  // (th_drawer_1..6) provide the sliding floor/front of each slot via the
-  // kinematic Drawer component.
-  { name: "d_top",      pos: [-0.1632, 0.8957, 2.0659], half: [0.881, 0.01, 0.286] },
-  { name: "d_bottom",   pos: [-0.1632, 0.0173, 2.0659], half: [0.881, 0.01, 0.286] },
-  { name: "d_left",     pos: [-1.0442, 0.4565, 2.0659], half: [0.01, 0.439, 0.286] },
-  { name: "d_right",    pos: [0.7178, 0.4565, 2.0659],  half: [0.01, 0.439, 0.286] },
-  { name: "d_back",     pos: [-0.1632, 0.4565, 2.3518], half: [0.881, 0.439, 0.01] },
-  { name: "d_div_v",    pos: [-0.1629, 0.4565, 2.0659], half: [0.01, 0.439, 0.286] },
-  { name: "d_shelf_l1", pos: [-0.5768, 0.5732, 2.0659], half: [0.405, 0.01, 0.286] },
-  { name: "d_shelf_l2", pos: [-0.5768, 0.3358, 2.0659], half: [0.405, 0.01, 0.286] },
-  { name: "d_shelf_r1", pos: [ 0.2509, 0.5732, 2.0659], half: [0.405, 0.01, 0.286] },
-  { name: "d_shelf_r2", pos: [ 0.2509, 0.3358, 2.0659], half: [0.405, 0.01, 0.286] },
-];
-
-const HARDCODED_NAMES = new Set(HARDCODED_STATICS.map((s) => s.name));
-
-const SKIP_NAMES = new Set<string>([
-  "wall_right",
-  "floor",
-  "jewelery_dish",
-  "sun_target",
-  "mushroom_bulb_1",
-  "mushroom_bulb_2",
-  "mushroom_bulb_3",
-  "mushroom_bulb_4",
-  "dresser",
-  "vinyl_disc",
-  "mouse",
-]);
-
-// Individual key meshes are visual-only. They're reparented to the cloned
-// root in useMemo so the keyboard's trimesh collider doesn't include 70+
-// tiny per-key shapes, and then skipped by processNode here.
-const SKIP_PREFIXES: ReadonlyArray<string> = ["key_"];
-
-const EXPLICIT_STATIC_NAMES = new Set<string>([
-  "wallpanel",
-  "windowsill",
-  "curtains",
-  "headboard",
-  "mic_clamp",
-  "clk_pegboard",
-  "floor_lamp",
-  "desk",
-  "shelf",
-  "bed_blanket",
-]);
-
-const EXPLICIT_STATIC_PREFIXES: ReadonlyArray<string> = [
-  "poster_",
-  "keyboard_",
-  "monitor_",
-  "board_",
-];
-
-const EXPLICIT_STATIC_SUFFIXES: ReadonlyArray<string> = ["_static"];
-
-function shouldSkip(name: string): boolean {
-  if (SKIP_NAMES.has(name)) return true;
-  if (SKIP_PREFIXES.some((p) => name.startsWith(p))) return true;
-  return false;
-}
-
-function isExplicitStatic(name: string): boolean {
-  if (EXPLICIT_STATIC_NAMES.has(name)) return true;
-  if (EXPLICIT_STATIC_PREFIXES.some((p) => name.startsWith(p))) return true;
-  if (EXPLICIT_STATIC_SUFFIXES.some((s) => name.endsWith(s))) return true;
-  return false;
-}
-
-const EMISSIVE_PATTERNS: Array<{
-  match: string;
-  intensity: number;
-  color: THREE.Color;
-}> = [
-  { match: "emit_orange", intensity: 3, color: new THREE.Color().setRGB(1.0, 0.5, 0.15) },
-  { match: "emit_light_orange", intensity: 3, color: new THREE.Color().setRGB(1.0, 0.3, 0.06) },
-  { match: "lightbar_emission", intensity: 8, color: new THREE.Color().setRGB(1.0, 0.7, 0.4) },
-];
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface ExtractedBody {
-  uuid: string;
-  name: string;
-  bodyPos: Triple;
-  meshLocalPos: Triple;
-  meshLocalQuat: Quat;
-  meshLocalScale: Triple;
-  /** AABB half-extents in body-local space. Used for the GlowBox hover outline. */
-  half: Triple;
-  object: THREE.Object3D;
-}
-
-interface InteractiveBody extends ExtractedBody {
-  throwable: boolean;
-  /** If false, only pointer interaction calls `activateNow` (no neighbour wake). */
-  proximityActivate: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function meshWorldAABB(mesh: THREE.Mesh): THREE.Box3 | null {
-  if (!mesh.geometry) return null;
-  mesh.updateWorldMatrix(true, false);
-  mesh.geometry.computeBoundingBox();
-  const bb = mesh.geometry.boundingBox;
-  if (!bb || bb.isEmpty()) return null;
-  const box = bb.clone();
-  box.applyMatrix4(mesh.matrixWorld);
-  return box;
-}
-
-function aabbFromSubtree(root: THREE.Object3D): THREE.Box3 | null {
-  const result = new THREE.Box3();
-  let hasAny = false;
-  root.traverse((node) => {
-    const mesh = node as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.geometry) return;
-    const box = meshWorldAABB(mesh);
-    if (!box) return;
-    if (!hasAny) {
-      result.copy(box);
-      hasAny = true;
-    } else {
-      result.union(box);
-    }
-  });
-  return hasAny ? result : null;
+// Don't re-flag a shared atlas texture's colorspace twice (harmless, but
+// avoids a redundant GPU re-upload).
+const srgbFlagged = new WeakSet<THREE.Texture>();
+function asSRGB(tex: THREE.Texture) {
+  if (srgbFlagged.has(tex)) return;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  srgbFlagged.add(tex);
 }
 
 /**
- * Tracks which materials we've already disposed so the replace-helpers
- * below don't double-dispose a material that's shared across meshes
- * (e.g. the same `mat_glass_clear` instance can appear on multiple
- * glass meshes in the GLB). WeakSet lets the GC reclaim entries
- * naturally as materials are freed.
+ * Convert one GLTF (MeshStandard) material to an UNLIT MeshBasicMaterial
+ * that preserves the baked look without needing scene lights.
  */
-const disposedMaterials = new WeakSet<THREE.Material>();
+function toBakedMaterial(
+  src: THREE.Material,
+  meshName: string,
+): THREE.MeshBasicMaterial {
+  const std = src as THREE.MeshStandardMaterial;
+  const basic = new THREE.MeshBasicMaterial();
+  basic.name = std.name;
+  basic.side = std.side ?? THREE.FrontSide;
 
-/**
- * Replacing a material via `mesh.material = new ...` orphans the old
- * one. three.js doesn't auto-dispose it, and `useGLTF` won't reclaim
- * it either. This frees the GPU resources (program, uniforms) of the
- * material we're swapping out. Safe to call multiple times on the same
- * material thanks to the WeakSet guard.
- */
-function disposeOldMaterial(
-  old: THREE.Material | THREE.Material[] | null | undefined,
-) {
-  if (!old) return;
-  const arr = Array.isArray(old) ? old : [old];
-  for (const mat of arr) {
-    if (!mat || disposedMaterials.has(mat)) continue;
-    disposedMaterials.add(mat);
-    mat.dispose();
+  // Glass / mirror: plain transparent, no map, no reflection.
+  if (GLASS_MATERIALS.has(std.name) || GLASS_NODES.has(meshName)) {
+    if (std.color) basic.color.copy(std.color);
+    basic.transparent = true;
+    basic.opacity = 0.2;
+    basic.depthWrite = false;
+    basic.side = THREE.DoubleSide;
+    return basic;
   }
-}
 
-/**
- * Lazily allocated, scene-wide shared replacement for mushroom bulbs.
- * One material instance covers every `mushroom_bulb_*` mesh, so the
- * renderer can batch them in the same draw call group instead of
- * uploading four near-identical material UBOs. Built on first use so
- * we don't pay for it on pages that never load the room.
- */
-let SHARED_MUSHROOM_MATERIAL: THREE.MeshStandardMaterial | null = null;
-function getMushroomMaterial() {
-  if (SHARED_MUSHROOM_MATERIAL) return SHARED_MUSHROOM_MATERIAL;
-  SHARED_MUSHROOM_MATERIAL = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(1.0, 0.85, 0.5),
-    transparent: true,
-    opacity: 0.35,
-    roughness: 0.05,
-    metalness: 0.1,
-    emissive: new THREE.Color(1.0, 0.6, 0.2),
-    emissiveIntensity: 0.4,
-  });
-  return SHARED_MUSHROOM_MATERIAL;
-}
+  if (std.map) {
+    // Baked-lighting atlas surface.
+    basic.map = std.map;
+    asSRGB(std.map);
+    basic.color.set(0xffffff);
+  } else if (
+    std.emissive &&
+    std.emissive.r + std.emissive.g + std.emissive.b > 0.02
+  ) {
+    // Emissive glow (light strips, sunbeam): render the glow colour
+    // directly so it reads bright with no lights. emissiveIntensity
+    // carries KHR_materials_emissive_strength.
+    basic.color
+      .copy(std.emissive)
+      .multiplyScalar(Math.max(1, std.emissiveIntensity || 1));
+  } else {
+    // Flat-colour material: use its base colour.
+    if (std.color) basic.color.copy(std.color);
+  }
 
-function replaceMushroomBulbs(root: THREE.Object3D) {
-  const shared = getMushroomMaterial();
-  root.traverse((obj) => {
-    if (!(obj as THREE.Mesh).isMesh) return;
-    if (!obj.name.startsWith("mushroom_bulb")) return;
-    const mesh = obj as THREE.Mesh;
-    const old = mesh.material;
-    // Was MeshPhysicalMaterial w/ transmission. Each transmission material
-    // costs a full extra scene render pass. Standard + transparent fakes the
-    // same look at a fraction of the cost. Shared instance keeps the bulb
-    // count from spawning N identical materials.
-    mesh.material = shared;
-    disposeOldMaterial(old);
-  });
-}
-
-/**
- * Round wall mirror: swaps the default GLB material for a polished
- * metallic look that doesn't depend on an env map. Tuned values
- * (metalness 0.5 / roughness 0.25 / brighter base color) catch enough
- * direct light from the warm scene lights to read as "reflective"
- * without needing a PMREM-baked environment map (the scene-wide
- * `scene.environment` we tried earlier added a per-pixel cubemap
- * sample to EVERY material in the room, not just the mirror. Net
- * frame-rate loss far outweighed the visual gain).
- */
-function replaceMirrorMaterial(root: THREE.Object3D) {
-  root.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    if (mesh.name !== "clk_mirror_round") return;
-    const old = mesh.material;
-    mesh.material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0.85, 0.85, 0.88),
-      metalness: 0.5,
-      roughness: 0.25,
-      emissive: new THREE.Color(0.08, 0.07, 0.08),
-      emissiveIntensity: 0.6,
-    });
-    disposeOldMaterial(old);
-  });
-}
-
-let SHARED_CLEAR_GLASS_MATERIAL: THREE.MeshStandardMaterial | null = null;
-function getClearGlassMaterial() {
-  if (SHARED_CLEAR_GLASS_MATERIAL) return SHARED_CLEAR_GLASS_MATERIAL;
-  SHARED_CLEAR_GLASS_MATERIAL = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(0.95, 0.95, 0.95),
-    transparent: true,
-    opacity: 0.2,
-    roughness: 0.05,
-    metalness: 0.0,
-    side: THREE.DoubleSide,
-  });
-  return SHARED_CLEAR_GLASS_MATERIAL;
-}
-
-function replaceClearGlass(root: THREE.Object3D) {
-  const shared = getClearGlassMaterial();
-  root.traverse((obj) => {
-    if (!(obj as THREE.Mesh).isMesh) return;
-    const mesh = obj as THREE.Mesh;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    let changed = false;
-    const replaced: THREE.Material[] = [];
-    const newMats = mats.map((m) => {
-      if (!m || m.name !== "mat_glass_clear") return m;
-      changed = true;
-      replaced.push(m);
-      // Same swap as mushroom bulbs. Drop the transmission render pass.
-      // Shared single instance so every clear-glass mesh shares one
-      // material UBO / shader program.
-      return shared;
-    });
-    if (changed) {
-      mesh.material = newMats.length === 1 ? newMats[0]! : (newMats as THREE.Material[]);
-      disposeOldMaterial(replaced);
-    }
-  });
-}
-
-function applyEmissive(root: THREE.Object3D) {
-  root.traverse((obj) => {
-    if (!(obj as THREE.Mesh).isMesh) return;
-    const mesh = obj as THREE.Mesh;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const m of mats) {
-      if (!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial) continue;
-      const mat = m as THREE.MeshStandardMaterial;
-      const lower = mat.name.toLowerCase();
-      const boost = EMISSIVE_PATTERNS.find((b) => lower.includes(b.match));
-      if (!boost) continue;
-      mat.emissive.copy(boost.color);
-      mat.emissiveIntensity = boost.intensity;
-      mat.needsUpdate = true;
-    }
-  });
-}
-
-const noRaycast: THREE.Object3D["raycast"] = () => {};
-function disableRaycasts(root: THREE.Object3D) {
-  root.traverse((obj) => {
-    if ((obj as THREE.Mesh).isMesh) obj.raycast = noRaycast;
-  });
-}
-
-interface MonitorPose {
-  center: [number, number, number];
-  half: [number, number, number];
-}
-
-/**
- * Glow halo around the monitor: a decorative breathing highlight on the
- * room's visual focal point. AABB read from `clk_monitor_frame`.
- *
- * Behaviour:
- *   - Always breathing (idle pulse) once the scene is ready.
- *   - Hover brightens it (HOVER_BONUS in GlowBox.tsx).
- *
- * The glow mesh keeps raycast ON so the group catches pointer events
- * (the desk statics have raycast disabled like every other static).
- */
-function MonitorGlow({ pose }: { pose: MonitorPose | null }) {
-  const [hover, setHover] = useState(false);
-  const sceneReady = useSceneReadyRef();
-
-  if (!pose) return null;
-  return (
-    <group
-      position={pose.center}
-      onPointerOver={(e) => {
-        if (!sceneReady?.current) return;
-        e.stopPropagation();
-        setHover(true);
-      }}
-      onPointerOut={() => setHover(false)}
-    >
-      {/* ----- MONITOR GLOW TUNING -----------------------------------
-          padding         outline thickness from the monitor's AABB
-          radius          corner rounding of the glow box
-          idlePulseDepth  breath amplitude (0 = no pulse). Pulses
-                          INTENSITY now, so the outline visibly fades
-                          rather than blinking on/off.
-          idlePulseRate   pulse speed (radians/sec, ~2π/rate per cycle).
-          Hover bonus lives in GlowBox.tsx (HOVER_BONUS).
-          ----------------------------------------------------------- */}
-      <GlowBox
-        half={pose.half}
-        hover={hover}
-        alwaysOn
-        padding={0.04}
-        radius={0.025}
-        idlePulseDepth={0.4}
-        idlePulseRate={2.4}
-      />
-    </group>
-  );
-}
-
-/**
- * Thin white chevron that drifts down + fades on a loop, floating just
- * above the monitor. Draws the eye to the room's focal point. Drei's
- * `<Html>` anchors it to the monitor's world position, so it tracks the
- * monitor through every orbit / pan / zoom.
- */
-function MonitorClickHint({ pose }: { pose: MonitorPose | null }) {
-  const sceneReady = useSceneReadyRef();
-  // Visibility is driven by direct DOM-style mutation (NOT React state)
-  // so the per-frame poll doesn't schedule React renders. The CSS
-  // transition on the element smooths the opacity change to 0.35s.
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  // Track the last opacity we wrote so the per-frame guard compares against a
-  // local ref instead of reading el.style.opacity (a DOM access) every frame.
-  const lastOpacityRef = useRef<string>("");
-  useFrame(() => {
-    const el = wrapperRef.current;
-    if (!el) return;
-    const next = sceneReady?.current ? "1" : "0";
-    if (lastOpacityRef.current !== next) {
-      el.style.opacity = next;
-      lastOpacityRef.current = next;
-    }
-  });
-
-  if (!pose) return null;
-
-  // Sit just above the monitor frame's top edge.
-  const HINT_LIFT = 0.09;
-  const hintPos: [number, number, number] = [
-    pose.center[0],
-    pose.center[1] + pose.half[1] + HINT_LIFT,
-    pose.center[2],
-  ];
-
-  return (
-    <Html
-      position={hintPos}
-      center
-      pointerEvents="none"
-      style={{ pointerEvents: "none" }}
-      zIndexRange={[10, 0]}
-    >
-      <div
-        ref={wrapperRef}
-        style={{
-          opacity: 0,
-          transition: "opacity 0.35s ease",
-          pointerEvents: "none",
-        }}
-      >
-        <div className="monitor-click-hint">
-          <svg
-            width="50"
-            height="16"
-            viewBox="0 0 50 16"
-            fill="none"
-            stroke="white"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <polyline points="3 4 25 13 47 4" />
-          </svg>
-        </div>
-      </div>
-    </Html>
-  );
+  // Carry transparency / cutout / opacity so blended pieces (sunbeam)
+  // and any alpha-tested foliage still read correctly.
+  basic.transparent = std.transparent;
+  basic.opacity = std.opacity ?? 1;
+  basic.alphaTest = std.alphaTest ?? 0;
+  basic.depthWrite = std.depthWrite ?? true;
+  basic.toneMapped = false;
+  return basic;
 }
 
 export function Room() {
   const { scene } = useGLTF(ROOM_URL);
-  const sceneReadyRef = useSceneReadyRef();
 
-  const mouseMeshRef = useRef<THREE.Object3D | null>(null);
-  // Independent viewport-pointer tracker. R3F's `state.pointer` stops
-  // updating once drei's `<Html>` (the OS) intercepts events, which
-  // would freeze the desk mouse-mesh at whatever stale value pointer
-  // had when it left the canvas. A window-level listener keeps it
-  // current no matter what overlay is on top.
-  const viewportPointerRef = useRef({ x: 0, y: 0 });
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      viewportPointerRef.current.x = (e.clientX / window.innerWidth) * 2 - 1;
-      viewportPointerRef.current.y = -((e.clientY / window.innerHeight) * 2 - 1);
-    };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    return () => window.removeEventListener("pointermove", onMove);
-  }, []);
+  const visualScene = useMemo(() => {
+    const cloned = scene.clone(true);
+    cloned.updateMatrixWorld(true);
+    cloned.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      // Unlit baked meshes don't participate in shadows.
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      // No pointer interaction in a view-only scene.
+      mesh.raycast = () => {};
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const next = mats.map((m) => toBakedMaterial(m, mesh.name));
+      mesh.material = next.length === 1 ? next[0]! : next;
+    });
+    return cloned;
+  }, [scene]);
 
-  const {
-    visualScene,
-    interactive,
-    statics,
-    drawers,
-    monitorPoseExtracted,
-  } = useMemo(() => {
-      const cloned = scene.clone(true);
-      cloned.updateMatrixWorld(true);
-
-      // Real shadows: propagate receiveShadow to every mesh inside the
-      // GLB; receiving is essentially free (just sampling the shadow
-      // map in the existing fragment shader).
-      //
-      // castShadow is GATED: each caster adds a full geometry pass to
-      // the depth render of the directional light. Skip casters that
-      // contribute no useful silhouette:
-      //   - key_* (~70 sub-mm keycaps, occluded by keyboard_frame)
-      //   - mushroom_bulb_* (transparent, alpha doesn't shadow cleanly)
-      //   - vinyl_disc (flat, inside record_player housing)
-      // Everything structural / large enough to read as shadow keeps
-      // castShadow on.
-      const NO_CAST_PREFIXES = ["key_", "mushroom_bulb"];
-      const NO_CAST_NAMES = new Set<string>(["vinyl_disc"]);
-      cloned.traverse((child) => {
-        const mesh = child as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        mesh.receiveShadow = true;
-        const noCast =
-          NO_CAST_NAMES.has(child.name) ||
-          NO_CAST_PREFIXES.some((p) => child.name.startsWith(p));
-        mesh.castShadow = !noCast;
-
-        // The meshopt-optimized room.glb (scripts/optimize-assets.mjs)
-        // stores POSITION as normalized int16 (KHR_mesh_quantization).
-        // three renders that natively, but Rapier's trimesh colliders
-        // hand the raw attribute array to the WASM bindings, which
-        // require Float32Array — every static body throws "expected
-        // instance of" otherwise. Denormalize positions once here;
-        // getX/getY/getZ apply the int→float conversion, and the node
-        // transforms (which carry the dequantization scale) stay as-is,
-        // so the rendered result is identical.
-        const pos = mesh.geometry?.attributes?.position;
-        if (pos && pos.normalized) {
-          const arr = new Float32Array(pos.count * 3);
-          for (let i = 0; i < pos.count; i++) {
-            arr[i * 3] = pos.getX(i);
-            arr[i * 3 + 1] = pos.getY(i);
-            arr[i * 3 + 2] = pos.getZ(i);
-          }
-          mesh.geometry.setAttribute(
-            "position",
-            new THREE.BufferAttribute(arr, 3),
-          );
-        }
-      });
-
-      // Snapshot monitor world AABB before processNode reparents
-      // anything. Once statics are extracted from the cloned tree this
-      // lookup would return null. And even if it didn't, the bodyPos
-      // offset would no longer match the unmodified world transform.
-      let monitorPoseExtracted: MonitorPose | null = null;
-      {
-        const m = cloned.getObjectByName("clk_monitor_frame");
-        if (m) {
-          const box = new THREE.Box3().setFromObject(m);
-          if (isFinite(box.min.x)) {
-            const c = box.getCenter(new THREE.Vector3());
-            const s = box.getSize(new THREE.Vector3());
-            monitorPoseExtracted = {
-              center: [c.x, c.y, c.z],
-              half: [s.x / 2, s.y / 2, s.z / 2],
-            };
-          }
-        }
-      }
-
-      // Pull every key_* mesh up to the cloned root using .attach() (which
-      // preserves world transform). This guarantees the keys are NOT
-      // descendants of keyboard_frame, so keyboard_frame's trimesh collider
-      // doesn't pick them up (avoiding the 70-collider lag spike). They're
-      // also matched by SKIP_PREFIXES below, so processNode ignores them
-      // and they end up as purely visual top-level meshes. (The typing
-      // animation that used to move these caps was removed; the reparent
-      // stays because it's what keeps them out of the trimesh collider.)
-      const keys: THREE.Object3D[] = [];
-      cloned.traverse((obj) => {
-        if (obj.name.startsWith("key_")) keys.push(obj);
-      });
-      for (const k of keys) {
-        if (k.parent !== cloned) cloned.attach(k);
-      }
-
-      for (const name of EXTRA_THROWABLE_NAMES) {
-        const o = cloned.getObjectByName(name);
-        if (o && o.parent !== cloned) cloned.attach(o);
-      }
-
-      const interactive: InteractiveBody[] = [];
-      const statics: ExtractedBody[] = [];
-      const drawers: DrawerData[] = [];
-
-      const worldPos = new THREE.Vector3();
-      const worldQuat = new THREE.Quaternion();
-      const worldScale = new THREE.Vector3();
-      const boxCenter = new THREE.Vector3();
-      const boxSize = new THREE.Vector3();
-
-      const buildEntry = (
-        obj: THREE.Object3D,
-        box: THREE.Box3,
-      ): ExtractedBody => {
-        box.getCenter(boxCenter);
-        box.getSize(boxSize);
-        obj.matrixWorld.decompose(worldPos, worldQuat, worldScale);
-        return {
-          uuid: obj.uuid,
-          name: obj.name,
-          bodyPos: [boxCenter.x, boxCenter.y, boxCenter.z],
-          meshLocalPos: [
-            worldPos.x - boxCenter.x,
-            worldPos.y - boxCenter.y,
-            worldPos.z - boxCenter.z,
-          ],
-          meshLocalQuat: [worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w],
-          meshLocalScale: [worldScale.x, worldScale.y, worldScale.z],
-          half: [boxSize.x / 2, boxSize.y / 2, boxSize.z / 2],
-          object: obj,
-        };
-      };
-
-      const processNode = (obj: THREE.Object3D) => {
-        if (shouldSkip(obj.name)) return;
-        if (HARDCODED_NAMES.has(obj.name)) return;
-
-        if (isExplicitStatic(obj.name)) {
-          const box = aabbFromSubtree(obj);
-          if (!box) return;
-          statics.push(buildEntry(obj, box));
-          return;
-        }
-
-        if (DRAWER_NAMES.has(obj.name)) {
-          const box = aabbFromSubtree(obj);
-          if (!box) return;
-          drawers.push(buildEntry(obj, box));
-          return;
-        }
-
-        if (TH_STATIC_NAMES.has(obj.name)) {
-          const box = aabbFromSubtree(obj);
-          if (!box) return;
-          statics.push(buildEntry(obj, box));
-          return;
-        }
-
-        if (obj.name.startsWith("th_") || EXTRA_THROWABLE_NAMES.has(obj.name)) {
-          const box = aabbFromSubtree(obj);
-          if (!box) return;
-          box.getSize(boxSize);
-          const volume = boxSize.x * boxSize.y * boxSize.z;
-          if (volume < MIN_VOLUME) return;
-          const base = buildEntry(obj, box);
-          interactive.push({
-            ...base,
-            // Clamp to MIN_HALF so Rapier never gets a degenerate collider.
-            half: [
-              Math.max(base.half[0], MIN_HALF),
-              Math.max(base.half[1], MIN_HALF),
-              Math.max(base.half[2], MIN_HALF),
-            ],
-            throwable: true,
-            proximityActivate: !TH_NO_PROXIMITY_WAKE.has(obj.name),
-          });
-          return;
-        }
-
-        const mesh = obj as THREE.Mesh;
-        if (mesh.isMesh && mesh.geometry) {
-          const box = meshWorldAABB(mesh);
-          if (!box) return;
-          statics.push(buildEntry(obj, box));
-          return;
-        }
-
-        for (const child of obj.children) processNode(child);
-      };
-
-      for (const child of cloned.children) processNode(child);
-
-      for (const item of [...interactive, ...statics, ...drawers]) {
-        item.object.parent?.remove(item.object);
-        item.object.position.set(...item.meshLocalPos);
-        item.object.quaternion.set(...item.meshLocalQuat);
-        item.object.scale.set(...item.meshLocalScale);
-        item.object.updateMatrix();
-      }
-
-      return {
-        visualScene: cloned,
-        interactive,
-        statics,
-        drawers,
-        monitorPoseExtracted,
-      };
-    }, [scene]);
-
-  useEffect(() => {
-    applyEmissive(visualScene);
-    replaceMushroomBulbs(visualScene);
-    replaceClearGlass(visualScene);
-    replaceMirrorMaterial(visualScene);
-    disableRaycasts(visualScene);
-    for (const it of interactive) {
-      applyEmissive(it.object);
-      replaceClearGlass(it.object);
-      // `clk_mirror_round` is in the interactive set (it's a throwable),
-      // so the mirror swap also has to run on each interactive subtree.
-      replaceMirrorMaterial(it.object);
-    }
-    for (const d of drawers) applyEmissive(d.object);
-    for (const s of statics) {
-      applyEmissive(s.object);
-      // Statics never receive pointer events (the monitor's hover glow
-      // raycasts against the GlowBox mesh itself), so skipping them in
-      // the raycaster keeps per-pointermove cost down.
-      disableRaycasts(s.object);
-    }
-  }, [visualScene, interactive, statics, drawers]);
-
-  useEffect(() => {
-    const m = visualScene.getObjectByName("mouse");
-    if (m) {
-      mouseMeshRef.current = m;
-      m.userData.restX = m.position.x;
-      m.userData.restZ = m.position.z;
-      m.userData.restY = m.position.y;
-    }
-
-  }, [visualScene]);
-
-  // Drive the desk mouse mesh every frame (cursor-follow). Gated on
-  // sceneReady so nothing moves during the intro idle/transition.
-  useFrame((_, delta) => {
-    if (!sceneReadyRef?.current) return;
-
-    const mouse = mouseMeshRef.current;
-    if (mouse) {
-      const rest = mouse.userData;
-      const range = 0.18;
-
-      // Read from the window-level pointer ref, not state.pointer, so
-      // the mesh keeps tracking even when the OS portal is on top.
-      const p = viewportPointerRef.current;
-      const targetX = rest.restX + p.x * range;
-      const targetZ = rest.restZ - p.y * range;
-
-      // Frame-rate-independent ease (≈ the old 0.12/frame at 60Hz; the
-      // raw per-frame factor tracked ~2x faster on 120Hz displays).
-      const k = 1 - Math.exp(-delta * 7.7);
-      mouse.position.x = THREE.MathUtils.lerp(mouse.position.x, targetX, k);
-      mouse.position.z = THREE.MathUtils.lerp(mouse.position.z, targetZ, k);
-    }
-  });
-
-  return (
-    <group>
-      <primitive object={visualScene} />
-
-      {BOUNDARIES.map((b, i) => (
-        <RigidBody
-          key={`boundary-${i}`}
-          type="fixed"
-          position={b.pos}
-          colliders={false}
-        >
-          <CuboidCollider args={b.half} />
-        </RigidBody>
-      ))}
-
-      {HARDCODED_STATICS.map((s) => (
-        <RigidBody
-          key={`hardcoded-${s.name}`}
-          type="fixed"
-          position={s.pos}
-          colliders={false}
-        >
-          <CuboidCollider args={s.half} />
-        </RigidBody>
-      ))}
-
-      {statics.map((s) => (
-        <RigidBody
-          key={`static-${s.uuid}`}
-          name={s.name}
-          type="fixed"
-          position={s.bodyPos}
-          colliders="trimesh"
-        >
-          <primitive object={s.object} />
-        </RigidBody>
-      ))}
-
-      {interactive.map((t) => (
-        <DraggableRigidBody
-          key={t.uuid}
-          name={t.name}
-          position={t.bodyPos}
-          half={t.half}
-          throwable={t.throwable}
-          proximityActivate={t.proximityActivate}
-        >
-          <primitive object={t.object} />
-        </DraggableRigidBody>
-      ))}
-
-      {drawers.map((d) => (
-        <Drawer key={d.uuid} drawer={d} />
-      ))}
-
-      <MonitorGlow pose={monitorPoseExtracted} />
-      <MonitorClickHint pose={monitorPoseExtracted} />
-    </group>
-  );
+  return <primitive object={visualScene} />;
 }
 
 useGLTF.preload(ROOM_URL);
