@@ -1,0 +1,134 @@
+/* ─────────────────────────────────────────────────────────────────────
+ * CRT Channel Menu — the section-nav "channel guide" the top-right status
+ * card opens into. Inline styles carry layout (matches StatusBar's idiom);
+ * this file carries what inline can't: :hover / :focus-visible tells, the
+ * open/close transition, and the prefers-reduced-motion fallbacks.
+ * Voice: pixel-retrofuturism — sharp corners, one accent, no dots.
+ * ──────────────────────────────────────────────────────────────────── */
+
+/* ---- Resting status card, now a button ---- */
+.status-nav-card {
+  position: relative;
+  transition: border-color 150ms var(--ease-out, ease),
+    transform 150ms var(--ease-out, ease);
+}
+/* Coiled-spring hover tell: an accent tick grows on the left edge. */
+.status-nav-card::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  width: 2px;
+  height: 0;
+  transform: translateY(-50%);
+  background: var(--accent);
+  transition: height 170ms var(--ease-out, ease);
+  pointer-events: none;
+}
+.status-nav-card:hover {
+  border-color: var(--accent) !important;
+}
+.status-nav-card:hover::before,
+.status-nav-card[aria-expanded="true"]::before {
+  height: 66%;
+}
+.status-nav-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+/* "OPEN /" affordance: hidden until hover/focus so the resting footprint
+   reads clean. Absolutely placed so it never shifts the card's layout. */
+.status-nav-card .nav-open-hint {
+  position: absolute;
+  right: 10px;
+  bottom: -13px;
+  font-family: "VT323", monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: rgba(13, 14, 16, 0.42);
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out, ease);
+  pointer-events: none;
+}
+.status-nav-card:hover .nav-open-hint,
+.status-nav-card:focus-visible .nav-open-hint,
+.status-nav-card[aria-expanded="true"] .nav-open-hint {
+  opacity: 1;
+}
+
+/* ---- Scrim: flat ink wash that catches outside-clicks. No blur. ---- */
+.crt-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(13, 14, 16, 0.18);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.crt-menu-scrim[data-open="true"] {
+  opacity: 1;
+}
+
+/* ---- Panel: blooms scaleY from the top edge (a tube striking on). ---- */
+.crt-menu {
+  transform-origin: top center;
+  transform: scaleY(0);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 190ms cubic-bezier(0.16, 1, 0.3, 1), opacity 120ms ease;
+}
+.crt-menu[data-open="true"] {
+  transform: scaleY(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+/* One-shot white over-bright "strike" flash on power-on. */
+.crt-menu-flash {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+}
+.crt-menu[data-open="true"] .crt-menu-flash {
+  animation: crt-strike 220ms ease-out 1;
+}
+@keyframes crt-strike {
+  0% {
+    opacity: 0.16;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---- Channel rows ---- */
+.crt-menu-row {
+  transition: background-color 90ms ease, color 90ms ease;
+}
+.crt-menu-row:hover {
+  background: rgba(232, 112, 64, 0.1);
+}
+.crt-menu-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-nav-card,
+  .status-nav-card::before,
+  .nav-open-hint {
+    transition: none;
+  }
+  /* Opacity-only open/close: no bloom, no flash. */
+  .crt-menu {
+    transform: none;
+    transition: opacity 120ms ease;
+  }
+  .crt-menu[data-open="true"] {
+    transform: none;
+  }
+  .crt-menu[data-open="true"] .crt-menu-flash {
+    animation: none;
+  }
+}

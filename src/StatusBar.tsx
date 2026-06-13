@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useIsMobile } from "./useIsMobile";
+import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
+import { CrtChannelMenu } from "./CrtChannelMenu";
 
 /**
  * Top-right section indicator: Offbit numeral + Geist label + a stepped
@@ -11,54 +13,17 @@ import { useIsMobile } from "./useIsMobile";
  * retrofuturism pass: round chrome fought the blocky type language.)
  */
 
-interface SectionEntry {
-  number: string;
-  label: string;
-  /** Selector to identify the section in the DOM. */
-  selector: string;
-}
-
-// Mirrors PortfolioSections.tsx render order; keep in lockstep.
-const SECTION_REGISTRY: SectionEntry[] = [
-  { number: "00", label: "Hero", selector: ".portfolio-section--hero" },
-  { number: "01", label: "About", selector: ".portfolio-section:not([class*='--'])" },
-  { number: "02", label: "Stack", selector: ".portfolio-mac" },
-  { number: "03", label: "Work", selector: ".portfolio-work" },
-  { number: "04", label: "Play", selector: ".portfolio-other" },
-  { number: "05", label: "Bits and pieces", selector: ".portfolio-bp" },
-  { number: "06", label: "Contact", selector: ".keypad-section" },
-];
-
 // Pixel meter: scroll progress quantised into this many blocks. The
 // stepped fill (no tween) is deliberate — steps read as hardware.
 const METER_SEGMENTS = 7;
 const METER_TRACK = "rgba(13, 14, 16, 0.14)";
 
-function findSectionElements(): Array<{ entry: SectionEntry; el: Element | null }> {
-  return SECTION_REGISTRY.map((entry, i) => {
-    if (i === 1) {
-      // About is the first generic `.portfolio-section` (no special
-      // modifier class); selector-based match would clash with the
-      // keypad's own class.
-      const all = Array.from(document.querySelectorAll(".portfolio-section"));
-      const generic = all.filter(
-        (e) =>
-          !e.classList.contains("portfolio-section--hero") &&
-          !e.classList.contains("portfolio-mac") &&
-          !e.classList.contains("portfolio-work") &&
-          !e.classList.contains("portfolio-other") &&
-          !e.classList.contains("portfolio-bp") &&
-          !e.classList.contains("keypad-section"),
-      );
-      return { entry, el: generic[0] ?? null };
-    }
-    return { entry, el: document.querySelector(entry.selector) };
-  });
-}
-
 export function StatusBar() {
   const isMobile = useIsMobile();
   const [activeIdx, setActiveIdx] = useState(0);
+  // Nav-menu open state: the resting card is a button that opens the CRT
+  // "channel guide" (CrtChannelMenu) to jump between sections.
+  const [menuOpen, setMenuOpen] = useState(false);
   // Scroll progress fills the meter blocks via direct DOM mutation on
   // this ref, so the StatusBar tree never reconciles on a scroll frame.
   const meterRef = useRef<HTMLDivElement>(null);
@@ -160,7 +125,29 @@ export function StatusBar() {
     };
   }, []);
 
+  // Global hotkey: "m" or "/" toggles the channel menu. Ignored while
+  // typing in a field so it never eats input. (Esc / outside-click close
+  // are owned by CrtChannelMenu itself.)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "m" && e.key !== "M" && e.key !== "/") return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.isContentEditable)
+      )
+        return;
+      e.preventDefault();
+      setMenuOpen((o) => !o);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const active = SECTION_REGISTRY[activeIdx] ?? SECTION_REGISTRY[0]!;
+  const cardAria = `Open section menu. Current: ${active.number} ${active.label}`;
 
   // Shared pixel scroll meter: a row of square cells that fill with the
   // accent as the page scrolls. Stepped on purpose (no transition) so it
@@ -182,12 +169,41 @@ export function StatusBar() {
     </div>
   );
 
+  // The resting card is now a BUTTON that opens the channel menu. Footprint
+  // stays identical — only behaviour + a CSS hover/focus tell are added
+  // (.status-nav-card lives in crt-channel-menu.css). Shared across both
+  // the mobile + desktop branches.
+  const cardButtonProps = {
+    className: "status-nav-card",
+    role: "button" as const,
+    tabIndex: 0,
+    "aria-haspopup": "menu" as const,
+    "aria-expanded": menuOpen,
+    "aria-label": cardAria,
+    onClick: () => setMenuOpen((o) => !o),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setMenuOpen((o) => !o);
+      }
+    },
+  };
+  const menu = (
+    <CrtChannelMenu
+      open={menuOpen}
+      activeIdx={activeIdx}
+      onClose={() => setMenuOpen(false)}
+    />
+  );
+
   // Offbit numeral + Geist label + progress ring. No faux-mono, no live
   // clock. Offbit appears ONLY as the display numeral (a deliberate
   // accent), the label is clean Geist. Anchors top-right.
   if (isMobile) {
     return (
+      <>
       <div
+        {...cardButtonProps}
         data-active-section={active.number}
         style={{
           position: "fixed",
@@ -208,6 +224,7 @@ export function StatusBar() {
           boxShadow: "0 8px 20px -16px rgba(13, 14, 16, 0.45)",
           color: "var(--ink)",
           userSelect: "none",
+          cursor: "pointer",
         }}
       >
         <span
@@ -237,12 +254,19 @@ export function StatusBar() {
           {active.label}
         </span>
         {meter(3, 9)}
+        <span className="nav-open-hint" aria-hidden>
+          OPEN /
+        </span>
       </div>
+      {menu}
+      </>
     );
   }
 
   return (
+    <>
     <div
+      {...cardButtonProps}
       data-active-section={active.number}
       style={{
         position: "fixed",
@@ -262,6 +286,7 @@ export function StatusBar() {
         boxShadow: "0 10px 26px -18px rgba(13, 14, 16, 0.5)",
         color: "var(--ink)",
         userSelect: "none",
+        cursor: "pointer",
       }}
     >
       <span
@@ -312,6 +337,11 @@ export function StatusBar() {
         </span>
       </span>
       {meter(4, 12)}
+      <span className="nav-open-hint" aria-hidden>
+        OPEN /
+      </span>
     </div>
+    {menu}
+    </>
   );
 }

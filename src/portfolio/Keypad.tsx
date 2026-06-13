@@ -118,6 +118,32 @@ function ensureLenis() {
   });
 }
 
+/**
+ * Smooth-scroll to an absolute Y (or an element) via the shared Lenis
+ * singleton. Falls back to native window.scrollTo if Lenis isn't up yet.
+ * Used by the section nav menu to jump between sections; routing through
+ * the same Lenis instance keeps GSAP ScrollTrigger / the pinned sections
+ * in sync (a raw window.scrollTo would fight Lenis's lerp).
+ */
+export function scrollToSection(
+  target: number | HTMLElement,
+  opts?: { duration?: number; immediate?: boolean },
+) {
+  if (lenisInstance) {
+    lenisInstance.scrollTo(target, {
+      duration: opts?.duration,
+      immediate: opts?.immediate,
+    });
+    return;
+  }
+  if (typeof window === "undefined") return;
+  const y =
+    typeof target === "number"
+      ? target
+      : target.getBoundingClientRect().top + window.scrollY;
+  window.scrollTo({ top: y, behavior: opts?.immediate ? "auto" : "smooth" });
+}
+
 export function Keypad() {
   const sectionRef = useRef<HTMLElement>(null);
   // MOBILE: the GSAP pin below is skipped on phones. The desktop pin
