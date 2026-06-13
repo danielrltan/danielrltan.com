@@ -59,53 +59,9 @@ const IS_SMALL_SCREEN =
   window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
 
 // Tile cell size in CSS px. The grid (and the pass-1 render target)
-// is the container size divided by this. 12px (was 10): real ASCII
-// glyphs need ~12px to resolve their internal structure (the holes in
-// @ # o, the two bars of =) instead of mushing into blobs.
-const CELL_PX = 12;
-
-// ASCII density ramp (light -> dense). A curated, monotonic-weight
-// subset of the canonical luminance ramp: no directional strokes
-// (/ \ X read as messy "hair" at small size), no descenders. The field
-// glyph is a PURE function of the drifting blob density, so neighbours
-// differ by at most one ramp step -> a coherent character gradient,
-// never random noise. Index 0 is a space (pure orange base shows).
-const ASCII_RAMP = [" ", ".", ":", "-", "=", "+", "*", "#", "@"];
-const RAMP_N = ASCII_RAMP.length; // 9
-
-/**
- * Pre-rendered glyph atlas: the ramp drawn once into a horizontal strip
- * (one cell per glyph), white-on-transparent, sampled as an alpha mask
- * and tinted in the shader. Procedural shapes can't make a believable
- * '@' or '=', which is exactly why the old geometric tiles never read
- * as ASCII; real rasterised characters do.
- */
-function buildAsciiAtlas(): THREE.CanvasTexture {
-  const CELL = 48; // generous atlas cell; downsamples crisp to ~12px
-  const canvas = document.createElement("canvas");
-  canvas.width = RAMP_N * CELL;
-  canvas.height = CELL;
-  const ctx = canvas.getContext("2d")!;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  // A true monospace for the atlas: Courier renders the ramp glyphs
-  // with clean internal counters (the field is a terminal-ASCII
-  // register; the OffBit pixel face stays on the wordmark).
-  ctx.font = '700 30px "Courier New", "Consolas", ui-monospace, monospace';
-  for (let i = 0; i < RAMP_N; i++) {
-    ctx.fillText(ASCII_RAMP[i]!, i * CELL + CELL / 2, CELL / 2 + 1);
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  tex.generateMipmaps = true;
-  // Alpha mask, not colour: sampling .a is colorspace-independent.
-  tex.colorSpace = THREE.NoColorSpace;
-  tex.needsUpdate = true;
-  return tex;
-}
+// is the container size divided by this. Geometric tiles need a touch
+// more room than text glyphs did to read as shapes.
+const CELL_PX = 10;
 
 // Number of tiles in the density ramp (must match tileMask in the
 // post shader): empty, small square, diagonal, cross, outline box,
@@ -202,17 +158,13 @@ const POST_VERT = /* glsl */ `
 `;
 
 const POST_FRAG = /* glsl */ `
-  #define RAMP_N ${RAMP_N}
   uniform sampler2D uScene;
   uniform vec2 uGrid;
   uniform float uTileCount;
   uniform float uTime;
-  uniform sampler2D uGlyphAtlas; // ASCII ramp strip (alpha mask)
   uniform vec3 uBase;
-  uniform vec3 uFieldBase;   // orange field "paper" base
-  uniform vec3 uInkLow;      // glyph ink in the sparse margins
-  uniform vec3 uInkMid;      // glyph ink at mid density
-  uniform vec3 uInkHi;       // glyph ink in the dense cores
+  uniform vec3 uFieldBase;   // orange field background (inverted look)
+  uniform vec3 uFieldBlob;   // lighter-orange haze pooling in the field
   uniform vec3 uRingShadow;
   uniform vec3 uRingLit;
   uniform vec3 uLitOrange;
@@ -244,14 +196,6 @@ const POST_FRAG = /* glsl */ `
     float c = vhash(i + vec2(0.0, 1.0));
     float d = vhash(i + vec2(1.0, 1.0));
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-  }
-
-  // Sample an ASCII ramp glyph (idx 0..RAMP_N-1) as an alpha-mask
-  // coverage value. Inset the cell UV so linear filtering never bleeds
-  // the neighbouring glyph in across the atlas column seam.
-  float glyphInk(float idx, vec2 p) {
-    vec2 gUv = vec2((idx + clamp(p.x, 0.04, 0.96)) / float(RAMP_N), p.y);
-    return texture2D(uGlyphAtlas, gUv).a;
   }
 
   // Procedural geometric tiles, density ramp 0..7. p is cell-local UV
@@ -308,65 +252,62 @@ const POST_FRAG = /* glsl */ `
       // zone flip to the accent family with the normal-banded shading,
       // dithered at the boundary so the reflection halftones into the
       // white body instead of cutting a hard seam.
-      // The RING is drawn in the SAME ASCII characters as the field, so
-      // the whole hero is one coherent character drawing (the ring just
-      // reads as white chars carved through the orange chars).
       float refl = smoothstep(0.55, 0.82, lum);
       if (refl > dith) {
         float idx = clamp(
-          floor(lum * float(RAMP_N - 1) + (dith - 0.5)),
+          floor(lum * uTileCount + (dith - 0.5)),
           0.0,
-          float(RAMP_N - 1)
+          uTileCount - 1.0
         );
-        float ink = glyphInk(idx, cellUv);
+        float mask = tileMask(idx, cellUv);
         col = mix(uBase, uLitOrange, tq);
         col = mix(col, uHotOrange, smoothstep(0.92, 1.0, lum) * 0.7);
-        a = ink * 0.96;
+        a = mask * 0.96;
       } else {
         // WHITE BODY: inverted density (darker facets fill with
-        // near-white chars, brighter ones blank toward the page).
+        // near-white tiles, brighter ones blank toward the page).
         float density = 1.0 - lum;
         float idx = clamp(
-          floor(density * float(RAMP_N - 1) + (dith - 0.5)),
+          floor(density * uTileCount + (dith - 0.5)),
           0.0,
-          float(RAMP_N - 1)
+          uTileCount - 1.0
         );
-        float ink = glyphInk(idx, cellUv);
+        float mask = tileMask(idx, cellUv);
         col = mix(uRingShadow, uRingLit, tq);
-        a = ink * 0.92;
+        a = mask * 0.92;
       }
     } else {
-      // ASCII CHARACTER FIELD. The orange base is the "paper"; real
-      // characters from the density ramp are "typed" over it in lighter
-      // orange. Two slow drifting octaves give big soft blobs; the blob
-      // density at each cell picks a glyph from the ramp (light '.' in
-      // the margins -> heavy '@' in the cores), so a still frame reads
-      // as a page of monospace text whose letter-weight maps a soft
-      // landscape, and motion is that landscape drifting like fog.
+      // INVERTED figure-ground: orange field BASE, lighter-orange symbol
+      // glyphs typed over it. The field uses the SAME geometric symbol
+      // VOCABULARY as the ring (small square -> diagonal -> cross-hatch
+      // X -> outline box -> box+slash -> inset square -> full square),
+      // NOT a flat dot field (user: use those symbols - the slash, x,
+      // boxes - not dots). The symbol is chosen by the slow drifting
+      // blob density (a COHERENT gradient of shapes, not the random
+      // per-cell salad that earlier read as messy), so denser blob cores
+      // fill with the heavier boxes while the margins stay sparse
+      // squares - the symbols themselves map the haze. Solid field
+      // (a = 1) so the hero reads as an orange surface.
       float n =
-        vnoise(cell * 0.0075 + uTime * vec2(0.016, 0.009)) * 0.6 +
-        vnoise(cell * 0.017 + uTime * vec2(-0.010, 0.014)) * 0.4;
-      // Map density into the ramp with a FLOOR of ~1.4 so EVERY cell
-      // prints at least a '.'/':' - the field reads as a full page of
-      // monospace text everywhere (visibly ASCII, never a solid orange
-      // fill), the weight climbing '. : - = +' up to '# @' in the blob
-      // cores.
-      float lit = pow(smoothstep(0.05, 0.95, n), 1.15);
-      float fIdx = 1.4 + lit * float(RAMP_N - 2);
-      // Bayer jitter ONLY breaks the band between two ADJACENT ramp
-      // steps (a salt-and-pepper mix of e.g. '+' and '*' at the
-      // boundary), like hand ASCII art - never a hard contour, never a
-      // jump to a distant glyph.
-      float gi = clamp(floor(fIdx + (dith - 0.5)), 1.0, float(RAMP_N - 1));
-      float ink = glyphInk(gi, cellUv);
-      // Ink brightens toward the cores: quiet light-orange in the
-      // margins, near-peach-white in the dense '# @' cores - a luminance
-      // gradient on top of the shape gradient, so the characters pop off
-      // the base without ever reaching the ring's pure white.
-      float t = gi / float(RAMP_N - 1);
-      vec3 inkCol = mix(uInkLow, uInkMid, smoothstep(0.0, 0.55, t));
-      inkCol = mix(inkCol, uInkHi, smoothstep(0.55, 1.0, t));
-      col = mix(uFieldBase, inkCol, ink);
+        vnoise(cell * 0.008 + uTime * vec2(0.018, 0.010)) * 0.6 +
+        vnoise(cell * 0.017 + uTime * vec2(-0.011, 0.015)) * 0.4;
+      // Density -> symbol index across the ramp, Bayer-jittered only
+      // between adjacent steps so the shape transitions are a soft
+      // salt-and-pepper of neighbours, never a hard contour. Floor of
+      // ~1 so every cell prints at least the small square (the field is
+      // visibly symbol-textured everywhere, never a solid fill).
+      // Floor at the DIAGONAL (idx 2) so the field is the distinctive
+      // symbols - slash, cross-hatch X, outline box, etc. - everywhere,
+      // never the small-square "dots" (user). A higher-frequency second
+      // term breaks the blobs into a richer per-area MIX of symbols (so
+      // a glance catches several, like the ring's curvature does) while
+      // staying a smooth function of position (not a random salad).
+      float sym = n * 0.7 + vnoise(cell * 0.06 + uTime * vec2(0.02, -0.013)) * 0.3;
+      float lit = smoothstep(0.10, 0.90, sym);
+      float fIdx = 2.0 + lit * (uTileCount - 3.0);
+      float idx = clamp(floor(fIdx + (dith - 0.5)), 2.0, uTileCount - 1.0);
+      float mask = tileMask(idx, cellUv);
+      col = mix(uFieldBase, uFieldBlob, mask);
       a = 1.0;
     }
 
@@ -500,7 +441,6 @@ function RingScene({
   const pipeline = useMemo(() => {
     const keyDir = new THREE.Vector3(-2.2, 1.6, 3.0).normalize();
     const fillDir = new THREE.Vector3(2.0, -1.0, 2.5).normalize();
-    const glyphAtlas = buildAsciiAtlas();
 
     const ringMaterial = new THREE.ShaderMaterial({
       vertexShader: RING_VERT,
@@ -541,16 +481,11 @@ function RingScene({
         uTileCount: { value: TILE_COUNT },
         uTime: { value: 0 },
         uBase: { value: new THREE.Color(color) },
-        // ASCII field: brand orange "paper" (#e87040), characters typed
-        // over it in a 3-step lighter-orange ink ramp that brightens
-        // toward the dense cores (margins stay quiet, cores pop) - but
-        // peak ink stays peach, never pure white, so the ring keeps the
-        // exclusive white.
-        uGlyphAtlas: { value: glyphAtlas },
+        // Inverted field: the brand accent orange as the BASE (same
+        // #e87040 used everywhere, per user), with a VERY light orange
+        // blob haze dithered over it.
         uFieldBase: { value: new THREE.Color(color) },
-        uInkLow: { value: new THREE.Color("#f9b890") },
-        uInkMid: { value: new THREE.Color("#ffd2b0") },
-        uInkHi: { value: new THREE.Color("#fff3e9") },
+        uFieldBlob: { value: new THREE.Color("#ffe7d4") },
         // Ring tints stay a hair off pure white: the ring body reads
         // WHITE; the volumetric shading comes from tile DENSITY, the
         // tint only whispers warmth on shadow faces.
@@ -577,7 +512,7 @@ function RingScene({
     postScene.add(postQuad);
     const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-    return { ringMaterial, rt, postMaterial, postScene, postQuad, postCam, glyphAtlas };
+    return { ringMaterial, rt, postMaterial, postScene, postQuad, postCam };
     // color is captured at mount; the brand accent doesn't change live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -740,7 +675,6 @@ function RingScene({
       pipeline.postMaterial.dispose();
       pipeline.postQuad.geometry.dispose();
       pipeline.rt.dispose();
-      pipeline.glyphAtlas.dispose();
     };
   }, [pipeline]);
 

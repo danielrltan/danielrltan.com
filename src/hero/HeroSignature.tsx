@@ -403,21 +403,18 @@ export function HeroSignature() {
         <div className="hero-bottom-scrim" aria-hidden />
 
         <div className="hero-bottom">
-          <div className="hero-meta" role="group" aria-label="Profile metadata">
-            <span className="hero-meta-field">
-              <span className="hero-meta-key">Role</span>
-              <span className="hero-meta-val">Software Engineer</span>
-            </span>
-            <span className="hero-meta-sep" aria-hidden />
-            <span className="hero-meta-field">
-              <span className="hero-meta-key">Loc</span>
-              <span className="hero-meta-val">Toronto, CA</span>
-            </span>
-          </div>
+          {/* ROLE / LOC meta card removed (owner: useless + vibe-coded).
+              The name + the work below carry the role; SEO/a11y keep it
+              via the visually-hidden h1 above. */}
+          {/* Wayfinding cue (replaces the banned arrow + "SCROLL" + "01"):
+              the word NEXT (a destination, not the "scroll" gesture), a
+              hairline track with an accent segment that hops DOWNWARD on
+              a loop (the travel IS the signal, no arrow), and a
+              dot-matrix destination count. */}
           <button
             type="button"
-            className="hero-scroll"
-            aria-label="Scroll to the next section"
+            className="hero-next"
+            aria-label="Go to the next section"
             onClick={() => {
               const reduce = window.matchMedia(
                 "(prefers-reduced-motion: reduce)",
@@ -431,9 +428,11 @@ export function HeroSignature() {
               });
             }}
           >
-            <span className="hero-scroll-arrow" aria-hidden>↓</span>
-            <span className="hero-scroll-label">Scroll</span>
-            <span className="hero-scroll-idx" aria-hidden>01</span>
+            <span className="hero-next-label">Next</span>
+            <span className="hero-next-rail" aria-hidden>
+              <span className="hero-next-seg" />
+            </span>
+            <span className="hero-next-count" aria-hidden>06</span>
           </button>
         </div>
       </div>

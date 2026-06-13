@@ -343,6 +343,12 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   const capsRef = useRef(caps);
   capsRef.current = caps;
   const dialVelRef = useRef(0);
+  // Dial scale feedback: grows slightly on hover, pops a touch more on
+  // click then settles. Eased in useFrame (never bound to the event).
+  const dialHoveredRef = useRef(false);
+  const dialPressedAtRef = useRef<number | null>(null);
+  const dialScaleRef = useRef(1);
+  const dialBaseScaleRef = useRef<THREE.Vector3 | null>(null);
 
   // Expose imperative API for parent-driven dial kicks (e.g. spin
   // automatically when the drop-in animation completes).
@@ -399,6 +405,27 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       dial.rotation.y += dialVelRef.current * dt;
       dialVelRef.current *= Math.exp(-dt * DIAL_DAMP);
     }
+
+    // Dial scale feedback: 1.0 at rest, ~+5% on hover, a decaying
+    // ~+12% pop on click that eases back down. Independent of the spin
+    // rotation above (scale and rotation compose freely).
+    if (dial) {
+      if (!dialBaseScaleRef.current) dialBaseScaleRef.current = dial.scale.clone();
+      const base = dialBaseScaleRef.current;
+      let target = dialHoveredRef.current ? 1.05 : 1.0;
+      const pAt = dialPressedAtRef.current;
+      if (pAt != null) {
+        const since = (now - pAt) / 1000;
+        if (since < 0.32) {
+          target += (1 - since / 0.32) * 0.08; // up to ~+0.13 at the click instant
+        } else {
+          dialPressedAtRef.current = null;
+        }
+      }
+      dialScaleRef.current += (target - dialScaleRef.current) * (1 - Math.exp(-dt * 11));
+      const s = dialScaleRef.current;
+      dial.scale.set(base.x * s, base.y * s, base.z * s);
+    }
   });
 
   // Site uses `cursor: none` globally + a custom MoveableCursor ring;
@@ -437,14 +464,17 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   };
   const handleDialEnter = (e: any) => {
     e.stopPropagation();
+    dialHoveredRef.current = true;
     emitCursorHover(true);
   };
   const handleDialLeave = (e: any) => {
     e.stopPropagation();
+    dialHoveredRef.current = false;
     emitCursorHover(false);
   };
   const handleDialClick = (e: any) => {
     e.stopPropagation();
+    dialPressedAtRef.current = performance.now();
     // Accumulate velocity: each click ADDS to the existing spin,
     // so rapid clicks let the dial reach high speeds while a single
     // click is a gentle nudge. Clamp to ceiling so we don't end up

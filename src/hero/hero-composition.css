@@ -208,9 +208,7 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   .hero-ring-wrap,
   .hero-mega-fill,
   .hero-bottom-scrim,
-  .hero-meta,
-  .hero-scroll,
-  .hero-scroll-arrow {
+  .hero-next {
     animation: none !important;
   }
   .hero-ring-wrap {
@@ -298,15 +296,22 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
 .hero-mega-fill {
   position: relative;
   z-index: 2;
-  color: var(--accent);
+  /* MONOTONE always-visible (user: orange + white only, no teal). SOLID
+     white fill stays bold over the dominant orange symbol field; an
+     ORANGE outline drawn via text-shadow (OUTSIDE the glyph, so it never
+     eats into the white) carries the letterform over the white ring
+     (where the white fill drops out and only the orange outline shows).
+     Two brand tones, legible over both regions, bold over the field. */
+  color: #ffffff;
   display: inline-block;
-  /* Bolder: OffBit ships 400/700 only, so past weight 700 the lift
-     comes from a proportional stroke that fattens the pixel glyphs at
-     every size (0.014em ≈ 3px at the 230px cap). Same accent as the
-     fill, so it reads as weight, not as an outline effect. (The CRT
-     scanline fill that briefly accompanied this was removed: user
-     verdict "cheesy and fake".) */
-  -webkit-text-stroke: 0.014em var(--accent);
+  -webkit-text-stroke: 0.008em #ffffff;
+  /* em-based so the outline scales with the clamp() font size. 8
+     directions = a clean blocky keyline around the pixel glyphs. */
+  text-shadow:
+    0.026em 0 var(--accent), -0.026em 0 var(--accent),
+    0 0.026em var(--accent), 0 -0.026em var(--accent),
+    0.019em 0.019em var(--accent), -0.019em 0.019em var(--accent),
+    0.019em -0.019em var(--accent), -0.019em -0.019em var(--accent);
   /* See hero-ring-wrap for the full entrance choreography note.
      Wordmark fill enters FIRST at 0.40s: the persistent signature
      is already anchored from the loading phase, so the wordmark is
@@ -489,85 +494,118 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.hero-scroll {
-  /* Now a real <button>: reset UA chrome so the chip styling controls
-     the look, and make it a proper affordance (pointer + keyboard). */
+/* ---- Bottom-right wayfinding cue: NEXT + a descending hairline + a
+   dot-matrix destination count. Replaces the banned arrow / "SCROLL" /
+   "01" chip. Deliberately UN-boxed (no chip surface) so the cue reads
+   as a wayfinding MARK, not another spec-sheet pill. */
+.hero-next {
   appearance: none;
   -webkit-appearance: none;
   border: none;
+  background: none;
   margin: 0;
+  padding: 4px 2px;
   cursor: pointer;
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
   justify-self: end;
   align-self: end;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
+  position: relative;
+  display: grid;
+  justify-items: center;
+  row-gap: 7px;
   color: var(--ink);
-  transition:
-    border-color var(--t-fast) var(--ease-out),
-    transform var(--t-fast) var(--ease-out);
-  /* Flat chip: mirrors .hero-meta so both bottom-corner elements read
-     as one system against the orange ASCII ring — solid sharp surface,
-     hairline border, no blur, no pill radius (spec-sheet voice). */
-  background: var(--bg-page, #eef0f3);
-  padding: 9px 16px;
-  border: 1px solid var(--ink-hairline);
-  border-radius: 0;
-  /* Scroll affordance lands just after the meta row: same 0.80s
-     starting beat but with a tiny stagger so the bottom row reads
-     as one unit settling together rather than two simultaneous
-     pops. */
+  transition: transform var(--t-fast) var(--ease-out);
   animation: hero-meta-in 700ms var(--ease-soft) both;
   animation-delay: 0.9s;
 }
-.hero-scroll-arrow {
-  display: inline-block;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--accent);
-  /* steps(2) per keyframe segment = discrete 2px hops (see the
-     hero-scroll-bob note above). */
-  animation: hero-scroll-bob 2.2s steps(2) infinite;
-  flex-shrink: 0;
+/* Soft feathered cool-white halo so the cue lifts off the busy orange
+   symbol field WITHOUT a hard chip edge (keeps the un-boxed "mark"
+   read; no border, no pill). */
+.hero-next::before {
+  content: "";
+  position: absolute;
+  inset: -12px -22px;
+  z-index: -1;
+  pointer-events: none;
+  /* Strong enough at the core that the accent segment (orange) reads
+     against cool-white instead of orange-on-orange, feathering fully to
+     transparent so there's no chip edge. */
+  background: radial-gradient(
+    ellipse 60% 62% at center,
+    rgba(238, 240, 243, 0.96) 0%,
+    rgba(238, 240, 243, 0.9) 40%,
+    rgba(238, 240, 243, 0.5) 68%,
+    rgba(238, 240, 243, 0) 100%
+  );
 }
-.hero-scroll-label {
-  color: inherit;
+.hero-next-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--ink);
 }
-.hero-scroll-idx {
+/* Static descent track: a 2px x 46px hairline channel. */
+.hero-next-rail {
+  position: relative;
+  width: 2px;
+  height: 46px;
+  background: var(--ink-hairline);
+  overflow: hidden;
+}
+/* The travelling accent segment hops DOWN the track in 4 discrete
+   pixel steps (steps(4)) — the OffBit quantised-motion voice. The
+   downward travel IS the "scroll down" signal; no arrow. */
+.hero-next-seg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 12px;
+  background: var(--accent);
+  animation: hero-next-descend 2.2s steps(4) infinite;
+}
+@keyframes hero-next-descend {
+  0%   { transform: translateY(-12px); opacity: 0; }
+  18%  { opacity: 1; }
+  82%  { opacity: 1; }
+  100% { transform: translateY(46px); opacity: 0; }
+}
+/* Dot-matrix destination count: implies a journey of N sections.
+   Dimmed accent, darkened to clear 4.5:1 on the cool-white page. */
+.hero-next-count {
+  font-family: var(--font-dot);
+  font-size: 12px;
+  letter-spacing: 0.16em;
   font-variant-numeric: tabular-nums;
-  /* Same contrast fix as .hero-meta-key: darkened accent so the small
-     "01" index clears 4.5:1 on the cool-white chip. */
   color: color-mix(in srgb, var(--accent) 66%, var(--ink));
-  font-weight: 600;
-  letter-spacing: 0.18em;
 }
-/* Hover/active feedback for the scroll button: accent border + a
-   1px lift, no layout shift (transform only), no soft shadow. */
-.hero-scroll:hover {
-  border-color: var(--accent);
+.hero-next:hover {
   transform: translateY(-1px);
 }
-.hero-scroll:active {
+.hero-next:hover .hero-next-label {
+  color: var(--accent);
+}
+.hero-next:active {
   transform: translateY(0);
 }
-/* Visible keyboard focus ring: mirrors the .hud-btn convention in
-   index.css (2px accent outline, 2px offset) so focus styling is
-   consistent across the app's interactive chrome. */
-.hero-scroll:focus-visible {
+.hero-next:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline-offset: 4px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .hero-scroll {
-    transition: none;
-  }
-  .hero-scroll:hover {
-    transform: none;
+  .hero-next { transition: none; }
+  .hero-next:hover { transform: none; }
+  /* Kill the travel; the track becomes a STATIC directional gradient
+     (solid accent at top, feathering to the hairline tone) — implies
+     "downward" with zero moving pixels. */
+  .hero-next-seg { display: none; }
+  .hero-next-rail {
+    background: linear-gradient(
+      to bottom,
+      var(--accent) 0%,
+      color-mix(in srgb, var(--accent) 40%, transparent) 45%,
+      var(--ink-hairline) 100%
+    );
   }
 }
 
@@ -657,26 +695,23 @@ html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
   .hero-meta-sep {
     display: none;
   }
-  .hero-scroll {
-    font-size: 10px;
-    /* Arrow-only square chip: the meta chip needs nearly the full row
-       at phone widths, so the SCROLL label + index would squeeze the
-       button into a clipped sliver. The bobbing accent arrow alone is
-       the affordance (aria-label carries the semantics). */
-    gap: 0;
-    min-height: 44px;
+  /* Wayfinding cue on phones: just the descending rail in a 44x44 tap
+     target (label + count drop; the moving line is the affordance,
+     aria-label carries the semantics). */
+  .hero-next {
     min-width: 44px;
+    min-height: 44px;
+    align-items: center;
     justify-content: center;
-    padding: 11px 13px;
-    /* Kill the 300ms tap delay so the scroll feels instant on touch. */
+    row-gap: 0;
     touch-action: manipulation;
   }
-  .hero-scroll-label,
-  .hero-scroll-idx {
+  .hero-next-label,
+  .hero-next-count {
     display: none;
   }
-  .hero-scroll-arrow {
-    font-size: 16px;
+  .hero-next-rail {
+    height: 28px;
   }
   /* Ring: still a presence, but the monumental type owns the frame now.
      Slightly smaller + quieter than the old 150vmax wash so the glyph
