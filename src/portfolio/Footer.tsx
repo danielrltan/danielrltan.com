@@ -142,12 +142,6 @@ export function Footer() {
             3. Colophon: build metadata. */}
         <div className="footer-grid">
           <div className="footer-col footer-col-elsewhere">
-            {/* Sign-off signature: replays the captured gesture when the
-                footer scrolls into view. Height 132 is the published
-                redesign value (a later sweep shrank it to 90, where it
-                read as a smudge instead of a signature; user: keep it
-                prominent, it's a signature feature in both senses). */}
-            <FooterSignature height={132} />
             <h3 className="footer-col-label" id="footer-elsewhere-label">
               Elsewhere
             </h3>
@@ -201,7 +195,7 @@ export function Footer() {
             </nav>
           </div>
 
-          <div className="footer-col footer-col-meta">
+          <div className="footer-col footer-col-meta footer-col-colophon">
             <h3 className="footer-col-label">Colophon</h3>
             <dl className="footer-meta">
               <div>
@@ -229,6 +223,15 @@ export function Footer() {
               </div>
             </dl>
           </div>
+        </div>
+
+        {/* Sign-off signature: replays the captured gesture when the
+            footer scrolls into view. Moved OUT of the Elsewhere column
+            (where it pushed that column's rows out of line with the
+            other two) to a full-width sign-off band below the aligned
+            grid, so the three column headers + rows line up. */}
+        <div className="footer-signoff">
+          <FooterSignature height={120} />
         </div>
 
         {/* Bottom: copyright + sign-off */}

@@ -87,29 +87,17 @@
   font-weight: 600;
 }
 
-/* Elsewhere column carries the signature canvas above its label.
-   The signature paints into the column's natural width as a
-   sign-off above the social links.
-   - flex column so we can push the label + links to the BOTTOM of
-     the column via `margin-top: auto` on the label. That makes the
-     elsewhere column's links end at the same horizontal line as
-     the index column's last item (grid cell stretches to tallest
-     column height; pushing elsewhere's content to bottom aligns
-     bottoms instead of tops). */
-.footer-col-elsewhere {
-  display: flex;
-  flex-direction: column;
-}
-.footer-col-elsewhere > :first-child {
-  margin-bottom: var(--space-4h);
+/* All three columns top-align now: the signature moved OUT to a
+   full-width sign-off band below the grid (see .footer-signoff), so
+   the Elsewhere column is a plain top-aligned column like the others
+   and the headers + rows line up across all three. */
+
+/* Sign-off signature band: full-width, left-aligned, sits below the
+   aligned grid as the closing gesture above the copyright row. */
+.footer-signoff {
+  margin-bottom: 64px;
   max-width: 100%;
   overflow: hidden;
-}
-/* Push the label+nav block to the bottom of the elsewhere column so
-   its last link (Résumé) aligns vertically with the index column's
-   last link (Elsewhere / 06). */
-.footer-col-elsewhere .footer-col-label {
-  margin-top: auto;
 }
 
 .footer-nav {
@@ -297,11 +285,8 @@
     gap: 40px;
     margin-bottom: var(--space-7);
   }
-  /* In the stacked layout there is no shared cell height to align
-     bottoms against, so the bottom-anchoring margin is moot; reset it
-     so the Elsewhere label sits directly under its signature. */
-  .footer-col-elsewhere .footer-col-label {
-    margin-top: 0;
+  .footer-signoff {
+    margin-bottom: 40px;
   }
 
   /* TOUCH TARGETS: on desktop the jump-link buttons + elsewhere links
