@@ -426,39 +426,6 @@ export function HeroSignature() {
             ))}
           </div>
         </div>
-
-        {/* Feathered cool-white scrim: quiets the orange ASCII ring in
-            the bottom strip so the meta pill + scroll chip read clearly.
-            Behind .hero-bottom (z-index 2), above the ring (z 0). */}
-        <div className="hero-bottom-scrim" aria-hidden />
-
-        <div className="hero-bottom">
-          {/* ROLE / LOC meta card removed (owner: useless + vibe-coded).
-              The name + the work below carry the role; SEO/a11y keep it
-              via the visually-hidden h1 above. */}
-          {/* Simple down arrow (user: no text, just an arrow). The
-              chevron bobs gently downward on a loop to read as "scroll
-              down". aria-label carries the semantics. */}
-          <button
-            type="button"
-            className="hero-next"
-            aria-label="Go to the next section"
-            onClick={() => {
-              const reduce = window.matchMedia(
-                "(prefers-reduced-motion: reduce)",
-              ).matches;
-              // Advance one viewport. The scroll choreography is purely
-              // scrollY-driven, so a plain scroll triggers the dive-in
-              // for free. Honour reduced-motion with an instant jump.
-              window.scrollTo({
-                top: window.innerHeight,
-                behavior: reduce ? "auto" : "smooth",
-              });
-            }}
-          >
-            <span className="hero-next-arrow" aria-hidden />
-          </button>
-        </div>
       </div>
     </>
   );

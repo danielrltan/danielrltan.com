@@ -209,24 +209,13 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
      opacity:0, only lifted by the keyframe we're disabling). */
   .hero-composition.is-visible,
   .hero-ring-wrap,
-  .hero-mega-fill,
-  .hero-bottom-scrim,
-  .hero-next {
+  .hero-mega-fill {
     animation: none !important;
   }
   .hero-ring-wrap {
     opacity: 0.55;
     transform: translate(-50%, -50%);
   }
-}
-
-/* Scroll-cue bob: the down arrow hops downward on a slow loop to read
-   as "scroll down" without shouting. steps(2) on each half makes it a
-   three-frame sprite hop (2px lands) instead of a smooth ease — the
-   pixel-motion voice at micro scale. */
-@keyframes hero-scroll-bob {
-  0%, 100% { transform: translateY(-2px); opacity: 0.75; }
-  50% { transform: translateY(2px); opacity: 1; }
 }
 
 /* ---- Mega wordmark: the centerpiece ----
@@ -376,64 +365,6 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
    renders a tagline, so the rules were dead. */
 
 /* ---- Bottom row: meta chip + scroll affordance ---- */
-.hero-bottom {
-  position: relative;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto;
-  gap: 14px 18px;
-  align-items: end;
-  /* Same visibility-gated hit-testing as the wordmark: an invisible
-     scroll button must not be clickable from sections below. */
-  pointer-events: var(--hero-pointer-events, auto);
-  /* No scroll-bound transform here. The dive-in on the composition
-     root carries the meta row out with the rest of the hero. Single
-     gesture, no per-element timing. */
-}
-
-/* ---- Bottom scrim: feathered cool-white mask behind the bottom UI.
-   ──────────────────────────────────────────────────────────────────
-   A soft horizontal band along the very bottom of the composition that
-   quiets the dense orange ASCII ring in the bottom ~14vh so the meta
-   pill + scroll chip lift cleanly off the noise. Sits ABOVE the ring
-   (z-index 0 wrap) but BELOW the bottom row (z-index 2), so it masks
-   the ASCII without sitting on top of the text.
-
-   Feathered to transparent at its TOP edge via a vertical linear-
-   gradient, so no hard rectangle line. The ASCII ring stays fully
-   visible everywhere else; this only dims the strip directly behind
-   the corner UI. A child of .hero-composition, so it scales + fades
-   with the hero→about dive as one body (intended). */
-.hero-bottom-scrim {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 16vh;
-  z-index: 1;
-  pointer-events: none;
-  /* Cool-white (var(--bg-page) #eef0f3) fading up to transparent.
-     Peaks at ~0.55 alpha at the very bottom, enough to knock the
-     orange chars back without reading as a solid fill, and feathers
-     to 0 well before the top edge. */
-  background: linear-gradient(
-    to top,
-    rgba(238, 240, 243, 0.55) 0%,
-    rgba(238, 240, 243, 0.42) 28%,
-    rgba(238, 240, 243, 0.22) 58%,
-    rgba(238, 240, 243, 0.06) 82%,
-    transparent 100%
-  );
-  /* Soft-light blend keeps the dim subtle: it lightens the orange
-     toward the page tone rather than flatly painting over it, so the
-     ring's texture still reads faintly through the scrim. */
-  mix-blend-mode: soft-light;
-  /* Enters with the bottom row so it doesn't pop in before the chips. */
-  animation: hero-meta-in 700ms var(--ease-soft) both;
-  animation-delay: 0.8s;
-}
-
 .hero-meta {
   font-family: var(--font-mono);
   color: var(--ink);
@@ -490,91 +421,6 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ---- Bottom-right wayfinding cue: NEXT + a descending hairline + a
-   dot-matrix destination count. Replaces the banned arrow / "SCROLL" /
-   "01" chip. Deliberately UN-boxed (no chip surface) so the cue reads
-   as a wayfinding MARK, not another spec-sheet pill. */
-.hero-next {
-  appearance: none;
-  -webkit-appearance: none;
-  border: none;
-  background: none;
-  margin: 0;
-  padding: 4px 2px;
-  cursor: pointer;
-  justify-self: end;
-  align-self: end;
-  position: relative;
-  display: grid;
-  justify-items: center;
-  row-gap: 7px;
-  color: var(--ink);
-  transition: transform var(--t-fast) var(--ease-out);
-  animation: hero-meta-in 700ms var(--ease-soft) both;
-  animation-delay: 0.9s;
-}
-/* Soft feathered cool-white halo so the cue lifts off the busy orange
-   symbol field WITHOUT a hard chip edge (keeps the un-boxed "mark"
-   read; no border, no pill). */
-.hero-next::before {
-  content: "";
-  position: absolute;
-  inset: -12px -22px;
-  z-index: -1;
-  pointer-events: none;
-  /* Strong enough at the core that the accent segment (orange) reads
-     against cool-white instead of orange-on-orange, feathering fully to
-     transparent so there's no chip edge. */
-  background: radial-gradient(
-    ellipse 60% 62% at center,
-    rgba(238, 240, 243, 0.96) 0%,
-    rgba(238, 240, 243, 0.9) 40%,
-    rgba(238, 240, 243, 0.5) 68%,
-    rgba(238, 240, 243, 0) 100%
-  );
-}
-/* Simple down arrow (user: no text, just an arrow). The wrapper bobs
-   gently downward on a loop; the ::before is a crisp CSS chevron. */
-.hero-next-arrow {
-  display: block;
-  position: relative;
-  width: 20px;
-  height: 20px;
-  animation: hero-next-bob 1.9s steps(4) infinite;
-}
-.hero-next-arrow::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 40%;
-  width: 12px;
-  height: 12px;
-  margin: -6px 0 0 -6px;
-  border-right: 2px solid var(--accent);
-  border-bottom: 2px solid var(--accent);
-  transform: rotate(45deg);
-}
-@keyframes hero-next-bob {
-  0%, 100% { transform: translateY(-3px); opacity: 0.55; }
-  50%      { transform: translateY(3px); opacity: 1; }
-}
-.hero-next:hover {
-  transform: translateY(1px);
-}
-.hero-next:active {
-  transform: translateY(2px);
-}
-.hero-next:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .hero-next { transition: none; }
-  .hero-next:hover { transform: none; }
-  /* No bob: the static chevron alone reads as "down". */
-  .hero-next-arrow { animation: none; opacity: 1; transform: none; }
-}
-
 /* ─────────────────────────────────────────────────────────────────────
  * MOBILE / TABLET (≤768px): portrait-first build-out.
  * ────────────────────────────────────────────────────────────────────
@@ -627,15 +473,6 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
     margin-top: 0.02em;
     align-self: flex-start;
   }
-  /* Bottom row stays a single row (meta left, scroll right), mirrors
-     desktop so the scroll affordance keeps the bottom-RIGHT corner,
-     clear of the global HUD's bottom-LEFT mobile pills. */
-  .hero-bottom {
-    gap: 10px 12px;
-    /* Lift the whole cluster above the ~54px bottom-left HUD pill zone
-       (reset/audio) so the meta chip never tucks under it. */
-    padding-bottom: 8px;
-  }
   .hero-meta {
     /* width:auto (not the desktop max-content): an explicit
        max-content width can never shrink, so the grid's 1fr column
@@ -660,14 +497,6 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
   }
   .hero-meta-sep {
     display: none;
-  }
-  /* Down arrow in a 44x44 tap target on phones. */
-  .hero-next {
-    min-width: 44px;
-    min-height: 44px;
-    align-items: center;
-    justify-content: center;
-    touch-action: manipulation;
   }
   /* Ring: still a presence, but the monumental type owns the frame now.
      Slightly smaller + quieter than the old 150vmax wash so the glyph
