@@ -27,15 +27,16 @@ interface Props {
   onClose: () => void;
 }
 
-// Panel metrics (CSS px). Rows clear the 44px touch-target floor.
+// Panel metrics (CSS px). Width matches the resting status card (250px) so
+// the guide reads as that card expanding, not a wider slab below it. Rows
+// clear the 44px touch-target floor.
 const HEADER_H = 36;
 const ROW_H = 46;
-const FOOTER_H = 28;
-const PANEL_W_DESKTOP = 304;
+const PANEL_W_DESKTOP = 250;
 const CELL = 10; // glyph cell size, matches HeroGlyphRing CELL_PX
 const RAMP = 7; // density ramp length (tileMask 0..7)
 
-const INK = "#0d0e10";
+const INK = "#000000";
 const ACCENT = "#e87040";
 const ACCENT_HOT = "#ff6a2a";
 const TEXT = "#eef2f7";
@@ -138,7 +139,7 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const PANEL_H = HEADER_H + SECTION_REGISTRY.length * ROW_H + FOOTER_H;
+  const PANEL_H = HEADER_H + SECTION_REGISTRY.length * ROW_H;
   const panelW = isMobile ? Math.min(Math.round(window.innerWidth * 0.78), PANEL_W_DESKTOP) : PANEL_W_DESKTOP;
 
   // ── mount / show lifecycle (so the exit transition can play) ──────────
@@ -386,7 +387,7 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
 
   const top = isMobile
     ? "calc(58px + env(safe-area-inset-top, 0px))"
-    : 64;
+    : 70;
   const right = isMobile
     ? "calc(14px + env(safe-area-inset-right, 0px))"
     : 22;
@@ -496,8 +497,8 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
                   height: ROW_H,
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
-                  padding: "0 12px 0 14px",
+                  gap: 7,
+                  padding: "0 10px 0 12px",
                   background: "transparent",
                   border: "none",
                   borderLeft: isActive
@@ -587,25 +588,6 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
               </button>
             );
           })}
-        </div>
-
-        {/* Footer hint */}
-        <div
-          aria-hidden
-          style={{
-            position: "relative",
-            height: FOOTER_H,
-            display: "flex",
-            alignItems: "center",
-            padding: "0 12px",
-            borderTop: "1px solid rgba(232,112,64,0.22)",
-            fontFamily: '"VT323", monospace',
-            fontSize: 12,
-            letterSpacing: "0.08em",
-            color: "rgba(238,242,247,0.5)",
-          }}
-        >
-          UP/DN TUNE / RET JUMP / ESC CLOSE
         </div>
       </div>
     </>
