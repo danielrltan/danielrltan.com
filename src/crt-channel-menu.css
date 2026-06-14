@@ -1,11 +1,12 @@
 /* ─────────────────────────────────────────────────────────────────────
  * OVERDRIVE NAV — section indicator card + the jump menu it opens.
  *
- * Persona-flavoured DIMENSION (angular shards, diagonal slam cascade, bold
- * punched numerals, halftone) re-skinned to THIS site: orange + ink + white,
- * sharp + glossy + premium ("CS:GO skin" sheen), clean rather than grungy —
- * no red, no stars-everywhere, one accent. Inline styles in the components
- * carry data/positioning; this file carries the shape, gloss, motion + the
+ * DIMENSION without the dark Persona pastiche: clean LIGHT shards in the
+ * site's own retro-futurism voice — cool off-white skins, orange + ink,
+ * sharp angular geometry, glossy bevel, technical Offbit/VT323 type. The
+ * shards still slam in on a staggered diagonal cascade and tilt in 3D so
+ * it pops; the active section is the one orange-filled shard. Inline styles
+ * carry data/positioning; this file carries shape, gloss, motion + the
  * prefers-reduced-motion fallback.
  * ──────────────────────────────────────────────────────────────────── */
 
@@ -16,15 +17,12 @@
 }
 
 /* ============================ RESTING CARD ============================ */
-/* The top-right "where am I" indicator, now an angular glossy slab. */
 .status-nav-card {
   position: relative;
-  /* sharp Persona corner cut, bottom-right */
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
   transition: transform 160ms cubic-bezier(0.2, 0.9, 0.25, 1.05),
     filter 160ms ease;
 }
-/* Orange accent wedge down the left edge. */
 .status-nav-card::before {
   content: "";
   position: absolute;
@@ -36,14 +34,13 @@
   transition: width 170ms cubic-bezier(0.2, 0.9, 0.25, 1.05);
   pointer-events: none;
 }
-/* Glossy sheen: a bright diagonal highlight (skin gloss). */
 .status-nav-card::after {
   content: "";
   position: absolute;
   inset: 0;
   background: linear-gradient(
     152deg,
-    rgba(255, 255, 255, 0.6) 0%,
+    rgba(255, 255, 255, 0.65) 0%,
     rgba(255, 255, 255, 0.08) 30%,
     rgba(255, 255, 255, 0) 52%
   );
@@ -81,7 +78,6 @@
 }
 
 /* ============================ JUMP MENU ============================== */
-/* Full-viewport stage so shards can cascade across; perspective for depth. */
 .navx-stage {
   position: fixed;
   inset: 0;
@@ -93,18 +89,17 @@
   pointer-events: auto;
 }
 
-/* Flat ink wash + a faint halftone, catches outside clicks. */
+/* Soft LIGHT focus wash (not a black UI) + a faint orange halftone so the
+   floating shards read against the page without going dark. */
 .navx-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(13, 14, 16, 0.34);
-  /* halftone dot grid (a clean retro nod, not decorative dot-chains) */
+  background: rgba(238, 240, 243, 0.5);
   background-image: radial-gradient(
-    rgba(232, 112, 64, 0.16) 1px,
+    rgba(232, 112, 64, 0.18) 1px,
     transparent 1.4px
   );
   background-size: 7px 7px;
-  background-blend-mode: normal;
   opacity: 0;
   transition: opacity 220ms ease;
 }
@@ -112,7 +107,6 @@
   opacity: 1;
 }
 
-/* The raked shard stack, anchored top-right, tilted in 3D. */
 .navx-stack {
   position: absolute;
   display: flex;
@@ -123,28 +117,28 @@
   transform-origin: 100% 0;
 }
 
-/* One section = one angular shard (a slanted parallelogram banner). */
+/* One section = one LIGHT angular shard. */
 .navx-shard {
   position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   height: 58px;
-  padding: 0 18px 0 16px;
+  padding: 0 18px 0 18px;
   border: none;
   cursor: pointer;
-  color: #f4f5f7;
-  background: linear-gradient(110deg, #15171c 0%, #0a0b0d 100%);
-  /* slanted left + right edges -> a Persona slash banner */
-  clip-path: polygon(7% 0, 100% 0, 93% 100%, 0% 100%);
+  color: var(--navx-ink);
+  background: linear-gradient(158deg, #ffffff 0%, #e9edf1 100%);
+  /* mild right-edge slant: dynamic but clean (not the busy Persona slash) */
+  clip-path: polygon(0 0, 100% 0, 96% 100%, 0% 100%);
   text-align: left;
   font: inherit;
   transform-origin: 100% 50%;
-  /* diagonal slam-in; per-shard delay via --i */
+  box-shadow: -5px 7px 16px -6px rgba(13, 14, 16, 0.28);
   opacity: 0;
   animation: navx-shard-in 460ms cubic-bezier(0.18, 0.92, 0.24, 1.12) both;
   animation-delay: calc(var(--i) * 46ms);
-  transition: filter 130ms ease, background 130ms ease;
+  transition: filter 130ms ease, background 130ms ease, transform 130ms ease;
   will-change: transform, opacity;
 }
 @keyframes navx-shard-in {
@@ -160,7 +154,6 @@
     transform: translateX(0) skewX(0deg) scaleX(1);
   }
 }
-/* Exit: shards eject back out to the right, reverse stagger. */
 .navx-stage[data-closing="true"] .navx-shard {
   animation: navx-shard-out 240ms cubic-bezier(0.5, 0, 0.75, 0) both;
   animation-delay: calc((6 - var(--i)) * 26ms);
@@ -172,7 +165,7 @@
   }
 }
 
-/* Orange accent slash down the leading edge of inactive shards. */
+/* Orange index bar down the leading edge. */
 .navx-shard::before {
   content: "";
   position: absolute;
@@ -181,48 +174,48 @@
   bottom: 0;
   width: 5px;
   background: linear-gradient(var(--navx-accent), var(--navx-accent-hot));
-  clip-path: polygon(40% 0, 100% 0, 100% 100%, 0 100%);
 }
-/* Gloss sheen sweep across each shard (skin highlight). */
+/* Glossy bevel: bright top, faint shade at the foot (plastic skin sheen). */
 .navx-shard::after {
   content: "";
   position: absolute;
   inset: 0;
   background: linear-gradient(
-    150deg,
-    rgba(255, 255, 255, 0.16) 0%,
-    rgba(255, 255, 255, 0.03) 26%,
-    rgba(255, 255, 255, 0) 46%
+    180deg,
+    rgba(255, 255, 255, 0.7) 0%,
+    rgba(255, 255, 255, 0) 32%,
+    rgba(13, 14, 16, 0) 70%,
+    rgba(13, 14, 16, 0.05) 100%
   );
   pointer-events: none;
 }
 
-/* Hover / keyboard-armed shard pops: brighter + a forward shadow. */
+/* Hover / keyboard-armed shard: lifts toward the viewer, warms slightly. */
 .navx-shard:hover,
 .navx-shard[data-armed="true"] {
-  filter: brightness(1.18) drop-shadow(-6px 8px 14px rgba(13, 14, 16, 0.4));
-  background: linear-gradient(110deg, #1c1f26 0%, #101216 100%);
+  background: linear-gradient(158deg, #ffffff 0%, #fbe9df 100%);
+  transform: translateX(-7px);
+  filter: drop-shadow(-8px 9px 16px rgba(232, 112, 64, 0.3));
 }
 .navx-shard:focus-visible {
   outline: 2px solid var(--navx-accent);
   outline-offset: -3px;
 }
 
-/* Active section = the tuned channel: full orange skin, ink text, popped. */
+/* Active section = the one orange-skin shard. */
 .navx-shard[data-active="true"] {
-  background: linear-gradient(110deg, var(--navx-accent-hot) 0%, var(--navx-accent) 100%);
-  color: var(--navx-ink);
-  filter: drop-shadow(-8px 10px 18px rgba(232, 112, 64, 0.5));
+  background: linear-gradient(118deg, var(--navx-accent-hot) 0%, var(--navx-accent) 100%);
+  color: #ffffff;
+  filter: drop-shadow(-8px 10px 18px rgba(232, 112, 64, 0.55));
 }
 .navx-shard[data-active="true"]::before {
   background: var(--navx-ink);
 }
 .navx-shard[data-active="true"]::after {
   background: linear-gradient(
-    150deg,
-    rgba(255, 255, 255, 0.5) 0%,
-    rgba(255, 255, 255, 0.12) 24%,
-    rgba(255, 255, 255, 0) 44%
+    180deg,
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0) 34%
   );
 }
 
@@ -236,7 +229,7 @@
   color: var(--navx-accent);
 }
 .navx-shard[data-active="true"] .navx-num {
-  color: var(--navx-ink);
+  color: #ffffff;
 }
 .navx-label {
   flex: 1;
@@ -251,41 +244,38 @@
   font-family: "VT323", monospace;
   font-size: 13px;
   letter-spacing: 0.12em;
+  color: var(--navx-accent);
   opacity: 0;
   transition: opacity 120ms ease;
+}
+.navx-shard[data-active="true"] .navx-tag {
+  color: #ffffff;
+  opacity: 0.9;
 }
 .navx-shard:hover .navx-tag,
 .navx-shard[data-armed="true"] .navx-tag {
   opacity: 0.85;
 }
-.navx-shard[data-active="true"] .navx-tag {
-  opacity: 0.85;
-}
 
-/* Stage header chip: a small "JUMP" marker so the overlay reads as a menu. */
+/* Header chip: an orange "JUMP" tab so the overlay reads as a menu. */
 .navx-head {
   position: absolute;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 12px 0 10px;
-  background: var(--navx-ink);
-  color: #f4f5f7;
+  height: 28px;
+  padding: 0 14px;
+  background: linear-gradient(120deg, var(--navx-accent-hot), var(--navx-accent));
+  color: #ffffff;
   clip-path: polygon(0 0, 100% 0, 90% 100%, 0 100%);
   font-family: "VT323", monospace;
   font-size: 15px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.18em;
+  box-shadow: -4px 6px 14px -6px rgba(232, 112, 64, 0.5);
   opacity: 0;
   animation: navx-shard-in 400ms cubic-bezier(0.18, 0.92, 0.24, 1.12) both;
 }
 .navx-stage[data-closing="true"] .navx-head {
   animation: navx-shard-out 200ms ease both;
-}
-.navx-head-dot {
-  width: 7px;
-  height: 7px;
-  background: var(--navx-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -303,6 +293,10 @@
     opacity: 1;
     transform: none;
     clip-path: none;
+  }
+  .navx-shard:hover,
+  .navx-shard[data-armed="true"] {
+    transform: none;
   }
   .navx-stage[data-closing="true"] .navx-shard,
   .navx-stage[data-closing="true"] .navx-head {
