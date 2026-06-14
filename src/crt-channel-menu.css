@@ -355,27 +355,31 @@
   pointer-events: auto;
 }
 /* drei <Html> label = real clickable button on each object. */
-/* Text sits ON the object: plain white, no card chrome. A dark + orange
-   shadow keeps it legible over the orange shapes AND the light page. */
+/* Text sits ON the object as graphic OUTLINED type — white fill with a
+   crisp ink stroke (no mushy drop shadow), so it reads as a sticker/jersey
+   mark legible over the orange dither AND the light page. Goes orange when
+   active / hovered. */
 .navx-spill-label {
   padding: 2px 4px;
   background: none;
   border: none;
   box-shadow: none;
   color: #ffffff;
-  font: 800 15px/1 "Geist", system-ui, sans-serif;
+  font: 800 20px/1 "Geist", system-ui, sans-serif;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   white-space: nowrap;
   cursor: pointer;
   pointer-events: auto;
-  text-shadow: 0 1px 4px rgba(13, 14, 16, 0.7), 0 0 2px rgba(13, 14, 16, 0.65);
-  transition: transform 120ms ease, text-shadow 120ms ease;
+  -webkit-text-stroke: 1.4px var(--navx-ink);
+  paint-order: stroke fill;
+  transition: transform 130ms cubic-bezier(0.2, 0.9, 0.25, 1.05), color 130ms ease;
 }
 .navx-spill-label[data-active="true"] {
-  text-shadow: 0 0 6px rgba(255, 106, 42, 0.95), 0 1px 4px rgba(13, 14, 16, 0.7);
+  color: var(--navx-accent-hot);
 }
 .navx-spill-label:hover,
 .navx-spill-label[data-armed="true"] {
-  transform: scale(1.14);
+  transform: scale(1.16);
+  color: var(--navx-accent-hot);
 }
