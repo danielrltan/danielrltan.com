@@ -203,12 +203,16 @@ const FRAGMENT = /* glsl */ `
         pos += vec2(cos(ph), sin(ph)) * uBurst * 0.075 * mag;
       }
       vec2 d = (uv - pos) * uAspect;
-      // Gentle taper toward the tail; subtle surface wobble (mercury is
-      // smoother/tighter than the old wavy slime).
-      float ang = atan(d.y, d.x);
-      float r = (uBlobRadius * (1.0 - fi * 0.30)) * (1.0 - uBurst * 0.4)
-        + sin(ang * 3.0 + bt * 1.5 - fi * 6.2) * 0.008
-        + sin(ang * 5.0 - bt * 1.0) * 0.004;
+      // RANDOM organic wobble: flowing value-noise sampled around the
+      // surface direction (continuous, no seam), evolving over time. The
+      // old sin(ang*3)+sin(ang*5) harmonics made a regular SPINNING PENTAGON;
+      // noise makes it irregular + liquid. Per-ball offset (fi) so each ball
+      // ripples on its own.
+      vec2 dir = normalize(d + vec2(1e-4));
+      float wob =
+        (noise2(dir * 2.6 + vec2(bt * 0.5, fi * 7.0)) - 0.5) * 0.05
+        + (noise2(dir * 5.3 - vec2(bt * 0.35, fi * 3.0)) - 0.5) * 0.022;
+      float r = (uBlobRadius * (1.0 - fi * 0.30)) * (1.0 - uBurst * 0.4) + wob;
       float di = length(d) - r;
       float h = clamp(0.5 + 0.5 * (di - sd) / k, 0.0, 1.0);
       sd = mix(di, sd, h) - k * h * (1.0 - h);
@@ -264,7 +268,7 @@ const FRAGMENT = /* glsl */ `
     // now the colour is encoded correctly (see colorspace_fragment
     // below), the TRUE brand orange reads as a refined halo behind the
     // keypad rather than a broad wash competing with the cool palette.
-    glow = clamp(glow * 0.30, 0.0, 0.30);
+    glow = clamp(glow * 0.13, 0.0, 0.13);
     // Multiply by external reveal opacity (driven from KeypadScene
     // → ref → useFrame). 0 = no glow at all, 1 = full glow. Lets
     // Keypad.tsx hide the orange wash until AFTER the keypad's
@@ -288,10 +292,10 @@ const FRAGMENT = /* glsl */ `
     // the top.
     vec3 tintedBg = mix(uBg, uGlow, glow);
     tintedBg = mix(tintedBg, uHotColor, clamp(hotField * 0.5, 0.0, 0.5));
-    // Liquid fill: a FILLED warm body inside the glob so it reads as a solid
-    // droplet of fluid (mercury), not a hollow grain-dotted outline. Bumped
-    // 0.5 -> 0.74 per "not enough liquid filling".
-    tintedBg = mix(tintedBg, uGlow, blob * 0.74);
+    // Liquid fill: a near-UNIFORM solid orange body inside the glob (0.92) so
+    // the blob doesn't show the ambient-glow gradient through it as a weird
+    // "shine". It reads as one clean body of fluid.
+    tintedBg = mix(tintedBg, uGlow, blob * 0.92);
     // Rice grains INVERT toward light under the charge so they contrast
     // against the warm glow instead of muddying into it (grey-on-amber
     // had almost no separation).
