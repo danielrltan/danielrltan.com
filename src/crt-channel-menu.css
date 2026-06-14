@@ -423,6 +423,26 @@
   height: 100% !important;
   pointer-events: auto;
 }
+/* Blur + white veil over the bunched deal-out start; clears once settled so
+   the messy corner-bunch is never seen sharp. */
+.navx-spill-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(245, 246, 248, 0.4);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  opacity: 1;
+  transition: opacity 540ms ease;
+}
+.navx-spill-root[data-settled="true"] .navx-spill-veil {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .navx-spill-veil {
+    display: none;
+  }
+}
 /* drei <Html> label = real clickable button on each object. */
 /* Text sits ON the object as graphic OUTLINED type — white fill with a
    crisp ink stroke (no mushy drop shadow), so it reads as a sticker/jersey
@@ -434,13 +454,13 @@
   border: none;
   box-shadow: none;
   color: #ffffff;
-  font: 400 30px/1 "Offbit", "VT323", monospace;
+  font: 400 40px/1 "Offbit", "VT323", monospace;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
   cursor: pointer;
   pointer-events: auto;
-  -webkit-text-stroke: 1.6px var(--navx-ink);
+  -webkit-text-stroke: 2.6px var(--navx-ink);
   paint-order: stroke fill;
   transition: transform 130ms cubic-bezier(0.2, 0.9, 0.25, 1.05), color 130ms ease;
 }

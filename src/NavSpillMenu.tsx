@@ -101,13 +101,13 @@ interface Spec {
 // targets are compact offsets around the centre.
 const CLUSTER_CENTER = new THREE.Vector3(0, 0, 0);
 const SPECS: Spec[] = [
-  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.64, target: [-1.5, 1.15, 0.3], spin: [0.4, 0.5, 0.0] },
-  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.52, target: [0.3, 1.6, -0.4], spin: [0.45, -0.4, 0.2] },
-  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.58, target: [1.6, 0.55, 0.5], spin: [0.35, 0.5, 0.25] },
-  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.64, target: [-0.3, -0.3, 0.8], spin: [-0.5, 0.4, 0.0] },
-  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.58, target: [1.25, -1.3, -0.1], spin: [0.5, 0.35, 0.2] },
-  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.58, target: [-1.45, -1.25, 0.3], spin: [0.4, -0.45, 0.0] },
-  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.58, target: [0.7, 0.2, 1.2], spin: [0.32, 0.55, 0.1] },
+  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.76, target: [-1.5, 1.15, 0.3], spin: [0.4, 0.5, 0.0] },
+  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.62, target: [0.3, 1.6, -0.4], spin: [0.45, -0.4, 0.2] },
+  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.7, target: [1.6, 0.55, 0.5], spin: [0.35, 0.5, 0.25] },
+  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.76, target: [-0.3, -0.3, 0.8], spin: [-0.5, 0.4, 0.0] },
+  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.7, target: [1.25, -1.3, -0.1], spin: [0.5, 0.35, 0.2] },
+  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.7, target: [-1.45, -1.25, 0.3], spin: [0.4, -0.45, 0.0] },
+  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.7, target: [0.7, 0.2, 1.2], spin: [0.32, 0.55, 0.1] },
 ];
 // Corner of the region the objects spill OUT from (offset from centre).
 const SPILL_ORIGIN = new THREE.Vector3(2.2, 2.2, 1.2);
@@ -273,8 +273,8 @@ function SpillField({
   useFrame((_, dt) => {
     const g = fieldRef.current;
     if (!g || reduced) return;
-    const ty = pointer.current.x * 0.18;
-    const tx = -pointer.current.y * 0.13;
+    const ty = pointer.current.x * 0.1;
+    const tx = -pointer.current.y * 0.08;
     const k = 1 - Math.exp(-dt * 5);
     g.rotation.y += (ty - g.rotation.y) * k;
     g.rotation.x += (tx - g.rotation.x) * k;
@@ -307,6 +307,9 @@ interface Props {
 export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
   const [mounted, setMounted] = useState(false);
   const [shown, setShown] = useState(false);
+  // `settled` flips true once the deal-out spill finishes; until then a
+  // blurred white veil masks the ugly bunched-in-the-corner start.
+  const [settled, setSettled] = useState(false);
   const [armed, setArmed] = useState(activeIdx);
   const startMsRef = useRef(0);
   const pointer = useRef({ x: 0, y: 0 });
@@ -319,11 +322,18 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
       startMsRef.current = performance.now();
       setArmed(activeIdx);
       setMounted(true);
+      setSettled(false);
       const r = requestAnimationFrame(() => setShown(true));
-      return () => cancelAnimationFrame(r);
+      // Clear the blur veil once the deal-out has spread the objects.
+      const st = window.setTimeout(() => setSettled(true), 820);
+      return () => {
+        cancelAnimationFrame(r);
+        window.clearTimeout(st);
+      };
     }
     if (mounted) {
       setShown(false);
+      setSettled(false);
       const t = window.setTimeout(() => setMounted(false), 240);
       return () => window.clearTimeout(t);
     }
@@ -358,12 +368,16 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
   if (!mounted) return null;
 
   return (
-    <div className="navx-spill-root" data-open={shown ? "true" : "false"}>
+    <div
+      className="navx-spill-root"
+      data-open={shown ? "true" : "false"}
+      data-settled={settled ? "true" : "false"}
+    >
       <div className="navx-spill-scrim" onClick={onClose} aria-hidden />
       <div className="navx-spill-stage">
         <Canvas
           className="navx-spill-canvas"
-          camera={{ position: [0, 0, 9], fov: 40 }}
+          camera={{ position: [0, 0, 8.2], fov: 40 }}
           dpr={[1, 2]}
           gl={{ alpha: true, antialias: true }}
           onPointerMissed={onClose}
@@ -378,6 +392,9 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
             select={select}
           />
         </Canvas>
+        {/* Blur+white veil over the bunched deal-out start; clears once the
+            objects have spread (data-settled), so the messy start is hidden. */}
+        <div className="navx-spill-veil" aria-hidden />
       </div>
     </div>
   );

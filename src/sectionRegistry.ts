@@ -21,7 +21,7 @@ export const SECTION_REGISTRY: SectionEntry[] = [
   { number: "02", label: "Stack", selector: ".portfolio-mac" },
   { number: "03", label: "Work", selector: ".portfolio-work" },
   { number: "04", label: "Play", selector: ".portfolio-other" },
-  { number: "05", label: "Bits and pieces", selector: ".portfolio-bp" },
+  { number: "05", label: "Moments", selector: ".portfolio-bp" },
   { number: "06", label: "Contact", selector: ".keypad-section" },
 ];
 
