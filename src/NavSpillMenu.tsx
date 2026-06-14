@@ -103,14 +103,16 @@ interface Spec {
 // narrow/short windows). The group rotates toward the cursor (parallax);
 // targets are compact offsets around the centre.
 const CLUSTER_CENTER = new THREE.Vector3(0, 0, 0);
+// Laid out as a loose RING around the centre (evenly spaced) so the seven
+// shapes don't pile up / overlap heavily once settled.
 const SPECS: Spec[] = [
-  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.88, target: [-1.5, 1.15, 0.3], spin: [0.4, 0.5, 0.0] },
-  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.72, target: [0.3, 1.6, -0.4], spin: [0.45, -0.4, 0.2] },
-  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.82, target: [1.6, 0.55, 0.5], spin: [0.35, 0.5, 0.25] },
-  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.88, target: [-0.3, -0.3, 0.8], spin: [-0.5, 0.4, 0.0] },
-  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.82, target: [1.25, -1.3, -0.1], spin: [0.5, 0.35, 0.2] },
-  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.82, target: [-1.45, -1.25, 0.3], spin: [0.4, -0.45, 0.0] },
-  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.82, target: [0.7, 0.2, 1.2], spin: [0.32, 0.55, 0.1] },
+  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.82, target: [-1.7, 1.15, 0.3], spin: [0.4, 0.5, 0.0] },
+  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.7, target: [0.1, 1.85, -0.4], spin: [0.45, -0.4, 0.2] },
+  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.78, target: [1.9, 0.8, 0.4], spin: [0.35, 0.5, 0.25] },
+  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.82, target: [-1.95, -0.25, 0.8], spin: [-0.5, 0.4, 0.0] },
+  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.78, target: [0.4, -1.7, -0.1], spin: [0.5, 0.35, 0.2] },
+  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.78, target: [-1.6, -1.5, 0.3], spin: [0.4, -0.45, 0.0] },
+  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.76, target: [1.6, -0.95, 1.2], spin: [0.32, 0.55, 0.1] },
 ];
 // Corner of the region the objects spill OUT from (offset from centre).
 const SPILL_ORIGIN = new THREE.Vector3(2.2, 2.2, 1.2);
@@ -415,10 +417,15 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
   return (
     <div className="navx-spill-root" data-open={shown ? "true" : "false"}>
       <div className="navx-spill-scrim" onClick={onClose} aria-hidden />
+      <button
+        className="navx-close"
+        onClick={onClose}
+        aria-label="Close section menu"
+      />
       <div className="navx-spill-stage">
         <Canvas
           className="navx-spill-canvas"
-          camera={{ position: [0, 0, 8.2], fov: 40 }}
+          camera={{ position: [0, 0, 8.7], fov: 40 }}
           dpr={[1, 2]}
           gl={{ alpha: true, antialias: true }}
           onPointerMissed={onClose}

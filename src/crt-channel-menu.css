@@ -427,6 +427,56 @@
   height: 100% !important;
   pointer-events: auto;
 }
+/* Clear X close button (top-right, just under the status card). */
+.navx-close {
+  position: absolute;
+  top: clamp(82px, 9vh, 104px);
+  right: clamp(12px, 2.5vw, 34px);
+  width: 40px;
+  height: 40px;
+  background: #ffffff;
+  border: 1px solid rgba(13, 14, 16, 0.16);
+  box-shadow: 4px 5px 0 0 var(--navx-accent);
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 200ms ease 140ms, transform 200ms ease 140ms,
+    box-shadow 130ms ease, background 130ms ease;
+}
+.navx-spill-root[data-open="true"] .navx-close {
+  opacity: 1;
+  transform: translateY(0);
+}
+.navx-close::before,
+.navx-close::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 17px;
+  height: 2.6px;
+  background: var(--navx-ink);
+}
+.navx-close::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.navx-close::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+.navx-close:hover {
+  background: var(--navx-accent-hot);
+  transform: translate(3px, 3px);
+  box-shadow: 1px 2px 0 0 var(--navx-accent-deep);
+}
+.navx-close:hover::before,
+.navx-close:hover::after {
+  background: #ffffff;
+}
+.navx-close:focus-visible {
+  outline: 2px solid var(--navx-accent);
+  outline-offset: 3px;
+}
 /* drei <Html> label = real clickable button on each object. */
 /* Text sits ON the object as graphic OUTLINED type — white fill with a
    crisp ink stroke (no mushy drop shadow), so it reads as a sticker/jersey
