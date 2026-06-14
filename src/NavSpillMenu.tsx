@@ -94,21 +94,23 @@ interface Spec {
   target: [number, number, number];
   spin: [number, number, number];
 }
-// The whole arrangement lives in a group at CLUSTER_CENTER and ROTATES
-// toward the cursor (real parallax), so targets here are offsets FROM that
-// centre. Faster multi-axis spin so every object visibly tumbles.
-const CLUSTER_CENTER = new THREE.Vector3(2.6, 0.85, 0.0);
+// The arrangement is CENTRED at the origin and framed by a contained
+// top-right canvas region, so it always fits regardless of page aspect
+// (positioning it in the corner of a full-screen frustum overflowed on
+// narrow/short windows). The group rotates toward the cursor (parallax);
+// targets are compact offsets around the centre.
+const CLUSTER_CENTER = new THREE.Vector3(0, 0, 0);
 const SPECS: Spec[] = [
-  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.5, target: [-1.3, 1.0, 0.3], spin: [0.4, 0.5, 0.0] },
-  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.4, target: [0.5, 1.35, -0.4], spin: [0.45, -0.4, 0.2] },
-  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.46, target: [1.85, 0.45, 0.6], spin: [0.35, 0.5, 0.25] },
-  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.5, target: [-0.35, -0.35, 0.9], spin: [-0.5, 0.4, 0.0] },
-  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.46, target: [1.15, -1.05, -0.1], spin: [0.5, 0.35, 0.2] },
-  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.47, target: [-1.2, -1.15, 0.35], spin: [0.4, -0.45, 0.0] },
-  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.46, target: [0.7, 0.35, 1.3], spin: [0.32, 0.55, 0.1] },
+  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.64, target: [-1.5, 1.15, 0.3], spin: [0.4, 0.5, 0.0] },
+  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.52, target: [0.3, 1.6, -0.4], spin: [0.45, -0.4, 0.2] },
+  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.58, target: [1.6, 0.55, 0.5], spin: [0.35, 0.5, 0.25] },
+  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.64, target: [-0.3, -0.3, 0.8], spin: [-0.5, 0.4, 0.0] },
+  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.58, target: [1.25, -1.3, -0.1], spin: [0.5, 0.35, 0.2] },
+  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.58, target: [-1.45, -1.25, 0.3], spin: [0.4, -0.45, 0.0] },
+  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.58, target: [0.7, 0.2, 1.2], spin: [0.32, 0.55, 0.1] },
 ];
-// Cluster the objects spill OUT from (offset from CLUSTER_CENTER).
-const SPILL_ORIGIN = new THREE.Vector3(2.6, 2.1, 1.4);
+// Corner of the region the objects spill OUT from (offset from centre).
+const SPILL_ORIGIN = new THREE.Vector3(2.2, 2.2, 1.2);
 
 function SpillObject({
   index,
@@ -271,8 +273,8 @@ function SpillField({
   useFrame((_, dt) => {
     const g = fieldRef.current;
     if (!g || reduced) return;
-    const ty = pointer.current.x * 0.34;
-    const tx = -pointer.current.y * 0.26;
+    const ty = pointer.current.x * 0.18;
+    const tx = -pointer.current.y * 0.13;
     const k = 1 - Math.exp(-dt * 5);
     g.rotation.y += (ty - g.rotation.y) * k;
     g.rotation.x += (tx - g.rotation.x) * k;
@@ -358,23 +360,25 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
   return (
     <div className="navx-spill-root" data-open={shown ? "true" : "false"}>
       <div className="navx-spill-scrim" onClick={onClose} aria-hidden />
-      <Canvas
-        className="navx-spill-canvas"
-        camera={{ position: [0, 0, 9.5], fov: 32 }}
-        dpr={[1, 2]}
-        gl={{ alpha: true, antialias: true }}
-        onPointerMissed={onClose}
-      >
-        <SpillField
-          activeIdx={activeIdx}
-          armed={armed}
-          setArmed={setArmed}
-          startMs={startMsRef.current}
-          reduced={reduced}
-          pointer={pointer}
-          select={select}
-        />
-      </Canvas>
+      <div className="navx-spill-stage">
+        <Canvas
+          className="navx-spill-canvas"
+          camera={{ position: [0, 0, 9], fov: 40 }}
+          dpr={[1, 2]}
+          gl={{ alpha: true, antialias: true }}
+          onPointerMissed={onClose}
+        >
+          <SpillField
+            activeIdx={activeIdx}
+            armed={armed}
+            setArmed={setArmed}
+            startMs={startMsRef.current}
+            reduced={reduced}
+            pointer={pointer}
+            select={select}
+          />
+        </Canvas>
+      </div>
     </div>
   );
 }

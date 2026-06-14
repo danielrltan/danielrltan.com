@@ -399,9 +399,28 @@
   background-size: 7px 7px;
   pointer-events: none;
 }
+.navx-spill-root[data-open="true"] .navx-spill-scrim {
+  pointer-events: auto;
+}
+/* Contained top-right region the objects spill into — so the cluster is
+   always framed there regardless of page aspect (no overflow into the room
+   or off the right edge). */
+.navx-spill-stage {
+  position: absolute;
+  top: clamp(48px, 6vh, 86px);
+  right: clamp(10px, 2vw, 30px);
+  width: min(54vw, 660px);
+  height: min(70vh, 680px);
+  pointer-events: none;
+}
+.navx-spill-root[data-open="true"] .navx-spill-stage {
+  pointer-events: auto;
+}
 .navx-spill-canvas {
   position: absolute !important;
   inset: 0;
+  width: 100% !important;
+  height: 100% !important;
   pointer-events: auto;
 }
 /* drei <Html> label = real clickable button on each object. */
@@ -415,13 +434,13 @@
   border: none;
   box-shadow: none;
   color: #ffffff;
-  font: 800 20px/1 "Geist", system-ui, sans-serif;
+  font: 400 30px/1 "Offbit", "VT323", monospace;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
   cursor: pointer;
   pointer-events: auto;
-  -webkit-text-stroke: 1.4px var(--navx-ink);
+  -webkit-text-stroke: 1.6px var(--navx-ink);
   paint-order: stroke fill;
   transition: transform 130ms cubic-bezier(0.2, 0.9, 0.25, 1.05), color 130ms ease;
 }
