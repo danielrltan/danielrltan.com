@@ -209,17 +209,19 @@ const FRAGMENT = /* glsl */ `
       // noise makes it irregular + liquid. Per-ball offset (fi) so each ball
       // ripples on its own.
       vec2 dir = normalize(d + vec2(1e-4));
-      float wob =
-        (noise2(dir * 2.6 + vec2(bt * 0.5, fi * 7.0)) - 0.5) * 0.05
-        + (noise2(dir * 5.3 - vec2(bt * 0.35, fi * 3.0)) - 0.5) * 0.022;
+      // Gentle, smooth, LOW-frequency undulation only. The previous high-freq
+      // noise crumpled the surface so it read as a paper / paintbrush blob,
+      // not liquid.
+      float wob = (noise2(dir * 1.5 + vec2(bt * 0.4, fi * 4.0)) - 0.5) * 0.026;
       float r = (uBlobRadius * (1.0 - fi * 0.30)) * (1.0 - uBurst * 0.4) + wob;
       float di = length(d) - r;
       float h = clamp(0.5 + 0.5 * (di - sd) / k, 0.0, 1.0);
       sd = mix(di, sd, h) - k * h * (1.0 - h);
     }
-    // Fill (inside sd<0) + a constant-width membrane ring at sd=0.
-    float blob = smoothstep(0.006, -0.006, sd) * uActive;
-    float outline = (1.0 - smoothstep(0.0, 0.014, abs(sd))) * uActive;
+    // CRISP edge + a thin tight membrane band (the surface-tension skin), so
+    // the blob reads sharp + wet rather than a soft airbrushed cloud.
+    float blob = smoothstep(0.0032, -0.0032, sd) * uActive;
+    float outline = (1.0 - smoothstep(0.0, 0.009, abs(sd))) * uActive;
 
     // Grain drift inside the blob: second noise modulates dot alpha
     // so individual grains seem to flow. Higher floor (0.75 vs 0.55)
@@ -230,7 +232,7 @@ const FRAGMENT = /* glsl */ `
     // Grain alpha. Trimmed (1.1 -> 0.7) so the grains read as light foam
     // suspended IN the filled liquid rather than a dot field that hollows
     // out the body — the fill (above) now carries the mercury mass.
-    float a = clamp(dotMask * blob * drift * 0.7, 0.0, 1.0);
+    float a = clamp(dotMask * blob * drift * 0.2, 0.0, 1.0);
 
     // ----- Orange fluid glow -----
     // Three large overlapping blobs anchored near canvas center, each
@@ -292,18 +294,19 @@ const FRAGMENT = /* glsl */ `
     // the top.
     vec3 tintedBg = mix(uBg, uGlow, glow);
     tintedBg = mix(tintedBg, uHotColor, clamp(hotField * 0.5, 0.0, 0.5));
-    // Liquid fill: a near-UNIFORM solid orange body inside the glob (0.92) so
-    // the blob doesn't show the ambient-glow gradient through it as a weird
-    // "shine". It reads as one clean body of fluid.
-    tintedBg = mix(tintedBg, uGlow, blob * 0.92);
-    // Rice grains INVERT toward light under the charge so they contrast
-    // against the warm glow instead of muddying into it (grey-on-amber
-    // had almost no separation).
+    // Liquid fill: a clean solid orange body, slightly DARKER toward the
+    // edge (inner shading) so the droplet reads rounded/3D, not a flat fill.
+    float core = smoothstep(0.05, -0.02, sd); // 1 deep inside, 0 near rim
+    vec3 body = mix(uGlow * 0.82, uGlow, core); // edge darker, centre full
+    tintedBg = mix(tintedBg, body, blob * 0.94);
+    // Faint grain shimmer suspended in the liquid (kept very low so it reads
+    // as smooth mercury, not a halftone/paper dot field).
     vec3 riceCol = mix(uRice, uRiceHot, clamp(hotField * 1.6, 0.0, 1.0));
     vec3 col = mix(tintedBg, riceCol, a);
-    // Membrane outline: a crisp accent ring tracing the liquid's edge -
-    // the surface-tension skin that makes the glob read as fluid.
-    col = mix(col, uGlow, outline * 0.85);
+    // GLOSSY surface-tension RIM: a thin BRIGHT warm edge that contrasts the
+    // orange body so the liquid reads crisp + wet. (An orange rim on an
+    // orange body was invisible -> the blob looked like a flat airbrush.)
+    col = mix(col, vec3(1.0, 0.86, 0.66), outline * 0.92);
 
     // BACK layer = opaque backdrop. FRONT layer = transparent: only a few
     // faint orange liquid wisps (fill + membrane) of the trail float over
