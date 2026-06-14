@@ -78,8 +78,13 @@ const ASCII_FRAG = /* glsl */ `
   }
 `;
 
-function easeOutCubic(t: number): number {
-  return 1 - Math.pow(1 - t, 3);
+function easeOutQuart(t: number): number {
+  return 1 - Math.pow(1 - t, 4);
+}
+// Deterministic per-object pseudo-random in [0,1) for varied paths.
+function hashF(n: number): number {
+  const s = Math.sin(n * 53.13) * 7891.23;
+  return s - Math.floor(s);
 }
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
@@ -99,13 +104,13 @@ interface Spec {
 // targets are compact offsets around the centre.
 const CLUSTER_CENTER = new THREE.Vector3(0, 0, 0);
 const SPECS: Spec[] = [
-  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.76, target: [-1.5, 1.15, 0.3], spin: [0.4, 0.5, 0.0] },
-  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.62, target: [0.3, 1.6, -0.4], spin: [0.45, -0.4, 0.2] },
-  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.7, target: [1.6, 0.55, 0.5], spin: [0.35, 0.5, 0.25] },
-  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.76, target: [-0.3, -0.3, 0.8], spin: [-0.5, 0.4, 0.0] },
-  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.7, target: [1.25, -1.3, -0.1], spin: [0.5, 0.35, 0.2] },
-  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.7, target: [-1.45, -1.25, 0.3], spin: [0.4, -0.45, 0.0] },
-  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.7, target: [0.7, 0.2, 1.2], spin: [0.32, 0.55, 0.1] },
+  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.88, target: [-1.5, 1.15, 0.3], spin: [0.4, 0.5, 0.0] },
+  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.72, target: [0.3, 1.6, -0.4], spin: [0.45, -0.4, 0.2] },
+  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.82, target: [1.6, 0.55, 0.5], spin: [0.35, 0.5, 0.25] },
+  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.88, target: [-0.3, -0.3, 0.8], spin: [-0.5, 0.4, 0.0] },
+  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.82, target: [1.25, -1.3, -0.1], spin: [0.5, 0.35, 0.2] },
+  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.82, target: [-1.45, -1.25, 0.3], spin: [0.4, -0.45, 0.0] },
+  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.82, target: [0.7, 0.2, 1.2], spin: [0.32, 0.55, 0.1] },
 ];
 // Corner of the region the objects spill OUT from (offset from centre).
 const SPILL_ORIGIN = new THREE.Vector3(2.2, 2.2, 1.2);
@@ -144,17 +149,21 @@ function SpillObject({
     () => new THREE.Vector3(...spec.target),
     [spec],
   );
+  // Per-object varied start (so they don't all launch from the exact same
+  // point) and a signed arc amount (so each curves its OWN way, not all the
+  // same down-then-up swoop).
   const start = useMemo(
     () =>
       SPILL_ORIGIN.clone().add(
         new THREE.Vector3(
-          (index % 3) * 0.12,
-          (index % 2) * 0.1,
-          index * 0.05,
+          (hashF(index * 1.7) - 0.5) * 0.9,
+          (hashF(index * 2.3 + 1) - 0.5) * 0.8,
+          (hashF(index * 3.1 + 2) - 0.5) * 0.7,
         ),
       ),
     [index],
   );
+  const arcAmt = useMemo(() => (hashF(index * 4.7 + 3) - 0.5) * 0.7, [index]);
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -185,19 +194,20 @@ function SpillObject({
     if (reduced) {
       p = 1;
     } else {
-      const e = (now - startMs) / 1000 - index * 0.1;
-      p = easeOutCubic(clamp01(e / 0.95));
+      // Snappy: short duration + tight stagger + a quart ease-out.
+      const e = (now - startMs) / 1000 - index * 0.05;
+      p = easeOutQuart(clamp01(e / 0.5));
     }
 
-    // Spill position = lerp start->target + a perpendicular ARC bump (peaks
-    // mid-flight) so each object tosses out on a curve, not a straight line.
+    // Spill position = lerp start->target + a per-object signed ARC bump, so
+    // each curves its own way (not all the same swoop).
     const sx = start.x + (target.x - start.x) * p;
     const sy = start.y + (target.y - start.y) * p;
     const sz = start.z + (target.z - start.z) * p;
     const dxT = target.x - start.x;
     const dyT = target.y - start.y;
     const lenT = Math.hypot(dxT, dyT) || 1;
-    const arc = Math.sin(clamp01(p) * Math.PI) * 0.55;
+    const arc = Math.sin(clamp01(p) * Math.PI) * arcAmt;
     const curSx = sx + (-dyT / lenT) * arc;
     const curSy = sy + (dxT / lenT) * arc;
 
