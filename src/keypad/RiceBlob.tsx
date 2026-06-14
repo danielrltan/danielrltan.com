@@ -297,13 +297,6 @@ const FRAGMENT = /* glsl */ `
     // had almost no separation).
     vec3 riceCol = mix(uRice, uRiceHot, clamp(hotField * 1.6, 0.0, 1.0));
     vec3 col = mix(tintedBg, riceCol, a);
-    // MERCURY SHEEN: a soft reflective highlight inside the body toward the
-    // upper-left of the head droplet, so the filled liquid reads as glossy
-    // metal rather than a flat fill.
-    vec2 sdir = normalize((uv - uTrail[0]) * uAspect + 0.0001);
-    float sheen = pow(clamp(dot(sdir, normalize(vec2(-0.6, 0.7))), 0.0, 1.0), 2.5)
-      * smoothstep(0.0, -0.05, sd) * uActive;
-    col = mix(col, vec3(1.0), sheen * 0.2);
     // Membrane outline: a crisp accent ring tracing the liquid's edge -
     // the surface-tension skin that makes the glob read as fluid.
     col = mix(col, uGlow, outline * 0.85);
