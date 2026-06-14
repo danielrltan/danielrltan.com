@@ -501,7 +501,7 @@ export function BitsAndPieces() {
         <header className="bp-head">
           <span className="section-marker bp-marker">05</span>
           <span className="section-index bp-index">
-            05 / 06 &middot; Bits and pieces
+            05 / 06 &middot; Moments
           </span>
           <h2 className="bp-title">
             <ScrambleText text="The trophy wall" />

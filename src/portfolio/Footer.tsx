@@ -31,7 +31,7 @@ const JUMP_LINKS: JumpLink[] = [
   { number: "02", label: "Stack + Projects", selector: ".portfolio-mac" },
   { number: "03", label: "Work", selector: ".portfolio-work" },
   { number: "04", label: "Off the clock", selector: ".portfolio-other" },
-  { number: "05", label: "Bits and pieces", selector: ".portfolio-bp" },
+  { number: "05", label: "Moments", selector: ".portfolio-bp" },
   { number: "06", label: "Elsewhere", selector: ".keypad-section" },
 ];
 
