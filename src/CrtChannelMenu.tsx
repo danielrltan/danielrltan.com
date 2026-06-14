@@ -62,6 +62,38 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
     }
   }, [mounted, phase]);
 
+  // INTERACTIVE 3D: the whole plane tilts toward the cursor as you move the
+  // mouse (the "fiddle with it" depth). rAF-throttled; CSS smooths it.
+  useEffect(() => {
+    if (!mounted) return;
+    const reducedM =
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedM) return;
+    let raf = 0;
+    let lx = 0;
+    let ly = 0;
+    const apply = () => {
+      raf = 0;
+      const nx = (lx / window.innerWidth) * 2 - 1;
+      const ny = (ly / window.innerHeight) * 2 - 1;
+      const st = stackRef.current;
+      if (st) {
+        st.style.setProperty("--ry", `${(nx * 13).toFixed(2)}deg`);
+        st.style.setProperty("--rx", `${(-ny * 9).toFixed(2)}deg`);
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      lx = e.clientX;
+      ly = e.clientY;
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [mounted]);
+
   const select = (i: number) => {
     const el = (findSectionElements()[i]?.el as HTMLElement | null) ?? null;
     if (!el) {
@@ -145,29 +177,32 @@ export function CrtChannelMenu({ open, activeIdx, onClose }: Props) {
           const isActive = i === activeIdx;
           const isArmed = i === armed;
           return (
-            <button
+            <div
               key={s.number}
-              ref={(el) => {
-                rowRefs.current[i] = el;
-              }}
-              className="navx-shard"
-              role="menuitem"
-              tabIndex={isArmed ? 0 : -1}
-              data-active={isActive ? "true" : "false"}
-              data-armed={isArmed ? "true" : "false"}
-              aria-current={isActive ? "true" : undefined}
-              onClick={() => select(i)}
-              onMouseEnter={() => setArmed(i)}
-              style={
-                { "--i": i, width: shardW } as React.CSSProperties
-              }
+              className="navx-slot"
+              style={{ "--i": i } as React.CSSProperties}
             >
-              <span className="navx-num">{s.number}</span>
-              <span className="navx-label">{s.label}</span>
-              <span className="navx-tag" aria-hidden>
-                {isActive ? "HERE" : "JUMP"}
-              </span>
-            </button>
+              <button
+                ref={(el) => {
+                  rowRefs.current[i] = el;
+                }}
+                className="navx-shard"
+                role="menuitem"
+                tabIndex={isArmed ? 0 : -1}
+                data-active={isActive ? "true" : "false"}
+                data-armed={isArmed ? "true" : "false"}
+                aria-current={isActive ? "true" : undefined}
+                onClick={() => select(i)}
+                onMouseEnter={() => setArmed(i)}
+                style={{ width: shardW }}
+              >
+                <span className="navx-num">{s.number}</span>
+                <span className="navx-label">{s.label}</span>
+                <span className="navx-tag" aria-hidden>
+                  {isActive ? "HERE" : "JUMP"}
+                </span>
+              </button>
+            </div>
           );
         })}
       </div>
