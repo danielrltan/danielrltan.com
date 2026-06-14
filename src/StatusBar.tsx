@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useIsMobile } from "./useIsMobile";
 import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
-import { CrtChannelMenu } from "./CrtChannelMenu";
+import { NavSpillMenu } from "./NavSpillMenu";
 
 /**
  * Top-right section indicator: Offbit numeral + Geist label + a stepped
@@ -189,7 +189,7 @@ export function StatusBar() {
     },
   };
   const menu = (
-    <CrtChannelMenu
+    <NavSpillMenu
       open={menuOpen}
       activeIdx={activeIdx}
       onClose={() => setMenuOpen(false)}

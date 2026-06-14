@@ -272,3 +272,67 @@
     transform: none;
   }
 }
+
+/* ===================== NAV SPILL MENU (3D objects) ==================== */
+.navx-spill-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.navx-spill-root[data-open="true"] {
+  opacity: 1;
+}
+.navx-spill-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(238, 240, 243, 0.5);
+  background-image: radial-gradient(rgba(232, 112, 64, 0.16) 1px, transparent 1.4px);
+  background-size: 7px 7px;
+  pointer-events: none;
+}
+.navx-spill-canvas {
+  position: absolute !important;
+  inset: 0;
+  pointer-events: auto;
+}
+/* drei <Html> label = real clickable button on each object. */
+.navx-spill-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 5px 8px;
+  background: #ffffff;
+  color: var(--navx-ink);
+  border: 1px solid rgba(13, 14, 16, 0.16);
+  box-shadow: 3px 4px 0 0 var(--navx-accent);
+  font: 650 13px/1 "Geist", system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+.navx-spill-num {
+  font-family: "Offbit", monospace;
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--navx-accent);
+  transform: translateY(1px);
+}
+.navx-spill-label[data-active="true"] {
+  background: var(--navx-accent-hot);
+  color: #ffffff;
+  border-color: var(--navx-accent-deep);
+  box-shadow: 3px 4px 0 0 var(--navx-accent-deep);
+}
+.navx-spill-label[data-active="true"] .navx-spill-num {
+  color: #ffffff;
+}
+.navx-spill-label:hover,
+.navx-spill-label[data-armed="true"] {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 var(--navx-accent);
+}
