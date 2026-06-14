@@ -208,9 +208,18 @@ export function StatusBar() {
           <span className="snc-label">{active.label}</span>
           {meter}
         </div>
-        <span className="nav-open-hint" aria-hidden>
-          OPEN /
-        </span>
+        {/* Persistent menu-trigger zone: a "sections" grid glyph + MENU label
+            so the card reads as a button (not a passive badge). Fills orange
+            on hover/open as clear interactive feedback. */}
+        <div className="snc-trigger" aria-hidden>
+          <span className="snc-grid">
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="snc-menu-label">{menuOpen ? "Close" : "Menu"}</span>
+        </div>
       </div>
       {menu}
     </>
