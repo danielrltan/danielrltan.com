@@ -1,27 +1,29 @@
 /* ─────────────────────────────────────────────────────────────────────
  * OVERDRIVE NAV — section indicator card + the jump menu it opens.
  *
- * DIMENSION without the dark Persona pastiche: clean LIGHT shards in the
- * site's own retro-futurism voice — cool off-white skins, orange + ink,
- * sharp angular geometry, glossy bevel, technical Offbit/VT323 type. The
- * shards still slam in on a staggered diagonal cascade and tilt in 3D so
- * it pops; the active section is the one orange-filled shard. Inline styles
- * carry data/positioning; this file carries shape, gloss, motion + the
- * prefers-reduced-motion fallback.
+ * Genuinely 3D, not a tilted flat card: each section is a CHUNKY EXTRUDED
+ * BLOCK — a flat-colour face sitting on a hard solid offset "side" (no
+ * blur, no gradient) so it reads as a physical block with real thickness,
+ * like the keypad's keycaps. Orange + ink + cool-white, sharp corners,
+ * tactile press on hover. Site retro-futurism, not a Persona pastiche.
+ * Inline styles carry data/positioning; this file the shape + depth + motion.
  * ──────────────────────────────────────────────────────────────────── */
 
 :root {
   --navx-accent: #e87040;
   --navx-accent-hot: #ff6a2a;
+  --navx-accent-deep: #b8431a; /* extruded side of an orange block */
   --navx-ink: #0d0e10;
 }
 
 /* ============================ RESTING CARD ============================ */
+/* Flat white block with a hard orange extruded side (no gradient gloss). */
 .status-nav-card {
   position: relative;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
-  transition: transform 160ms cubic-bezier(0.2, 0.9, 0.25, 1.05),
-    filter 160ms ease;
+  border-radius: 0;
+  box-shadow: 5px 6px 0 0 var(--navx-accent);
+  transition: box-shadow 150ms cubic-bezier(0.2, 0.9, 0.25, 1.05),
+    transform 150ms cubic-bezier(0.2, 0.9, 0.25, 1.05);
 }
 .status-nav-card::before {
   content: "";
@@ -29,31 +31,15 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 0;
-  background: linear-gradient(var(--navx-accent), var(--navx-accent-hot));
-  transition: width 170ms cubic-bezier(0.2, 0.9, 0.25, 1.05);
-  pointer-events: none;
-}
-.status-nav-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    152deg,
-    rgba(255, 255, 255, 0.65) 0%,
-    rgba(255, 255, 255, 0.08) 30%,
-    rgba(255, 255, 255, 0) 52%
-  );
+  width: 4px;
+  background: var(--navx-accent);
   pointer-events: none;
 }
 .status-nav-card:hover,
 .status-nav-card[aria-expanded="true"] {
-  transform: translateX(-3px);
-  filter: drop-shadow(0 8px 18px rgba(232, 112, 64, 0.28));
-}
-.status-nav-card:hover::before,
-.status-nav-card[aria-expanded="true"]::before {
-  width: 5px;
+  /* presses down into its own shadow */
+  transform: translate(3px, 4px);
+  box-shadow: 2px 2px 0 0 var(--navx-accent);
 }
 .status-nav-card:focus-visible {
   outline: 2px solid var(--navx-accent);
@@ -62,7 +48,7 @@
 .status-nav-card .nav-open-hint {
   position: absolute;
   right: 12px;
-  bottom: -14px;
+  bottom: -15px;
   font-family: "VT323", monospace;
   font-size: 11px;
   letter-spacing: 0.16em;
@@ -82,15 +68,13 @@
   position: fixed;
   inset: 0;
   z-index: 60;
-  perspective: 1200px;
   pointer-events: none;
 }
 .navx-stage[data-open="true"] {
   pointer-events: auto;
 }
 
-/* Soft LIGHT focus wash (not a black UI) + a faint orange halftone so the
-   floating shards read against the page without going dark. */
+/* Soft LIGHT focus wash + a faint orange halftone (never a dark UI). */
 .navx-scrim {
   position: absolute;
   inset: 0;
@@ -111,58 +95,41 @@
   position: absolute;
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  transform-style: preserve-3d;
-  transform: rotateY(-11deg) rotateX(3deg);
-  transform-origin: 100% 0;
+  gap: 14px;
 }
 
-/* One section = one LIGHT angular shard. */
+/* One section = one EXTRUDED 3D BLOCK. The hard, blur-free offset shadow IS
+   the block's side face -> real thickness, flat colours only. */
 .navx-shard {
   position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 58px;
-  padding: 0 18px 0 18px;
-  border: none;
+  height: 56px;
+  padding: 0 16px;
+  border: 1px solid rgba(13, 14, 16, 0.16);
   cursor: pointer;
   color: var(--navx-ink);
-  background: linear-gradient(158deg, #ffffff 0%, #e9edf1 100%);
-  /* mild right-edge slant: dynamic but clean (not the busy Persona slash) */
-  clip-path: polygon(0 0, 100% 0, 96% 100%, 0% 100%);
+  background: #ffffff;
+  box-shadow: 7px 8px 0 0 var(--navx-accent);
   text-align: left;
   font: inherit;
-  transform-origin: 100% 50%;
-  box-shadow: -5px 7px 16px -6px rgba(13, 14, 16, 0.28);
+  /* slam in from the right, staggered; transition (not animation) so the
+     hover/active transforms below don't fight a held keyframe. */
   opacity: 0;
-  animation: navx-shard-in 460ms cubic-bezier(0.18, 0.92, 0.24, 1.12) both;
-  animation-delay: calc(var(--i) * 46ms);
-  transition: filter 130ms ease, background 130ms ease, transform 130ms ease;
-  will-change: transform, opacity;
+  transform: translateX(64px);
+  transition: transform 420ms cubic-bezier(0.18, 0.92, 0.24, 1.12),
+    opacity 360ms ease, box-shadow 130ms ease, background 130ms ease;
+  transition-delay: calc(var(--i) * 46ms);
 }
-@keyframes navx-shard-in {
-  0% {
-    opacity: 0;
-    transform: translateX(80px) skewX(-9deg) scaleX(0.86);
-  }
-  60% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0) skewX(0deg) scaleX(1);
-  }
+.navx-stage[data-open="true"] .navx-shard {
+  opacity: 1;
+  transform: translateX(0);
 }
 .navx-stage[data-closing="true"] .navx-shard {
-  animation: navx-shard-out 240ms cubic-bezier(0.5, 0, 0.75, 0) both;
-  animation-delay: calc((6 - var(--i)) * 26ms);
-}
-@keyframes navx-shard-out {
-  to {
-    opacity: 0;
-    transform: translateX(70px) skewX(-7deg) scaleX(0.9);
-  }
+  opacity: 0;
+  transform: translateX(60px);
+  transition-delay: calc((6 - var(--i)) * 26ms);
 }
 
 /* Orange index bar down the leading edge. */
@@ -173,50 +140,36 @@
   top: 0;
   bottom: 0;
   width: 5px;
-  background: linear-gradient(var(--navx-accent), var(--navx-accent-hot));
-}
-/* Glossy bevel: bright top, faint shade at the foot (plastic skin sheen). */
-.navx-shard::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.7) 0%,
-    rgba(255, 255, 255, 0) 32%,
-    rgba(13, 14, 16, 0) 70%,
-    rgba(13, 14, 16, 0.05) 100%
-  );
-  pointer-events: none;
+  background: var(--navx-accent);
 }
 
-/* Hover / keyboard-armed shard: lifts toward the viewer, warms slightly. */
-.navx-shard:hover,
-.navx-shard[data-armed="true"] {
-  background: linear-gradient(158deg, #ffffff 0%, #fbe9df 100%);
-  transform: translateX(-7px);
-  filter: drop-shadow(-8px 9px 16px rgba(232, 112, 64, 0.3));
+/* Hover / keyboard-armed: the block PRESSES down into its side face. */
+.navx-stage[data-open="true"] .navx-shard:hover,
+.navx-stage[data-open="true"] .navx-shard[data-armed="true"] {
+  transform: translate(4px, 5px);
+  box-shadow: 3px 3px 0 0 var(--navx-accent);
+  background: #fff6f1;
+  transition-delay: 0s;
 }
 .navx-shard:focus-visible {
   outline: 2px solid var(--navx-accent);
   outline-offset: -3px;
 }
 
-/* Active section = the one orange-skin shard. */
+/* Active section = the one solid-orange block (ink side). */
 .navx-shard[data-active="true"] {
-  background: linear-gradient(118deg, var(--navx-accent-hot) 0%, var(--navx-accent) 100%);
-  color: #ffffff;
-  filter: drop-shadow(-8px 10px 18px rgba(232, 112, 64, 0.55));
+  background: var(--navx-accent-hot);
+  color: var(--navx-ink);
+  border-color: var(--navx-accent-deep);
+  box-shadow: 7px 8px 0 0 var(--navx-accent-deep);
 }
 .navx-shard[data-active="true"]::before {
   background: var(--navx-ink);
 }
-.navx-shard[data-active="true"]::after {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.45) 0%,
-    rgba(255, 255, 255, 0) 34%
-  );
+.navx-stage[data-open="true"] .navx-shard[data-active="true"]:hover,
+.navx-stage[data-open="true"] .navx-shard[data-active="true"][data-armed="true"] {
+  background: var(--navx-accent-hot);
+  box-shadow: 3px 3px 0 0 var(--navx-accent-deep);
 }
 
 .navx-num {
@@ -229,7 +182,7 @@
   color: var(--navx-accent);
 }
 .navx-shard[data-active="true"] .navx-num {
-  color: #ffffff;
+  color: var(--navx-ink);
 }
 .navx-label {
   flex: 1;
@@ -249,7 +202,7 @@
   transition: opacity 120ms ease;
 }
 .navx-shard[data-active="true"] .navx-tag {
-  color: #ffffff;
+  color: var(--navx-ink);
   opacity: 0.9;
 }
 .navx-shard:hover .navx-tag,
@@ -257,25 +210,31 @@
   opacity: 0.85;
 }
 
-/* Header chip: an orange "JUMP" tab so the overlay reads as a menu. */
+/* Header chip: an orange extruded "JUMP" tab. */
 .navx-head {
   position: absolute;
   display: inline-flex;
   align-items: center;
   height: 28px;
   padding: 0 14px;
-  background: linear-gradient(120deg, var(--navx-accent-hot), var(--navx-accent));
-  color: #ffffff;
-  clip-path: polygon(0 0, 100% 0, 90% 100%, 0 100%);
+  background: var(--navx-accent-hot);
+  color: var(--navx-ink);
+  box-shadow: 4px 5px 0 0 var(--navx-accent-deep);
   font-family: "VT323", monospace;
   font-size: 15px;
   letter-spacing: 0.18em;
-  box-shadow: -4px 6px 14px -6px rgba(232, 112, 64, 0.5);
   opacity: 0;
-  animation: navx-shard-in 400ms cubic-bezier(0.18, 0.92, 0.24, 1.12) both;
+  transform: translateX(64px);
+  transition: transform 380ms cubic-bezier(0.18, 0.92, 0.24, 1.12),
+    opacity 320ms ease;
+}
+.navx-stage[data-open="true"] .navx-head {
+  opacity: 1;
+  transform: translateX(0);
 }
 .navx-stage[data-closing="true"] .navx-head {
-  animation: navx-shard-out 200ms ease both;
+  opacity: 0;
+  transform: translateX(60px);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -284,22 +243,21 @@
   .nav-open-hint {
     transition: none;
   }
-  .navx-stack {
-    transform: none;
-  }
   .navx-shard,
   .navx-head {
-    animation: none;
-    opacity: 1;
+    transition: opacity 120ms ease;
     transform: none;
-    clip-path: none;
   }
-  .navx-shard:hover,
-  .navx-shard[data-armed="true"] {
+  .navx-stage[data-open="true"] .navx-shard,
+  .navx-stage[data-open="true"] .navx-head {
+    transform: none;
+  }
+  .navx-stage[data-open="true"] .navx-shard:hover,
+  .navx-stage[data-open="true"] .navx-shard[data-armed="true"] {
     transform: none;
   }
   .navx-stage[data-closing="true"] .navx-shard,
   .navx-stage[data-closing="true"] .navx-head {
-    animation: none;
+    transform: none;
   }
 }
