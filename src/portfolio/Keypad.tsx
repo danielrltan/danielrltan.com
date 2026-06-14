@@ -144,6 +144,22 @@ export function scrollToSection(
   window.scrollTo({ top: y, behavior: opts?.immediate ? "auto" : "smooth" });
 }
 
+/**
+ * Lock / unlock page scrolling. CSS overflow:hidden alone doesn't stop Lenis
+ * (it hijacks wheel events), so we stop the Lenis singleton too — and set
+ * overflow:hidden as the native fallback. Used by the spill menu so the page
+ * can't be scrolled underneath it while it's open.
+ */
+export function setScrollLocked(locked: boolean) {
+  if (lenisInstance) {
+    if (locked) lenisInstance.stop();
+    else lenisInstance.start();
+  }
+  if (typeof document !== "undefined") {
+    document.documentElement.style.overflow = locked ? "hidden" : "";
+  }
+}
+
 export function Keypad() {
   const sectionRef = useRef<HTMLElement>(null);
   // MOBILE: the GSAP pin below is skipped on phones. The desktop pin

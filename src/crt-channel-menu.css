@@ -16,6 +16,169 @@
   --navx-ink: #0d0e10;
 }
 
+/* ============================ SECTION DIAL ===========================
+ * Compact horizontal HUD chit (replaces the flat resting card). The section
+ * number is a skeuomorphic odometer drum — a real CSS-3D cylinder that rolls
+ * vertically in the orange aperture — with the label + MENU trigger beside it,
+ * so the whole thing is a SHORT horizontal bar that doesn't tower over the
+ * scene. Curvature shading is per-face opacity (set in JS) — NO gradients. */
+.snc-dial {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  height: 54px;
+  user-select: none;
+  cursor: pointer;
+  background: #ffffff;
+  color: var(--navx-ink);
+  /* Clean flat rectangle — no clip notch, no corner shadow (both read as
+     broken/odd here). It's a tidy white bar with the orange number + grid. */
+  transition: background 130ms ease;
+}
+/* Click reaction: the number block flashes deep-orange (a tactile press),
+   with NO downward shift. */
+.snc-dial:active .snc-dial-numblock {
+  background: var(--navx-accent-deep);
+}
+.snc-dial:focus-visible {
+  outline: 2px solid var(--navx-accent);
+  outline-offset: 3px;
+}
+
+/* Orange number block: the drum aperture. */
+.snc-dial-numblock {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  width: 50px;
+  background: var(--navx-accent-hot);
+}
+/* Aperture: clips the drum; perspective gives the faces real depth. */
+.snc-dial-window {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  perspective: 240px;
+}
+.snc-dial-drum {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+/* Each face is a fixed-height number slot centred on the drum axis, then
+   placed on the cylinder by its rotateX/translateZ (set inline). */
+.snc-dial-face {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 36px;
+  margin-top: -18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backface-visibility: hidden;
+}
+.snc-dial-num {
+  font-family: "Offbit", monospace;
+  font-weight: 700;
+  font-size: 27px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+}
+
+/* White readout body — just the SECTION eyebrow now. */
+.snc-dial-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 80px;
+  padding: 0 12px;
+  background: #ffffff;
+}
+.snc-dial-eyebrow {
+  font-family: "VT323", monospace;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--navx-accent);
+}
+.snc-dial-label {
+  font: 650 15px/1 "Geist", system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--navx-ink);
+}
+
+/* Trigger: grid glyph + MENU; fills orange on hover/open. */
+.snc-dial-trigger {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 12px;
+  background: rgba(232, 112, 64, 0.1);
+  border-left: 1px solid rgba(13, 14, 16, 0.12);
+  transition: background 130ms ease;
+}
+.snc-dial-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 5px);
+  grid-template-rows: repeat(2, 5px);
+  gap: 2.5px;
+}
+.snc-dial-grid > i {
+  display: block;
+  background: var(--navx-accent);
+  transition: background 130ms ease;
+}
+.snc-dial-menu-label {
+  font-family: "VT323", monospace;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--navx-ink);
+}
+.snc-dial:hover .snc-dial-trigger,
+.snc-dial[aria-expanded="true"] .snc-dial-trigger {
+  background: var(--navx-accent-hot);
+}
+.snc-dial:hover .snc-dial-grid > i,
+.snc-dial[aria-expanded="true"] .snc-dial-grid > i {
+  background: #ffffff;
+}
+.snc-dial:hover .snc-dial-menu-label,
+.snc-dial[aria-expanded="true"] .snc-dial-menu-label {
+  color: #ffffff;
+}
+
+/* Mobile: trim the readout so the bar stays compact. */
+.snc-dial[data-mobile="true"] .snc-dial-body {
+  min-width: 0;
+  max-width: 40vw;
+  padding: 0 10px;
+}
+.snc-dial[data-mobile="true"] .snc-dial-label {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.snc-dial[data-mobile="true"] .snc-dial-trigger {
+  padding: 0 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .snc-dial,
+  .snc-dial-trigger {
+    transition: none;
+  }
+}
+
 /* ============================ RESTING CARD ============================ */
 /* Two-tone HUD chit: solid-orange index block (white numeral) + white
    readout block, as one notched, hard-extruded 3D unit. */
@@ -386,35 +549,39 @@
   z-index: 60;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 220ms ease;
+  transition: opacity 260ms ease;
 }
 .navx-spill-root[data-open="true"] {
   opacity: 1;
+}
+/* On CLOSE the spiral-in animation should play FIRST, then fade — so hold the
+   opacity for a beat before it eases out (open stays instant: this only
+   matches when data-open is not true). */
+.navx-spill-root:not([data-open="true"]) {
+  transition-delay: 260ms;
 }
 /* Full-screen blur behind the shapes: the whole page is blurred + softly
    washed while the menu is open, so the sharp 3D objects pop against it. */
 .navx-spill-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(238, 240, 243, 0.42);
-  background-image: radial-gradient(rgba(232, 112, 64, 0.14) 1px, transparent 1.4px);
-  background-size: 7px 7px;
-  backdrop-filter: blur(12px) saturate(112%);
-  -webkit-backdrop-filter: blur(12px) saturate(112%);
+  /* Heavier white wash + strong gaussian blur so whatever is behind the
+     menu nearly disappears and the sharp orange shapes own the frame. The
+     orange "rice" dots are drawn in the canvas (MercuryAura) so the cursor
+     can light them up — keeping them here too would double the grid. */
+  background: rgba(244, 245, 247, 0.66);
+  backdrop-filter: blur(28px) saturate(104%) brightness(1.05);
+  -webkit-backdrop-filter: blur(28px) saturate(104%) brightness(1.05);
   pointer-events: none;
 }
 .navx-spill-root[data-open="true"] .navx-spill-scrim {
   pointer-events: auto;
 }
-/* Contained top-right region the objects spill into — so the cluster is
-   always framed there regardless of page aspect (no overflow into the room
-   or off the right edge). */
+/* Full-screen stage: the ring of shapes is centred in the middle of the
+   screen (camera looks at the origin where the cluster lives). */
 .navx-spill-stage {
   position: absolute;
-  top: clamp(48px, 6vh, 86px);
-  right: clamp(10px, 2vw, 30px);
-  width: min(54vw, 660px);
-  height: min(70vh, 680px);
+  inset: 0;
   pointer-events: none;
 }
 .navx-spill-root[data-open="true"] .navx-spill-stage {
@@ -427,22 +594,25 @@
   height: 100% !important;
   pointer-events: auto;
 }
-/* Clear X close button (top-right, just under the status card). */
+/* Clear X close button. Sits in the SAME top-right corner you clicked to
+   open (the card hides while the menu is open), so close is where open was —
+   not shifted down beneath the trigger. */
 .navx-close {
   position: absolute;
-  top: clamp(82px, 9vh, 104px);
-  right: clamp(12px, 2.5vw, 34px);
-  width: 40px;
-  height: 40px;
+  top: clamp(14px, 2vh, 22px);
+  right: clamp(14px, 2.4vw, 26px);
+  /* Above the rice canvas (which otherwise paints over it). */
+  z-index: 5;
+  width: 44px;
+  height: 44px;
   background: #ffffff;
   border: 1px solid rgba(13, 14, 16, 0.16);
-  box-shadow: 4px 5px 0 0 var(--navx-accent);
   cursor: pointer;
   pointer-events: auto;
   opacity: 0;
   transform: translateY(-8px);
   transition: opacity 200ms ease 140ms, transform 200ms ease 140ms,
-    box-shadow 130ms ease, background 130ms ease;
+    background 130ms ease, border-color 130ms ease;
 }
 .navx-spill-root[data-open="true"] .navx-close {
   opacity: 1;
@@ -466,8 +636,7 @@
 }
 .navx-close:hover {
   background: var(--navx-accent-hot);
-  transform: translate(3px, 3px);
-  box-shadow: 1px 2px 0 0 var(--navx-accent-deep);
+  border-color: var(--navx-accent-hot);
 }
 .navx-close:hover::before,
 .navx-close:hover::after {

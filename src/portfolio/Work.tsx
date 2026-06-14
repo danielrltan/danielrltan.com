@@ -148,11 +148,6 @@ const STINT_YEAR_INDICES = STINT_YEARS.map((y) => y - MIN_YEAR);
  */
 export function Work() {
   const sectionRef = useRef<HTMLElement>(null);
-  const ledgerNumRef = useRef<HTMLSpanElement>(null);
-  // Pin progress (0..1), written by the timeline ScrollTrigger's onUpdate so
-  // the "03" dial rotation tracks scroll THROUGH the pinned section (its rect
-  // is fixed during the pin, so a rect-based progress wouldn't advance).
-  const scrollProgRef = useRef(0);
   const stackRef = useRef<HTMLDivElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const stintCounterRef = useRef<HTMLSpanElement>(null);
@@ -230,48 +225,6 @@ export function Work() {
   // shown. The single derived flag keeps the pin / rAF / reveal gating
   // in one place so the two paths never diverge.
   const staticLayout = reducedMotion || isMobile;
-
-  // Scroll-driven rotating DIAL for the "03" numeral: as you scroll up/down
-  // through the Experience section the number tumbles on its X axis like a
-  // flip-dial. Fixed-rate lerp toward the scroll target (never bound directly
-  // per the project rule); parks when settled + idle. Off under reduced motion.
-  useEffect(() => {
-    if (reducedMotion) return;
-    const el = ledgerNumRef.current;
-    const sec = sectionRef.current;
-    if (!el || !sec) return;
-    const parent = el.parentElement;
-    if (parent) parent.style.perspective = "460px";
-    el.style.transformStyle = "preserve-3d";
-    el.style.willChange = "transform";
-    let raf = 0;
-    let cur = 0;
-    let lastInput = 0;
-    const TURNS = 2; // rotations across the pin's scroll span
-    const tick = () => {
-      const t = scrollProgRef.current * TURNS * 360;
-      cur += (t - cur) * 0.12;
-      el.style.transform = `rotateX(${cur.toFixed(2)}deg)`;
-      if (Math.abs(t - cur) > 0.15 || performance.now() - lastInput < 700) {
-        raf = requestAnimationFrame(tick);
-      } else {
-        raf = 0;
-      }
-    };
-    const onInput = () => {
-      lastInput = performance.now();
-      if (!raf) raf = requestAnimationFrame(tick);
-    };
-    onInput();
-    window.addEventListener("scroll", onInput, { passive: true });
-    window.addEventListener("resize", onInput, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onInput);
-      window.removeEventListener("resize", onInput);
-      if (raf) cancelAnimationFrame(raf);
-      el.style.transform = "";
-    };
-  }, [reducedMotion]);
 
   // Slice the pin's 0..1 progress into per-stint windows. Tiny entry
   // and exit buffers so the first stint isn't already mid-stage when
@@ -434,7 +387,6 @@ export function Work() {
       onEnterBack: () => setEntered(true),
       onUpdate: (self) => {
         const p = self.progress;
-        scrollProgRef.current = p;
 
         const bar = progressBarRef.current;
         // Pixel-stepped fill: the section progress advances in 28
@@ -534,7 +486,7 @@ export function Work() {
       <div className="work-ledger">
         <header className="work-ledger-head">
           <div className="work-ledger-head-left">
-            <span className="work-ledger-num" ref={ledgerNumRef}>03</span>
+            <span className="work-ledger-num">03</span>
             <span className="work-ledger-index">03 / 06 · Work</span>
           </div>
           <div className="work-ledger-head-right">

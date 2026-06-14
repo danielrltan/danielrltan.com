@@ -2478,11 +2478,11 @@ function Scene({
     // overlay only adds the picture on top of it.
     const mat = overlayMatRef.current;
     if (mat) {
-      // The screen now powers on EARLY (during the float) to run the ASCII
-      // sphere screensaver, then carries the boot type-in + desktop. So the
-      // overlay opacity is max(power-on ramp, boot ramp): a quick power-on at
-      // the start of the float, held at full through boot/desktop.
-      const screenOn = clamp01((p - 0.02) / 0.05);
+      // The screen is ON from the very start of the float so the ASCII sphere
+      // screensaver is immediately visible (no dark power-on beat), then the
+      // overlay carries the boot type-in + desktop. Opacity = max(on, boot
+      // ramp) so it's always at full while floating and through boot/desktop.
+      const screenOn = 1;
       const targetOpacity = Math.max(screenOn, newBoot);
       // Cheap guard against re-writing the same value every frame.
       if (

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Hobby photo trains: three horizontal rows of placeholder photo
@@ -48,21 +48,38 @@ interface Props {
 }
 
 const ROWS = 3;
-// Per-row travel coefficients. Sign = direction (positive moves the
-// strip left, exposing later cards). Magnitudes are tuned so each row
-// reads as a different speed but the overall band feels like one rack.
-// EQUAL magnitudes (alternating direction for parallax): every row drifts
-// the same distance, so all three reveal their full 12-photo chunk over the
-// pass. Unequal speeds (was [0.55, -0.42, 0.50]) made the fast row show all
-// its photos while the slower rows never finished revealing theirs.
-const ROW_SPEEDS = [0.5, -0.5, 0.5];
-// Total travel multiplier (% of strip width at full Beat A). The strip is
-// the 12-photo row repeated 3× (36 cards); to reveal the WHOLE 12 over a
-// pass without wrapping into a repeat, the drift + the ~6–7 visible cards
-// must land right around 12 cards. With equal row speeds (0.5) that's
-// TRAVEL_MULT ≈ 30. Lower drops photos; higher starts repeating the set.
-// Verified via Playwright (per-row reveal + over-sweep repeat at 1440/1920).
-const TRAVEL_MULT = 30;
+// Per-row travel DIRECTION (sign only). Adjacent rows drift opposite ways
+// so the layered motion reads as parallax. The magnitude is now derived
+// from live geometry (see computeTravelPct below), NOT a fixed coefficient,
+// so every row drifts exactly far enough to parade its whole unique-photo
+// chunk through the centred clear window regardless of viewport size.
+// (The magnitude is normalised to 1 here; sign carries the parallax.)
+const ROW_DIRS = [1, -1, 1];
+
+// ROOT-CAUSE FIX (some photos never appear):
+// ------------------------------------------------------------------
+// The old model multiplied a FIXED `TRAVEL_MULT` (= 30) by the strip
+// width to get the per-row drift in PERCENT of strip width. But how many
+// PHOTOS that percentage parades past the centred, edge-masked window
+// depends on `cardPitch / stripWidth`, which changes with the viewport:
+// the card is height-driven (`clamp(132px, 18vh, 220px)`), so on a tall
+// or narrow viewport the cards hit the 220px clamp, fewer fit per screen,
+// and the strip grows wider — yet the drift stayed a fixed 30% of that
+// (now larger) width. The net effect was that the photos parked at the
+// LEFT and RIGHT ENDS of each row's 12-photo chunk never travelled into
+// the clear band and so appeared "missing" (reproduced at 1280x1600:
+// each row dropped its first + last photo). It was never a lazy-load /
+// decode / 404 problem — all images load fine; they were simply parked
+// permanently outside the visible window.
+//
+// THE FIX: derive the drift from the ACTUAL measured geometry so the
+// sweep always covers one full unique-photo chunk (chunkCount * pitch),
+// converted to a percentage of the live strip width. Then every unique
+// photo is guaranteed to cross the centre of the clear window across a
+// Beat-A pass at any viewport size. Re-measured on mount + resize.
+// COVERAGE > 1 adds a little margin so even the chunk-edge photos clear
+// the 8% edge-fade mask and read fully, not just peek.
+const TRAVEL_COVERAGE = 1.12;
 // rAF lerp factor. 0.085 ≈ ~25 frames to 95% of target at 60fps
 // (~420ms catch-up). Same shape as the original.
 // NOTE: the trains deliberately do NOT use the sitewide pixel-grid
@@ -82,6 +99,20 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
   // rAF loop reads them and lerps the visible transform.
   const targetShiftRef = useRef<number[]>([0, 0, 0]);
   const currentShiftRef = useRef<number[]>([0, 0, 0]);
+  // Per-row HALF-travel as a PERCENT of strip width, measured from live
+  // geometry (see measureTravel). centered ∈ [-0.5, 0.5] → centered*2 maps
+  // to [-1, 1], so at the pin extremes the strip shifts ±travelPct, sweeping
+  // a full unique-photo chunk (× TRAVEL_COVERAGE) through the clear window.
+  // Re-measured on mount + resize so it tracks the (height-driven, clamped)
+  // card size at every viewport. Seeded to a sane non-zero so the first few
+  // frames before measurement still drift.
+  const travelPctRef = useRef<number[]>([15, 15, 15]);
+  // Set true on the IO visible-rising edge so the tick re-measures travel
+  // ONCE when the rack scrolls into view. Catches geometry that settled
+  // after the initial mount measure WITHOUT firing a window 'resize' (font
+  // load, iOS URL-bar svh shift, the post-loading ScrollTrigger.refresh that
+  // re-lays-out the pin). One measure on entry, not a per-frame layout read.
+  const needsMeasureRef = useRef<boolean>(true);
   // PERF: visibility flag toggled by IntersectionObserver. The rAF
   // loop short-circuits when the rack isn't on screen.
   const visibleRef = useRef<boolean>(false);
@@ -137,6 +168,11 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
+          // Rising edge → re-measure travel once on the next visible tick
+          // (geometry may have settled while off-screen; see needsMeasureRef).
+          if (entry.isIntersecting && !visibleRef.current) {
+            needsMeasureRef.current = true;
+          }
           visibleRef.current = entry.isIntersecting;
         }
       },
@@ -145,6 +181,65 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
     io.observe(el);
     return () => io.disconnect();
   }, []);
+
+  // Measure per-row travel from LIVE geometry so the drift always sweeps a
+  // full unique-photo chunk through the clear window at any viewport size
+  // (the root-cause fix — see TRAVEL_COVERAGE). For each row:
+  //   pitch       = card outer width + flex gap (one photo-slot in px)
+  //   chunkCount  = number of UNIQUE photos in the row (chunk before repeat)
+  //   chunkWidth  = chunkCount * pitch  (px the strip must travel to parade
+  //                 the whole chunk past centre)
+  //   travelPct   = (chunkWidth * COVERAGE) / stripWidth * 100  (HALF-travel,
+  //                 because centered*2 maps [-0.5,0.5] → [-1,1] in the tick)
+  // Runs a handful of times (mount, resize, photo-set change, visible edge),
+  // never per scroll frame, so the layout reads here are cheap.
+  const measureTravel = useCallback(
+    () => {
+      const per = Math.ceil(items.length / ROWS);
+      for (let i = 0; i < ROWS; i++) {
+        const row = rowRefs.current[i];
+        const strip = row?.querySelector<HTMLElement>(".other-train-strip");
+        const firstCard = strip?.querySelector<HTMLElement>(".other-train-card");
+        if (!strip || !firstCard) continue;
+        const stripW = strip.scrollWidth;
+        if (stripW <= 0) continue;
+        const cardW = firstCard.getBoundingClientRect().width;
+        // Flex `gap` on the strip (var(--space-5) = 24px). Read computed so a
+        // future token change is honoured without touching this code.
+        const gap = parseFloat(getComputedStyle(strip).columnGap || "0") || 0;
+        const pitch = cardW + gap;
+        // Unique photos in THIS row (contiguous-third chunk; mirrors rowStrips).
+        let chunkCount = Math.min(per, Math.max(0, items.length - i * per));
+        if (chunkCount <= 0) chunkCount = items.length; // fewer photos than rows
+        const chunkWidth = chunkCount * pitch;
+        // HALF-travel percent: at the extremes the strip moves ±this, so the
+        // total sweep covers the full chunk (× COVERAGE for edge-mask margin).
+        travelPctRef.current[i] = ((chunkWidth * TRAVEL_COVERAGE) / stripW) * 100;
+      }
+    },
+    [items],
+  );
+
+  // Mount + resize + photo-set change: re-measure. The visible-edge flag
+  // (consumed in the tick) covers the cases that DON'T fire 'resize' (font
+  // load, iOS URL-bar svh shift, the post-loading ScrollTrigger.refresh that
+  // re-lays-out the pin).
+  useEffect(() => {
+    // Defer one frame so the flex layout (card clamp, gap) has resolved.
+    let raf = requestAnimationFrame(measureTravel);
+    const onResize = () => {
+      // Also flag the tick to re-measure on next visible frame, in case the
+      // resize changed the card clamp while the section is off-screen.
+      needsMeasureRef.current = true;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(measureTravel);
+    };
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [measureTravel, rowStrips]);
 
   useEffect(() => {
     let loopRaf = 0;
@@ -158,6 +253,12 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
         loopRaf = requestAnimationFrame(tick);
         return;
       }
+      // Consume a pending re-measure (visible-rising edge / off-screen
+      // resize). One layout read on entry, never every frame.
+      if (needsMeasureRef.current) {
+        needsMeasureRef.current = false;
+        measureTravel();
+      }
       // Center the travel range around 0. At progress=0.5 the strip
       // sits at neutral so the eye reads the middle of the pin as the
       // "default" frame, with cards drifting in both temporal
@@ -165,8 +266,11 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
       const p = progressRef.current;
       const centered = p - 0.5;
       for (let i = 0; i < ROWS; i++) {
+        // centered*2 maps the [-0.5, 0.5] pin range onto [-1, 1], so at the
+        // extremes the strip shifts ±travelPct (a full chunk sweep). Sign
+        // from ROW_DIRS gives the alternating-row parallax direction.
         targetShiftRef.current[i] =
-          centered * ROW_SPEEDS[i]! * TRAVEL_MULT;
+          centered * 2 * ROW_DIRS[i]! * travelPctRef.current[i]!;
       }
       // Snap to target on the very first tick so the trains don't
       // slide in from 0 when the section is already partway through
@@ -201,7 +305,7 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
 
     loopRaf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(loopRaf);
-  }, []);
+  }, [measureTravel]);
 
   return (
     <div ref={wrapRef} className="other-trains">

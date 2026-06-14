@@ -96,7 +96,8 @@
 .work-ledger-num {
   font-family: var(--font-dot);
   font-weight: 700;
-  font-size: clamp(56px, 6vw, 84px);
+  /* Big bold section numeral anchoring the ledger header. */
+  font-size: clamp(72px, 8.5vw, 124px);
   line-height: 0.82;
   letter-spacing: 0.01em;
   color: var(--ink);
@@ -137,11 +138,12 @@
   background: var(--accent);
 }
 .work-ledger-title {
-  /* OffBit pixel display (sitewide big-title voice). */
+  /* OffBit pixel display (sitewide big-title voice). Big + bold so the
+     header owns the empty space above the ledger. */
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(28px, 3.4vw, 48px);
-  line-height: 1;
+  font-size: clamp(46px, 6.4vw, 112px);
+  line-height: 0.92;
   letter-spacing: 0.01em;
   color: var(--ink);
   margin: 0;
@@ -149,6 +151,18 @@
 /* (Removed dead .work-ledger-title-em: the title is plain "Experience."
    with no <em>; the rule was an orphaned italic. No italics anywhere
    in this section.) */
+
+/* Short-viewport guard: the ledger is a pinned grid (auto header / 1fr
+   stage / auto foot). On short screens the big header would eat the stage
+   and clip the stint content, so ease the header type back down there. */
+@media (max-height: 780px) and (min-width: 901px) {
+  .work-ledger-num {
+    font-size: clamp(56px, 6vw, 84px);
+  }
+  .work-ledger-title {
+    font-size: clamp(36px, 4.2vw, 64px);
+  }
+}
 
 /* ===============================================================
    BODY: [gutter ticker] [stage]
@@ -720,10 +734,10 @@
     gap: 12px;
   }
   .work-ledger-num {
-    font-size: 48px;
+    font-size: clamp(56px, 14vw, 80px);
   }
   .work-ledger-title {
-    font-size: clamp(26px, 7vw, 36px);
+    font-size: clamp(38px, 10vw, 60px);
   }
 
   /* Body collapses to a single full-width column; drop the ticker

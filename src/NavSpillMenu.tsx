@@ -3,7 +3,8 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
-import { scrollToSection } from "./portfolio/Keypad";
+import { scrollToSection, setScrollLocked } from "./portfolio/Keypad";
+import { MercuryAura, type CursorState, type AuraTarget } from "./MercuryAura";
 import "./crt-channel-menu.css";
 
 /**
@@ -90,32 +91,52 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-// One geometry per section (assorted shapes), + scattered rest pose.
+// One geometry + size + idle-spin per section (index matches SECTION_REGISTRY).
 interface Spec {
   geom: () => THREE.BufferGeometry;
   size: number;
-  target: [number, number, number];
   spin: [number, number, number];
 }
-// The arrangement is CENTRED at the origin and framed by a contained
-// top-right canvas region, so it always fits regardless of page aspect
-// (positioning it in the corner of a full-screen frustum overflowed on
-// narrow/short windows). The group rotates toward the cursor (parallax);
-// targets are compact offsets around the centre.
 const CLUSTER_CENTER = new THREE.Vector3(0, 0, 0);
-// Laid out as a loose RING around the centre (evenly spaced) so the seven
-// shapes don't pile up / overlap heavily once settled.
 const SPECS: Spec[] = [
-  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.82, target: [-1.7, 1.15, 0.3], spin: [0.4, 0.5, 0.0] },
-  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.7, target: [0.1, 1.85, -0.4], spin: [0.45, -0.4, 0.2] },
-  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.78, target: [1.9, 0.8, 0.4], spin: [0.35, 0.5, 0.25] },
-  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.82, target: [-1.95, -0.25, 0.8], spin: [-0.5, 0.4, 0.0] },
-  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.78, target: [0.4, -1.7, -0.1], spin: [0.5, 0.35, 0.2] },
-  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.78, target: [-1.6, -1.5, 0.3], spin: [0.4, -0.45, 0.0] },
-  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.76, target: [1.6, -0.95, 1.2], spin: [0.32, 0.55, 0.1] },
+  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.82, spin: [0.4, 0.5, 0.0] },
+  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.8, spin: [0.45, -0.4, 0.2] },
+  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.9, spin: [0.35, 0.5, 0.25] },
+  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.92, spin: [-0.5, 0.4, 0.0] },
+  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.9, spin: [0.5, 0.35, 0.2] },
+  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.9, spin: [0.4, -0.45, 0.0] },
+  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.88, spin: [0.32, 0.55, 0.1] },
 ];
-// Corner of the region the objects spill OUT from (offset from centre).
-const SPILL_ORIGIN = new THREE.Vector3(2.2, 2.2, 1.2);
+// A CLOCKWISE ring centred on screen with index 0 (Hero) at top-centre
+// (12 o'clock); subsequent sections step clockwise around the circle.
+const RING_RADIUS = 2.25;
+function ringTarget(i: number, n: number): THREE.Vector3 {
+  const ang = Math.PI / 2 - (i / n) * Math.PI * 2; // top, then clockwise
+  const z = (hashF(i * 3.7) - 0.5) * 0.7;
+  return new THREE.Vector3(
+    Math.cos(ang) * RING_RADIUS,
+    Math.sin(ang) * RING_RADIUS,
+    z,
+  );
+}
+// Objects BURST out from the centre to their ring positions.
+const SPILL_ORIGIN = new THREE.Vector3(0, 0, 0.6);
+
+// Jump-menu label overrides (keyed by section number). The dial/footer keep the
+// registry names; the jump page uses these friendlier labels.
+const MENU_LABELS: Record<string, string> = {
+  "02": "Projects",
+  "05": "Photos",
+};
+
+// Drag-to-spin bookkeeping: grab the wheel and flick it; vel carries on release.
+interface DragState {
+  active: boolean;
+  lastAng: number;
+  lastT: number;
+  vel: number; // rad/s, decays after release
+  moved: boolean; // true once dragged enough to suppress the click
+}
 
 function SpillObject({
   index,
@@ -126,6 +147,7 @@ function SpillObject({
   reduced,
   onSelect,
   onArm,
+  posEntry,
 }: {
   index: number;
   label: string;
@@ -135,6 +157,7 @@ function SpillObject({
   reduced: boolean;
   onSelect: () => void;
   onArm: () => void;
+  posEntry: AuraTarget;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const stretchRef = useRef<THREE.Group>(null);
@@ -148,8 +171,8 @@ function SpillObject({
   const spec = SPECS[index]!;
   const geometry = useMemo(() => spec.geom(), [spec]);
   const target = useMemo(
-    () => new THREE.Vector3(...spec.target),
-    [spec],
+    () => ringTarget(index, SECTION_REGISTRY.length),
+    [index],
   );
   // Per-object varied start (so they don't all launch from the exact same
   // point) and a signed arc amount (so each curves its OWN way, not all the
@@ -236,17 +259,26 @@ function SpillObject({
     }
     g.position.set(curSx + bobx, curSy + boby, sz);
 
-    // Idle tumble.
+    // Idle tumble + EXAGGERATED entrance spin: while an object is dealing out
+    // (p < 1) it spins fast and unwinds to its idle tumble, so each shape
+    // visibly whirls into place as it grows. (1-p)^1.5 keeps real angular
+    // speed through the visible part of the grow-in, not just the first frame.
     if (!reduced) {
-      m.rotation.x += dtc * spec.spin[0];
-      m.rotation.y += dtc * spec.spin[1];
-      m.rotation.z += dtc * spec.spin[2];
+      const es = Math.pow(1 - clamp01(p), 1.5);
+      const spin = es * 7; // gentle extra spin during entrance (calm, not frantic)
+      m.rotation.y += dtc * (spec.spin[1] + spin);
+      m.rotation.x += dtc * (spec.spin[0] + spin * 0.5);
+      m.rotation.z += dtc * (spec.spin[2] + spin * 0.2);
     }
     // Scale: SHRINK -> full (so each emerges small) * hover lift.
     const hoverMul = armRef.current ? 1.28 : 1.0;
     const targetScale = spec.size * clamp01(p) * hoverMul;
     scaleRef.current += (targetScale - scaleRef.current) * (1 - Math.exp(-dtc * 14));
     m.scale.setScalar(scaleRef.current);
+
+    // Report world position + radius so the mercury aura can hug this object.
+    g.getWorldPosition(posEntry.pos);
+    posEntry.r = scaleRef.current;
 
     // CARTOON SMEAR (artificial motion blur): stretch along the travel
     // direction + squash perpendicular, scaled by speed — so as it's spat out
@@ -317,6 +349,11 @@ function SpillField({
   reduced,
   pointer,
   select,
+  positionsRef,
+  closing,
+  closeMs,
+  dragRotRef,
+  dragRef,
 }: {
   activeIdx: number;
   armed: number;
@@ -325,16 +362,61 @@ function SpillField({
   reduced: boolean;
   pointer: React.MutableRefObject<{ x: number; y: number }>;
   select: (i: number) => void;
+  positionsRef: React.MutableRefObject<AuraTarget[]>;
+  closing: boolean;
+  closeMs: number;
+  dragRotRef: React.MutableRefObject<number>;
+  dragRef: React.MutableRefObject<DragState>;
 }) {
   const fieldRef = useRef<THREE.Group>(null);
+  // Parallax base, tracked separately from the spin so the two can be summed
+  // each frame (lerping the *sum* would fight the decaying spin).
+  const rotYRef = useRef(0);
+  const rotXRef = useRef(0);
   useFrame((_, dt) => {
     const g = fieldRef.current;
-    if (!g || reduced) return;
-    const ty = pointer.current.x * 0.1;
-    const tx = -pointer.current.y * 0.08;
-    const k = 1 - Math.exp(-dt * 5);
-    g.rotation.y += (ty - g.rotation.y) * k;
-    g.rotation.x += (tx - g.rotation.x) * k;
+    if (!g) return;
+    const dtc = Math.min(dt, 0.05);
+    const now = performance.now();
+    const elapsed = (now - startMs) / 1000;
+    // Parallax target (toward cursor); zero under reduced motion.
+    const ty = reduced ? 0 : pointer.current.x * 0.1;
+    const tx = reduced ? 0 : -pointer.current.y * 0.08;
+    const k = 1 - Math.exp(-dtc * 5);
+    rotYRef.current += (ty - rotYRef.current) * k;
+    rotXRef.current += (tx - rotXRef.current) * k;
+    // ENTRANCE SPIN: a modest in-plane (Z) whirl with an exponential ease-out
+    // — starts close to settled (small amount) and decelerates to rest.
+    let spinOff = 0;
+    if (!reduced) {
+      const e = clamp01(elapsed / 1.1);
+      spinOff = Math.pow(1 - e, 3.5) * -Math.PI * 1.3;
+    }
+    // AMBIENT: a slow, continuous idle drift so the wheel is always gently
+    // turning (subtle — slow enough that objects stay easy to click).
+    const ambient = reduced ? 0 : elapsed * 0.14;
+    // DRAG INERTIA: when not actively dragging, the flick velocity carries the
+    // wheel and decays — flick it and it keeps spinning with flow.
+    if (!reduced && !dragRef.current.active) {
+      dragRotRef.current += dragRef.current.vel * dtc;
+      dragRef.current.vel *= Math.exp(-dtc * 1.8);
+    }
+    // CLOSE: the reverse of the open — the ring spins INWARD and shrinks to a
+    // point (spirals into thin air); the scrim then fades (CSS delay).
+    let scl = 1;
+    let closeSpin = 0;
+    if (closing && !reduced) {
+      const cp = clamp01((now - closeMs) / 1000 / 0.5);
+      const ce = 1 - Math.pow(1 - cp, 2); // ease-out growth (same feel as open)
+      scl = Math.max(0.0001, 1 - cp * cp); // shrink to a point at the centre
+      closeSpin = ce * Math.PI * 1.3;
+    }
+    g.position.copy(CLUSTER_CENTER);
+    g.scale.setScalar(scl);
+    g.rotation.y = rotYRef.current; // cursor parallax only
+    g.rotation.x = rotXRef.current; // cursor parallax only
+    // In-plane wheel spin: entrance + ambient drift + drag/flick + close.
+    g.rotation.z = spinOff + ambient + dragRotRef.current + closeSpin;
   });
   return (
     <group ref={fieldRef} position={CLUSTER_CENTER}>
@@ -342,13 +424,14 @@ function SpillField({
         <SpillObject
           key={s.number}
           index={i}
-          label={s.label}
+          label={MENU_LABELS[s.number] ?? s.label}
           active={i === activeIdx}
           armed={i === armed}
           startMs={startMs}
           reduced={reduced}
           onSelect={() => select(i)}
           onArm={() => setArmed(i)}
+          posEntry={positionsRef.current[i]!}
         />
       ))}
     </group>
@@ -366,7 +449,28 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
   const [shown, setShown] = useState(false);
   const [armed, setArmed] = useState(activeIdx);
   const startMsRef = useRef(0);
+  const closeMsRef = useRef(0);
   const pointer = useRef({ x: 0, y: 0 });
+  // Cursor in screen UV (0..1, y-down) for the rice pool that follows it.
+  const cursor = useRef<CursorState>({ x: 0.5, y: 0.5, active: false });
+  // World position + radius of each object, written per-frame by the spill
+  // objects and read by the aura to hug the hovered one.
+  const positionsRef = useRef<AuraTarget[]>(
+    SECTION_REGISTRY.map(() => ({
+      pos: new THREE.Vector3(9999, 9999, 9999),
+      r: 0,
+    })),
+  );
+  // Drag-to-spin: accumulated in-plane wheel rotation + drag bookkeeping so a
+  // click that was actually a drag doesn't close/select.
+  const dragRotRef = useRef(0);
+  const dragRef = useRef<DragState>({
+    active: false,
+    lastAng: 0,
+    lastT: 0,
+    vel: 0,
+    moved: false,
+  });
   const reduced =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -375,38 +479,89 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
     if (open) {
       startMsRef.current = performance.now();
       setArmed(activeIdx);
+      dragRotRef.current = 0;
+      dragRef.current.vel = 0;
+      dragRef.current.moved = false;
+      cursor.current.active = false;
       setMounted(true);
+      setScrollLocked(true); // page can't be scrolled under the open menu
       const r = requestAnimationFrame(() => setShown(true));
       return () => cancelAnimationFrame(r);
     }
+    setScrollLocked(false);
     if (mounted) {
+      closeMsRef.current = performance.now();
       setShown(false);
-      const t = window.setTimeout(() => setMounted(false), 240);
+      // Hold the mount through the spiral-in exit, then the fade, before
+      // unmounting (the scrim fade is delayed in CSS so the spin plays first).
+      const t = window.setTimeout(() => setMounted(false), 620);
       return () => window.clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Cursor parallax + Escape.
+  // Safety: always unlock scroll if the menu unmounts while open.
+  useEffect(() => () => setScrollLocked(false), []);
+
+  // Pointer: cursor (rice) + parallax + drag-to-spin + Escape.
   useEffect(() => {
     if (!mounted) return;
+    const angOf = (x: number, y: number) =>
+      // y-up so the drag angle matches what the viewer sees (clientY is y-down)
+      Math.atan2(-(y - window.innerHeight / 2), x - window.innerWidth / 2);
+    const onDown = (e: PointerEvent) => {
+      dragRef.current.active = true;
+      dragRef.current.moved = false;
+      dragRef.current.vel = 0;
+      dragRef.current.lastAng = angOf(e.clientX, e.clientY);
+      dragRef.current.lastT = performance.now();
+    };
     const onMove = (e: PointerEvent) => {
       pointer.current.x = (e.clientX / window.innerWidth) * 2 - 1;
       pointer.current.y = (e.clientY / window.innerHeight) * 2 - 1;
+      cursor.current.x = e.clientX / window.innerWidth;
+      cursor.current.y = e.clientY / window.innerHeight;
+      cursor.current.active = true;
+      if (dragRef.current.active) {
+        const tnow = performance.now();
+        const a = angOf(e.clientX, e.clientY);
+        let d = a - dragRef.current.lastAng;
+        d = (((d + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+        dragRotRef.current += d; // grab + spin the wheel
+        const dt2 = Math.max(0.001, (tnow - dragRef.current.lastT) / 1000);
+        // Smooth the flick velocity so release carries on cleanly (inertia).
+        dragRef.current.vel += (d / dt2 - dragRef.current.vel) * 0.4;
+        dragRef.current.lastAng = a;
+        dragRef.current.lastT = tnow;
+        if (Math.abs(d) > 0.002) dragRef.current.moved = true;
+      }
+    };
+    const onUp = () => {
+      dragRef.current.active = false;
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
+    window.addEventListener("pointerdown", onDown, { passive: true });
     window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onUp, { passive: true });
     window.addEventListener("keydown", onKey);
     return () => {
+      window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
       window.removeEventListener("keydown", onKey);
       document.body.style.cursor = "";
     };
   }, [mounted, onClose]);
 
+  // Close / select only on a genuine click, not the end of a drag-spin.
+  const handleScrimClose = () => {
+    if (dragRef.current.moved) return;
+    onClose();
+  };
   const select = (i: number) => {
+    if (dragRef.current.moved) return;
     const el = (findSectionElements()[i]?.el as HTMLElement | null) ?? null;
     if (el) scrollToSection(el, reduced ? { immediate: true } : { duration: 1.1 });
     onClose();
@@ -416,7 +571,7 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
 
   return (
     <div className="navx-spill-root" data-open={shown ? "true" : "false"}>
-      <div className="navx-spill-scrim" onClick={onClose} aria-hidden />
+      <div className="navx-spill-scrim" onClick={handleScrimClose} aria-hidden />
       <button
         className="navx-close"
         onClick={onClose}
@@ -425,11 +580,16 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
       <div className="navx-spill-stage">
         <Canvas
           className="navx-spill-canvas"
-          camera={{ position: [0, 0, 8.7], fov: 40 }}
+          camera={{ position: [0, 0, 10], fov: 40 }}
           dpr={[1, 2]}
           gl={{ alpha: true, antialias: true }}
-          onPointerMissed={onClose}
+          onPointerMissed={handleScrimClose}
         >
+          <MercuryAura
+            cursorRef={cursor}
+            positionsRef={positionsRef}
+            reduced={reduced}
+          />
           <SpillField
             activeIdx={activeIdx}
             armed={armed}
@@ -438,6 +598,11 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
             reduced={reduced}
             pointer={pointer}
             select={select}
+            positionsRef={positionsRef}
+            closing={!open}
+            closeMs={closeMsRef.current}
+            dragRotRef={dragRotRef}
+            dragRef={dragRef}
           />
         </Canvas>
       </div>

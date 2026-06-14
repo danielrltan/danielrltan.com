@@ -263,16 +263,16 @@
   pointer-events: none;
 }
 
-/* Smaller marker in the Mac section; the giant "02" competes with
-   the orbit. Editorial-restrained, like a TE spec sheet header. */
+/* Bold corner header: "02" + a big "The kit" wordmark, right-aligned so it
+   extends left into the empty upper-right space (clear of the centred orbit).*/
 .portfolio-mac .section-marker {
-  font-size: clamp(54px, 6vw, 84px);
+  font-size: clamp(64px, 7vw, 104px);
   margin-bottom: 0;
 }
 .portfolio-mac h2 {
-  font-size: clamp(28px, 3vw, 42px);
-  margin-top: 2px;
-  line-height: 1.0;
+  font-size: clamp(40px, 5.2vw, 88px);
+  margin-top: 4px;
+  line-height: 0.95;
 }
 
 /* HTML overlay on the CRT screen (rendered inside drei <Html />). */
