@@ -17,27 +17,83 @@
 }
 
 /* ============================ RESTING CARD ============================ */
+/* Two-tone HUD chit: solid-orange index block (white numeral) + white
+   readout block, as one notched, hard-extruded 3D unit. */
 .status-nav-card {
   position: relative;
-  border-radius: 0;
-  box-shadow: 5px 6px 0 0 var(--navx-accent);
+  display: inline-flex;
+  align-items: stretch;
+  user-select: none;
+  cursor: pointer;
+  color: var(--navx-ink);
+  /* hard, blur-free offset = the block's 3D side */
+  box-shadow: 6px 7px 0 0 var(--navx-accent-deep);
+  /* angular notched corner */
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
   transition: box-shadow 150ms cubic-bezier(0.2, 0.9, 0.25, 1.05),
     transform 150ms cubic-bezier(0.2, 0.9, 0.25, 1.05);
 }
-.status-nav-card::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
+.snc-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 13px 3px;
+  background: var(--navx-accent-hot);
+  color: #ffffff;
+  font-family: "Offbit", monospace;
+  font-weight: 700;
+  font-size: 31px;
+  line-height: 1;
+}
+.snc-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 118px;
+  padding: 7px 14px 7px 12px;
+  background: #ffffff;
+}
+.snc-eyebrow {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--navx-accent);
+}
+.snc-label {
+  font: 650 15px/1 "Geist", system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--navx-ink);
+}
+.snc-meter {
+  display: flex;
+  gap: 2px;
+  margin-top: 1px;
+}
+.snc-meter > span {
   width: 4px;
-  background: var(--navx-accent);
-  pointer-events: none;
+  height: 9px;
+}
+.status-nav-card[data-mobile="true"] .snc-num {
+  font-size: 24px;
+  padding: 5px 10px 3px;
+}
+.status-nav-card[data-mobile="true"] .snc-body {
+  min-width: 0;
+  max-width: 44vw;
+  padding: 6px 11px;
+}
+.status-nav-card[data-mobile="true"] .snc-label {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .status-nav-card:hover,
 .status-nav-card[aria-expanded="true"] {
   transform: translate(3px, 4px);
-  box-shadow: 2px 2px 0 0 var(--navx-accent);
+  box-shadow: 2px 2px 0 0 var(--navx-accent-deep);
 }
 .status-nav-card:focus-visible {
   outline: 2px solid var(--navx-accent);
@@ -45,7 +101,7 @@
 }
 .status-nav-card .nav-open-hint {
   position: absolute;
-  right: 12px;
+  right: 4px;
   bottom: -15px;
   font-family: "VT323", monospace;
   font-size: 11px;
@@ -299,40 +355,27 @@
   pointer-events: auto;
 }
 /* drei <Html> label = real clickable button on each object. */
+/* Text sits ON the object: plain white, no card chrome. A dark + orange
+   shadow keeps it legible over the orange shapes AND the light page. */
 .navx-spill-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 11px 5px 8px;
-  background: #ffffff;
-  color: var(--navx-ink);
-  border: 1px solid rgba(13, 14, 16, 0.16);
-  box-shadow: 3px 4px 0 0 var(--navx-accent);
-  font: 650 13px/1 "Geist", system-ui, sans-serif;
-  letter-spacing: 0.01em;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: #ffffff;
+  font: 800 15px/1 "Geist", system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   white-space: nowrap;
   cursor: pointer;
   pointer-events: auto;
-  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
-}
-.navx-spill-num {
-  font-family: "Offbit", monospace;
-  font-weight: 700;
-  font-size: 17px;
-  color: var(--navx-accent);
-  transform: translateY(1px);
+  text-shadow: 0 1px 4px rgba(13, 14, 16, 0.7), 0 0 2px rgba(13, 14, 16, 0.65);
+  transition: transform 120ms ease, text-shadow 120ms ease;
 }
 .navx-spill-label[data-active="true"] {
-  background: var(--navx-accent-hot);
-  color: #ffffff;
-  border-color: var(--navx-accent-deep);
-  box-shadow: 3px 4px 0 0 var(--navx-accent-deep);
-}
-.navx-spill-label[data-active="true"] .navx-spill-num {
-  color: #ffffff;
+  text-shadow: 0 0 6px rgba(255, 106, 42, 0.95), 0 1px 4px rgba(13, 14, 16, 0.7);
 }
 .navx-spill-label:hover,
 .navx-spill-label[data-armed="true"] {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 0 var(--navx-accent);
+  transform: scale(1.14);
 }

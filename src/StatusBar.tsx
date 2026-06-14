@@ -149,32 +149,23 @@ export function StatusBar() {
   const active = SECTION_REGISTRY[activeIdx] ?? SECTION_REGISTRY[0]!;
   const cardAria = `Open section menu. Current: ${active.number} ${active.label}`;
 
-  // Shared pixel scroll meter: a row of square cells that fill with the
-  // accent as the page scrolls. Stepped on purpose (no transition) so it
-  // reads as a hardware segment display, matching the OffBit/dot-matrix
-  // type language. Fill is mutated directly by the scroll listener
-  // (meterRef), no React reconcile per frame.
-  const meter = (cellW: number, cellH: number) => (
-    <div
-      ref={meterRef}
-      aria-hidden
-      style={{ display: "flex", gap: 2, flex: "0 0 auto" }}
-    >
+  // Pixel scroll meter: a row of square cells that fill with the accent as
+  // the page scrolls. Stepped (no transition) so it reads as a hardware
+  // segment display. Fill is mutated directly via meterRef (no reconcile).
+  const meter = (
+    <div ref={meterRef} className="snc-meter" aria-hidden>
       {Array.from({ length: METER_SEGMENTS }, (_, i) => (
         <span
           key={i}
-          style={{ width: cellW, height: cellH, background: METER_TRACK }}
+          style={{ background: METER_TRACK }}
         />
       ))}
     </div>
   );
 
-  // The resting card is now a BUTTON that opens the channel menu. Footprint
-  // stays identical — only behaviour + a CSS hover/focus tell are added
-  // (.status-nav-card lives in crt-channel-menu.css). Shared across both
-  // the mobile + desktop branches.
   const cardButtonProps = {
     className: "status-nav-card",
+    "data-active-section": active.number,
     role: "button" as const,
     tabIndex: 0,
     "aria-haspopup": "menu" as const,
@@ -188,6 +179,10 @@ export function StatusBar() {
       }
     },
   };
+
+  const top = isMobile ? "calc(14px + env(safe-area-inset-top, 0px))" : 20;
+  const right = isMobile ? "calc(14px + env(safe-area-inset-right, 0px))" : 22;
+
   const menu = (
     <NavSpillMenu
       open={menuOpen}
@@ -196,152 +191,28 @@ export function StatusBar() {
     />
   );
 
-  // Offbit numeral + Geist label + progress ring. No faux-mono, no live
-  // clock. Offbit appears ONLY as the display numeral (a deliberate
-  // accent), the label is clean Geist. Anchors top-right.
-  if (isMobile) {
-    return (
-      <>
+  // Two-tone HUD chit: the section number in a solid-orange INDEX BLOCK
+  // (white numeral, the same skin as the active menu shard) butted against a
+  // white readout block, as one notched, 3D-extruded unit. Reads as a piece
+  // of hardware, ties the card to the spill-menu's orange/white language.
+  return (
+    <>
       <div
         {...cardButtonProps}
-        data-active-section={active.number}
-        style={{
-          position: "fixed",
-          top: "calc(14px + env(safe-area-inset-top, 0px))",
-          right: "calc(14px + env(safe-area-inset-right, 0px))",
-          maxWidth: "min(64vw, 240px)",
-          zIndex: 40,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "7px 12px",
-          background: "rgba(255, 255, 255, 0.86)",
-          backdropFilter: "blur(12px) saturate(125%)",
-          WebkitBackdropFilter: "blur(12px) saturate(125%)",
-          border: "1px solid var(--ink-hairline)",
-          // Sharp angular chrome (CSS .status-nav-card clips a Persona corner).
-          borderRadius: 0,
-          boxShadow: "0 10px 22px -16px rgba(13, 14, 16, 0.5)",
-          color: "var(--ink)",
-          userSelect: "none",
-          cursor: "pointer",
-        }}
+        data-mobile={isMobile ? "true" : "false"}
+        style={{ position: "fixed", top, right, zIndex: 40 }}
       >
-        <span
-          style={{
-            fontFamily: '"Offbit", monospace',
-            fontWeight: 700,
-            fontSize: 22,
-            lineHeight: 1,
-            color: "var(--accent)",
-            flex: "0 0 auto",
-            // Offbit sits ~13% high in its line box; nudge to optically centre.
-            transform: "translateY(3px)",
-          }}
-        >
-          {active.number}
-        </span>
-        <span
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            letterSpacing: "-0.01em",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {active.label}
-        </span>
-        {meter(3, 9)}
+        <div className="snc-num">{active.number}</div>
+        <div className="snc-body">
+          <span className="snc-eyebrow">Section</span>
+          <span className="snc-label">{active.label}</span>
+          {meter}
+        </div>
         <span className="nav-open-hint" aria-hidden>
           OPEN /
         </span>
       </div>
       {menu}
-      </>
-    );
-  }
-
-  return (
-    <>
-    <div
-      {...cardButtonProps}
-      data-active-section={active.number}
-      style={{
-        position: "fixed",
-        top: 20,
-        right: 22,
-        zIndex: 40,
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "8px 14px 8px 12px",
-        background: "rgba(255, 255, 255, 0.86)",
-        backdropFilter: "blur(12px) saturate(125%)",
-        WebkitBackdropFilter: "blur(12px) saturate(125%)",
-        border: "1px solid var(--ink-hairline)",
-        // Sharp angular chrome (CSS .status-nav-card clips a Persona corner).
-        borderRadius: 0,
-        boxShadow: "0 12px 28px -18px rgba(13, 14, 16, 0.55)",
-        color: "var(--ink)",
-        userSelect: "none",
-        cursor: "pointer",
-      }}
-    >
-      <span
-        style={{
-          fontFamily: '"Offbit", monospace',
-          fontWeight: 700,
-          fontSize: 30,
-          lineHeight: 1,
-          color: "var(--accent)",
-          // Offbit sits ~13% high in its line box, so flex-centering the box
-          // leaves the glyph optically high. Nudge down to centre it.
-          transform: "translateY(4px)",
-        }}
-      >
-        {active.number}
-      </span>
-      <span
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 3,
-          lineHeight: 1,
-          // Fixed width so the pill doesn't resize between "Work" and
-          // "Bits and pieces".
-          minWidth: 128,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 9.5,
-            fontWeight: 600,
-            letterSpacing: "0.2em",
-            textTransform: "uppercase",
-            color: "rgba(13, 14, 16, 0.5)",
-          }}
-        >
-          Section
-        </span>
-        <span
-          style={{
-            fontSize: 15,
-            fontWeight: 600,
-            letterSpacing: "-0.01em",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {active.label}
-        </span>
-      </span>
-      {meter(4, 12)}
-      <span className="nav-open-hint" aria-hidden>
-        OPEN /
-      </span>
-    </div>
-    {menu}
     </>
   );
 }

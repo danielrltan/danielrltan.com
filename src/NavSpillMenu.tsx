@@ -94,38 +94,38 @@ interface Spec {
   target: [number, number, number];
   spin: [number, number, number];
 }
+// The whole arrangement lives in a group at CLUSTER_CENTER and ROTATES
+// toward the cursor (real parallax), so targets here are offsets FROM that
+// centre. Faster multi-axis spin so every object visibly tumbles.
+const CLUSTER_CENTER = new THREE.Vector3(2.6, 0.85, 0.0);
 const SPECS: Spec[] = [
-  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.5, target: [1.2, 1.85, 0.3], spin: [0.18, 0.26, 0.0] },
-  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.4, target: [2.95, 2.15, -0.4], spin: [0.22, -0.2, 0.1] },
-  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.46, target: [4.3, 1.25, 0.6], spin: [0.0, 0.3, 0.0] },
-  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.5, target: [2.2, 0.55, 0.9], spin: [-0.24, 0.2, 0.0] },
-  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.62, target: [3.7, -0.15, -0.1], spin: [0.3, 0.18, 0.12] },
-  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.47, target: [1.35, -0.25, 0.35], spin: [0.2, -0.26, 0.0] },
-  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.46, target: [3.25, 1.15, 1.3], spin: [0.16, 0.34, 0.06] },
+  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.5, target: [-1.3, 1.0, 0.3], spin: [0.4, 0.5, 0.0] },
+  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.4, target: [0.5, 1.35, -0.4], spin: [0.45, -0.4, 0.2] },
+  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.46, target: [1.85, 0.45, 0.6], spin: [0.35, 0.5, 0.25] },
+  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.5, target: [-0.35, -0.35, 0.9], spin: [-0.5, 0.4, 0.0] },
+  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.46, target: [1.15, -1.05, -0.1], spin: [0.5, 0.35, 0.2] },
+  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.47, target: [-1.2, -1.15, 0.35], spin: [0.4, -0.45, 0.0] },
+  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.46, target: [0.7, 0.35, 1.3], spin: [0.32, 0.55, 0.1] },
 ];
-// Tight cluster the objects spill OUT from (upper-right corner-ish).
-const SPILL_ORIGIN = new THREE.Vector3(5.0, 2.9, 1.4);
+// Cluster the objects spill OUT from (offset from CLUSTER_CENTER).
+const SPILL_ORIGIN = new THREE.Vector3(2.6, 2.1, 1.4);
 
 function SpillObject({
   index,
-  number,
   label,
   active,
   armed,
   startMs,
   reduced,
-  pointer,
   onSelect,
   onArm,
 }: {
   index: number;
-  number: string;
   label: string;
   active: boolean;
   armed: boolean;
   startMs: number;
   reduced: boolean;
-  pointer: React.MutableRefObject<{ x: number; y: number }>;
   onSelect: () => void;
   onArm: () => void;
 }) {
@@ -183,11 +183,13 @@ function SpillObject({
       p = easeOutBack(clamp01(e / 0.72));
     }
     g.position.lerpVectors(start, target, clamp01(p));
-    // parallax: the whole field nudges toward the cursor (applied via the
-    // group's small offset so the arrangement feels dimensional).
+    // Idle float so every object visibly drifts (the sphere can't show its
+    // own rotation, so the bob + the field rotation keep it alive).
     if (!reduced) {
-      g.position.x += pointer.current.x * 0.35;
-      g.position.y += -pointer.current.y * 0.25;
+      const t = now / 1000;
+      const ph = index * 1.3;
+      g.position.x += Math.cos(t * 0.7 + ph) * 0.05;
+      g.position.y += Math.sin(t * 0.9 + ph) * 0.07;
     }
 
     // idle tumble.
@@ -226,7 +228,8 @@ function SpillObject({
           document.body.style.cursor = "";
         }}
       />
-      <Html center position={[0, -spec.size - 0.35, 0]} distanceFactor={7} zIndexRange={[40, 0]}>
+      {/* Label sits ON the object (white text, no card). */}
+      <Html center position={[0, 0, 0]} distanceFactor={6} zIndexRange={[40, 0]}>
         <button
           className="navx-spill-label"
           data-active={active ? "true" : "false"}
@@ -235,10 +238,60 @@ function SpillObject({
           onPointerEnter={onArm}
           tabIndex={armed ? 0 : -1}
         >
-          <span className="navx-spill-num">{number}</span>
           {label}
         </button>
       </Html>
+    </group>
+  );
+}
+
+/**
+ * The arrangement group: rotates around its centre toward the cursor — a
+ * REAL parallax (near objects swing more than far ones, you see different
+ * sides) rather than panning the whole thing around the viewport.
+ */
+function SpillField({
+  activeIdx,
+  armed,
+  setArmed,
+  startMs,
+  reduced,
+  pointer,
+  select,
+}: {
+  activeIdx: number;
+  armed: number;
+  setArmed: (i: number) => void;
+  startMs: number;
+  reduced: boolean;
+  pointer: React.MutableRefObject<{ x: number; y: number }>;
+  select: (i: number) => void;
+}) {
+  const fieldRef = useRef<THREE.Group>(null);
+  useFrame((_, dt) => {
+    const g = fieldRef.current;
+    if (!g || reduced) return;
+    const ty = pointer.current.x * 0.34;
+    const tx = -pointer.current.y * 0.26;
+    const k = 1 - Math.exp(-dt * 5);
+    g.rotation.y += (ty - g.rotation.y) * k;
+    g.rotation.x += (tx - g.rotation.x) * k;
+  });
+  return (
+    <group ref={fieldRef} position={CLUSTER_CENTER}>
+      {SECTION_REGISTRY.map((s, i) => (
+        <SpillObject
+          key={s.number}
+          index={i}
+          label={s.label}
+          active={i === activeIdx}
+          armed={i === armed}
+          startMs={startMs}
+          reduced={reduced}
+          onSelect={() => select(i)}
+          onArm={() => setArmed(i)}
+        />
+      ))}
     </group>
   );
 }
@@ -312,21 +365,15 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
         gl={{ alpha: true, antialias: true }}
         onPointerMissed={onClose}
       >
-        {SECTION_REGISTRY.map((s, i) => (
-          <SpillObject
-            key={s.number}
-            index={i}
-            number={s.number}
-            label={s.label}
-            active={i === activeIdx}
-            armed={i === armed}
-            startMs={startMsRef.current}
-            reduced={reduced}
-            pointer={pointer}
-            onSelect={() => select(i)}
-            onArm={() => setArmed(i)}
-          />
-        ))}
+        <SpillField
+          activeIdx={activeIdx}
+          armed={armed}
+          setArmed={setArmed}
+          startMs={startMsRef.current}
+          reduced={reduced}
+          pointer={pointer}
+          select={select}
+        />
       </Canvas>
     </div>
   );
