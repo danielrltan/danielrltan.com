@@ -39,8 +39,13 @@
 .footer-marker {
   font-family: var(--font-dot);
   font-weight: 700;
-  font-size: clamp(72px, 9vw, 120px);
-  line-height: 0.82;
+  /* Shared corner-header number scale (--hdr-num): the closing "06"
+     reads at the SAME size as every section's number. Ghosted to
+     --ink-faint below since it's a watermark on the dark band, and there
+     is no section wordmark in the footer's colophon layout (see task
+     note) — the number is the lone header element here. */
+  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  line-height: 0.9;
   letter-spacing: 0.01em;
   /* Ghosted on the dark band: full --ink here would shout; a faint ink
      reads as a watermark anchoring the corner. */

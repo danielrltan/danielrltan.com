@@ -229,10 +229,11 @@ const FRAGMENT = /* glsl */ `
     // and out as the noise field passes over them.
     float drift = 0.75 + 0.25 * noise2(gridUv * 6.0 + uTime * 0.6);
 
-    // Grain alpha. Trimmed (1.1 -> 0.7) so the grains read as light foam
-    // suspended IN the filled liquid rather than a dot field that hollows
-    // out the body — the fill (above) now carries the mercury mass.
-    float a = clamp(dotMask * blob * drift * 0.2, 0.0, 1.0);
+    // Grain alpha. Boosted (0.2 -> 0.5) because the solid fill below is now
+    // nearly removed (user: the filled blob is too much / too deep in
+    // contrast) — so the LIT RICE + the outline carry the pool instead, the
+    // same lighter read as the jump-menu cursor.
+    float a = clamp(dotMask * blob * drift * 0.5, 0.0, 1.0);
 
     // ----- Orange fluid glow -----
     // Three large overlapping blobs anchored near canvas center, each
@@ -294,11 +295,12 @@ const FRAGMENT = /* glsl */ `
     // the top.
     vec3 tintedBg = mix(uBg, uGlow, glow);
     tintedBg = mix(tintedBg, uHotColor, clamp(hotField * 0.5, 0.0, 0.5));
-    // Liquid fill: a clean solid orange body, slightly DARKER toward the
-    // edge (inner shading) so the droplet reads rounded/3D, not a flat fill.
+    // Liquid fill: nearly removed — just a whisper of body so the pool isn't a
+    // hard-contrast orange disc (user: "the filter looks too much, too deep in
+    // contrast"). The lit rice + the bright membrane outline carry the pool.
     float core = smoothstep(0.05, -0.02, sd); // 1 deep inside, 0 near rim
     vec3 body = mix(uGlow * 0.82, uGlow, core); // edge darker, centre full
-    tintedBg = mix(tintedBg, body, blob * 0.94);
+    tintedBg = mix(tintedBg, body, blob * 0.12);
     // Faint grain shimmer suspended in the liquid (kept very low so it reads
     // as smooth mercury, not a halftone/paper dot field).
     vec3 riceCol = mix(uRice, uRiceHot, clamp(hotField * 1.6, 0.0, 1.0));

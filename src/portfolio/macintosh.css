@@ -263,16 +263,27 @@
   pointer-events: none;
 }
 
-/* Bold corner header: "02" + a big "The kit" wordmark, right-aligned so it
-   extends left into the empty upper-right space (clear of the centred orbit).*/
+/* Bold corner header: "02" + a big "THE KIT" wordmark anchored TOP-RIGHT,
+   right-aligned so it extends left into the empty upper-right space (clear
+   of the centred orbit). On the shared --hdr-num / --hdr-title scale so it
+   matches every other section's header exactly; UPPERCASE + 0.9 line-height
+   + margin-bottom:0 give the pair very little padding. */
 .portfolio-mac .section-marker {
-  font-size: clamp(64px, 7vw, 104px);
+  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  line-height: 0.9;
   margin-bottom: 0;
+  /* The shared .section-marker is an inline-flex with an "↓" ::after; in
+     this top-right rail it's the corner number only, so suppress the arrow
+     and let it sit flush right with the wordmark below. */
+  display: block;
+}
+.portfolio-mac .section-marker::after {
+  content: none;
 }
 .portfolio-mac h2 {
-  font-size: clamp(40px, 5.2vw, 88px);
-  margin-top: 4px;
-  line-height: 0.95;
+  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+  margin: 4px 0 0;
+  line-height: 0.9;
 }
 
 /* HTML overlay on the CRT screen (rendered inside drei <Html />). */
@@ -525,11 +536,10 @@
     backdrop-filter: none;
     order: 1;
   }
-  .portfolio-mac .section-marker {
-    font-size: clamp(64px, 18vw, 104px);
-  }
+  /* Mobile: the header is a normal in-flow left-aligned block. Stay on the
+     shared scale (its clamp carries mobile-safe floors), only restoring the
+     left text alignment + the wordmark's top margin. */
   .portfolio-mac h2 {
-    font-size: clamp(32px, 8vw, 48px);
     margin-top: 4px;
   }
   /* Flat ticker sits between the header and the Mac. No scroll-pin

@@ -11,17 +11,21 @@
   overflow: hidden;
 }
 
-/* Floating "ABOUT" eyebrow shown during the room-solo beat. Sits
-   in the bottom-left so it labels the room without overlapping it.
-   The big pin-progress-driven transform is on the about-col panel;
-   this eyebrow is a simple opacity gate. */
+/* Cohesive corner header (01 + ABOUT) shown during the room-solo beat.
+   Sits bottom-left so it labels the room without overlapping it; this is
+   About's place on the sitewide corner-header system. The dotted "01"
+   and the OffBit wordmark ride the shared --hdr-num / --hdr-title scale
+   so the pair reads at the SAME size as every other section's header. The
+   big pin-progress-driven transform is on the about-col panel; this
+   header is a simple opacity gate. */
 .about-floating-eyebrow {
   position: absolute;
   bottom: 6vh;
   left: 6vw;
   display: flex;
   align-items: baseline;
-  gap: var(--space-4h, 20px);
+  /* Very little padding between number and wordmark per the spec. */
+  gap: var(--space-3, 12px);
   pointer-events: none;
   z-index: 4;
   opacity: 0;
@@ -34,34 +38,27 @@
   opacity: 1;
   transform: translateY(0);
 }
+/* Two-digit section number in the dot/pixel face on the shared scale —
+   same number voice + size as Work "03", Photos "05", etc. */
 .about-floating-num {
-  font-family: var(--font-mono, sans-serif);
-  font-size: var(--text-base, 12px);
-  font-weight: 600;
-  letter-spacing: 0.22em;
-  color: var(--accent, #e87040);
-  /* Pin to the bottom of the wordmark line height so the small
-     mono "01" sits visually beside the big "Daniel" baseline. */
-  align-self: flex-end;
-  margin-bottom: 0.18em;
-}
-.about-floating-label {
-  /* OffBit pixel display (sitewide big-title voice): the wordmark is
-     the section's editorial anchor, and the pixel face is what makes
-     it read playful against the matte room render behind it. Pixel
-     glyphs need near-zero tracking (negative spacing collides). */
-  font-family: var(--font-pixel, "Offbit", monospace);
-  /* Big bold editorial wordmark — owns the bottom-left over the room. */
-  font-size: clamp(80px, 13vw, 184px);
+  font-family: var(--font-dot, monospace);
+  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 0.9;
   color: var(--wrapper-ink, #0d0e10);
 }
-/* Orange period: same brand tic as .other-title-period, so the accent
-   punctuation reads as a deliberate signature across big titles. */
-.about-floating-period {
-  color: var(--accent, #e87040);
+.about-floating-label {
+  /* OffBit pixel display (sitewide big-title voice). UPPERCASE, weight
+     700, tight 0.01em tracking + 0.9 line-height, on the shared
+     --hdr-title scale. Pixel glyphs collide under negative tracking. */
+  font-family: var(--font-pixel, "Offbit", monospace);
+  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 0.9;
+  color: var(--wrapper-ink, #0d0e10);
 }
 
 /* Desktop kills the big dot marker for the same reason the mobile rule
@@ -439,13 +436,17 @@
     top: calc(54px + env(safe-area-inset-top, 0px));
     left: 24px;
     right: 24px;
-    gap: var(--space-3, 12px);
+    gap: var(--space-2, 8px);
     z-index: 5;
   }
+  /* Portrait header: the shared scale's vw term + the desktop max would
+     overpower the narrow card, so ease the pair down here (still ONE
+     system — number + wordmark share this mobile clamp so they stay the
+     same size as each other). Floor 40px clears horizontal scroll at
+     360px even for the full "ABOUT" + "01" pair. */
+  .about-floating-num,
   .about-floating-label {
-    /* Portrait-safe: the desktop clamp floor (64px) could clip on a 360px
-       viewport. vw-led clamp fills the narrow width without overflowing. */
-    font-size: clamp(46px, 15vw, 72px);
+    font-size: clamp(40px, 13vw, 64px);
     line-height: 0.95;
   }
 
@@ -537,8 +538,9 @@
     left: 18px;
     right: 18px;
   }
+  .about-floating-num,
   .about-floating-label {
-    font-size: clamp(42px, 15vw, 60px);
+    font-size: clamp(36px, 12vw, 56px);
   }
   /* Scoped to match the ≤720px `.portfolio-about .about-lede` rule's
      specificity (0,2,0); the bare `.about-lede` selector (0,1,0) lost to

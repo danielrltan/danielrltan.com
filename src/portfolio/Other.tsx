@@ -639,12 +639,11 @@ export function Other() {
             } as React.CSSProperties
           }
         >
+          {/* Cohesive corner header: big "04" + UPPERCASE wordmark, no
+              small caption tag (the "/ Photo reel" eyebrow was removed —
+              vibe-coded clutter). */}
           <div className="other-gallery-eyebrow">
             <span className="other-gallery-num">04</span>
-            <span className="other-gallery-label">
-              <span className="other-gallery-divider" aria-hidden>/</span>
-              <span className="other-gallery-tag">Photo reel</span>
-            </span>
           </div>
           <h2 className="other-gallery-title">
             <ScrambleText text="Recents" />
@@ -659,15 +658,9 @@ export function Other() {
           />
         </div>
 
-        {/* Bottom HUD: handoff hint to the curated reel beat. The
-            "% SCRUB" progress readout was removed (no UX value on a
-            scroll-driven reel). */}
-        <div className="other-gallery-foot">
-          <div className="other-gallery-next">
-            <span>02 / Curated reel</span>
-            <span className="other-gallery-next-arrow" aria-hidden>↓</span>
-          </div>
-        </div>
+        {/* (Removed the bottom "02 / Curated reel" handoff caption — a
+            vibe-coded NN / label eyebrow with no UX value on a
+            scroll-driven beat.) */}
       </div>
 
       {/* ===================== BEAT B: CURATED REEL ===================== */}
@@ -693,14 +686,13 @@ export function Other() {
             } as React.CSSProperties),
           }}
         >
+          {/* Cohesive corner header: big "04" + UPPERCASE wordmark. The
+              small "/ Off the clock" tag caption was removed (vibe-coded
+              clutter); the section identity lives in the StatusBar / footer
+              index. 04 = Hero 00 / About 01 / Stack 02 / Work 03 / Off the
+              clock 04, matching StatusBar's SECTION_REGISTRY. */}
           <div className="other-eyebrow">
-            {/* Section index = 04 (Hero 00 · About 01 · Stack 02 · Work
-                03 · Off the clock 04). Was incorrectly "02", which
-                collided with the global "02: Stack" in the StatusBar
-                registry. Now matches StatusBar's SECTION_REGISTRY. */}
             <span className="other-section-num">04</span>
-            <span className="other-section-divider" aria-hidden>/</span>
-            <span className="other-section-tag">Off the clock</span>
           </div>
           <h2 className="other-title">
             <ScrambleText text="Some interests" />

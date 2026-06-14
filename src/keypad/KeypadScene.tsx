@@ -136,6 +136,11 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
   // Cursor target shared with RiceBlob (uniform driver) and with the
   // SceneContents component (parallax driver).
   const cursorRef = useRef<CursorState>({ x: 0.5, y: 0.5, active: false });
+  // Canvas-LOCAL cursor (0..1 within the keypad canvas rect) for the RiceBlob.
+  // The viewport-relative cursorRef above drifts the rice glow once the section
+  // scrolls (the canvas no longer fills the viewport), so the blob is fed this
+  // rect-relative one instead, which maps 1:1 onto the screen-aligned plane.
+  const riceCursorRef = useRef<CursorState>({ x: 0.5, y: 0.5, active: false });
   const wrapperRef = useRef<HTMLDivElement>(null);
   // PERF: visibility ref so useFrame inside SceneContents can short-
   // circuit while the section is off-screen. The keypad sits at the
@@ -177,9 +182,19 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
         y: e.clientY / Math.max(1, window.innerHeight),
         active: true,
       };
+      // Canvas-local for the rice glow: accurate at any scroll position.
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      if (rect && rect.width > 0 && rect.height > 0) {
+        riceCursorRef.current = {
+          x: (e.clientX - rect.left) / rect.width,
+          y: (e.clientY - rect.top) / rect.height,
+          active: true,
+        };
+      }
     };
     const onLeave = () => {
       cursorRef.current = { ...cursorRef.current, active: false };
+      riceCursorRef.current = { ...riceCursorRef.current, active: false };
     };
     document.addEventListener("pointermove", onMove);
     window.addEventListener("pointerleave", onLeave);
@@ -284,6 +299,7 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
       >
         <SceneContents
           cursorRef={cursorRef}
+          riceCursorRef={riceCursorRef}
           isMobile={isMobile}
           pinProgressRef={pinProgressRef}
           glowOpacityRef={glowOpacityRef}
@@ -387,6 +403,7 @@ function TuneHud({
 
 function SceneContents({
   cursorRef,
+  riceCursorRef,
   isMobile,
   pinProgressRef,
   glowOpacityRef,
@@ -397,6 +414,7 @@ function SceneContents({
   hotRef,
 }: {
   cursorRef: React.MutableRefObject<CursorState>;
+  riceCursorRef: React.MutableRefObject<CursorState>;
   isMobile: boolean;
   pinProgressRef: React.MutableRefObject<number>;
   glowOpacityRef?: React.MutableRefObject<number>;
@@ -628,7 +646,7 @@ function SceneContents({
   return (
     <>
       <RiceBlob
-        cursorRef={cursorRef}
+        cursorRef={riceCursorRef}
         glowOpacityRef={glowOpacityRef}
         hotRef={hotRef}
       />
@@ -637,7 +655,7 @@ function SceneContents({
           pool reads as 3D: liquid behind AND a few wisps over the device. */}
       {!isMobile && (
         <RiceBlob
-          cursorRef={cursorRef}
+          cursorRef={riceCursorRef}
           glowOpacityRef={glowOpacityRef}
           hotRef={hotRef}
           layer="front"

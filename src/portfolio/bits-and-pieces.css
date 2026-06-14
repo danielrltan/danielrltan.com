@@ -91,12 +91,15 @@
 }
 .bp-title {
   grid-column: 2;
-  /* OffBit pixel display (sitewide big-title voice). */
+  /* OffBit pixel display on the shared corner-header scale (--hdr-title):
+     MOMENTS reads at the SAME wordmark size as every other section.
+     UPPERCASE comes from the shared .portfolio-section h2 rule; 0.9
+     line-height + tight tracking match the system. */
   font-family: var(--font-pixel, monospace);
-  font-size: clamp(44px, 6.4vw, 88px);
+  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
   font-weight: 700;
   letter-spacing: 0.01em;
-  line-height: 1;
+  line-height: 0.9;
   margin: 0;
   color: var(--ink);
 }

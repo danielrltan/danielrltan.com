@@ -157,46 +157,28 @@
   align-items: end;
 }
 
-/* Eyebrow: "04 - OFF THE CLOCK" eyebrow. Small mono text; uses the
-   darkened --accent-text (~5:1) instead of raw --accent (~2.6:1) so it
-   passes AA. */
+/* Beat-B header eyebrow: now just the big "04" number on the shared
+   corner-header scale (the small "/ Off the clock" tag was removed). */
 .other-eyebrow {
   grid-column: 1;
   grid-row: 1;
   display: inline-flex;
   align-items: baseline;
-  gap: var(--space-3);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  color: var(--accent-text);
-  font-weight: 600;
   opacity: var(--head-eye, 1);
   transform: translateY(calc((1 - var(--head-eye, 1)) * 8px));
   transition: opacity var(--t-med) var(--ease-entrance),
               transform var(--t-med) var(--ease-entrance);
 }
+/* Two-digit section number in the dot face on the shared --hdr-num scale:
+   the SAME number size as Work "03" / Photos "05". Solid ink (it sits at
+   the top edge, clear of the centred reel below). */
 .other-section-num {
   font-family: var(--font-dot);
   font-weight: 700;
-  font-size: var(--fs-sub);
-  letter-spacing: 0.02em;
-  color: var(--accent-text);
-}
-.other-section-divider {
-  /* Signature editorial glyph (aria-hidden). The Play section adopts a
-     confident forward slash (set in Other.tsx) rather than the old faint
-     dot — warmed to --accent-text (AA-safe small accent, see top of file)
-     and italicised so the separator reads as an intentional editorial
-     mark, not an invisible connector. This is the section's divider voice;
-     the caption strip below echoes the same warm slash. */
-  color: var(--accent-text);
-  font-weight: 400;
-  letter-spacing: 0;
-}
-.other-section-tag {
-  color: var(--accent-text);
+  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  line-height: 0.9;
+  letter-spacing: 0.01em;
+  color: var(--ink);
 }
 
 /* Title: "Some interests." OffBit pixel display (sitewide big-title
@@ -208,22 +190,23 @@
 .portfolio-other .other-title {
   grid-column: 1;
   grid-row: 2;
-  /* 14px: eyebrow-to-title rebalance (user: "a bit tight"). */
-  margin: 14px 0 0;
+  /* Very little padding under the big number. */
+  margin: 2px 0 0;
+  /* OffBit pixel display on the shared --hdr-title scale — SAME wordmark
+     size as every other section. UPPERCASE, 0.9 line-height, tight
+     tracking. */
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(50px, 7vw, 118px);
-  line-height: 0.94;
+  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+  line-height: 0.9;
   letter-spacing: 0.01em;
+  text-transform: uppercase;
   color: var(--ink);
   opacity: var(--head-title, 1);
   transform: translateY(calc((1 - var(--head-title, 1)) * 22px));
   /* Title is the slowest reveal so it lands last + most deliberately. */
   transition: opacity var(--t-slow) var(--ease-entrance),
               transform var(--t-slow) var(--ease-entrance);
-}
-.other-title-period {
-  color: var(--accent);
 }
 
 .other-sub {
@@ -239,6 +222,22 @@
   opacity: var(--head-sub, 1);
   transform: translateY(calc((1 - var(--head-sub, 1)) * 10px));
   transition: opacity 360ms ease, transform 360ms ease;
+}
+
+/* Short-viewport guard: this section is pinned full-bleed with the 3D reel
+   filling the centre. On short screens the big shared-scale header (number
+   + wordmark) would push down over the reel hero, so ease BOTH down here
+   (matched to each other, still one system). Mirrors Work's guard. Desktop
+   widths only — the ≤768 mobile block already sets its own header sizes. */
+@media (max-height: 780px) and (min-width: 769px) {
+  .other-section-num,
+  .other-gallery-num {
+    font-size: clamp(56px, 6vw, 88px);
+  }
+  .portfolio-other .other-title,
+  .portfolio-other .other-gallery-title {
+    font-size: clamp(36px, 4.4vw, 72px);
+  }
 }
 
 /* ======================================================================
@@ -510,69 +509,47 @@
   grid-template-rows: auto auto;
   align-items: end;
 }
+/* Beat-A header eyebrow: now just the big "04" number on the shared
+   corner-header scale (the "/ Photo reel" tag was removed). */
 .other-gallery-eyebrow {
   grid-column: 1;
   grid-row: 1;
   display: flex;
-  flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  color: var(--accent-text);
-  font-weight: 600;
   opacity: var(--gh-eye, 1);
   transform: translateY(calc((1 - var(--gh-eye, 1)) * 8px));
   transition: opacity var(--t-med) var(--ease-entrance),
               transform var(--t-med) var(--ease-entrance);
 }
-/* Big section numeral: matches the Work section's "03" treatment
-   (dot font, ink, clamp(56-84px)) so 04 reads at the same scale as the
-   other section markers instead of a tiny 14px eyebrow digit. */
+/* Big section numeral on the shared --hdr-num scale: 04 reads at the SAME
+   size as every other section's number. (The "/ Photo reel" tag + its
+   label/divider wrappers were removed — vibe-coded caption clutter.) */
 .other-gallery-num {
   font-family: var(--font-dot);
   font-weight: 700;
-  font-size: clamp(56px, 6vw, 84px);
-  line-height: 0.82;
+  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  line-height: 0.9;
   letter-spacing: 0.01em;
   color: var(--ink);
-}
-.other-gallery-label {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-.other-gallery-divider {
-  /* Same warm editorial slash voice as the Beat-B eyebrow divider. */
-  color: var(--accent-text);
-  font-weight: 400;
-  letter-spacing: 0;
-}
-.other-gallery-tag {
-  color: var(--accent-text);
 }
 /* Scoped for the same specificity reason as .other-title above. */
 .portfolio-other .other-gallery-title {
   grid-column: 1;
   grid-row: 2;
-  /* Matches .other-title's rebalanced 14px (see above). */
-  margin: 14px 0 0;
-  /* OffBit pixel display (sitewide big-title voice). */
+  /* Very little padding under the big number. */
+  margin: 2px 0 0;
+  /* OffBit pixel display on the shared --hdr-title scale. UPPERCASE. */
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(50px, 7vw, 118px);
-  line-height: 0.94;
+  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+  line-height: 0.9;
   letter-spacing: 0.01em;
+  text-transform: uppercase;
   color: var(--ink);
   opacity: var(--gh-title, 1);
   transform: translateY(calc((1 - var(--gh-title, 1)) * 22px));
   transition: opacity var(--t-slow) var(--ease-entrance),
               transform var(--t-slow) var(--ease-entrance);
-}
-.other-gallery-title-period {
-  color: var(--accent);
 }
 .other-gallery-sub {
   grid-column: 2;
@@ -732,72 +709,8 @@
   -webkit-backdrop-filter: blur(4px);
 }
 
-/* Foot HUD: bottom-band scrub indicator + handoff hint. */
-.other-gallery-foot {
-  position: absolute;
-  left: 6vw;
-  right: 6vw;
-  bottom: 4vh;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4vw;
-  pointer-events: none;
-}
-.other-gallery-scrub {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  max-width: 520px;
-}
-.other-gallery-scrub-rule {
-  position: relative;
-  flex: 1 1 auto;
-  height: 2px;
-  background: var(--ink-hairline);
-  overflow: hidden;
-}
-.other-gallery-scrub-fill {
-  position: absolute;
-  inset: 0;
-  background: var(--accent);
-  transform-origin: left center;
-  transform: scaleX(0);
-}
-.other-gallery-scrub-label {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 10px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-  font-weight: 600;
-}
-.other-gallery-scrub-label span:first-child {
-  /* Small mono percentage → darkened accent for AA contrast. */
-  color: var(--accent-text);
-}
-.other-gallery-next {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-  font-weight: 600;
-}
-.other-gallery-next-arrow {
-  color: var(--accent-text);
-  font-size: var(--fs-sub);
-  transform: translateY(2px);
-  display: inline-block;
-}
+/* (Removed the Beat-A foot HUD: the "02 / Curated reel" handoff caption
+   + the old scrub readout were vibe-coded NN / label clutter.) */
 
 /* ======================================================================
    Mobile (≤ 768px)
@@ -817,11 +730,17 @@
     row-gap: 6px;
   }
   .other-eyebrow { grid-column: 1; grid-row: 1; }
+  /* Mobile: ease the number down to sit just above the title and keep the
+     stacked header compact over the reel. Number + title share a matched
+     mobile size band so the pair still reads as one system. */
+  .other-section-num {
+    font-size: clamp(46px, 14vw, 72px);
+  }
   .portfolio-other .other-title  {
     grid-column: 1;
     grid-row: 2;
-    /* Sitewide eyebrow-to-title rebalance. */
-    margin-top: 12px;
+    /* Very little padding under the number. */
+    margin-top: 2px;
     font-size: clamp(40px, 12vw, 64px);
   }
   .other-sub {
@@ -920,11 +839,14 @@
     row-gap: 6px;
   }
   .other-gallery-eyebrow { grid-column: 1; grid-row: 1; }
+  .other-gallery-num {
+    font-size: clamp(46px, 14vw, 72px);
+  }
   .portfolio-other .other-gallery-title  {
     grid-column: 1;
     grid-row: 2;
-    /* Sitewide eyebrow-to-title rebalance. */
-    margin-top: 12px;
+    /* Very little padding under the number. */
+    margin-top: 2px;
     font-size: clamp(40px, 12vw, 64px);
   }
   .other-gallery-sub {
@@ -967,31 +889,7 @@
     padding: 4px 7px;
     letter-spacing: 0.18em;
   }
-  .other-gallery-foot {
-    left: 6vw;
-    right: 6vw;
-    bottom: 4vh;
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-2);
-    /* FAB clearance: the fixed JumpToTop circle (~48px + inset) parks in
-       the bottom-right corner on phones and was covering the right end
-       of the scrub label / CURATED RECENTS line. Inset the whole foot
-       column so both right-aligned rows stay legible. */
-    padding-right: 68px;
-  }
-  .other-gallery-scrub {
-    max-width: none;
-  }
-  .other-gallery-scrub-label {
-    font-size: 9.5px;
-    letter-spacing: 0.18em;
-  }
-  .other-gallery-next {
-    font-size: var(--text-xs);
-    letter-spacing: 0.18em;
-    justify-content: flex-end;
-  }
+  /* (Beat-A foot HUD removed; no mobile foot rules needed.) */
 }
 
 /* ======================================================================

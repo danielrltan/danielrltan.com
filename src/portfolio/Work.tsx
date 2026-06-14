@@ -150,7 +150,6 @@ export function Work() {
   const sectionRef = useRef<HTMLElement>(null);
   const stackRef = useRef<HTMLDivElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
-  const stintCounterRef = useRef<HTMLSpanElement>(null);
   const rowElsRef = useRef<HTMLDivElement[]>([]);
   // Continuous target & current offsets for the rAF lerp. Both are
   // year-INDEX values (not pixels): fractional during glides.
@@ -441,11 +440,6 @@ export function Work() {
         targetOffsetRef.current = STINT_YEAR_INDICES[idx] ?? 0;
         // Re-arm the rAF loop if it was parked (settled + off-screen).
         armLoopRef.current?.();
-
-        const cnt = stintCounterRef.current;
-        if (cnt) {
-          cnt.textContent = `${String(idx + 1).padStart(2, "0")} / ${String(STINTS.length).padStart(2, "0")}`;
-        }
       },
     });
 
@@ -490,7 +484,6 @@ export function Work() {
             <span className="work-ledger-index">03 / 06 · Work</span>
           </div>
           <div className="work-ledger-head-right">
-            <span className="work-ledger-eyebrow" />
             <h2 className="work-ledger-title">
               <ScrambleText text="Experience" />
             </h2>
@@ -577,13 +570,10 @@ export function Work() {
           </div>
         </div>
 
+        {/* (Removed the visible "STINT · NN / NN" counter caption —
+            vibe-coded NN / NN chrome. The progress bar still meters the
+            pin scrub.) */}
         <div className="work-ledger-foot">
-          <span className="work-ledger-counter">
-            STINT ·{" "}
-            <span ref={stintCounterRef}>
-              01 / {String(STINTS.length).padStart(2, "0")}
-            </span>
-          </span>
           <div className="work-ledger-bar">
             <div ref={progressBarRef} className="work-ledger-bar-fill" />
           </div>

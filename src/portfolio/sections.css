@@ -2,6 +2,32 @@
    section (markers, indices, columns). Section-specific styling lives
    in {about,macintosh,work-timeline,other,bits-and-pieces,footer}.css. */
 
+/* ----------------------------------------------------------------------
+   COHESIVE CORNER-HEADER SCALE (sitewide, load-bearing)
+   ----------------------------------------------------------------------
+   ONE type scale shared by every section's big corner header so the
+   two-digit number + the UPPERCASE wordmark read as ONE system across
+   the whole site. Each section anchors the pair in whichever corner
+   suits its layout (About bottom-left, Mac top-right, Work top-left,
+   Play bottom-left, Photos top-left, Contact bottom-left), but the SIZE
+   is identical everywhere via these two vars.
+
+   These are ADDITIVE new vars only — they do not override any existing
+   token, so the shared cascade is untouched. Per-section CSS references
+   var(--hdr-num) / var(--hdr-title) (with the same literal clamp() as a
+   fallback) so the system stays cohesive even if this file loads after
+   a section's own sheet.
+
+   Sizing is bold but bounded: the title floor (44px) + tight 0.9
+   line-height keep the longest wordmark ("EXPERIENCE", "OFF THE CLOCK")
+   off horizontal scroll at 360px, and the @media (max-height:780px)
+   guards in work-timeline.css / other.css ease it down so the Work
+   ledger + Play reel stages never clip under the taller header. */
+:root {
+  --hdr-num: clamp(72px, 8.5vw, 128px);
+  --hdr-title: clamp(44px, 6vw, 104px);
+}
+
 .portfolio-section {
   min-height: 100vh;
   display: flex;
@@ -37,12 +63,16 @@
   opacity: 1;
 }
 
-/* Section number: TE-style "03." marker. */
+/* Section number: TE-style "03." marker. Sits on the shared corner-
+   header scale (--hdr-num) so the dotted number reads at the SAME size
+   as every other section's number. line-height 0.9 + 0.01em tracking
+   per the cohesive-header spec (Offbit Dot glyphs collide under tight
+   tracking). */
 .section-marker {
   font-family: var(--font-dot);
   font-weight: 700;
-  font-size: clamp(96px, 11vw, 148px);
-  line-height: 0.82;
+  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  line-height: 0.9;
   letter-spacing: 0.01em;
   color: var(--ink);
   margin: 0 0 4px 0;
@@ -83,9 +113,13 @@
 .portfolio-section h2 {
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(38px, 4.4vw, 64px);
-  line-height: 1.04;
+  /* Shared corner-header wordmark scale (--hdr-title): the OffBit title
+     reads at the SAME size as every section's wordmark. UPPERCASE +
+     tight 0.9 line-height per the cohesive-header spec. */
+  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+  line-height: 0.9;
   letter-spacing: 0.01em;
+  text-transform: uppercase;
   color: var(--ink);
   margin: 0 0 48px;
 }
@@ -134,18 +168,22 @@
   .portfolio-section--hero .portfolio-col {
     padding: 0;
   }
-  .section-marker {
-    font-size: clamp(88px, 26vw, 140px);
-    margin: 0 0 4px 0;
-  }
   .section-index {
     margin-bottom: 14px;
     font-size: 10.5px;
     letter-spacing: 0.2em;
   }
+  /* Keep the shared header pair on the cohesive scale on mobile too: the
+     --hdr-num / --hdr-title clamps already carry mobile-safe floors (72px
+     number, 44px wordmark) + vw scaling, so we only restore tracking +
+     trim the wordmark's bottom margin here. (The old block dropped to a
+     separate clamp + -0.04em tracking, which both broke the one-system
+     look and collided the OffBit pixel glyphs.) */
+  .section-marker {
+    margin: 0 0 4px 0;
+  }
   .portfolio-section h2 {
-    font-size: clamp(32px, 9vw, 48px);
-    letter-spacing: -0.04em;
+    letter-spacing: 0.01em;
     margin-bottom: 32px;
   }
 }

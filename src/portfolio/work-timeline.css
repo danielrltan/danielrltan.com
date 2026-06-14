@@ -96,9 +96,11 @@
 .work-ledger-num {
   font-family: var(--font-dot);
   font-weight: 700;
-  /* Big bold section numeral anchoring the ledger header. */
-  font-size: clamp(72px, 8.5vw, 124px);
-  line-height: 0.82;
+  /* Big bold section numeral on the shared corner-header scale
+     (--hdr-num): the "03" now reads at the SAME size as every other
+     section's number (was a slightly bespoke clamp that ran small). */
+  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  line-height: 0.9;
   letter-spacing: 0.01em;
   color: var(--ink);
   user-select: none;
@@ -115,36 +117,23 @@
 .work-ledger-head-right {
   display: flex;
   flex-direction: column;
-  /* 8 → 12px: sitewide eyebrow-to-title rebalance (user: too tight). */
-  gap: 12px;
   align-items: flex-start;
 }
-.work-ledger-eyebrow {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: var(--accent);
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-.work-ledger-eyebrow::before {
-  content: "";
-  display: inline-block;
-  width: 22px;
-  height: 1px;
-  background: var(--accent);
-}
+/* (Removed the empty .work-ledger-eyebrow span + its accent dash rule:
+   it was a decorative caption with no text, clutter against the cohesive
+   number + wordmark header. The "03" numeral + the EXPERIENCE wordmark
+   are the whole header now.) */
 .work-ledger-title {
-  /* OffBit pixel display (sitewide big-title voice). Big + bold so the
-     header owns the empty space above the ledger. */
+  /* OffBit pixel display on the shared corner-header scale (--hdr-title):
+     EXPERIENCE now reads at the SAME size as every other section's
+     wordmark (was running small — the size the user flagged). UPPERCASE,
+     0.9 line-height, tight tracking, anchored top-left. */
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(46px, 6.4vw, 112px);
-  line-height: 0.92;
+  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+  line-height: 0.9;
   letter-spacing: 0.01em;
+  text-transform: uppercase;
   color: var(--ink);
   margin: 0;
 }
@@ -153,14 +142,17 @@
    in this section.) */
 
 /* Short-viewport guard: the ledger is a pinned grid (auto header / 1fr
-   stage / auto foot). On short screens the big header would eat the stage
-   and clip the stint content, so ease the header type back down there. */
+   stage / auto foot). On short screens the bigger shared-scale header
+   would eat the stage and clip the stint content, so ease BOTH the number
+   and the wordmark back down here (number + title stay matched to each
+   other, just smaller, so the system still reads cohesive on short
+   screens). Overrides the shared --hdr-* clamps locally. */
 @media (max-height: 780px) and (min-width: 901px) {
   .work-ledger-num {
-    font-size: clamp(56px, 6vw, 84px);
+    font-size: clamp(56px, 6vw, 88px);
   }
   .work-ledger-title {
-    font-size: clamp(36px, 4.2vw, 64px);
+    font-size: clamp(36px, 4.4vw, 72px);
   }
 }
 
@@ -733,11 +725,15 @@
     align-items: baseline;
     gap: 12px;
   }
+  /* Mobile static stack: num + title sit baseline-aligned in a row. Ease
+     both down off the shared scale (matched to each other) so the pair
+     fits the narrow head without forcing horizontal scroll, while still
+     reading as the same number + wordmark system. */
   .work-ledger-num {
-    font-size: clamp(56px, 14vw, 80px);
+    font-size: clamp(52px, 15vw, 84px);
   }
   .work-ledger-title {
-    font-size: clamp(38px, 10vw, 60px);
+    font-size: clamp(40px, 12vw, 68px);
   }
 
   /* Body collapses to a single full-width column; drop the ticker

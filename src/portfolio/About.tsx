@@ -220,6 +220,12 @@ export function About() {
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-about">
+      {/* Cohesive corner header (01 + ABOUT) anchored bottom-left over
+          the live room. The dotted "01" + the OffBit wordmark sit on the
+          sitewide --hdr-num / --hdr-title scale so this reads as the same
+          header system as every other section. Solid ink: the bottom-left
+          sits over the empty room floor, so the big type doesn't fight the
+          content (kept opaque per the cohesive-header spec). */}
       <div
         className={`about-floating-eyebrow${
           floatingEyebrowVisible ? " is-visible" : ""
@@ -229,7 +235,6 @@ export function About() {
         <span className="about-floating-num">01</span>
         <span className="about-floating-label">
           <ScrambleText text="About" play={floatingEyebrowVisible} />
-          <span className="about-floating-period">.</span>
         </span>
       </div>
 
