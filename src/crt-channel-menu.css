@@ -391,12 +391,16 @@
 .navx-spill-root[data-open="true"] {
   opacity: 1;
 }
+/* Full-screen blur behind the shapes: the whole page is blurred + softly
+   washed while the menu is open, so the sharp 3D objects pop against it. */
 .navx-spill-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(238, 240, 243, 0.5);
-  background-image: radial-gradient(rgba(232, 112, 64, 0.16) 1px, transparent 1.4px);
+  background: rgba(238, 240, 243, 0.42);
+  background-image: radial-gradient(rgba(232, 112, 64, 0.14) 1px, transparent 1.4px);
   background-size: 7px 7px;
+  backdrop-filter: blur(12px) saturate(112%);
+  -webkit-backdrop-filter: blur(12px) saturate(112%);
   pointer-events: none;
 }
 .navx-spill-root[data-open="true"] .navx-spill-scrim {
@@ -422,26 +426,6 @@
   width: 100% !important;
   height: 100% !important;
   pointer-events: auto;
-}
-/* Blur + white veil over the bunched deal-out start; clears once settled so
-   the messy corner-bunch is never seen sharp. */
-.navx-spill-veil {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: rgba(245, 246, 248, 0.4);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  opacity: 1;
-  transition: opacity 540ms ease;
-}
-.navx-spill-root[data-settled="true"] .navx-spill-veil {
-  opacity: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .navx-spill-veil {
-    display: none;
-  }
 }
 /* drei <Html> label = real clickable button on each object. */
 /* Text sits ON the object as graphic OUTLINED type — white fill with a

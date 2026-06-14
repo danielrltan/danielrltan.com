@@ -78,10 +78,8 @@ const ASCII_FRAG = /* glsl */ `
   }
 `;
 
-function easeOutBack(t: number): number {
-  const c1 = 1.70158;
-  const c3 = c1 + 1;
-  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
 }
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
@@ -132,10 +130,13 @@ function SpillObject({
   onArm: () => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const stretchRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   const armRef = useRef(armed);
   armRef.current = armed;
   const scaleRef = useRef(0);
+  const smearRef = useRef(0);
+  const prevSpRef = useRef({ x: 0, y: 0, init: false });
 
   const spec = SPECS[index]!;
   const geometry = useMemo(() => spec.geom(), [spec]);
@@ -174,62 +175,106 @@ function SpillObject({
   useFrame((_, dt) => {
     const g = groupRef.current;
     const m = meshRef.current;
-    if (!g || !m) return;
+    const sgrp = stretchRef.current;
+    if (!g || !m || !sgrp) return;
     const now = performance.now();
-    // Staggered spill-in progress.
+    const dtc = Math.min(dt, 0.05);
+    // Staggered deal-out progress (slower + more stagger + smooth ease so it
+    // doesn't all spit out at once).
     let p: number;
     if (reduced) {
       p = 1;
     } else {
-      const e = (now - startMs) / 1000 - index * 0.07;
-      p = easeOutBack(clamp01(e / 0.72));
+      const e = (now - startMs) / 1000 - index * 0.1;
+      p = easeOutCubic(clamp01(e / 0.95));
     }
-    g.position.lerpVectors(start, target, clamp01(p));
-    // Idle float so every object visibly drifts (the sphere can't show its
-    // own rotation, so the bob + the field rotation keep it alive).
+
+    // Spill position = lerp start->target + a perpendicular ARC bump (peaks
+    // mid-flight) so each object tosses out on a curve, not a straight line.
+    const sx = start.x + (target.x - start.x) * p;
+    const sy = start.y + (target.y - start.y) * p;
+    const sz = start.z + (target.z - start.z) * p;
+    const dxT = target.x - start.x;
+    const dyT = target.y - start.y;
+    const lenT = Math.hypot(dxT, dyT) || 1;
+    const arc = Math.sin(clamp01(p) * Math.PI) * 0.55;
+    const curSx = sx + (-dyT / lenT) * arc;
+    const curSy = sy + (dxT / lenT) * arc;
+
+    // Velocity (pre-bob) for the motion-blur smear.
+    const prev = prevSpRef.current;
+    let vx = 0;
+    let vy = 0;
+    if (prev.init) {
+      vx = (curSx - prev.x) / dtc;
+      vy = (curSy - prev.y) / dtc;
+    }
+    prev.x = curSx;
+    prev.y = curSy;
+    prev.init = true;
+
+    // Final position + idle float.
+    let bobx = 0;
+    let boby = 0;
     if (!reduced) {
       const t = now / 1000;
       const ph = index * 1.3;
-      g.position.x += Math.cos(t * 0.7 + ph) * 0.05;
-      g.position.y += Math.sin(t * 0.9 + ph) * 0.07;
+      bobx = Math.cos(t * 0.7 + ph) * 0.05;
+      boby = Math.sin(t * 0.9 + ph) * 0.07;
     }
+    g.position.set(curSx + bobx, curSy + boby, sz);
 
-    // idle tumble.
+    // Idle tumble.
     if (!reduced) {
-      m.rotation.x += dt * spec.spin[0];
-      m.rotation.y += dt * spec.spin[1];
-      m.rotation.z += dt * spec.spin[2];
+      m.rotation.x += dtc * spec.spin[0];
+      m.rotation.y += dtc * spec.spin[1];
+      m.rotation.z += dtc * spec.spin[2];
     }
-    // scale: spill grow * hover lift.
+    // Scale: SHRINK -> full (so each emerges small) * hover lift.
     const hoverMul = armRef.current ? 1.28 : 1.0;
     const targetScale = spec.size * clamp01(p) * hoverMul;
-    scaleRef.current += (targetScale - scaleRef.current) * (1 - Math.exp(-dt * 14));
+    scaleRef.current += (targetScale - scaleRef.current) * (1 - Math.exp(-dtc * 14));
     m.scale.setScalar(scaleRef.current);
+
+    // CARTOON SMEAR (artificial motion blur): stretch along the travel
+    // direction + squash perpendicular, scaled by speed — so as it's spat out
+    // it streaks like a smear frame, then snaps back round as it settles.
+    const speed = Math.hypot(vx, vy);
+    const smearTarget = reduced ? 0 : Math.min(0.85, speed * 0.1);
+    smearRef.current += (smearTarget - smearRef.current) * (1 - Math.exp(-dtc * 18));
+    const s = smearRef.current;
+    if (s > 0.004 && speed > 0.001) {
+      sgrp.rotation.z = Math.atan2(vy, vx);
+    }
+    sgrp.scale.set(1 + s * 1.7, 1 / (1 + s * 0.95), 1);
 
     const ua = material.uniforms.uActive!;
     const tgt = active ? 1 : armRef.current ? 0.6 : 0;
-    ua.value += (tgt - (ua.value as number)) * (1 - Math.exp(-dt * 10));
+    ua.value += (tgt - (ua.value as number)) * (1 - Math.exp(-dtc * 10));
   });
 
   return (
     <group ref={groupRef}>
-      <mesh
-        ref={meshRef}
-        geometry={geometry}
-        material={material}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect();
-        }}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          onArm();
-          document.body.style.cursor = "pointer";
-        }}
-        onPointerOut={() => {
-          document.body.style.cursor = "";
-        }}
-      />
+      {/* stretch group carries the cartoon smear so the LABEL stays unsmeared. */}
+      <group ref={stretchRef}>
+        <mesh
+          ref={meshRef}
+          geometry={geometry}
+          material={material}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+          }}
+          onPointerOver={(e) => {
+            e.stopPropagation();
+            onArm();
+            document.body.style.cursor = "pointer";
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = "";
+          }}
+        />
+      </group>
       {/* Label sits ON the object (white text, no card). */}
       <Html center position={[0, 0, 0]} distanceFactor={6} zIndexRange={[40, 0]}>
         <button
@@ -307,9 +352,6 @@ interface Props {
 export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
   const [mounted, setMounted] = useState(false);
   const [shown, setShown] = useState(false);
-  // `settled` flips true once the deal-out spill finishes; until then a
-  // blurred white veil masks the ugly bunched-in-the-corner start.
-  const [settled, setSettled] = useState(false);
   const [armed, setArmed] = useState(activeIdx);
   const startMsRef = useRef(0);
   const pointer = useRef({ x: 0, y: 0 });
@@ -322,18 +364,11 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
       startMsRef.current = performance.now();
       setArmed(activeIdx);
       setMounted(true);
-      setSettled(false);
       const r = requestAnimationFrame(() => setShown(true));
-      // Clear the blur veil once the deal-out has spread the objects.
-      const st = window.setTimeout(() => setSettled(true), 820);
-      return () => {
-        cancelAnimationFrame(r);
-        window.clearTimeout(st);
-      };
+      return () => cancelAnimationFrame(r);
     }
     if (mounted) {
       setShown(false);
-      setSettled(false);
       const t = window.setTimeout(() => setMounted(false), 240);
       return () => window.clearTimeout(t);
     }
@@ -368,11 +403,7 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
   if (!mounted) return null;
 
   return (
-    <div
-      className="navx-spill-root"
-      data-open={shown ? "true" : "false"}
-      data-settled={settled ? "true" : "false"}
-    >
+    <div className="navx-spill-root" data-open={shown ? "true" : "false"}>
       <div className="navx-spill-scrim" onClick={onClose} aria-hidden />
       <div className="navx-spill-stage">
         <Canvas
@@ -392,9 +423,6 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
             select={select}
           />
         </Canvas>
-        {/* Blur+white veil over the bunched deal-out start; clears once the
-            objects have spread (data-settled), so the messy start is hidden. */}
-        <div className="navx-spill-veil" aria-hidden />
       </div>
     </div>
   );
