@@ -219,9 +219,9 @@ export function StatusBar() {
           backdropFilter: "blur(12px) saturate(125%)",
           WebkitBackdropFilter: "blur(12px) saturate(125%)",
           border: "1px solid var(--ink-hairline)",
-          // Square-ish chrome: round-pill radii fought the pixel type.
-          borderRadius: 6,
-          boxShadow: "0 8px 20px -16px rgba(13, 14, 16, 0.45)",
+          // Sharp angular chrome (CSS .status-nav-card clips a Persona corner).
+          borderRadius: 0,
+          boxShadow: "0 10px 22px -16px rgba(13, 14, 16, 0.5)",
           color: "var(--ink)",
           userSelect: "none",
           cursor: "pointer",
@@ -281,9 +281,9 @@ export function StatusBar() {
         backdropFilter: "blur(12px) saturate(125%)",
         WebkitBackdropFilter: "blur(12px) saturate(125%)",
         border: "1px solid var(--ink-hairline)",
-        // Square-ish chrome: round-pill radii fought the pixel type.
-        borderRadius: 6,
-        boxShadow: "0 10px 26px -18px rgba(13, 14, 16, 0.5)",
+        // Sharp angular chrome (CSS .status-nav-card clips a Persona corner).
+        borderRadius: 0,
+        boxShadow: "0 12px 28px -18px rgba(13, 14, 16, 0.55)",
         color: "var(--ink)",
         userSelect: "none",
         cursor: "pointer",
