@@ -149,7 +149,6 @@ const STINT_YEAR_INDICES = STINT_YEARS.map((y) => y - MIN_YEAR);
 export function Work() {
   const sectionRef = useRef<HTMLElement>(null);
   const stackRef = useRef<HTMLDivElement>(null);
-  const progressBarRef = useRef<HTMLDivElement>(null);
   const rowElsRef = useRef<HTMLDivElement[]>([]);
   // Continuous target & current offsets for the rAF lerp. Both are
   // year-INDEX values (not pixels): fractional during glides.
@@ -387,13 +386,6 @@ export function Work() {
       onUpdate: (self) => {
         const p = self.progress;
 
-        const bar = progressBarRef.current;
-        // Pixel-stepped fill: the section progress advances in 28
-        // discrete cells (like a hardware loading bar) instead of a
-        // continuous glide — the pixel-motion voice on chrome that is
-        // already a progress METER.
-        if (bar) bar.style.transform = `scaleX(${Math.round(p * 28) / 28})`;
-
         // Handoff: keep the ledger fully opaque through the end of the
         // pin. The old "exit dissolve" faded it to 0 over the last 10%,
         // but Other's beat-A content doesn't fade in until ITS pin
@@ -570,14 +562,9 @@ export function Work() {
           </div>
         </div>
 
-        {/* (Removed the visible "STINT · NN / NN" counter caption —
-            vibe-coded NN / NN chrome. The progress bar still meters the
-            pin scrub.) */}
-        <div className="work-ledger-foot">
-          <div className="work-ledger-bar">
-            <div ref={progressBarRef} className="work-ledger-bar-fill" />
-          </div>
-        </div>
+        {/* (Removed the scroll progress bar + its foot — it cut a line across
+            the stint text. The ticker + the on-stage entry already convey
+            position.) */}
       </div>
     </section>
   );

@@ -110,14 +110,18 @@ const FRAGMENT = /* glsl */ `
       md
     );
 
-    // Combine: dot presence × radial fade × radial reveal × inverse
-    // dissolve. Alpha multiplier kept low (0.14) so the perceived
-    // plane tone reads as a light paper-cream; higher values push
-    // the mix toward uDot and the surface starts reading as muddy.
-    float a = dotMask * fade * reveal * (1.0 - dissolve) * 0.25;
-
-    vec3 color = mix(uBg, uDot, a);
-    gl_FragColor = vec4(color, uOpacity);
+    // Dot presence (0..1) across all the fades. The plane is painted ONLY
+    // where the dots are: the floor BETWEEN dots is left fully TRANSPARENT
+    // so the CSS page background (--bg-page) shows straight through. The old
+    // version filled the whole plane with an opaque uBg a touch brighter than
+    // the page, so its horizon read as a hard tonal SEAM against the page on
+    // any section the room canvas overlapped (the reported "color difference
+    // between section viewports"). Painting only the ink dots over the real
+    // page removes that seam entirely while keeping the rice-grid floor
+    // texture. 0.25 preserves the dots' prior ink strength. (uBg is now only
+    // a documentation reference for the intended floor tone = the page bg.)
+    float dotPresence = dotMask * fade * reveal * (1.0 - dissolve);
+    gl_FragColor = vec4(uDot, dotPresence * 0.25 * uOpacity);
   }
 `;
 

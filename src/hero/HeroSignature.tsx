@@ -411,6 +411,11 @@ export function HeroSignature() {
 
 
         <div className="hero-mega-wordmark" ref={wordmarkRef}>
+          {/* Greeting that leads INTO the wordmark below (no repeated name).
+              Decorative; the h1 above carries the semantic name for AT/SEO. */}
+          <p className="hero-welcome" aria-hidden>
+            Hey! Welcome to the website of
+          </p>
           <div className="hero-mega-text" aria-hidden>
             {wordmarkLines.map((line) => (
               <span key={line.text} className={line.className} data-text={line.text}>

@@ -449,7 +449,7 @@ export function Macintosh() {
         <span className="section-marker">02</span>
         <span className="section-index">02 / 06 &middot; Stack + Projects</span>
         <h2>
-          <ScrambleText text="The kit" />
+          <ScrambleText text="Projects" />
         </h2>
       </div>
       {/* Detail region. The open project is drawn into the CRT <canvas>

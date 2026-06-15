@@ -91,17 +91,22 @@
 }
 .bp-title {
   grid-column: 2;
-  /* OffBit pixel display on the shared corner-header scale (--hdr-title):
-     MOMENTS reads at the SAME wordmark size as every other section.
-     UPPERCASE comes from the shared .portfolio-section h2 rule; 0.9
-     line-height + tight tracking match the system. */
-  font-family: var(--font-pixel, monospace);
-  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+  /* OffBit pixel display on the shared GIANT corner-header scale
+     (--hdr-title): "THE TROPHY WALL" reads at the SAME huge wordmark size
+     as every other section and wraps to stacked huge lines (THE / TROPHY
+     / WALL), editorial like the reference. UPPERCASE comes from the shared
+     .portfolio-section h2 rule; 0.9 line-height + tight tracking match the
+     system. min-width:0 + break-word keep the wrap off horizontal scroll. */
+  font-family: var(--font-dot, monospace);
+  font-size: var(--hdr-title, clamp(48px, 13vw, 190px));
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 0.9;
   margin: 0;
   color: var(--ink);
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .bp-blurb {
@@ -435,11 +440,9 @@
   .bp-layout {
     padding: 7vh 6vw;
   }
-  /* HEAD STACK (mobile): the base `auto 1fr` head grid keeps the big
-     "05" marker BESIDE the title, squeezing "The trophy wall." into a
-     ~60%-width column that wraps to three lines. On phones, drop to a
-     single column so the marker sits ABOVE a full-width eyebrow + title
-     so the title gets the whole row and reads on one/two lines. */
+  /* HEAD STACK (mobile): drop to a single column so the tiny "05" marker
+     tag sits ABOVE a full-width title; the GIANT wordmark then gets the
+     whole row and wraps to stacked huge lines (THE / TROPHY / WALL). */
   .bp-head {
     grid-template-columns: 1fr;
     row-gap: 4px;
@@ -454,10 +457,11 @@
   .bp-blurb {
     grid-column: 1;
   }
-  /* Title + eyebrow tuned for portrait: smaller display size and a
-     slightly tighter marker so "The trophy wall." sits on one line. */
+  /* Title: GIANT phone ceiling — large for impact, wrapping the 3-word
+     title without forcing horizontal scroll at 360px (the longest word
+     "TROPHY" fits the content width at the floor). */
   .bp-title {
-    font-size: clamp(38px, 12vw, 56px);
+    font-size: clamp(46px, 16vw, 92px);
   }
   .bp-blurb {
     font-size: var(--fs-body); /* 16, on-grid */
@@ -515,11 +519,12 @@
   }
 }
 
-/* Small phones (360px class): trim the title floor and gutter further
-   so nothing clips at the narrowest common width. */
+/* Small phones (360px class): trim the title floor + gutter so the giant
+   wordmark still wraps cleanly and nothing clips at the narrowest common
+   width (longest word "TROPHY" fits ~310px content at this floor). */
 @media (max-width: 380px) {
   .bp-title {
-    font-size: clamp(34px, 11vw, 44px);
+    font-size: clamp(42px, 14vw, 64px);
   }
   .bp-layout {
     padding: 6vh 5vw;

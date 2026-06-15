@@ -222,6 +222,13 @@ const TILT_UNWIND_END = 0.78;
  * ──────────────────────────────────────────────────────────────── */
 const DOLLY_START = 0.55;
 const DOLLY_END = 0.9;
+// EXIT VANISH window: the landed/booted snap rests at p≈0.9; scrolling past
+// it (toward leaving the section) shrinks + powers down + dissolves the Mac
+// so it vanishes instead of hard-cutting at the viewport edge. Begins right
+// where the dolly-in completes so the user dwells on the readable landed CRT
+// (the 0.9 snap) and the vanish only plays as they deliberately scroll on.
+const EXIT_START = 0.9;
+const EXIT_END = 1.0;
 // Wide framing 9.5 → 8.5 so the centered Mac + the widened ~2.95 ring
 // fill more of the viewport (less dead margin) while still leaving
 // horizontal room for the rightmost card to clear the editorial rail
@@ -2187,6 +2194,20 @@ function Scene({
     );
     dissolveRef.current = easeOutCubic(dissolveT);
 
+    // ── EXIT VANISH ───────────────────────────────────────────────
+    // Past the landed/booted snap (p≈0.9) the user is scrolling OUT of the
+    // section. Rather than let the Mac HARD-CUT at the viewport edge as the
+    // pin releases (the reported "computer just gets cut off"), it shrinks
+    // toward a point, powers its screen down, and fades the contact shadow
+    // — so it VANISHES on the way out instead of clipping, and NOT by
+    // "floating back up" (explicitly rejected). Reverses on scroll-back.
+    // Never on narrow (p is pinned at 1 there → would hide the Mac) or while
+    // a project detail is open (the user is reading it, not leaving).
+    const exitT =
+      narrow || selected ? 0 : clamp01((p - EXIT_START) / (EXIT_END - EXIT_START));
+    const exitVanish = exitT * exitT; // ease-in: holds, then accelerates away
+    const exitScale = 1 - exitVanish;
+
     // ── MAC DESCENT ───────────────────────────────────────────────
     const descentT = clamp01(
       (p - THRESHOLDS.descentStart) /
@@ -2196,6 +2217,9 @@ function Scene({
     if (macGroupRef.current) {
       macGroupRef.current.position.y =
         MAC_HOVER_Y + (MAC_REST_Y - MAC_HOVER_Y) * descent;
+      // Shrink the whole Mac (model + click planes together) toward nothing
+      // on exit; at exitScale 1 this is the inert base scale.
+      macGroupRef.current.scale.setScalar(MAC_GROUP_SCALE * exitScale);
     }
 
     // ── MAC FLOAT TILT ────────────────────────────────────────────
@@ -2250,7 +2274,7 @@ function Scene({
         (THRESHOLDS.shadowEnd - THRESHOLDS.shadowStart),
     );
     if (shadowMatRef.current) {
-      shadowMatRef.current.opacity = shadowT * 0.22;
+      shadowMatRef.current.opacity = shadowT * 0.22 * exitScale;
     }
     // PERF: gate the shadow-map depth pass behind the contact-shadow ramp.
     //   OLD: directional light rendered its shadow map EVERY visible frame
@@ -2483,7 +2507,8 @@ function Scene({
       // overlay carries the boot type-in + desktop. Opacity = max(on, boot
       // ramp) so it's always at full while floating and through boot/desktop.
       const screenOn = 1;
-      const targetOpacity = Math.max(screenOn, newBoot);
+      // Power the picture down as the Mac vanishes on exit (exitScale → 0).
+      const targetOpacity = Math.max(screenOn, newBoot) * exitScale;
       // Cheap guard against re-writing the same value every frame.
       if (
         Math.abs((mat.uniforms.uOpacity!.value as number) - targetOpacity) >

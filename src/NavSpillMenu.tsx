@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import * as THREE from "three";
 import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
 import { scrollToSection, setScrollLocked } from "./portfolio/Keypad";
 import { MercuryAura, type CursorState, type AuraTarget } from "./MercuryAura";
+import {
+  houseGeom,
+  questionGeom,
+  macGeom,
+  briefcaseGeom,
+  playGeom,
+  trophyGeom,
+  planeGeom,
+} from "./menuGeometries";
 import "./crt-channel-menu.css";
 
 /**
@@ -20,6 +30,12 @@ import "./crt-channel-menu.css";
  */
 
 const ACCENT = "#e87040";
+
+// Resting 3/4 pose for every spill icon: a gentle yaw (right side face
+// visible) + a slight upward pitch (top tipped toward the camera) so the
+// extruded silhouettes read as chunky 3D objects, not flat-on stamps.
+const REST_YAW = 0.26; // ~15°
+const REST_PITCH = 0.16; // ~9° (positive tips the top toward the viewer)
 
 /* House ASCII glyph material (ported from HeroGlyphRing): a screen-space
    glyph-tile dither, shaded by the surface normal, painted in orange — so
@@ -98,14 +114,17 @@ interface Spec {
   spin: [number, number, number];
 }
 const CLUSTER_CENTER = new THREE.Vector3(0, 0, 0);
+// Thematic low-poly object per section (index matches SECTION_REGISTRY):
+// Hero=house, About=?, Projects=Mac, Work=briefcase, Play=▶, Photos=camera,
+// Contact=envelope. Each is a chunky shape the label sits on.
 const SPECS: Spec[] = [
-  { geom: () => new THREE.IcosahedronGeometry(1, 0), size: 0.82, spin: [0.4, 0.5, 0.0] },
-  { geom: () => new THREE.BoxGeometry(1.4, 1.4, 1.4), size: 0.8, spin: [0.45, -0.4, 0.2] },
-  { geom: () => new THREE.SphereGeometry(1, 24, 18), size: 0.9, spin: [0.35, 0.5, 0.25] },
-  { geom: () => new THREE.OctahedronGeometry(1, 0), size: 0.92, spin: [-0.5, 0.4, 0.0] },
-  { geom: () => new THREE.TorusGeometry(0.72, 0.3, 16, 32), size: 0.9, spin: [0.5, 0.35, 0.2] },
-  { geom: () => new THREE.DodecahedronGeometry(1, 0), size: 0.9, spin: [0.4, -0.45, 0.0] },
-  { geom: () => new THREE.ConeGeometry(0.9, 1.5, 18), size: 0.88, spin: [0.32, 0.55, 0.1] },
+  { geom: houseGeom, size: 0.95, spin: [0, 0, 0] }, // Hero
+  { geom: questionGeom, size: 0.95, spin: [0, 0, 0] }, // About
+  { geom: macGeom, size: 0.95, spin: [0, 0, 0] }, // Projects
+  { geom: briefcaseGeom, size: 0.95, spin: [0, 0, 0] }, // Work
+  { geom: playGeom, size: 0.95, spin: [0, 0, 0] }, // Play
+  { geom: trophyGeom, size: 0.95, spin: [0, 0, 0] }, // Honors (trophy wall)
+  { geom: planeGeom, size: 0.95, spin: [0, 0, 0] }, // Contact
 ];
 // A CLOCKWISE ring centred on screen with index 0 (Hero) at top-centre
 // (12 o'clock); subsequent sections step clockwise around the circle.
@@ -122,21 +141,9 @@ function ringTarget(i: number, n: number): THREE.Vector3 {
 // Objects BURST out from the centre to their ring positions.
 const SPILL_ORIGIN = new THREE.Vector3(0, 0, 0.6);
 
-// Jump-menu label overrides (keyed by section number). The dial/footer keep the
-// registry names; the jump page uses these friendlier labels.
-const MENU_LABELS: Record<string, string> = {
-  "02": "Projects",
-  "05": "Photos",
-};
-
-// Drag-to-spin bookkeeping: grab the wheel and flick it; vel carries on release.
-interface DragState {
-  active: boolean;
-  lastAng: number;
-  lastT: number;
-  vel: number; // rad/s, decays after release
-  moved: boolean; // true once dragged enough to suppress the click
-}
+// Jump-menu label overrides (keyed by section number). Empty now that the
+// registry itself carries the friendly labels (Projects, Honors, ...).
+const MENU_LABELS: Record<string, string> = {};
 
 function SpillObject({
   index,
@@ -148,6 +155,8 @@ function SpillObject({
   onSelect,
   onArm,
   posEntry,
+  closing,
+  closeMsRef,
 }: {
   index: number;
   label: string;
@@ -158,10 +167,13 @@ function SpillObject({
   onSelect: () => void;
   onArm: () => void;
   posEntry: AuraTarget;
+  closing: boolean;
+  closeMsRef: React.MutableRefObject<number>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const stretchRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
+  const labelRef = useRef<HTMLButtonElement>(null);
   const armRef = useRef(armed);
   armRef.current = armed;
   const scaleRef = useRef(0);
@@ -213,13 +225,22 @@ function SpillObject({
     if (!g || !m || !sgrp) return;
     const now = performance.now();
     const dtc = Math.min(dt, 0.05);
-    // Staggered deal-out progress (slower + more stagger + smooth ease so it
-    // doesn't all spit out at once).
+    // Deal-out progress. OPEN: p 0→1 (each object spills out from the centre to
+    // its ring slot, staggered + quart ease-out). CLOSE: the SAME animation
+    // played backwards — p 1→0 (each retracts to the centre), with reversed
+    // stagger + time-reversed ease, so the close is literally the open reversed.
     let p: number;
     if (reduced) {
-      p = 1;
+      p = closing ? 0 : 1;
+    } else if (closing) {
+      // True time-reverse of the open: reversed stagger + easeOutQuart(1 - τ)
+      // (NOT 1 - easeOutQuart(τ), which isn't the reverse). p runs 1 → 0 and
+      // ACCELERATES into the centre, exactly mirroring the open's decelerate-out.
+      const ce =
+        (now - closeMsRef.current) / 1000 -
+        (SECTION_REGISTRY.length - 1 - index) * 0.05;
+      p = easeOutQuart(1 - clamp01(ce / 0.5));
     } else {
-      // Snappy: short duration + tight stagger + a quart ease-out.
       const e = (now - startMs) / 1000 - index * 0.05;
       p = easeOutQuart(clamp01(e / 0.5));
     }
@@ -264,14 +285,25 @@ function SpillObject({
     // visibly whirls into place as it grows. (1-p)^1.5 keeps real angular
     // speed through the visible part of the grow-in, not just the first frame.
     if (!reduced) {
-      const es = Math.pow(1 - clamp01(p), 1.5);
-      const spin = es * 7; // gentle extra spin during entrance (calm, not frantic)
-      m.rotation.y += dtc * (spec.spin[1] + spin);
-      m.rotation.x += dtc * (spec.spin[0] + spin * 0.5);
-      m.rotation.z += dtc * (spec.spin[2] + spin * 0.2);
+      // Entrance whirl that DECAYS to a gentle 3/4 REST POSE (not flat-on),
+      // so each icon ends up readable AND shows its extruded depth — a small
+      // yaw reveals the right side face, a small pitch tips the top toward
+      // the camera, so it reads as a dimensional object catching light rather
+      // than a flat stamp. The whirl is an extra full turn on yaw that decays
+      // into REST_YAW. It must spin the SAME rotational direction on open AND
+      // close: on open `es` falls 1→0 (yaw winds DOWN to rest); reusing the
+      // +whirl on close (es 0→1) would wind yaw back UP — the icons visibly
+      // "reorient the opposite direction" on back-out (reported bug). Negate
+      // the whirl while closing so the self-spin keeps turning the same way as
+      // it retracts (only the spiral/position reverses, not each icon's spin).
+      const es = Math.pow(1 - clamp01(p), 1.6);
+      const whirlDir = closing ? -1 : 1;
+      m.rotation.set(REST_PITCH, REST_YAW + whirlDir * es * Math.PI * 2, 0);
+    } else {
+      m.rotation.set(REST_PITCH, REST_YAW, 0);
     }
     // Scale: SHRINK -> full (so each emerges small) * hover lift.
-    const hoverMul = armRef.current ? 1.28 : 1.0;
+    const hoverMul = armRef.current ? 1.54 : 1.0;
     const targetScale = spec.size * clamp01(p) * hoverMul;
     scaleRef.current += (targetScale - scaleRef.current) * (1 - Math.exp(-dtc * 14));
     m.scale.setScalar(scaleRef.current);
@@ -292,9 +324,25 @@ function SpillObject({
     }
     sgrp.scale.set(1 + s * 1.7, 1 / (1 + s * 0.95), 1);
 
+    // Orange glow is reserved for the ACTIVE object (you-are-here). Hover gets
+    // only a whisper of glow — the scale + the venom hug are its cue — so it
+    // can't be mistaken for the active one.
     const ua = material.uniforms.uActive!;
-    const tgt = active ? 1 : armRef.current ? 0.6 : 0;
+    const tgt = active ? 1 : armRef.current ? 0.22 : 0;
     ua.value += (tgt - (ua.value as number)) * (1 - Math.exp(-dtc * 10));
+
+    // Label opacity tied to the deal progress: the <Html> label is a fixed-size
+    // DOM element, so it can't shrink with the object — if it stayed visible
+    // while the objects retract to the centre on close, all the labels would
+    // clump into an unreadable pile. So show the label ONLY when its object is
+    // out near its ring slot (p high); fade it out well before the object
+    // reaches the centre (and fade it in only after it has spread on open).
+    const lab = labelRef.current;
+    if (lab) {
+      const lo = clamp01((p - 0.55) / 0.35);
+      lab.style.opacity = lo.toFixed(3);
+      lab.style.pointerEvents = lo > 0.5 ? "auto" : "none";
+    }
   });
 
   return (
@@ -322,6 +370,7 @@ function SpillObject({
       {/* Label sits ON the object (white text, no card). */}
       <Html center position={[0, 0, 0]} distanceFactor={6} zIndexRange={[40, 0]}>
         <button
+          ref={labelRef}
           className="navx-spill-label"
           data-active={active ? "true" : "false"}
           data-armed={armed ? "true" : "false"}
@@ -351,9 +400,7 @@ function SpillField({
   select,
   positionsRef,
   closing,
-  closeMs,
-  dragRotRef,
-  dragRef,
+  closeMsRef,
 }: {
   activeIdx: number;
   armed: number;
@@ -364,9 +411,7 @@ function SpillField({
   select: (i: number) => void;
   positionsRef: React.MutableRefObject<AuraTarget[]>;
   closing: boolean;
-  closeMs: number;
-  dragRotRef: React.MutableRefObject<number>;
-  dragRef: React.MutableRefObject<DragState>;
+  closeMsRef: React.MutableRefObject<number>;
 }) {
   const fieldRef = useRef<THREE.Group>(null);
   // Parallax base, tracked separately from the spin so the two can be summed
@@ -385,38 +430,31 @@ function SpillField({
     const k = 1 - Math.exp(-dtc * 5);
     rotYRef.current += (ty - rotYRef.current) * k;
     rotXRef.current += (tx - rotXRef.current) * k;
-    // ENTRANCE SPIN: a modest in-plane (Z) whirl with an exponential ease-out
-    // — starts close to settled (small amount) and decelerates to rest.
+    // ENTRANCE / EXIT SPIN: a modest in-plane (Z) whirl. OPEN eases out
+    // (1.3π → 0). CLOSE is the EXACT reverse: it winds back up (0 → 1.3π) over
+    // the same curve played backwards. Combined with the per-object retract,
+    // the close is literally the open animation in reverse (spirals back in).
     let spinOff = 0;
     if (!reduced) {
-      const e = clamp01(elapsed / 1.1);
-      spinOff = Math.pow(1 - e, 3.5) * -Math.PI * 1.3;
-    }
-    // AMBIENT: a slow, continuous idle drift so the wheel is always gently
-    // turning (subtle — slow enough that objects stay easy to click).
-    const ambient = reduced ? 0 : elapsed * 0.14;
-    // DRAG INERTIA: when not actively dragging, the flick velocity carries the
-    // wheel and decays — flick it and it keeps spinning with flow.
-    if (!reduced && !dragRef.current.active) {
-      dragRotRef.current += dragRef.current.vel * dtc;
-      dragRef.current.vel *= Math.exp(-dtc * 1.8);
-    }
-    // CLOSE: the reverse of the open — the ring spins INWARD and shrinks to a
-    // point (spirals into thin air); the scrim then fades (CSS delay).
-    let scl = 1;
-    let closeSpin = 0;
-    if (closing && !reduced) {
-      const cp = clamp01((now - closeMs) / 1000 / 0.5);
-      const ce = 1 - Math.pow(1 - cp, 2); // ease-out growth (same feel as open)
-      scl = Math.max(0.0001, 1 - cp * cp); // shrink to a point at the centre
-      closeSpin = ce * Math.PI * 1.3;
+      // Same duration + same curve, exactly reversed: open eases 1.3π → 0 over
+      // SPIN_DUR; close is pow(t)^3.5 (the time-reverse of pow(1-t)^3.5) over
+      // the SAME SPIN_DUR, winding 0 → 1.3π. So the spin mirrors the open.
+      const SPIN_DUR = 0.85;
+      if (closing) {
+        const cp = clamp01((now - closeMsRef.current) / 1000 / SPIN_DUR);
+        spinOff = Math.pow(cp, 3.5) * -Math.PI * 1.3;
+      } else {
+        const e = clamp01(elapsed / SPIN_DUR);
+        spinOff = Math.pow(1 - e, 3.5) * -Math.PI * 1.3;
+      }
     }
     g.position.copy(CLUSTER_CENTER);
-    g.scale.setScalar(scl);
+    g.scale.setScalar(1); // the per-object retract handles the shrink on close
     g.rotation.y = rotYRef.current; // cursor parallax only
     g.rotation.x = rotXRef.current; // cursor parallax only
-    // In-plane wheel spin: entrance + ambient drift + drag/flick + close.
-    g.rotation.z = spinOff + ambient + dragRotRef.current + closeSpin;
+    // In-plane spin = the entrance/exit whirl ONLY (no auto-spin drift, no
+    // user drag-to-spin — both removed per request).
+    g.rotation.z = spinOff;
   });
   return (
     <group ref={fieldRef} position={CLUSTER_CENTER}>
@@ -432,6 +470,8 @@ function SpillField({
           onSelect={() => select(i)}
           onArm={() => setArmed(i)}
           posEntry={positionsRef.current[i]!}
+          closing={closing}
+          closeMsRef={closeMsRef}
         />
       ))}
     </group>
@@ -461,27 +501,30 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
       r: 0,
     })),
   );
-  // Drag-to-spin: accumulated in-plane wheel rotation + drag bookkeeping so a
-  // click that was actually a drag doesn't close/select.
-  const dragRotRef = useRef(0);
-  const dragRef = useRef<DragState>({
-    active: false,
-    lastAng: 0,
-    lastT: 0,
-    vel: 0,
-    moved: false,
-  });
   const reduced =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Stamp the close-start time SYNCHRONOUSLY on the open→close transition,
+  // during the SAME render that flips `closing` true for the canvas. The
+  // <Canvas> stays mounted through the whole close, so its useFrame loop is
+  // already running; if we left the timestamp to the [open] effect below
+  // (which runs AFTER commit), the first closing frame could read a STALE
+  // closeMsRef from a previous close — that computes a fully-wound spin and
+  // SNAPS every object to its end-of-close orientation for a frame before
+  // the animation restarts. That one-frame snap is the reported back-out
+  // glitch ("objects flip to the opposite orientation, then spin back").
+  // Stamping here guarantees the first closing frame reads a fresh start.
+  const prevOpenRef = useRef(open);
+  if (prevOpenRef.current !== open) {
+    if (!open && mounted) closeMsRef.current = performance.now();
+    prevOpenRef.current = open;
+  }
 
   useEffect(() => {
     if (open) {
       startMsRef.current = performance.now();
       setArmed(activeIdx);
-      dragRotRef.current = 0;
-      dragRef.current.vel = 0;
-      dragRef.current.moved = false;
       cursor.current.active = false;
       setMounted(true);
       setScrollLocked(true); // page can't be scrolled under the open menu
@@ -490,12 +533,18 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
     }
     setScrollLocked(false);
     if (mounted) {
-      closeMsRef.current = performance.now();
-      setShown(false);
-      // Hold the mount through the spiral-in exit, then the fade, before
-      // unmounting (the scrim fade is delayed in CSS so the spin plays first).
-      const t = window.setTimeout(() => setMounted(false), 620);
-      return () => window.clearTimeout(t);
+      // closeMsRef is stamped synchronously on the open→close transition
+      // (see prevOpenRef above) so the first closing frame never reads a
+      // stale timestamp; here we only own the fade/unmount timeouts.
+      // Background opacity stays CONSTANT (shown=true) through the entire
+      // spin-away — no drop. Only ONCE the objects have spun/retracted away
+      // (~0.85s) do we flip shown=false for a single clean fade, then unmount.
+      const fadeT = window.setTimeout(() => setShown(false), 850);
+      const unmountT = window.setTimeout(() => setMounted(false), 1160);
+      return () => {
+        window.clearTimeout(fadeT);
+        window.clearTimeout(unmountT);
+      };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -503,67 +552,46 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
   // Safety: always unlock scroll if the menu unmounts while open.
   useEffect(() => () => setScrollLocked(false), []);
 
-  // Pointer: cursor (rice) + parallax + drag-to-spin + Escape.
+  // Pointer: cursor (rice) + parallax + Escape.
   useEffect(() => {
     if (!mounted) return;
-    const angOf = (x: number, y: number) =>
-      // y-up so the drag angle matches what the viewer sees (clientY is y-down)
-      Math.atan2(-(y - window.innerHeight / 2), x - window.innerWidth / 2);
-    const onDown = (e: PointerEvent) => {
-      dragRef.current.active = true;
-      dragRef.current.moved = false;
-      dragRef.current.vel = 0;
-      dragRef.current.lastAng = angOf(e.clientX, e.clientY);
-      dragRef.current.lastT = performance.now();
-    };
     const onMove = (e: PointerEvent) => {
       pointer.current.x = (e.clientX / window.innerWidth) * 2 - 1;
       pointer.current.y = (e.clientY / window.innerHeight) * 2 - 1;
       cursor.current.x = e.clientX / window.innerWidth;
       cursor.current.y = e.clientY / window.innerHeight;
       cursor.current.active = true;
-      if (dragRef.current.active) {
-        const tnow = performance.now();
-        const a = angOf(e.clientX, e.clientY);
-        let d = a - dragRef.current.lastAng;
-        d = (((d + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
-        dragRotRef.current += d; // grab + spin the wheel
-        const dt2 = Math.max(0.001, (tnow - dragRef.current.lastT) / 1000);
-        // Smooth the flick velocity so release carries on cleanly (inertia).
-        dragRef.current.vel += (d / dt2 - dragRef.current.vel) * 0.4;
-        dragRef.current.lastAng = a;
-        dragRef.current.lastT = tnow;
-        if (Math.abs(d) > 0.002) dragRef.current.moved = true;
-      }
-    };
-    const onUp = () => {
-      dragRef.current.active = false;
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    window.addEventListener("pointerdown", onDown, { passive: true });
     window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerup", onUp, { passive: true });
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
       window.removeEventListener("keydown", onKey);
       document.body.style.cursor = "";
     };
   }, [mounted, onClose]);
 
-  // Close / select only on a genuine click, not the end of a drag-spin.
-  const handleScrimClose = () => {
-    if (dragRef.current.moved) return;
-    onClose();
-  };
   const select = (i: number) => {
-    if (dragRef.current.moved) return;
+    const opts = reduced ? { immediate: true } : { duration: 1.1 };
+    // Beat-aware jump: if the section parks a sub-beat (Play → the "Some
+    // interests" reel inside the Other pin), scroll to that fraction of the
+    // named pin instead of the section top, so the jump lands on the right
+    // beat. Falls back to the section element if the pin isn't live yet.
+    const entry = SECTION_REGISTRY[i];
+    if (entry?.pinId && entry.jumpProgress != null) {
+      const st = ScrollTrigger.getById(entry.pinId);
+      if (st) {
+        const y = st.start + entry.jumpProgress * (st.end - st.start);
+        scrollToSection(y, opts);
+        onClose();
+        return;
+      }
+    }
     const el = (findSectionElements()[i]?.el as HTMLElement | null) ?? null;
-    if (el) scrollToSection(el, reduced ? { immediate: true } : { duration: 1.1 });
+    if (el) scrollToSection(el, opts);
     onClose();
   };
 
@@ -571,7 +599,7 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
 
   return (
     <div className="navx-spill-root" data-open={shown ? "true" : "false"}>
-      <div className="navx-spill-scrim" onClick={handleScrimClose} aria-hidden />
+      <div className="navx-spill-scrim" onClick={onClose} aria-hidden />
       <button
         className="navx-close"
         onClick={onClose}
@@ -583,7 +611,7 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
           camera={{ position: [0, 0, 10], fov: 40 }}
           dpr={[1, 2]}
           gl={{ alpha: true, antialias: true }}
-          onPointerMissed={handleScrimClose}
+          onPointerMissed={onClose}
         >
           <MercuryAura
             cursorRef={cursor}
@@ -600,9 +628,7 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
             select={select}
             positionsRef={positionsRef}
             closing={!open}
-            closeMs={closeMsRef.current}
-            dragRotRef={dragRotRef}
-            dragRef={dragRef}
+            closeMsRef={closeMsRef}
           />
         </Canvas>
       </div>

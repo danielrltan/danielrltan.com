@@ -246,6 +246,22 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
   pointer-events: var(--hero-pointer-events, auto);
 }
 
+/* Welcoming greeting sitting just above the giant DANIEL TAN wordmark.
+   Small Geist line, left-aligned to the wordmark's left edge. */
+.hero-welcome {
+  margin: 0 0 clamp(10px, 1.6vh, 20px) 0.14em;
+  /* Pixel-retro voice (VT323), NOT the body sans. White fill with a deep-
+     orange keyline so it reads over the busy orange dither AND the light
+     patches (ink/black read terribly here). */
+  font-family: "VT323", monospace;
+  font-size: clamp(22px, 2.7vw, 40px);
+  letter-spacing: 0.04em;
+  line-height: 1.05;
+  color: #ffffff;
+  -webkit-text-stroke: 2.2px var(--accent-deep, #b8431a);
+  paint-order: stroke fill;
+  max-width: 34ch;
+}
 .hero-mega-text {
   position: relative;
   display: flex;
