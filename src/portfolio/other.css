@@ -178,7 +178,7 @@
   font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  color: var(--ink);
+  color: var(--hdr-num-color, #b8431a);
 }
 
 /* Title: "Some interests." OffBit pixel display (sitewide big-title
@@ -202,7 +202,7 @@
   line-height: 0.9;
   letter-spacing: 0.01em;
   text-transform: none;
-  color: var(--ink);
+  color: var(--hdr-ink, #241e1a);
   min-width: 0;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -535,7 +535,7 @@
   font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  color: var(--ink);
+  color: var(--hdr-num-color, #b8431a);
 }
 /* Scoped for the same specificity reason as .other-title above. */
 .portfolio-other .other-gallery-title {
@@ -552,7 +552,7 @@
   line-height: 0.9;
   letter-spacing: 0.01em;
   text-transform: none;
-  color: var(--ink);
+  color: var(--hdr-ink, #241e1a);
   min-width: 0;
   overflow-wrap: break-word;
   word-break: break-word;

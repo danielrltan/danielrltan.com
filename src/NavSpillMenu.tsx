@@ -320,7 +320,17 @@ function SpillObject({
     smearRef.current += (smearTarget - smearRef.current) * (1 - Math.exp(-dtc * 18));
     const s = smearRef.current;
     if (s > 0.004 && speed > 0.001) {
+      // Active smear: align the stretch with the travel direction.
       sgrp.rotation.z = Math.atan2(vy, vx);
+    } else {
+      // Smear over → UNWIND the residual rotation back to upright. Without
+      // this the group froze at its fly-in angle, so every icon settled
+      // rotated by its ring-slot direction (Honors ≈ −167° ≈ upside-down
+      // trophy, Contact ≈ +140° ≈ plane pointing the wrong way, About's "?"
+      // tilted). The shapes were always correct — only this leftover smear
+      // rotation made them read inverted/wrong. Lerp to 0 so each icon
+      // rights itself as it lands.
+      sgrp.rotation.z += (0 - sgrp.rotation.z) * (1 - Math.exp(-dtc * 14));
     }
     sgrp.scale.set(1 + s * 1.7, 1 / (1 + s * 0.95), 1);
 

@@ -106,7 +106,7 @@
   font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  color: var(--ink);
+  color: var(--hdr-num-color, #b8431a);
   user-select: none;
 }
 .work-ledger-index {
@@ -114,7 +114,7 @@
   font-size: var(--fs-mono);
   letter-spacing: 0.24em;
   text-transform: uppercase;
-  color: var(--ink-muted);
+  color: var(--hdr-eyebrow, #6c6660);
   font-weight: 500;
 }
 
@@ -140,7 +140,7 @@
   line-height: 0.9;
   letter-spacing: 0.01em;
   text-transform: none;
-  color: var(--ink);
+  color: var(--hdr-ink, #241e1a);
   margin: 0;
   /* Single word; keep it from forcing horizontal scroll if a narrower
      frame ever clamps the 1fr track below the word's intrinsic width. */

@@ -39,6 +39,20 @@
      the owner flagged). A single word like EXPERIENCE now spans most of
      the content width on desktop. */
   --hdr-title: clamp(48px, 13vw, 190px);
+
+  /* HEADER COLOUR SYSTEM (sitewide).
+     The big section titles used pure-ish near-black (--ink #0d0e10), which
+     read as "too much black / too harsh" across the warm-orange palette.
+     Titles now use a WARM CHARCOAL (still ~13:1 on --bg-page, so fully
+     legible — softened by warmth, not by dropping contrast), the section
+     NUMBER becomes the orange moment (deep orange, readable at display
+     size), and the eyebrow index sits in a warm grey. One system, every
+     section. */
+  --hdr-ink: #241e1a;                /* warm charcoal title (softer than #0d0e10) */
+  --hdr-num-color: var(--accent-deep, #b8431a); /* orange section numbers */
+  --hdr-eyebrow: #6c6660;            /* warm muted grey eyebrow */
+  /* Consistent header rhythm, shared by every section's corner header. */
+  --hdr-gap-title: clamp(40px, 5vw, 64px); /* title → content breathing room */
 }
 
 .portfolio-section {
@@ -46,7 +60,8 @@
   display: flex;
   align-items: center;
   position: relative;
-  padding: 120px 0;
+  /* More breathing room around every section's header/content (was 120px). */
+  padding: 140px 0;
 }
 
 /* Hero is intentionally bare: no padding, just space and the room
@@ -88,7 +103,8 @@
   font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  color: var(--ink);
+  /* The section number is the header's orange moment (deep orange reads). */
+  color: var(--hdr-num-color, #b8431a);
   margin: 0 0 4px 0;
   display: inline-flex;
   align-items: baseline;
@@ -112,7 +128,7 @@
   font-size: 11px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--ink-muted);
+  color: var(--hdr-eyebrow, #6c6660);
   font-weight: 500;
   /* 18px → 10px → 16px: the first tightening (for the pixel face's
      internal headroom) overshot — the eyebrow sat cramped against the
@@ -141,8 +157,9 @@
   line-height: 0.9;
   letter-spacing: 0.01em;
   text-transform: none;
-  color: var(--ink);
-  margin: 0 0 48px;
+  /* Warm charcoal, not near-black — softer against the warm palette. */
+  color: var(--hdr-ink, #241e1a);
+  margin: 0 0 var(--hdr-gap-title, 48px);
   overflow-wrap: break-word;
   word-break: break-word;
   min-width: 0;
@@ -175,7 +192,7 @@
 
 @media (max-width: 768px) {
   .portfolio-section {
-    padding: 80px 0;
+    padding: 88px 0;
   }
   .portfolio-section--hero {
     padding: 0;

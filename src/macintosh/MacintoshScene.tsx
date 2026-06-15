@@ -221,13 +221,16 @@ const TILT_UNWIND_END = 0.78;
  * (no scroll there); this dolly owns the wide path.
  * ──────────────────────────────────────────────────────────────── */
 const DOLLY_START = 0.55;
-const DOLLY_END = 0.9;
-// EXIT VANISH window: the landed/booted snap rests at p≈0.9; scrolling past
-// it (toward leaving the section) shrinks + powers down + dissolves the Mac
-// so it vanishes instead of hard-cutting at the viewport edge. Begins right
-// where the dolly-in completes so the user dwells on the readable landed CRT
-// (the 0.9 snap) and the vanish only plays as they deliberately scroll on.
-const EXIT_START = 0.9;
+// Zoom-in completes at 0.85 (earlier than before) so the snap can rest on the
+// fully-landed, fully-zoomed, booted CRT and then HOLD there for a stretch of
+// scroll before anything happens — see EXIT_START.
+const DOLLY_END = 0.85;
+// EXIT VANISH window: the landed/booted snap rests at p≈0.85, and the Mac then
+// STAYS at full size, zoomed + readable, all the way to EXIT_START (a generous
+// dwell so the user doesn't blow past it by accident). Only past EXIT_START
+// does it shrink + power down + dissolve away, finishing by EXIT_END. Reverses
+// on scroll-back.
+const EXIT_START = 0.95;
 const EXIT_END = 1.0;
 // Wide framing 9.5 → 8.5 so the centered Mac + the widened ~2.95 ring
 // fill more of the viewport (less dead margin) while still leaving
@@ -2195,7 +2198,7 @@ function Scene({
     dissolveRef.current = easeOutCubic(dissolveT);
 
     // ── EXIT VANISH ───────────────────────────────────────────────
-    // Past the landed/booted snap (p≈0.9) the user is scrolling OUT of the
+    // Past the landed-CRT dwell (EXIT_START) the user is scrolling OUT of the
     // section. Rather than let the Mac HARD-CUT at the viewport edge as the
     // pin releases (the reported "computer just gets cut off"), it shrinks
     // toward a point, powers its screen down, and fades the contact shadow
@@ -2205,7 +2208,10 @@ function Scene({
     // a project detail is open (the user is reading it, not leaving).
     const exitT =
       narrow || selected ? 0 : clamp01((p - EXIT_START) / (EXIT_END - EXIT_START));
-    const exitVanish = exitT * exitT; // ease-in: holds, then accelerates away
+    // Cartoony shrink: a strong ease-in (cubic) so the Mac holds near full
+    // size through most of the exit window, then collapses fast toward a
+    // point at the end — a snappy "poof", not a linear fade-down.
+    const exitVanish = exitT * exitT * exitT;
     const exitScale = 1 - exitVanish;
 
     // ── MAC DESCENT ───────────────────────────────────────────────
