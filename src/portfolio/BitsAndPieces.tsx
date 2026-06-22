@@ -6,7 +6,8 @@ import { ScrambleText } from "./ScrambleText";
 /**
  * Bits and Pieces: full-bleed accomplishments spread. Stats band
  * (count-up numbers), a category marquee that ticks with scroll, and
- * an asymmetric masonry of cards (featured items take more space).
+ * a uniform card grid led by a hero row of the three marquee wins
+ * (same width as the rest, but taller with a bigger pulled-out metric).
  * Cards reveal via IntersectionObserver as they enter viewport.
  */
 
@@ -29,7 +30,13 @@ interface Entry {
   featured?: boolean;
 }
 
+// DOM order IS visual order: the three featured wins lead so they pack into
+// the top row as a uniform hero band (taller cards + bigger metric), then the
+// supporting items follow in category groups. With 3 featured + 9 supporting
+// and a 3-up grid, every row fills cleanly (1 hero row + 3 supporting rows),
+// so card edges align top-to-bottom with no ragged trailing column.
 const ENTRIES: Entry[] = [
+  // --- Hero row: the three marquee placements, each with a verified metric ---
   {
     category: "Hackathon",
     title: "Hack The 6ix",
@@ -37,13 +44,6 @@ const ENTRIES: Entry[] = [
     context: "Top 1% · 400+",
     blurb: "Revamp universal BMS for second-life EV modules.",
     featured: true,
-  },
-  {
-    category: "Competition",
-    title: "IBM Watsonx Orchestrate",
-    metric: "Top 50",
-    context: "of 2000+",
-    blurb: "Global agentic-AI build challenge.",
   },
   {
     category: "Competition",
@@ -55,20 +55,26 @@ const ENTRIES: Entry[] = [
   },
   {
     category: "Competition",
-    title: "TD Innovation Sprint",
-    metric: "Finalist",
-  },
-  {
-    category: "Competition",
     title: "TRREB 2024",
     metric: "2nd",
     context: "$2,500",
     blurb: "Toronto Regional Real Estate Board student competition.",
-    // Promoted to the hero slot vacated by VP of Design: already carries a
-    // verified metric ("2nd") + context ("$2,500"), so the span-3 treatment
-    // is informationally earned and keeps three full hero cards (cf. Hack
-    // The 6ix, WFN Odyssey).
+    // Third hero: carries a verified metric ("2nd") + context ("$2,500"), so
+    // it earns the headline row alongside Hack The 6ix and WFN Odyssey.
     featured: true,
+  },
+  // --- Supporting grid ---
+  {
+    category: "Competition",
+    title: "IBM Watsonx Orchestrate",
+    metric: "Top 50",
+    context: "of 2000+",
+    blurb: "Global agentic-AI build challenge.",
+  },
+  {
+    category: "Competition",
+    title: "TD Innovation Sprint",
+    metric: "Finalist",
   },
   {
     category: "Grant",
@@ -99,14 +105,10 @@ const ENTRIES: Entry[] = [
   {
     category: "Leadership",
     title: "VP of Design",
-    // De-featured: this was featured:true with NO metric/context, so the
-    // span-3 hero slot rendered visually overstuffed but informationally
-    // empty next to Hack The 6ix ("Finalist" / "Top 1% · 400+") and WFN
-    // Odyssey ("1st" / "$500"). A leadership role has no honest pulled-out
-    // metric (the résumé lists only the title + org), and inventing one
-    // ("Co-Founder" etc.) would be worse than an empty slot — so it drops
-    // to a regular card. The freed hero slot moves to TRREB 2024 below,
-    // which already carries a verified metric + context. Copy unchanged.
+    // Not featured: a leadership role has no honest pulled-out metric (the
+    // résumé lists only the title + org), and inventing one ("Co-Founder"
+    // etc.) would be worse than none — so it stays a regular card rather than
+    // padding the hero row with an empty metric. Copy unchanged.
     blurb: "Western Founders Network.",
   },
   {
@@ -300,6 +302,17 @@ export function BitsAndPieces() {
   );
 
   useEffect(() => {
+    // Mobile (<=768px): the tile entrance is gated OFF in CSS (tiles render in
+    // place), so the reveal observer would do nothing visible. Skip attaching
+    // it entirely — calmer + cheaper on a phone. makeTileRef no-ops its
+    // observe() while sharedIoRef stays null; the CSS override keeps every tile
+    // visible. Desktop keeps the shared reveal observer.
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(max-width: 768px)").matches
+    ) {
+      return;
+    }
     // Same rootMargin as the old per-tile observer.
     const io = new IntersectionObserver(
       (entries) => {
@@ -416,10 +429,23 @@ export function BitsAndPieces() {
     // transform write: no React reconcile per scroll tick.
     // Honour prefers-reduced-motion: skip the scroll listener entirely
     // so the decorative strip stays static.
+    // #23 PERF: also skip on COARSE pointers (touch). The marquee is a
+    // barely-perceptible ghost strip; on phones it's trimmed/hidden via CSS,
+    // and the scroll-coupled getBoundingClientRect + transform write per
+    // frame isn't worth the battery for an effect the user can't see. Leave
+    // the strip at its resting transform.
     const reduceMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    if (reduceMotion) {
+    const coarsePointer =
+      window.matchMedia?.("(hover: none), (pointer: coarse)").matches ?? false;
+    // <=768px: the marquee is trimmed/hidden in CSS, so don't pay the
+    // per-frame getBoundingClientRect + transform write to slide a strip the
+    // phone barely shows. Leave it at its resting transform. (Covers the rare
+    // narrow-but-fine-pointer case the coarsePointer guard misses.)
+    const narrow =
+      window.matchMedia?.("(max-width: 768px)").matches ?? false;
+    if (reduceMotion || coarsePointer || narrow) {
       return () => io.disconnect();
     }
 
@@ -490,8 +516,8 @@ export function BitsAndPieces() {
         <div ref={marqueeRef} className="bp-marquee-strip">
           {Array.from({ length: 3 }).map((_, k) => (
             <span key={k}>
-              HACKATHON &middot; COMPETITION &middot; GRANT &middot;
-              LEADERSHIP &middot; SCHOLARSHIP &middot;{" "}
+              HACKATHON / COMPETITION / GRANT / LEADERSHIP /
+              SCHOLARSHIP /{" "}
             </span>
           ))}
         </div>

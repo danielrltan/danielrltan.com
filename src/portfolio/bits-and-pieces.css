@@ -10,9 +10,12 @@
      dead gap below the last card row on tall viewports (user), so the
      floor is dropped - the bp-layout padding gives the breathing room. */
   width: 100%;
-  /* Cool palette: var(--bg-page) → var(--bg-elevated). Was warm
-     cream gradient (#f4f1ea → #f8f5ee), off-palette. */
-  background: linear-gradient(180deg, var(--wrapper-bg, #eef0f3) 0%, var(--bg-elevated, #f7f8fa) 100%);
+  /* Flat page tone, consistent with About / Macintosh / Work and matching
+     Photos' seam-fixed #eef0f3 top edge below. Was a 180deg gradient fading to
+     --bg-elevated (#f7f8fa) at the BOTTOM, which had no seam-fix and so stepped
+     visibly into the flat #eef0f3 Photos section (the user-flagged 05→06 tone
+     jump). One uniform surface across the content sections. */
+  background: var(--bg-page, #eef0f3);
 }
 
 /* Ghosted category marquee sliding horizontally behind the whole
@@ -42,7 +45,7 @@
   line-height: 0.9;
   /* Giant backdrop marquee softened off pure near-black (sitewide
      less-black header pass). */
-  color: var(--hdr-ink, #241e1a);
+  color: var(--hdr-ink, var(--ink));
 }
 .bp-marquee-strip {
   display: inline-block;
@@ -105,7 +108,7 @@
   letter-spacing: 0.01em;
   line-height: 0.9;
   margin: 0;
-  color: var(--hdr-ink, #241e1a);
+  color: var(--hdr-ink, var(--ink));
   min-width: 0;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -165,15 +168,17 @@
   align-self: center;
 }
 
-/* Asymmetric tile grid. Most cards are 1-col-wide; featured cards
-   span 2 columns and have a taller min-height. CSS Grid's
-   auto-flow:dense packs them tightly without gaps. */
+/* Uniform tile grid: every card is one column wide, three across. The three
+   featured wins lead the DOM, so they fill the top row as a taller hero band
+   (bigger metric); the nine supporting items fill three clean rows below.
+   3-up keeps both groups (3 + 9) edge-aligned with no ragged trailing column
+   — the old asymmetric span-3 masonry left a dead half-column on every
+   featured row, so the top rows stopped short of the rows beneath them. */
 .bp-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   grid-auto-rows: minmax(140px, auto);
-  grid-auto-flow: dense;
-  gap: var(--space-4); /* 14→16, on-grid */
+  gap: var(--space-4); /* 16, on-grid */
   align-content: start;
   /* <ul> reset: semantic list for SR enumeration, no visual bullets. */
   list-style: none;
@@ -184,7 +189,6 @@
 /* Grid item: handles span + the scroll-reveal transform. The visual
    card lives in .bp-tile-inner so list semantics stay clean. */
 .bp-tile {
-  grid-column: span 2;
   display: flex;
   /* Initial state: out of place + blurred + invisible. The
      direction (left/right) is set per-card via the from-left
@@ -235,12 +239,15 @@
     transform var(--t-base) var(--ease-soft);
 }
 
-/* Featured tiles span 3 columns and get more visual weight. */
+/* Featured tiles are the hero row: same one-column width as the rest, but a
+   taller floor + a bigger pulled-out metric give them headline weight without
+   breaking the grid's column alignment. The three share the top row, so the
+   min-height makes that row read as a deliberate band above the ledger. */
 .bp-tile--featured {
-  grid-column: span 3;
+  min-height: 188px;
 }
 .bp-tile--featured .bp-tile-metric {
-  font-size: clamp(38px, 4.5vw, 56px);
+  font-size: clamp(34px, 3.6vw, 52px);
 }
 
 /* Sticker tilt: each card rests at a tiny deterministic rotation
@@ -322,6 +329,12 @@
   .bp-tile--featured .bp-tile-inner:hover::after {
     animation: none;
   }
+  /* Keep the hover STATE legible without motion: a static accent ring (the
+     pulse's mid-frame). The ::after dither still lands at opacity 0.14 once its
+     crawl is removed, so reduced-motion users keep full hover feedback. */
+  .bp-tile--featured .bp-tile-inner:hover {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
 }
 
 .bp-tile-cat {
@@ -389,18 +402,6 @@
   margin: 0;
 }
 
-/* Tablet / mid-width: drop from 6 to a tighter 4-col so regular tiles
-   (span 2) sit two-up and featured (span 3) reads as a dominant block,
-   instead of the 6-col layout getting cramped. */
-@media (max-width: 1180px) {
-  .bp-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-  .bp-tile--featured {
-    grid-column: span 4;
-  }
-}
-
 /* Tablet portrait / large phone landscape: two-up card grid. Regular
    tiles sit one-per-column, featured tiles span the full width as the
    dominant block. Stats stay 2-up (the wide grant figure leads). */
@@ -408,6 +409,48 @@
   .bp-layout {
     padding: 8vh 6vw;
   }
+
+  /* MOBILE: render tiles IN PLACE — no per-card blur/slide/scale entrance.
+     The choreographed sweep is desktop polish; on a phone it's a calmer,
+     cheaper render (and avoids any blank-until-revealed risk in hidden/
+     headless tabs). prefers-reduced-motion still applies on every viewport
+     via its own block below. Desktop keeps the full choreography untouched. */
+  .bp-tile {
+    opacity: 1;
+    filter: none;
+    transform: none;
+    transition: none;
+  }
+
+  /* #23 PERF: the ghosted marquee is a barely-perceptible decorative strip,
+     yet the scroll listener pays a per-frame getBoundingClientRect +
+     translate3d for it on every phone. Trim the type to a lighter clamp and
+     drop it under ~480px (display:none below) so narrow phones stop carrying
+     a decorative cost they can't even see. Component also early-returns the
+     scroll listener on coarse pointers. */
+  .bp-marquee {
+    font-size: clamp(64px, 22vw, 110px);
+    top: 32%;
+    opacity: 0.06;
+  }
+
+  /* #22 READABILITY: tile title + blurb are real sentence copy, not labels —
+     hold them at 16px body across the whole tablet-portrait band (moved up
+     from the ≤560 block so the lift starts at 768, not 560). */
+  .bp-tile-title {
+    font-size: var(--fs-body);
+  }
+  .bp-tile-blurb {
+    font-size: var(--fs-body);
+    line-height: 1.5;
+  }
+
+  /* #37 INTERACTION: the featured-card hover cue (dither + pulse) is
+     hover-only, so it never fires on touch. Here the static differentiator is
+     structural — featured cards span the full width as headline anchors above
+     the two-up supporting grid (see .bp-tile--featured below) plus the larger
+     metric — so no decorative accent border is needed. */
+
   .bp-stats {
     grid-template-columns: 1fr 1fr;
     gap: var(--space-4h) var(--space-5); /* 18 28→20 24, on-grid */
@@ -434,17 +477,16 @@
   }
 }
 
-/* Phones (portrait): single column. One readable card per row, stats
-   stacked vertically so the count-up numbers each own a full line and
-   never get cramped. Body-copy sizes bump to >=16px here (the blurb is
-   real prose, not a label) to clear mobile legibility / avoid iOS zoom. */
+/* Phones (portrait): COMPRESSED 2-column grid. The old single-column stack ran
+   very tall (13 award cards + stacked stats). Two columns + tighter spacing
+   roughly HALVES the section height (owner: "trophy wall on mobile needs to be
+   compressed") while each card stays a comfortable touch target; featured cards
+   still span the full width as anchors. Body copy stays >=16px. */
 @media (max-width: 560px) {
   .bp-layout {
-    padding: 7vh 6vw;
+    padding: 4vh 5vw;
   }
-  /* HEAD STACK (mobile): drop to a single column so the tiny "05" marker
-     tag sits ABOVE a full-width title; the GIANT wordmark then gets the
-     whole row and wraps to stacked huge lines (THE / TROPHY / WALL). */
+  /* HEAD STACK (mobile): tiny "05" marker tag above a full-width wordmark. */
   .bp-head {
     grid-template-columns: 1fr;
     row-gap: 4px;
@@ -459,65 +501,63 @@
   .bp-blurb {
     grid-column: 1;
   }
-  /* Title: GIANT phone ceiling — large for impact, wrapping the 3-word
-     title without forcing horizontal scroll at 360px (the longest word
-     "TROPHY" fits the content width at the floor). */
+  /* Title trimmed so the header doesn't eat the fold above the compressed grid. */
   .bp-title {
-    font-size: clamp(46px, 16vw, 92px);
+    font-size: clamp(36px, 11vw, 58px);
   }
   .bp-blurb {
     font-size: var(--fs-body); /* 16, on-grid */
     line-height: 1.5;
     max-width: 40ch;
   }
+  /* Stats 2-up (was stacked 1-col): the grant total spans full width as the
+     headline, the rest pair up. The grid gap separates them — no per-stat rule. */
   .bp-stats {
-    grid-template-columns: 1fr;
-    gap: var(--space-4); /* 16, on-grid */
-    padding: var(--space-4) 0 var(--space-4h); /* 16 0 20, on-grid */
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3) var(--space-4); /* 12 16, on-grid */
+    padding: var(--space-3) 0 var(--space-4); /* 12 0 16, on-grid */
   }
   .bp-stat:first-of-type {
-    grid-column: auto;
-  }
-  /* Horizontal rule above each stacked stat after the first, for visual
-     separation now that the vertical rules are hidden. (Adjacent-sibling
-     won't work: display:none .bp-stat-rule divs sit between the stats in
-     the DOM, so target by position instead.) */
-  .bp-stat:not(:first-of-type) {
-    padding-top: var(--space-4); /* 16, on-grid */
-    border-top: 1px solid var(--ink-hairline);
+    grid-column: 1 / -1;
   }
   .bp-stat-num {
-    /* Floor a touch higher so the numbers stay bold and legible. */
-    font-size: clamp(44px, 13vw, 64px);
+    font-size: clamp(32px, 8.5vw, 46px);
   }
+  /* Award cards 2-up (was 1-col) to halve the height; featured cards span full
+     width as anchors. Tight gap + shorter min-rows pack them densely. */
   .bp-grid {
-    grid-template-columns: 1fr;
-    grid-auto-rows: minmax(118px, auto);
-    gap: var(--space-3); /* 12, on-grid */
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: minmax(94px, auto);
+    gap: var(--space-2); /* 8, on-grid */
   }
-  .bp-tile,
+  .bp-tile {
+    grid-column: span 1;
+  }
   .bp-tile--featured {
     grid-column: 1 / -1;
   }
   .bp-tile-inner {
-    padding: var(--space-4h); /* 18→20, on-grid */
+    padding: var(--space-4); /* 16 — tighter for the 2-col cards */
   }
-  .bp-tile-title {
-    font-size: var(--fs-body); /* 18→16, on-grid (context call: phone tile title) */
-  }
-  /* Blurb is body prose; bump to 16px on phones for readability. */
   .bp-tile-blurb {
-    font-size: var(--fs-body); /* 16, on-grid */
-    line-height: 1.5;
     max-width: 40ch;
   }
-  /* Featured metric: clamp floor up so it reads as the hero number on a
-     narrow column without overflowing. */
+  /* Metrics sized for the narrower 2-col cards; featured keeps a larger number
+     since it spans the full width. */
   .bp-tile--featured .bp-tile-metric {
-    font-size: clamp(40px, 11vw, 52px);
+    font-size: clamp(34px, 10vw, 46px);
   }
   .bp-tile-metric {
-    font-size: clamp(32px, 9vw, 40px);
+    font-size: clamp(24px, 7vw, 32px);
+  }
+}
+
+/* #23 PERF: below ~480px the ghosted marquee is invisible behind the
+   single-column cards anyway — drop it entirely so the smallest phones never
+   pay the per-frame rect-read + transform for a strip they can't see. */
+@media (max-width: 480px) {
+  .bp-marquee {
+    display: none;
   }
 }
 
@@ -526,10 +566,14 @@
    width (longest word "TROPHY" fits ~310px content at this floor). */
 @media (max-width: 380px) {
   .bp-title {
-    font-size: clamp(42px, 14vw, 64px);
+    font-size: clamp(34px, 12vw, 52px);
   }
   .bp-layout {
-    padding: 6vh 5vw;
+    padding: 4vh 5vw;
+  }
+  /* Even tighter card gap at the narrowest common width. */
+  .bp-grid {
+    gap: 6px;
   }
 }
 
