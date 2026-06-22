@@ -1,0 +1,71 @@
+/* Middle-button PAN cursor. Mirrors .moveable-cursor's fixed full-screen overlay
+   setup; the icon FOLLOWS the live pointer (left/top track the mouse each move),
+   with the art positioned so its anchor sits exactly under the pointer. */
+.pan-cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10001; /* just above .moveable-cursor (10000) */
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  transform-origin: 0 0; /* origin == the anchor point */
+  /* Snappy pop-in with a little overshoot when the anchor drops. */
+  animation: pan-pop 240ms var(--ease-bounce, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+  will-change: transform, opacity;
+}
+@keyframes pan-pop {
+  from {
+    transform: scale(0.35);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.pan-cursor__flip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0; /* flip the up-direction art around the anchor */
+}
+
+.pan-cursor__art {
+  position: absolute;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* While scrolling, the directional art throbs toward its arrow (local +Y; the
+   flip layer mirrors it for the up direction) so the autoscroll feels alive and
+   snappy. */
+.pan-cursor__art.is-dir {
+  animation: pan-throb 0.46s ease-in-out infinite;
+}
+@keyframes pan-throb {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(7px);
+  }
+}
+
+/* Hide the regular arrow cursor while panning (it sets its own inline opacity,
+   so this override needs !important). */
+html.pan-scrolling .moveable-cursor {
+  opacity: 0 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pan-cursor {
+    animation: none;
+  }
+  .pan-cursor__art.is-dir {
+    animation: none;
+  }
+}

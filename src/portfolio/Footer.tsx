@@ -24,7 +24,7 @@ interface ElsewhereLink {
    and pointed half the links at the wrong (or invisible) section).
    Labels + numbers now match each section's own index marker:
      About 01 · Stack+Projects 02 · Work 03 · Off the clock 04 ·
-     Bits and pieces 05 · Elsewhere/contact 06. */
+     Moments 05 · Recents/photos 06 · Elsewhere/contact 07. */
 const JUMP_LINKS: JumpLink[] = [
   { number: "00", label: "Top", selector: "top" },
   { number: "01", label: "About", selector: ".portfolio-about" },
@@ -32,7 +32,8 @@ const JUMP_LINKS: JumpLink[] = [
   { number: "03", label: "Work", selector: ".portfolio-work" },
   { number: "04", label: "Off the clock", selector: ".portfolio-other" },
   { number: "05", label: "Moments", selector: ".portfolio-bp" },
-  { number: "06", label: "Elsewhere", selector: ".keypad-section" },
+  { number: "06", label: "Recents", selector: ".portfolio-photos" },
+  { number: "07", label: "Elsewhere", selector: ".keypad-section" },
 ];
 
 const ELSEWHERE: ElsewhereLink[] = [
@@ -127,12 +128,12 @@ export function Footer() {
       <h2 id="footer-heading" className="sr-only">
         Site footer: navigation, links, and colophon
       </h2>
-      {/* Terminal landmark: "06" Offbit Dot marker so the closing band
+      {/* Terminal landmark: "07" Offbit Dot marker so the closing band
           carries the same big-numeral anchor as the sections above.
           aria-hidden — it's decorative; the index is announced via the
-          jump-link labels. */}
+          jump-link labels. (07 = Contact/Elsewhere, the footer's section.) */}
       <div className="footer-marker" aria-hidden="true">
-        06
+        07
       </div>
       <div className="footer-inner">
         {/* Three-column grid. Order (left → right):
@@ -212,6 +213,12 @@ export function Footer() {
                 <dd className="footer-meta-val">
                   Offbit · Geist
                 </dd>
+              </div>
+              {/* A nicety for those who know: the accent is International
+                  Orange — the Golden Gate / aerospace red-orange (FF4F00). */}
+              <div>
+                <dt className="footer-meta-key">Accent</dt>
+                <dd className="footer-meta-val">International Orange · FF4F00</dd>
               </div>
               <div>
                 <dt className="footer-meta-key">Build</dt>

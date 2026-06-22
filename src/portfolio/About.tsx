@@ -8,116 +8,86 @@ import { ScrambleText } from "./ScrambleText";
 gsap.registerPlugin(ScrollTrigger);
 
 /**
- * About: GSAP-pinned theatrical reveal.
+ * About: GSAP-pinned BENTO DASHBOARD reveal.
  *
- * DESKTOP pin progress beats (kept in sync with the thresholds below):
- *   0.00 – 0.50   wireframes assemble + hold (room hidden by cover dome)
- *   0.50 – 0.52   hard swap: wireframes/dome cut to 0, room appears
- *   0.52 – 0.55   room solo (only the floating "About." wordmark)
- *   0.55 – 0.62   content panel slides in from the right (over the room)
- *   0.63          lede reveals (top of panel, first body beat)
- *   0.66 – 0.78   key/value rows reveal one per beat
+ * The section is an opaque light-grey bento grid (faint dot-grid bg) that
+ * "boots up" as the pin scrubs. The isometric room render (/render.png) is
+ * the feature centerpiece; two info cards sit BEHIND it (the room's
+ * transparent margins let them peek through, the room silhouette occludes
+ * the rest) and two chips float IN FRONT. As pin progress climbs, each cell
+ * crosses an increasing threshold and fades+rises into place — a dashboard
+ * powering on, panel by panel.
  *
- * MOBILE (≤720px) keeps the same pin but compresses the schedule
- * (MOBILE_* constants below): the room canvas is faded out on phones (see
- * about.css note), so About becomes a clean top-anchored section. The
- * "Daniel" wordmark heads it, then a gentle translateY rise brings the
- * full-width body up, with the lede + all rows + coda revealing in a
- * short scrub band (0.5 → 0.62) so a thumb-scrub lands the whole block.
+ * DESKTOP pin progress beats (kept in sync with the CELLS thresholds below):
+ *   0.06   topbar / crumb header lights up
+ *   0.10   NAME + lede card
+ *   0.18   feature render (the centerpiece)
+ *   0.24   portrait
+ *   0.30   "Currently" (behind, peeks under render's left margin)
+ *   0.36   "Exploring" (behind, peeks under render's right margin)
+ *   0.44   "Studying"
+ *   0.50   "Reach"
+ *   0.56   "Location"
+ *   0.62   "Focus / 3D" dark card
+ *   0.70   "Building things that feel alive" front chip
+ *   0.76   "SCENE / VERTS" front chip
  *
- * prefers-reduced-motion: when set, the panel is snapped into place and
- * every beat is forced revealed so the content is fully readable without
- * relying on the scrub-driven choreography. The scroll-pin itself still
- * works (it's structural, not decorative) but nothing fades/slides.
+ * MOBILE (≤900px) SKIPS the pin entirely (mirrors Work's staticLayout): a
+ * pinned, internally-scrolling stage was a nested scroll-trap inside the
+ * page pin. The bento collapses to a single readable column (render is a
+ * smaller hero at the top, cards stack full-width) that flows + scrolls with
+ * the page, and every cell is force-revealed up front (no scrub dependency).
+ *
+ * prefers-reduced-motion: every cell is force-revealed (no transforms),
+ * so the dashboard is fully readable without the scrub choreography. The
+ * scroll-pin itself still works (structural, not decorative).
  */
 
 const PIN_DURATION_PX = 1700;
-/* Mobile pin is MUCH shorter. The 1700px desktop pin exists to pace the
-   room/wireframe reveal beats — but the room canvas is faded out on
-   phones (see about.css note), so most of that scrub was a blank page:
-   ~550px of empty viewport before the card rose, and ~640px of pinned
-   dwell after everything had revealed. 900px paces the compressed
-   mobile schedule below with no dead air on either side. */
-const MOBILE_PIN_DURATION_PX = 900;
-// Panel slide-in window. The card must NOT slide in until the room has fully
-// rendered AND been held on screen for a beat (user: "they get a full view of
-// it for a few frames before it comes in"). The room finishes revealing at
-// pin progress ≈0.40 (cover-dome lift + roomOpacity fade, with the wireframe
-// assembly slowed below); we then hold the diorama solo from ~0.40 to
-// PANEL_SLIDE_START so the eye lands on it, then slide the panel in over a
-// real stretch of scroll. (Was 0.15→0.58, which slid the card in WHILE the
-// wireframes were still assembling, before the room had even appeared.)
-const PANEL_SLIDE_START = 0.52;
-const PANEL_SLIDE_END = 0.74;
-/* Lede is the top of the panel + the first thing read, so it must
-   reveal right after the panel lands, BEFORE the rows below it. */
-const LEDE_REVEAL_AT = 0.78;
-/* Mobile (≤720px) reveal schedule. On a phone the same 1700px pin is
-   scrubbed with a thumb, so the desktop drip (panel 0.55→0.62, then
-   six staggered beats trailing out to 0.82) means a reader has to
-   scrub most of the pin before the content is even legible. We pull
-   everything earlier and tighten the spacing so the card lands and
-   reads as one clean block. The panel also rises from the bottom
-   (translateY) rather than sliding in from the right: natural for
-   portrait, and it keeps the room + wordmark visible above the card
-   the whole time. Row thresholds stay ordered so the stagger still
-   reads top-to-bottom, just over a much shorter scrub band. */
-const MOBILE_PANEL_SLIDE_START = 0.25;
-const MOBILE_PANEL_SLIDE_END = 0.5;
-const MOBILE_LEDE_REVEAL_AT = 0.5;
-const MOBILE_ROW_START = 0.52;
-const MOBILE_ROW_STEP = 0.05;
-/* Wordmark lands almost immediately on mobile: there is no room reveal
-   to wait for (canvas hidden), so any later and the pin opens on a
-   blank page. */
-const MOBILE_EYEBROW_AT = 0.12;
 
-interface Beat {
-  /** pin-progress threshold at which this beat is fully revealed. */
+/* Mobile reveal band: everything lands in a tight 0.18 → 0.66 window so a
+   thumb-scrub powers the whole dashboard up as one block. Cells keep their
+   ORDER (via the CELLS index) but ride this compressed base + step. */
+const MOBILE_REVEAL_START = 0.18;
+const MOBILE_REVEAL_STEP = 0.045;
+
+/** A bento cell's identity, layout class, and pin-progress reveal beat. */
+interface Cell {
+  /** stable key + CSS class suffix (.c-<key>). */
+  key: string;
+  /** pin-progress threshold at which this cell is fully revealed (desktop). */
   at: number;
 }
 
-const ROWS: Array<{ label: string; value: React.ReactNode; beat: Beat }> = [
-  {
-    label: "Currently",
-    value: (
-      <>
-        Software Engineer @{" "}
-        <a href="https://www.broadridge.com" target="_blank" rel="noreferrer">
-          Broadridge
-        </a>
-      </>
-    ),
-    beat: { at: 0.82 },
-  },
-  {
-    label: "Studying",
-    value: <>Computer Science &amp; Ivey Business School, Western</>,
-    beat: { at: 0.86 },
-  },
-  {
-    label: "Exploring",
-    value: <>Gaussian splatting &amp; semantic segmentation</>,
-    beat: { at: 0.90 },
-  },
-  {
-    label: "Reach",
-    value: <a href="mailto:hello@danielrltan.com">hello@danielrltan.com</a>,
-    beat: { at: 0.94 },
-  },
+/* Reveal order = boot-up order. Mobile re-spaces these off a tighter base
+   while preserving the sequence, so the column still reveals top-to-bottom. */
+const CELLS: Cell[] = [
+  { key: "name", at: 0.1 },
+  { key: "render", at: 0.18 },
+  { key: "portrait", at: 0.24 },
+  { key: "now", at: 0.3 },
+  { key: "explore", at: 0.36 },
+  { key: "study", at: 0.44 },
+  { key: "reach", at: 0.5 },
+  { key: "loc", at: 0.56 },
 ];
+
+/* Topbar / crumb lights up first; its own early beat. */
+const HEADER_AT = 0.06;
+const MOBILE_HEADER_AT = 0.08;
 
 export function About() {
   const sectionRef = useRef<HTMLElement>(null);
   const [progress, setProgress] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
-  /* Mirror the CSS panel breakpoint (≤720px goes full-width) so the
-     reveal schedule + slide axis match the layout the user actually
-     sees. Initialised synchronously to avoid a desktop→mobile flash on
-     first paint. */
+  /* Mirror the CSS bento breakpoint (≤900px collapses to one column) so the
+     reveal schedule matches the layout the user actually sees. Initialised
+     synchronously to avoid a desktop→mobile flash on first paint. Aligned to
+     900px (Work's breakpoint) so the 769-900 tablet band gets the stacked
+     column too. */
   const [mobile, setMobile] = useState(() =>
     typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia("(max-width: 768px)").matches
+      ? window.matchMedia("(max-width: 900px)").matches
       : false,
   );
 
@@ -132,12 +102,12 @@ export function About() {
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
-    /* 768 matches the room-canvas mobile fade + RoomPhysics pause
-       breakpoint (App.tsx) AND the about.css mobile block: below it the
-       room never shows during this pin, so the short mobile schedule
-       must kick in (at the old 720 the 721-768 band got the long
-       desktop pin over a hidden room = dead scroll). */
-    const mql = window.matchMedia("(max-width: 768px)");
+    /* 900 matches Work's mobile breakpoint AND the about.css mobile block:
+       below it the bento collapses to a single column and the GSAP pin is
+       skipped, so the mobile (non-pinned) layout must kick in. Using 900 (not
+       768) removes the cramped 769-900 tablet band where the dense 12-col
+       bento and the floating room overlapped the side cards. */
+    const mql = window.matchMedia("(max-width: 900px)");
     const apply = () => setMobile(mql.matches);
     apply();
     mql.addEventListener("change", apply);
@@ -147,15 +117,33 @@ export function About() {
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
+
+    // MOBILE: skip the GSAP pin entirely (mirrors Work's staticLayout). The
+    // pinned bento on a phone created a nested scroll-trap — a full-height
+    // internally-scrolling stage captured inside the page pin (rubber-band).
+    // On mobile the bento is a plain stacked single column that scrolls with
+    // the page; the cells force-reveal up front so nothing depends on scrub.
+    if (mobile) {
+      setProgress(1);
+      // A breakpoint flip from desktop→mobile kills the old pin; refresh so
+      // every pin BELOW (Work, Other, Keypad) recomputes its start now that
+      // this section no longer contributes a pin spacer.
+      const html = document.documentElement;
+      if (!html.classList.contains("loading-active")) {
+        requestAnimationFrame(() => ScrollTrigger.refresh());
+      }
+      return;
+    }
+
     const st = ScrollTrigger.create({
       trigger: el,
       start: "top top",
-      end: `+=${mobile ? MOBILE_PIN_DURATION_PX : PIN_DURATION_PX}`,
+      end: `+=${PIN_DURATION_PX}`,
       pin: true,
       pinSpacing: true,
-      // Rate-limit: scrub:1 (a ~1s catch-up lerp), NOT scrub:true (which is
-      // instant, locked 1:1 to scroll). Without the numeric scrub a fast
-      // flick teleported the side panel in; now it eases through.
+      // Rate-limit: scrub:1 (a ~1s catch-up lerp), NOT scrub:true (instant,
+      // locked 1:1 to scroll). Without the numeric scrub a fast flick would
+      // teleport the dashboard in; now the cells ease up through the band.
       scrub: 1,
       anticipatePin: 1,
       onUpdate: (self) => setProgress(self.progress),
@@ -181,123 +169,263 @@ export function About() {
       obs.disconnect();
       st.kill();
     };
-    // Re-create the pin when the breakpoint flips so the pin duration
-    // matches the layout (mirrors the Work/Keypad pattern).
+    // Re-create (or skip) the pin when the breakpoint flips so the layout
+    // matches (mirrors the Work/Keypad pattern).
   }, [mobile]);
 
-  const slideStart = mobile ? MOBILE_PANEL_SLIDE_START : PANEL_SLIDE_START;
-  const slideEnd = mobile ? MOBILE_PANEL_SLIDE_END : PANEL_SLIDE_END;
-  // Desktop: the floating "About." wordmark lands as the room finishes
-  // revealing (≈0.40), so it heads the "full view of the room" hold beat
-  // BEFORE the card slides in.
-  const eyebrowAt = mobile ? MOBILE_EYEBROW_AT : 0.40;
-  const ledeAt = mobile ? MOBILE_LEDE_REVEAL_AT : LEDE_REVEAL_AT;
-  /* Row thresholds: on desktop each row carries its own authored beat;
-     on mobile we re-space them off a tighter base so the whole list
-     reveals in a short scrub band right after the card lands. */
-  const rowAt = (index: number, desktopAt: number) =>
-    mobile ? MOBILE_ROW_START + index * MOBILE_ROW_STEP : desktopAt;
+  /* Reveal gate. reduced-motion → everything revealed up front. Otherwise a
+     cell is revealed once progress crosses its threshold; mobile re-spaces
+     each cell off a tighter base by its order index so the stack reveals
+     top-to-bottom in a short scrub band. The CSS handles the rise/fade. */
+  const headerAt = mobile ? MOBILE_HEADER_AT : HEADER_AT;
+  const headerRevealed = reducedMotion || progress >= headerAt;
 
-  const floatingEyebrowVisible = reducedMotion || progress >= eyebrowAt;
-  const panelSlide = Math.max(
-    0,
-    Math.min(1, (progress - slideStart) / (slideEnd - slideStart)),
-  );
-  // Reduced motion: snap the panel fully in (no slide / fade-in).
-  const panelEased = reducedMotion ? 1 : 1 - Math.pow(1 - panelSlide, 3);
-  /* Slide axis: desktop panel enters from the right (translateX) over the
-     full-bleed room; mobile (room canvas faded out, see about.css note)
-     gently rises (translateY) into a top-anchored, self-contained section.
-     Distance is a fraction of the element box so it tracks the panel size. */
-  const panelOffset = (1 - panelEased) * 100;
-  /* Mobile rises a modest fraction of its own height (a gentle lift, not a
-     full-screen sweep); desktop slides the full panel width from the right. */
-  const panelTransform = mobile
-    ? `translate3d(0, ${panelOffset * 0.18}%, 0)`
-    : `translate3d(${panelOffset}%, 0, 0)`;
-  const ledeRevealed = reducedMotion || progress >= ledeAt;
-  const rowRevealed = (at: number) => reducedMotion || progress >= at;
+  const cellAt = (index: number, desktopAt: number) =>
+    mobile ? MOBILE_REVEAL_START + index * MOBILE_REVEAL_STEP : desktopAt;
+
+  const revealed = (index: number, desktopAt: number) =>
+    reducedMotion || progress >= cellAt(index, desktopAt);
+
+  /* Look a cell up by key so the JSX can ask for its class without tracking
+     indices by hand (the array order IS the boot order). `base` is the
+     reveal-bearing wrapper class: glass cells use "card", the two floating
+     chips use "front" (they carry their own surface, NOT the .card glass). */
+  const cellClass = (key: string, base = "card") => {
+    const index = CELLS.findIndex((c) => c.key === key);
+    const cell = CELLS[index];
+    const on = revealed(index, cell.at) ? " is-revealed" : "";
+    return `${base} c-${key}${on}`;
+  };
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-about">
-      {/* Cohesive corner header (01 + ABOUT) anchored bottom-left over
-          the live room. The dotted "01" + the OffBit wordmark sit on the
-          sitewide --hdr-num / --hdr-title scale so this reads as the same
-          header system as every other section. Solid ink: the bottom-left
-          sits over the empty room floor, so the big type doesn't fight the
-          content (kept opaque per the cohesive-header spec). */}
-      <div
-        className={`about-floating-eyebrow${
-          floatingEyebrowVisible ? " is-visible" : ""
-        }`}
-        aria-hidden
-      >
-        <span className="about-floating-num">01</span>
-        <span className="about-floating-label">
-          <ScrambleText text="About" play={floatingEyebrowVisible} />
-        </span>
-      </div>
-
-      <div
-        className="portfolio-col about-col"
-        style={{
-          transform: panelTransform,
-          opacity: panelEased,
-        }}
-      >
-        <span className="section-marker" aria-hidden="true">
-          01
-        </span>
-        {/* Spec-sheet header: wayfinding index with a hairline rule
-            beneath. Reads like the title block of a TE spec sheet and
-            gives the panel a firm top edge instead of a lone floating
-            index line. */}
-        <div className="about-spec-header">
-          <span className="section-index">01 / 06 &middot; About</span>
-        </div>
-        {/* DOM-real heading for screen readers / SEO. The big floating
-            "About." wordmark that carries this visually is aria-hidden,
-            so this is the section's only programmatic heading: it must
-            exist even though it's not painted. */}
-        <h2 className="about-sr-heading">About Daniel Tan</h2>
-        {/* Intro row: portrait + lede. The photo fills the dead space
-            left of the blurb (user request); same reveal beat as the
-            lede so the pair lands as one unit. */}
-        <div className={`about-intro-row${ledeRevealed ? " is-revealed" : ""}`}>
-          <img
-            className="about-portrait"
-            src="/images/Me.jpg"
-            alt="Daniel Tan"
-            width={800}
-            height={800}
-            loading="lazy"
-            decoding="async"
-          />
-          <p
-            className={`about-lede${ledeRevealed ? " is-revealed" : ""}`}
-          >
-            I&rsquo;m Daniel, a <span className="accent">software developer</span> in
-            Toronto who likes building the parts of products that feel
-            alive. Right now that&rsquo;s AI tooling, agentic systems, and
-            interactive 3D on the web.
+      <div className="about-stage">
+        {/* TOP CHROME: wayfinding crumb + status. The big "ABOUT" wordmark
+            is aria-hidden chrome; the real <h2> below carries the heading
+            for assistive tech / SEO. */}
+        <header
+          className={`about-banner${headerRevealed ? " is-revealed" : ""}`}
+          aria-hidden="true"
+        >
+          <div className="about-banner-meta">
+            <span className="about-crumb-idx">01</span>
+            <span className="about-crumb-rule" />
+            <span className="about-banner-domain">danielrltan.com</span>
+          </div>
+          <p className="about-banner-title">
+            <ScrambleText text="About" play={headerRevealed} />
           </p>
-        </div>
-        <dl className="about-grid">
-          {ROWS.map((row, index) => (
-            <div
-              key={row.label}
-              className={`about-row${rowRevealed(rowAt(index, row.beat.at)) ? " is-revealed" : ""}`}
-            >
-              {/* Spec-sheet row numeral: pure chrome (aria-hidden), same
-                  language as the Mac tiles' "01"-numbered cards. */}
-              <span className="about-row-num" aria-hidden="true">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <dt className="about-label">{row.label}</dt>
-              <dd className="about-value">{row.value}</dd>
+        </header>
+
+        {/* DOM-real <h2> for assistive tech + SEO. The painted "ABOUT"
+            wordmark above is aria-hidden, so this is the section's only
+            programmatic heading: present even though it's visually hidden. */}
+        <h2 className="about-sr-heading">About Daniel Tan</h2>
+
+        {/* BENTO GRID. Depth: behind-cards (Currently / Exploring) carry a
+            low z-index and tuck under the render's transparent margins; the
+            render cell + room art occlude them. The two chips float on top
+            (high z-index). */}
+        <div className="about-grid">
+          {/* NAME + LEDE */}
+          <div className={cellClass("name")}>
+            <div className="pad">
+              <div className="c-name-top">
+                <span className="label">Software developer / Toronto</span>
+              </div>
+              <p className="about-name-h" aria-hidden="true">
+                Daniel <span>Tan</span>
+              </p>
+              <p className="about-lede">
+                I&rsquo;m Daniel, a{" "}
+                <span className="accent">software developer</span> in Toronto
+                who likes building the parts of products that{" "}
+                <span className="accent">feel alive</span>. Right now that&rsquo;s{" "}
+                <span className="accent">AI tooling</span>, agentic systems,
+                and interactive 3D on the web.
+              </p>
             </div>
-          ))}
-        </dl>
+          </div>
+
+          {/* FEATURE RENDER — the centerpiece. Cell is transparent so only
+              the room art paints; the transparent PNG margins let the behind
+              cards show through, while the room silhouette occludes them. */}
+          <div className={cellClass("render")}>
+            <div className="render-frame">
+              <img className="about-room" src="/render.webp" alt="" />
+            </div>
+          </div>
+
+          {/* PORTRAIT */}
+          <div className={cellClass("portrait")}>
+            {/* Photo + caption STACKED and hugging the right edge so the central
+                floating room only overlaps the empty inner half, never the
+                portrait. */}
+            <div className="portrait-wrap">
+              <img
+                className="about-portrait"
+                src="/images/Me.jpg"
+                alt="Daniel Tan"
+                width={800}
+                height={800}
+                loading="lazy"
+                decoding="async"
+              />
+              <div className="portrait-info" aria-hidden="true">
+                <span className="n">Daniel Tan</span>
+                <span className="r">Software Engineer / Designer</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CURRENTLY — behind, peeks under the render's LEFT margin. */}
+          <dl className={`${cellClass("now")} c-info behind`}>
+            <div className="pad">
+              <dt className="label">Currently</dt>
+              <dd className="c-info-body">
+                <span className="big">
+                  Software
+                  <br />
+                  Engineer
+                </span>
+                <span className="pill">
+                  @{" "}
+                  <a
+                    href="https://www.broadridge.com"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Broadridge
+                  </a>
+                </span>
+              </dd>
+            </div>
+          </dl>
+
+          {/* EXPLORING — behind, peeks under the render's RIGHT margin. */}
+          <dl className={`${cellClass("explore")} c-info behind`}>
+            <div className="pad">
+              <dt className="label">Exploring</dt>
+              <dd className="c-info-body">
+                <span className="big">
+                  Gaussian
+                  <br />
+                  splatting
+                </span>
+                <span className="tags">
+                  <span className="tag">Splatting</span>
+                  <span className="tag">Semantic segmentation</span>
+                </span>
+              </dd>
+            </div>
+          </dl>
+
+          {/* STUDYING */}
+          <dl className={`${cellClass("study")} c-info`}>
+            <div className="pad">
+              <dt className="label">Studying</dt>
+              <dd className="c-info-body">
+                <span className="study-split">
+                  <span className="study-col">
+                    <span className="mini">Degree</span>
+                    <span className="val">Computer Science</span>
+                  </span>
+                  <span className="study-col">
+                    <span className="mini">+ Business</span>
+                    <span className="val">Ivey Business School</span>
+                  </span>
+                </span>
+                <span className="sub">Western University / dual degree </span>
+              </dd>
+            </div>
+          </dl>
+
+          {/* REACH */}
+          <dl className={`${cellClass("reach")} c-info`}>
+            <div className="pad">
+              <dt className="label">Reach</dt>
+              <dd className="c-info-body">
+                <span className="reach-primary">
+                  <a className="mail" href="mailto:hello@danielrltan.com">
+                    hello@<span className="accent">danielrltan</span>.com
+                  </a>
+                  <span className="hint">Replies &lt; 24h</span>
+                </span>
+                {/* Not buttons: a comms "switchboard" — each channel is a row an
+                    orange bar wipes across on hover, with the handle + an
+                    external mark. Ties into the site's channel-dial language. */}
+                <ul className="reach-channels" aria-label="Find Daniel elsewhere">
+                  <li className="ch">
+                    <a
+                      href="https://github.com/danielrltan"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span className="ch-name">GitHub</span>
+                      <span className="ch-handle">@danielrltan</span>
+                      <span className="ch-go" aria-hidden="true">
+                        &#8599;
+                      </span>
+                    </a>
+                  </li>
+                  <li className="ch">
+                    <a
+                      href="https://www.linkedin.com/in/danielrltan"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span className="ch-name">LinkedIn</span>
+                      <span className="ch-handle">in/danielrltan</span>
+                      <span className="ch-go" aria-hidden="true">
+                        &#8599;
+                      </span>
+                    </a>
+                  </li>
+                  <li className="ch">
+                    <a
+                      href="https://x.com/danielrltan"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span className="ch-name">X</span>
+                      <span className="ch-handle">@danielrltan</span>
+                      <span className="ch-go" aria-hidden="true">
+                        &#8599;
+                      </span>
+                    </a>
+                  </li>
+                  <li className="ch">
+                    <a
+                      href="https://www.pinterest.com/danrlt"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span className="ch-name">Pinterest</span>
+                      <span className="ch-handle">@danrlt</span>
+                      <span className="ch-go" aria-hidden="true">
+                        &#8599;
+                      </span>
+                    </a>
+                  </li>
+                </ul>
+              </dd>
+            </div>
+          </dl>
+
+          {/* LOCATION */}
+          <dl className={`${cellClass("loc")} c-info`}>
+            <div className="pad">
+              <dt className="label">Location</dt>
+              <dd className="c-info-body">
+                <span className="big">Toronto</span>
+                <span className="sub">Canada / EST</span>
+                <span className="big loc-alt">London, ON</span>
+                <span className="coord">43.01 N / 81.27 W</span>
+              </dd>
+            </div>
+          </dl>
+
+        </div>
       </div>
     </section>
   );

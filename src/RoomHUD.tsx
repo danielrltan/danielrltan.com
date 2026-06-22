@@ -6,10 +6,10 @@ import { useIsMobile } from "./useIsMobile";
  * Persistent chrome over the room view: just the brand cat (top-left).
  * `visible` fades the whole HUD in/out for desk-view transitions.
  *
- * The mobile reset/audio pills that used to sit bottom-left were removed
- * at the owner's request (they read as stray leftover controls on a
- * phone, where the room isn't the interaction surface). Desktop reset +
- * audio still live in the StatusBar pill.
+ * The reset/audio pills that used to sit bottom-left were removed
+ * entirely at the owner's request (they read as stray leftover controls,
+ * and on a phone the room isn't the interaction surface). No audio
+ * control exists anymore; room reset lives on the keyboard shortcut.
  */
 interface Props {
   /** Outer visibility: fades the whole HUD in/out for desk-view transitions. */
@@ -117,10 +117,13 @@ export function RoomHUD({ visible }: Props) {
           userSelect: "none",
           transition: "transform 0.18s ease, opacity 0.3s ease",
         }}
-        onMouseEnter={(e) => {
+        onPointerEnter={(e) => {
+          // Mouse/trackpad only: on touch, the lift would stick until the next
+          // tap elsewhere (mouseenter has no touch counterpart that releases).
+          if (e.pointerType !== "mouse") return;
           e.currentTarget.style.transform = "translateY(-1px)";
         }}
-        onMouseLeave={(e) => {
+        onPointerLeave={(e) => {
           e.currentTarget.style.transform = "translateY(0)";
         }}
       >

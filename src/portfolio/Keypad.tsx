@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Lenis from "lenis";
+import { useSectionCanvasMount } from "../useSectionCanvasMount";
 // Lazy: keypad 3D scene (last section before the footer) loads on approach,
 // idle-prefetched in App.tsx so the chunk is cached before scroll-in.
 const KeypadScene = lazy(() =>
@@ -11,6 +12,25 @@ import { useIsMobile } from "../useIsMobile";
 import "./keypad.css";
 
 gsap.registerPlugin(ScrollTrigger);
+
+// Single source of truth for the four socials the keypad exposes.
+// Used by BOTH the visually-hidden semantic list (AT / SEO) and the
+// mobile DOM contact chips below, so the links can't drift apart. The
+// 3D caps reference the same destinations on desktop.
+const SOCIALS = [
+  { label: "X", aria: "X (Twitter)", href: "https://x.com/danielrltan" },
+  {
+    label: "LinkedIn",
+    aria: "LinkedIn",
+    href: "https://www.linkedin.com/in/danielrltan",
+  },
+  { label: "GitHub", aria: "GitHub", href: "https://github.com/danielrltan" },
+  {
+    label: "Pinterest",
+    aria: "Pinterest",
+    href: "https://www.pinterest.com/danielrltan",
+  },
+] as const;
 
 /**
  * Keypad section: bottom-of-page Contact surface. Pure 3D: the
@@ -119,6 +139,25 @@ function ensureLenis() {
 }
 
 /**
+ * Middle-button PAN / auto-scroll: jump the page to an ABSOLUTE Y immediately
+ * (no lerp) via the shared Lenis singleton, so the autoscroll tracks the caller's
+ * own running target at a direct, snappy, predictable rate. The caller owns the
+ * target (accumulating it frame to frame) so nothing compounds — reading Lenis's
+ * smoothed `.scroll` back each frame scrolled ~3x too fast. Routing through Lenis
+ * (rather than window.scrollTo, which Lenis would lerp straight back) keeps GSAP
+ * ScrollTrigger + the pinned sections in sync. ensureLenis() is idempotent.
+ */
+export function panScrollTo(y: number) {
+  if (typeof window === "undefined") return;
+  ensureLenis();
+  if (lenisInstance) {
+    lenisInstance.scrollTo(y, { immediate: true });
+  } else {
+    window.scrollTo(0, y);
+  }
+}
+
+/**
  * Smooth-scroll to an absolute Y (or an element) via the shared Lenis
  * singleton. Falls back to native window.scrollTo if Lenis isn't up yet.
  * Used by the section nav menu to jump between sections; routing through
@@ -173,17 +212,18 @@ export function Keypad() {
   // drop-in still plays because pinProgressRef is driven by the
   // time-based IntersectionObserver ramp below, NOT by the pin.
   const isMobile = useIsMobile();
-  // Canvas was previously gated behind IntersectionObserver to defer
-  // WebGL context creation until the section approached the viewport.
-  // That mount-gating turned out to be unreliable: on some renders the
-  // IO callback didn't fire even when the section was well within the
-  // rootMargin window, leaving the keypad-placeholder mounted even
-  // when the user had scrolled all the way to the keypad. User repro:
-  // 'i just scrolled by the keypad and nothing appeared for the first
-  // time.' Now mounted unconditionally: the WebGL context spin-up
-  // cost is well worth the reliability win, and the GLB is preloaded
-  // at module scope so it's cached by the time the canvas needs it.
-  const [mounted] = useState(true);
+  // Mount the keypad <Canvas> WELL ahead of arrival, then release its WebGL
+  // context once it's well out of view. The keypad is the LAST section (footer
+  // below), so a generous ~3.25-viewport mount margin spins up the context +
+  // GLB + first render while the user is still in Photos/Honors — so it's fully
+  // loaded + settled BEFORE they reach it (no "Find me elsewhere placeholder
+  // then it glitches/loads in" pop the owner flagged). The GLB is module-scope
+  // preloaded and App.tsx idle-prefetches the scene chunk, so the early mount is
+  // cheap. .keypad-placeholder reserves the exact box so layout never shifts.
+  const mounted = useSectionCanvasMount(sectionRef, {
+    mountVh: 3.25,
+    unmountVh: 4.5,
+  });
 
   // pinProgressRef is now a TIME-driven 0..1 ramp, not scroll-driven.
   // User feedback: the scroll-bound drop matched the scroll rate so
@@ -331,36 +371,31 @@ export function Keypad() {
 
   return (
     <section ref={sectionRef} className="portfolio-section keypad-section">
-      {/* Hidden semantic content for AT / keyboard / SEO. */}
+      {/* Hidden semantic content for AT / keyboard / SEO. Driven from the
+          shared SOCIALS list so it can't drift from the visible chips. On
+          mobile these same links are surfaced as real, tappable chips below
+          (the .keypad-contact block); on desktop the 3D caps are the visible
+          affordance and this stays the AT/crawler fallback. */}
       <div className="sr-only">
         <h2>Find me elsewhere</h2>
         <ul>
-          <li>
-            <a href="https://x.com/danielrltan">X (Twitter)</a>
-          </li>
-          <li>
-            <a href="https://www.linkedin.com/in/danielrltan">LinkedIn</a>
-          </li>
-          <li>
-            <a href="https://github.com/danielrltan">GitHub</a>
-          </li>
-          <li>
-            <a href="https://www.pinterest.com/danielrltan">Pinterest</a>
-          </li>
+          {SOCIALS.map((s) => (
+            <li key={s.label}>
+              <a href={s.href}>{s.aria}</a>
+            </li>
+          ))}
         </ul>
       </div>
 
+      {/* Editorial hint watermark (.keypad-hint is styled in keypad.css but
+          was never mounted). Sits behind the live canvas on desktop as a quiet
+          label; on mobile it becomes the heading above the contact chips. It
+          also remains visible if WebGL fails, so the section is never blank. */}
+      <div className="keypad-hint" aria-hidden="true">
+        <span className="keypad-hint-eyebrow">Find me elsewhere</span>
+      </div>
+
       <div className="keypad-stage">
-        {/* Lightweight visual hint behind the 3D canvas: a faint
-            editorial label so the section isn't a blank stage if WebGL
-            fails/disabled, and a quiet cue that the glyphs are
-            interactive. pointer-events:none + aria-hidden keep it purely
-            decorative — the real links live in the .sr-only block above,
-            and this never intercepts a click meant for the dial/caps. */}
-        <div className="keypad-hint" aria-hidden="true">
-          <span className="keypad-hint-eyebrow">06 / Elsewhere</span>
-          <span className="keypad-hint-cue">Tap a glyph to connect</span>
-        </div>
         {mounted ? (
           <Suspense fallback={<div className="keypad-placeholder" />}>
             <KeypadScene
@@ -372,6 +407,28 @@ export function Keypad() {
           <div className="keypad-placeholder" />
         )}
       </div>
+
+      {/* MOBILE contact block: the 3D caps are invisible hit-boxes with no
+          touch affordance, so on a phone there is no way to reach the socials.
+          Render REAL, tappable chips (always in the DOM, so they also cover
+          the WebGL-unavailable case). Gated to mobile only — `isMobile` mirrors
+          how Macintosh / the rest of the app branch — so desktop is untouched. */}
+      {isMobile && (
+        <nav className="keypad-contact" aria-label="Find me elsewhere">
+          {SOCIALS.map((s) => (
+            <a
+              key={s.label}
+              className="keypad-contact-chip"
+              href={s.href}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`${s.aria}: opens in a new tab`}
+            >
+              {s.label}
+            </a>
+          ))}
+        </nav>
+      )}
     </section>
   );
 }

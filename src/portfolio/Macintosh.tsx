@@ -16,6 +16,7 @@ const MacintoshScene = lazy(() =>
 import { TechStackTicker } from "../macintosh/TechStackTicker";
 import { MAC_PROJECTS, liveLinkLabel, type MacProject } from "../macintosh/projects";
 import { useMacNarrow } from "../macintosh/useMacNarrow";
+import { useSectionCanvasMount } from "../useSectionCanvasMount";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -84,9 +85,13 @@ const PIN_FREEZE: number | null = (() => {
 
 export function Macintosh() {
   const sectionRef = useRef<HTMLElement>(null);
-  // Canvas mounts unconditionally: IO-gated mount lost the first
-  // pass when the section was scrolled past before the canvas spun up
-  // (Keypad hit the same bug). The GLB is preloaded at module scope.
+  // Mount the Mac <Canvas> only as the section approaches; release the WebGL
+  // context once it's well out of view (the weak-GPU freeze fix). The reliable
+  // mount-on-approach gate (generous margin + hysteresis) avoids the old IO
+  // gate's "scrolled past before it spun up" bug. .mac-stage is position:absolute
+  // so mounting/unmounting the canvas never changes layout under the pin. The GLB
+  // is module-scope preloaded so a remount on scroll-back is instant.
+  const macMounted = useSectionCanvasMount(sectionRef);
   const pinProgressRef = useRef(
     TUNE_MODE ? 1 : PIN_FREEZE != null ? PIN_FREEZE : 0,
   );
@@ -96,6 +101,18 @@ export function Macintosh() {
   // drawer; the CRT IS the detail view. Clearing it (ESC / BACK) pulls
   // the camera back out to the tile grid.
   const [selected, setSelected] = useState<MacProject | null>(null);
+  // MOBILE ACCORDION: which project's inline detail is expanded on the
+  // narrow/landed path. Replaces the old open -> detail -> Back flow with a
+  // tap-to-expand dropdown per project (user request: "just make it
+  // dropdowns"). First project open by default so the list isn't a wall of
+  // collapsed rows; single-open (opening one collapses the rest), and
+  // re-tapping the open row closes it. Desktop's 3D CRT selection is separate
+  // (it uses `selected`); this never touches it.
+  const [openMobileId, setOpenMobileId] = useState<string | null>(
+    MAC_PROJECTS[0]?.id ?? null,
+  );
+  const toggleMobileProject = (id: string) =>
+    setOpenMobileId((cur) => (cur === id ? null : id));
   // On-screen rect of the CRT screen face, projected by the 3D scene each
   // throttled tick. Positions the real clickable close + live controls
   // EXACTLY over their painted faces now that the detail-zoom lands
@@ -376,16 +393,18 @@ export function Macintosh() {
         // the accessible equivalent. So hide the visual stage from AT.
         aria-hidden="true"
       >
-        <Suspense fallback={null}>
-          <MacintoshScene
-            pinProgressRef={pinProgressRef}
-            projects={MAC_PROJECTS}
-            onSelectProject={openProject}
-            selected={selected}
-            onCloseProject={closeProject}
-            onScreenRect={staticLanded ? undefined : handleScreenRect}
-          />
-        </Suspense>
+        {macMounted && (
+          <Suspense fallback={null}>
+            <MacintoshScene
+              pinProgressRef={pinProgressRef}
+              projects={MAC_PROJECTS}
+              onSelectProject={openProject}
+              selected={selected}
+              onCloseProject={closeProject}
+              onScreenRect={staticLanded ? undefined : handleScreenRect}
+            />
+          </Suspense>
+        )}
       </div>
       <div
         className="mac-ticker-slot"
@@ -396,51 +415,97 @@ export function Macintosh() {
         <TechStackTicker />
       </div>
 
-      {/* MOBILE TAP PATH (narrow only). The CRT tiles are a <canvas>
-          texture clicked via a 3D raycast plane; on a phone each tile is
-          a small, hover-less, fiddly hit area, and the canvas is invisible
-          to AT. So on the narrow/landed path we render a REAL, VISIBLE list
-          of large project buttons beneath the Mac: each ≥44px, carrying the
-          SAME openProject the 3D tile fires, with a touch active-state (no
-          hover dependency). This is the primary, reliable way to open a
-          project on touch; the 3D raycast stays as a secondary nicety. The
-          desktop orbit/dolly path hides this entirely (display:none) so the
-          cinematic is untouched. Hidden once a project is open so it doesn't
-          compete with the in-CRT detail view + control bar. */}
-      {staticLanded && !selected && (
-        <ul className="mac-project-list" aria-label="Projects">
-          {MAC_PROJECTS.map((p) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                className="mac-project-btn"
-                onClick={() => openProject(p)}
+      {/* MOBILE PROJECT ACCORDION (narrow only). The CRT tiles are a <canvas>
+          texture clicked via a 3D raycast plane — invisible to AT and gone on a
+          phone (the canvas never mounts ≤768px). So the narrow/landed path is a
+          real, accessible list of projects where each row is a DISCLOSURE
+          button (aria-expanded) that drops its detail open INLINE beneath it —
+          no separate detail view, no Back button (user: "just make it
+          dropdowns"). Mirrors the Work accordion's motion. Desktop's
+          orbit/dolly cinematic owns selection there and hides this entirely. */}
+      {staticLanded && (
+        <ul className="mac-project-list mac-project-acc" aria-label="Projects">
+          {MAC_PROJECTS.map((p) => {
+            const open = openMobileId === p.id;
+            const panelId = `mac-acc-panel-${p.id}`;
+            return (
+              <li
+                key={p.id}
+                className={`mac-acc-item${open ? " is-open" : ""}`}
               >
-                <span
-                  className="mac-project-swatch"
-                  style={
-                    p.image
-                      ? {
-                          backgroundImage: `url(${p.image})`,
-                          backgroundSize: "cover",
-                          backgroundPosition: "center",
-                        }
-                      : { background: p.color }
-                  }
-                  aria-hidden="true"
-                />
-                <span className="mac-project-text">
-                  <span className="mac-project-meta">
-                    {p.meta.split(" · ")[0]}
+                <button
+                  type="button"
+                  className="mac-project-btn mac-acc-head"
+                  aria-expanded={open}
+                  aria-controls={panelId}
+                  onClick={() => toggleMobileProject(p.id)}
+                >
+                  <span
+                    className="mac-project-swatch"
+                    style={
+                      p.image
+                        ? {
+                            backgroundImage: `url(${p.image})`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                          }
+                        : { background: p.color }
+                    }
+                    aria-hidden="true"
+                  />
+                  <span className="mac-project-text">
+                    <span className="mac-project-meta">
+                      {p.meta.split(" · ")[0]}
+                    </span>
+                    <span className="mac-project-title">{p.title}</span>
                   </span>
-                  <span className="mac-project-title">{p.title}</span>
-                </span>
-                <span className="mac-project-open" aria-hidden="true">
-                  Open
-                </span>
-              </button>
-            </li>
-          ))}
+                  <span className="mac-acc-chevron" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                      <path
+                        d="M6 9l5 5 5-5"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="square"
+                      />
+                    </svg>
+                  </span>
+                </button>
+                <div id={panelId} className="mac-acc-panel" role="region">
+                  <div className="mac-acc-panel-inner">
+                    <p className="mac-acc-blurb">{p.blurb}</p>
+                    {p.tags.length > 0 && (
+                      <ul className="mac-detail-tags">
+                        {p.tags.map((t) => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {p.liveHref && (
+                      <a
+                        className="mac-acc-link"
+                        href={p.liveHref}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {liveLinkLabel(p.liveHref)}{" "}
+                        <span aria-hidden="true">→</span>
+                      </a>
+                    )}
+                    {p.repoHref && (
+                      <a
+                        className="mac-acc-link"
+                        href={p.repoHref}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Source <span aria-hidden="true">→</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
       {/* Editorial header fades out while a project detail is open:
@@ -470,9 +535,11 @@ export function Macintosh() {
           the legible, readable presentation of the work; the CRT just
           shows the matching framed view behind it. The BACK + live/source
           controls render as large ≥44px buttons here on narrow. */}
+      {/* Desktop-only a11y/keyboard detail for the 3D CRT selection. On mobile
+          the accordion above is the visible + accessible project detail, and
+          `selected` is never set there, so this stays empty (sr-only). */}
       <div
         className="mac-detail-a11y"
-        data-narrow={staticLanded ? "true" : undefined}
         role="region"
         aria-live="polite"
         aria-label={selected ? `${selected.title}: project detail` : undefined}

@@ -1,50 +1,35 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 /**
- * Hobbies scene: 10 floating 3D objects representing personal
- * interests, arranged as a loose asymmetric cluster in empty space.
+ * Hobbies scene: BOLD CLUSTER, floating-in-space edition.
  *
- * POST-REDESIGN (curated reel mode):
- *   The parent Other.tsx now pins the section and cycles through one
- *   hobby at a time. This scene FOCUSES one object per beat: the
- *   camera dollies toward the focused object's world position, the
- *   focused object scales up + glows lightly, and the other nine
- *   recede (opacity 0.15, scale 0.55, pushed outward from origin).
- *   The whole scene feels like a curated reel rather than a cluster.
+ * All ten interest objects float together as one dense cluster suspended in
+ * open space and fill the frame edge-to-edge with low padding (the reference
+ * the user supplied). There is no scroll-driven scrub and no one-at-a-time
+ * focus: every object is vivid the whole time.
  *
- * Props (post-redesign):
- *   - focusRef: 0..N-1 fractional. Integer part = current focused
- *     hobby index, fractional part = transition progress to the next.
- *     The scene reads this each frame and smoothly tweens camera +
- *     per-object material state.
- *   - hobbyIds: ordered array of hobby ids from the parent. Must
- *     match the order the parent uses for its reel. Lets the scene
- *     map focusRef -> hobby id without duplicating the master list.
+ * MOTION — gentle zero-g drift (NOT a vertical bob):
+ *   Each object is a soft body that drifts slowly around its home slot
+ *   (spring-damped toward a slowly-wandering target), and the bodies resolve
+ *   soft sphere collisions so they BUMP into each other and push apart but
+ *   never interpenetrate / clip through one another. A containment clamp keeps
+ *   every body fully inside the visible frame so nothing is ever cut off at the
+ *   edges. The whole thing reads like objects floating in space, drifting and
+ *   slowly knocking into each other. prefers-reduced-motion parks it static.
  *
- * Backwards-compat:
- *   - The old pinProgressRef API has been retired. Other.tsx is the
- *     only consumer.
+ * HOVER — focus + face-tracking parallax (ported from the keypad section):
+ *   Hovering an object FOCUSES it: it lifts/scales up, eases forward, slows its
+ *   drift to hold still, and tilts TOWARD the cursor (±15°, exp-lerp rate 6 —
+ *   the same face-tracking the keypad uses). A DOM tooltip shows its label.
  *
- * Each item:
- *   - Loads its GLB from /public/hobbies/{file} in parallel via
- *     GLTFLoader. Module-scope preload kicks the requests off at
- *     import time so the first scroll into the section finds the
- *     assets already cached (or in flight). Until the asset arrives
- *     (or if it 404s), a varied primitive placeholder occupies the
- *     same slot so the layout is correct from t=0.
- *   - Has independent gentle Y bob + a small front-facing SWAY (a
- *     bounded oscillation about identity, never a full rotation, so the
- *     authored front face always stays toward the camera). Phases are
- *     per-item so the cluster feels organic rather than mechanical.
- *
- * Tooltip:
- *   - DOM <div> overlaid on the canvas. Positioned via mousemove
- *     listener at cursor + 20px offset. 180ms enter delay,
- *     200ms leave delay.
- *   - Tap to show / tap elsewhere to dismiss on touch.
+ * Palette discipline: the site runs a strict off-white / ink / orange system.
+ * The abstract placeholder objects wear a glossy duotone of deep graphite,
+ * light steel, and brand orange; the real GLB props keep their authored
+ * materials with a gloss boost so the whole cluster reads as one candy set.
  */
 
 interface Hobby {
@@ -53,9 +38,6 @@ interface Hobby {
   label: string;
 }
 
-// Master roster: order must match the parent's HOBBIES array. The
-// parent passes `hobbyIds` so we can detect mismatches if the lists
-// ever drift.
 const HOBBIES: Hobby[] = [
   { id: "belt",     file: "belt.glb",     label: "Taekwondo"   },
   { id: "piano",    file: "piano.glb",    label: "Piano"       },
@@ -63,85 +45,11 @@ const HOBBIES: Hobby[] = [
   { id: "shoe",     file: "shoe.glb",     label: "Fashion"     },
   { id: "keyboard", file: "keyboard.glb", label: "Keyboards"   },
   { id: "cursor",   file: "cursor.glb",   label: "Design"      },
-  { id: "turbo",    file: "turbo.glb",    label: "Cars"        },
+  { id: "car",      file: "car.glb",      label: "Cars"        },
   { id: "yarn",     file: "yarn.glb",     label: "Crocheting"  },
   { id: "luggage",  file: "luggage.glb",  label: "Travel"      },
   { id: "ski",      file: "ski.glb",      label: "Skiing"      },
 ];
-
-/**
- * Per-hobby world-space slot in the cluster. The reel mode dollies
- * the camera toward the focused slot's position so each hobby gets
- * its own "framed" view. Positions are spread around origin so the
- * camera rotation between hobbies feels meaningful (not all stacked
- * in one corner).
- *
- * ARTFUL ARRANGEMENT (overhaul): the previous slots scattered the
- * objects roughly evenly which read as random. These positions form a
- * deliberate, asymmetric, depth-staggered cluster: a loose rising
- * diagonal from lower-left to upper-right, with a few objects pushed
- * deep (-z) and a few pulled near (+z) so the composition has front-to-
- * back layering rather than a flat ring. The camera orbits whichever
- * slot is focused, so each becomes the centred hero in turn; the
- * surrounding slots (pushed further out by DIM_OUTWARD when dim) frame
- * it instead of crowding it. Envelope kept inside roughly -1.5..+1.5 so
- * dim neighbours never wander to the frame edges.
- */
-const LAYOUT: Record<string, { pos: [number, number, number]; placeholder: PlaceholderKind }> = {
-  belt:     { pos: [-1.35, -0.55, -0.18], placeholder: "dodecahedron" },
-  piano:    { pos: [-0.92,  0.58,  0.22], placeholder: "box"          },
-  pc:       { pos: [-0.05, -0.10,  0.30], placeholder: "icosahedron"  },
-  shoe:     { pos: [ 0.62, -0.72,  0.10], placeholder: "cone"         },
-  keyboard: { pos: [ 1.20,  0.05,  0.20], placeholder: "torus"        },
-  cursor:   { pos: [ 0.78,  0.98, -0.15], placeholder: "octahedron"   },
-  turbo:    { pos: [ 1.42, -0.42, -0.22], placeholder: "cylinder"     },
-  yarn:     { pos: [-0.62,  1.00,  0.28], placeholder: "sphere"       },
-  luggage:  { pos: [ 0.18, -1.02, -0.28], placeholder: "tetrahedron"  },
-  ski:      { pos: [-0.55,  0.28, -0.30], placeholder: "ring"         },
-};
-
-/**
- * ORIENTATION MODEL: FRONT-FACING ALWAYS.
- *
- * Every model is authored in Blender so that rotation identity (0,0,0)
- * is its correct FRONT face, i.e. at rest the object looks straight at
- * the camera. The code therefore NEVER rotates an object to an arbitrary
- * authored angle and NEVER spins it continuously (which would turn its
- * back / underside to the viewer). The earlier per-hobby `HERO_ROT`
- * guessed-Euler table and the idle-tumble spin have been removed for
- * exactly this reason: they were what flipped objects backward.
- *
- * Instead each object gets a gentle SWAY around the front-facing pose:
- *   - small yaw (Y) oscillation: ±SWAY_YAW
- *   - smaller pitch (X) oscillation: ±SWAY_PITCH
- *   - a tiny roll (Z) shimmer: ±SWAY_ROLL
- * centred on identity, with a per-object phase offset so the ten objects
- * are not synchronised. The amplitude stays small enough that the front
- * face always dominates; it is a breathing motion, not a rotation. When
- * an object is FOCUSED the sway is damped further (FOCUS_SWAY_DAMP) and a
- * tiny flattering downward look (FOCUS_PITCH) is applied so the hero
- * reads cleanly and head-on.
- *
- * The three real GLBs (piano, keyboard, ski) currently still carry
- * non-front Blender orientations; once the user re-exports them with the
- * front face at identity they will face the camera here automatically,
- * because the code applies no per-object correction.
- */
-// Sway amplitudes (radians) around the front-facing identity pose.
-const SWAY_YAW = 0.17;    // ~±9.7° on Y, the dominant lively motion
-const SWAY_PITCH = 0.06;  // ~±3.4° on X, gentle nod
-const SWAY_ROLL = 0.03;   // ~±1.7° on Z, barely-there shimmer
-// Sway angular periods (seconds), co-prime-ish so the axes don't beat
-// back into lockstep, keeping the motion organic per object.
-const SWAY_YAW_PERIOD = 6.5;
-const SWAY_PITCH_PERIOD = 5.1;
-const SWAY_ROLL_PERIOD = 7.3;
-// While focused, scale the sway down to this fraction so the hero reads
-// clearly (still alive, but near-still and front-dominant).
-const FOCUS_SWAY_DAMP = 0.35;
-// A small downward-look pitch (radians) eased in as an object focuses,
-// a flattering 3/4-ish tip that keeps the front face toward the camera.
-const FOCUS_PITCH = 0.07; // ~4° nose-down
 
 type PlaceholderKind =
   | "icosahedron"
@@ -155,42 +63,66 @@ type PlaceholderKind =
   | "tetrahedron"
   | "ring";
 
-// Placeholder tones: cool-retro-futurism palette. The DIM tone is a
-// cool graphite (ink family) so an out-of-focus artifact reads as a
-// neutral machined object; the HOT tone is the signature orange
-// (var(--accent) #e87040) so the focused object snaps to brand colour.
-// Per-kind dim tones (below) nudge each placeholder along a tight
-// graphite→clay axis so the ten artifacts read as distinct without
-// introducing any off-palette chroma (no teal/purple/etc; design
-// system rule: white + ink + orange only).
-const PLACEHOLDER_COLOR = "#6f7378";       // cool graphite base
-const FOCUSED_PLACEHOLDER_COLOR = "#e87040"; // var(--accent)
+type Tone = "ink" | "steel" | "orange";
 
-// Per-kind dim base tone: all within the cool-graphite → warm-clay
-// neutral band that sits comfortably beside the orange accent. Keeps
-// each artifact individually legible while the palette stays honest.
-// Deepened from the first pass so the dim artifacts hold presence
-// against the bright cool-white page instead of washing out.
-const PLACEHOLDER_TONES: Record<PlaceholderKind, string> = {
-  dodecahedron: "#4c5158", // cool slate
-  box:          "#646970", // light graphite
-  icosahedron:  "#565b62", // mid graphite
-  cone:         "#766a5f", // warm taupe
-  torus:        "#6c6256", // clay-grey
-  octahedron:   "#5d6168", // neutral steel
-  cylinder:     "#71665c", // warm stone
-  sphere:       "#52565d", // deep graphite
-  tetrahedron:  "#796d61", // pale clay
-  ring:         "#62666d", // brushed steel
+const TONE_COLOR: Record<Tone, string> = {
+  ink: "#2b2f36",
+  steel: "#aeb4bc",
+  orange: "#ff4f00",
 };
 
-// prefers-reduced-motion: read once at module load. When set, the scene
-// parks statically: objects sit at their layout slots with no idle bob,
-// no per-object rotation, and the camera holds a fixed framing (no slow
-// orbit drift). Focus changes (dot-strip jump) still re-frame, but as an
-// instant settle rather than a continuous animation. The reel cannot
-// scroll-scrub under reduced motion (the parent disables the pin), so
-// this scene is effectively a still life unless a dot is activated.
+/**
+ * Home slots for the cluster: a SPREAD, not a pile. Each object gets its own
+ * clear space on the canvas (user: "I want them all to kind of have their own
+ * space that you can see" - no occlusion). Two loose, staggered bands across a
+ * landscape frame; the z is kept nearly FLAT so nothing ever hides behind a
+ * nearer neighbour (depth occlusion is what made the car disappear). Objects
+ * still drift slowly around their home and the soft collisions keep a visible
+ * gap between them. `radius` is the collision half-size and is padded a touch
+ * beyond the visual size so neighbours hold a clear gap as they drift. `tone`
+ * applies only to the abstract placeholder objects.
+ */
+const LAYOUT: Record<
+  string,
+  {
+    pos: [number, number, number];
+    scale: number;
+    radius: number;
+    placeholder: PlaceholderKind;
+    tone: Tone;
+  }
+> = {
+  // upper band
+  piano:    { pos: [-2.42,  0.64,  0.04], scale: 1.00, radius: 0.66, placeholder: "box",          tone: "ink"    },
+  yarn:     { pos: [-1.28,  0.96, -0.02], scale: 0.82, radius: 0.54, placeholder: "sphere",       tone: "steel"  },
+  pc:       { pos: [ 0.06,  0.52,  0.06], scale: 1.16, radius: 0.74, placeholder: "icosahedron",  tone: "orange" },
+  keyboard: { pos: [ 1.34,  0.80,  0.00], scale: 1.04, radius: 0.62, placeholder: "torus",        tone: "ink"    },
+  luggage:  { pos: [ 2.44,  0.68,  0.02], scale: 0.96, radius: 0.62, placeholder: "tetrahedron",  tone: "ink"    },
+  // lower band
+  belt:     { pos: [-2.30, -0.72, -0.02], scale: 0.98, radius: 0.64, placeholder: "dodecahedron", tone: "orange" },
+  ski:      { pos: [-1.22, -0.42,  0.04], scale: 1.04, radius: 0.62, placeholder: "ring",         tone: "steel"  },
+  cursor:   { pos: [-0.08, -0.96,  0.02], scale: 0.88, radius: 0.56, placeholder: "octahedron",   tone: "orange" },
+  shoe:     { pos: [ 1.10, -0.86,  0.04], scale: 0.92, radius: 0.58, placeholder: "cone",         tone: "steel"  },
+  car:      { pos: [ 2.34, -0.40, -0.02], scale: 1.00, radius: 0.62, placeholder: "cylinder",     tone: "steel"  },
+};
+
+// Gentle front-facing sway amplitudes (radians) — a slow breathing rotation so
+// the floating objects feel alive without ever turning their backs to camera.
+const SWAY_YAW = 0.12;
+const SWAY_PITCH = 0.05;
+const SWAY_ROLL = 0.025;
+const SWAY_YAW_PERIOD = 7.5;
+const SWAY_PITCH_PERIOD = 6.1;
+const SWAY_ROLL_PERIOD = 8.3;
+
+// Hover focus.
+const HOVER_SCALE = 1.1;           // lift the focused object
+const HOVER_FORWARD = 0.18;        // ease it this far toward the camera (+z)
+// Face-tracking parallax (ported from the keypad: ±15°, exp-lerp rate 6).
+const PARALLAX = THREE.MathUtils.degToRad(15);
+const PARALLAX_LERP_RATE = 6;
+
+// prefers-reduced-motion: park static (no drift, no sway, no collisions step).
 const PREFERS_REDUCED_MOTION =
   typeof window !== "undefined" &&
   typeof window.matchMedia === "function" &&
@@ -204,30 +136,27 @@ function PlaceholderMesh({ kind, size }: { kind: PlaceholderKind; size: number }
     case "box":
       return <boxGeometry args={[size, size * 0.8, size * 0.9]} />;
     case "torus":
-      return <torusGeometry args={[r * 0.85, r * 0.32, 12, 32]} />;
+      return <torusGeometry args={[r * 0.85, r * 0.32, 16, 40]} />;
     case "cone":
-      return <coneGeometry args={[r, size * 1.2, 16]} />;
+      return <coneGeometry args={[r, size * 1.2, 20]} />;
     case "octahedron":
       return <octahedronGeometry args={[r, 0]} />;
     case "dodecahedron":
       return <dodecahedronGeometry args={[r, 0]} />;
     case "cylinder":
-      return <cylinderGeometry args={[r * 0.7, r * 0.85, size * 0.9, 16]} />;
+      return <cylinderGeometry args={[r * 0.7, r * 0.85, size * 0.9, 24]} />;
     case "sphere":
-      return <sphereGeometry args={[r, 20, 16]} />;
+      return <sphereGeometry args={[r, 32, 24]} />;
     case "tetrahedron":
       return <tetrahedronGeometry args={[r * 1.05, 0]} />;
     case "ring":
-      return <torusGeometry args={[r * 0.95, r * 0.18, 8, 28]} />;
+      return <torusGeometry args={[r * 0.95, r * 0.20, 12, 36]} />;
   }
 }
 
 // ----------------------------------------------------------------------
-// Module-scope GLB preload: kick off the loads as soon as this module
-// is imported, not on first canvas mount. Even though the canvas waits
-// on the GLB to arrive, having the requests already in flight by the
-// time the canvas mounts means the placeholder → real-mesh swap
-// happens almost instantly.
+// Module-scope GLB preload (App.tsx also idle-prefetches the module).
+// Concurrency capped at 3 so the loads don't starve first-paint assets.
 // ----------------------------------------------------------------------
 type LoadEntry = {
   scene: THREE.Group | null;
@@ -241,12 +170,6 @@ function startPreload() {
   preloadStarted = true;
   if (typeof window === "undefined") return;
   const loader = new GLTFLoader();
-  // Create every entry up front so subscribers can attach before any load
-  // finishes, then pump the actual requests through a small concurrency
-  // limit. Firing all ~10 GLB loads at once saturated the socket pool and
-  // starved first-paint assets (fonts, the room mesh); capping in-flight to
-  // 3 paces the SAME loads without delaying them past when the user reaches
-  // the Other section. Behaviour (entries, listener callbacks) is unchanged.
   const queue: Array<(typeof HOBBIES)[number]> = [];
   HOBBIES.forEach((h) => {
     PRELOADED[h.id] = { scene: null, loaded: false, listeners: new Set() };
@@ -270,7 +193,6 @@ function startPreload() {
         `/hobbies/${h.file}`,
         (gltf) => finish(gltf.scene),
         undefined,
-        // 404 / parse error: placeholder takes over.
         () => finish(null),
       );
     }
@@ -279,20 +201,25 @@ function startPreload() {
 }
 startPreload();
 
-/** Per-item deterministic animation params: same id → same motion. */
-interface AnimParams {
-  bobAmp: number;
-  bobPeriod: number;
-  bobPhase: number;
-  // Per-object sway phase offsets (radians) on each axis so the ten
-  // objects breathe out of sync, organic, but all centred on the
-  // front-facing identity pose. NO continuous rotation, NO authored
-  // per-object yaw: the sway only ever oscillates ±SWAY_* about front.
+/** Per-body deterministic params: same id → same rest pose + drift + sway. */
+interface BodyAnim {
+  // Natural "tossed in" resting rotation (radians, per axis) so the objects
+  // read as jumbled / floating in space rather than a uniform aligned grid.
+  // The sway + hover parallax oscillate AROUND this rest pose.
+  restRot: [number, number, number];
   swayPhaseY: number;
   swayPhaseX: number;
   swayPhaseZ: number;
+  // Slowly-wandering drift target offset (two co-prime-ish sinusoids per axis
+  // for an organic, non-repeating-looking path).
+  wanderPhase: [number, number, number];
+  wanderPhase2: [number, number, number];
 }
-function makeAnim(id: string): AnimParams {
+// How far each object can be tossed off-axis at rest (radians). Generous on Y
+// (spin) + a real tilt on X/Z so the spread looks jumbled, not lined up.
+const REST_TILT = 0.5;   // ~+-29deg on X / Z
+const REST_SPIN = 0.9;   // ~+-52deg on Y
+function makeAnim(id: string): BodyAnim {
   let h = 2166136261;
   for (let i = 0; i < id.length; i++) {
     h ^= id.charCodeAt(i);
@@ -304,568 +231,531 @@ function makeAnim(id: string): AnimParams {
     h ^= h << 5;
     return ((h >>> 0) % 100000) / 100000;
   };
+  const tau = Math.PI * 2;
+  const signed = (a: number) => (rand() - 0.5) * 2 * a;
   return {
-    bobAmp: 0.08 + rand() * 0.05,
-    bobPeriod: 3 + rand() * 3,
-    bobPhase: rand() * Math.PI * 2,
-    swayPhaseY: rand() * Math.PI * 2,
-    swayPhaseX: rand() * Math.PI * 2,
-    swayPhaseZ: rand() * Math.PI * 2,
+    restRot: [signed(REST_TILT), signed(REST_SPIN), signed(REST_TILT)],
+    swayPhaseY: rand() * tau,
+    swayPhaseX: rand() * tau,
+    swayPhaseZ: rand() * tau,
+    wanderPhase: [rand() * tau, rand() * tau, rand() * tau],
+    wanderPhase2: [rand() * tau, rand() * tau, rand() * tau],
   };
 }
 
-// PERF: module-scope euler scratch reused by every HobbyMesh's per-frame
-// sway write so the rotation update never allocates inside useFrame
-// (60Hz × 10 meshes). The sway is applied directly to group.rotation
-// (small Euler angles about identity), so a single scratch euler is all
-// we need, no quaternion slerp / accumulation.
+// Drift sim tuning.
+const WANDER_AMP = 0.13;      // how far the drift target roams from home (small: stay spread)
+const WANDER_W1 = 0.085;      // base wander angular speed (rad/s) — slow
+const WANDER_W2 = 0.137;      // second harmonic
+const SPRING_K = 4.2;         // pull toward the (drifting) target
+const LINEAR_DAMP = 2.4;      // velocity damping → floaty, settles, no jitter
+const COLLISION_PUSH = 0.5;   // share of overlap each body takes when bumping
+const COLLISION_RESTITUTION = 0.16; // gentle bounce on contact
+const HOVER_DAMP_BONUS = 9;   // extra damping on the focused body (holds still)
+// UNIFORM inset of every body from the frame edge. Generous enough that the
+// hover scale + gentle forward dolly grow a focused object WITHIN this margin,
+// so it never clips the edge. (A per-hover containment pad was tried instead but
+// it abruptly shrank the clamp box for the focused body and HARD-SNAPPED it
+// inward on hover - user-flagged. A uniform margin keeps the clamp identical
+// hovered or not, so there is no snap.)
+const EDGE_MARGIN = 0.18;
+
+// PERF: module-scope scratch reused inside the solver / sway writes.
 const _eSway = new THREE.Euler(0, 0, 0, "XYZ");
+const _vTmp = new THREE.Vector3();
+
+type Body = {
+  id: string;
+  index: number;
+  home: THREE.Vector3;
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  radius: number; // world collision radius (already includes scale)
+  scale: number;
+  anim: BodyAnim;
+};
 
 interface HobbyMeshProps {
   hobby: Hobby;
   scene: THREE.Group | null;
   index: number;
-  /** Viewport-relative cursor (0..1 + active flag) shared by all hobby
-   *  meshes for the keypad-style face-tracking parallax. */
+  isTouch: boolean;
+  /** Phones: show the name tag STATICALLY over the object (no hover on touch). */
+  mobile: boolean;
+  hoveredIndexRef: React.RefObject<number>;
   cursorRef: React.RefObject<{ x: number; y: number; active: boolean }>;
-  /** Committed active (integer) hobby index from the parent, resolved
-   *  via NEAREST + hysteresis. The mesh compares its own `index` to this
-   *  each frame: equal ⇒ this is the hero (weight → 1), otherwise dim
-   *  (weight → 0). Driving the weight from the *committed* index (rather
-   *  than a fractional floor(focusRef)) guarantees exactly one hero with
-   *  no in-between state, and keeps the highlight in lockstep with the
-   *  floating label, which uses the same index. */
-  activeIdxRef: React.RefObject<number>;
-  /** Set when the section is on-screen (parent's IntersectionObserver).
-   *  Per-frame transforms / opacity tweens are skipped while hidden so
-   *  the canvas doesn't spend GPU + JS time on an invisible scene. */
   visibleRef: React.RefObject<boolean>;
-  onHoverChange: (hovering: boolean, label: string) => void;
 }
 
-// How much non-focused objects shrink relative to base (1.0). Kept well
-// below the focused scale so a dim neighbour that happens to sit a touch
-// closer to the camera still never out-sizes the centred hero (the old
-// 0.82 let a near neighbour visually compete with the focused object).
-const DIM_SCALE = 0.55;
-// How much the focused object grows above base.
-//
-// "FULLY VISIBLE WITH MARGIN" tune: the previous 2.10 (radius ~1.26)
-// was LARGER than the visible half-height at the old close camera
-// (~0.9), so the focused object clipped off the top/bottom and sides.
-// Dropped to 1.5 (normalized radius 0.6 × 1.5 = 0.90) and PAIRED with a
-// pulled-back camera (CAM_DISTANCE 4.4) whose visible half-height is
-// ~1.51, so the object fills ~60% of the frame's short axis: big and
-// commanding, but with clear margin on every side. Bigger-but-visible
-// beats bigger-but-clipped.
-const FOCUS_SCALE = 1.5;
-// How far non-focused objects drift outward from origin (multiplier
-// on their layout position). Raised so dim neighbours clear well away
-// from the centred hero and read as a framing halo rather than crowding
-// / clipping into it. Note the camera orbits the FOCUSED slot, so
-// "outward from origin" also tends to push neighbours toward the frame
-// edges of whichever hero is centred, exactly the framing-halo read we
-// want.
-const DIM_OUTWARD = 2.0;
-
-// Opacity band. DIM raised 0.18 → 0.42 so out-of-focus artifacts read
-// as "present but secondary" rather than ghosted; FOCUS lands at a
-// true 1.0 so the active object is fully vivid. The focused write is
-// also force-clamped to >= 0.995 whenever its focus weight resolves to
-// ~1 (see useFrame) so the threshold gate can never leave it dim.
-const DIM_OPACITY = 0.42;
-const FOCUS_OPACITY = 1.0;
-
-// PERF: pre-allocated THREE.Color instance used for the per-frame
-// placeholder color lerp HOT endpoint. The DIM endpoint is per-instance
-// (each kind has its own tone) so it lives on the component via a ref.
-// Allocating `new THREE.Color()` inside useFrame (60Hz × 10 hobbies)
-// would churn the GC, so the hot color is shared + immutable.
-const PLACEHOLDER_COLOR_HOT = new THREE.Color(FOCUSED_PLACEHOLDER_COLOR);
-
-function HobbyMesh({ hobby, scene, index, cursorRef, activeIdxRef, visibleRef, onHoverChange }: HobbyMeshProps) {
-  const groupRef = useRef<THREE.Group>(null);
+function HobbyMesh({
+  hobby,
+  scene,
+  index,
+  isTouch,
+  mobile,
+  hoveredIndexRef,
+  cursorRef,
+  visibleRef,
+}: HobbyMeshProps) {
+  const rotRef = useRef<THREE.Group>(null);
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
-  const hoveredRef = useRef(false);
+  const labelRef = useRef<HTMLSpanElement>(null);
   const hoverLerpRef = useRef(0);
-  // Smoothed face-tracking tilt (keypad parallax port).
   const tiltRef = useRef({ x: 0, y: 0 });
-  // Smoothed focus weight (0 = fully dim, 1 = fully focused). Tracks
-  // a triangle-shaped target derived from |index - focusRef|.
-  const focusLerpRef = useRef(0);
-  // Last applied opacity: when nothing has changed materially we skip
-  // the per-material traverse below.
-  const lastOpacityRef = useRef(-1);
-  // Mirrors lastOpacityRef but gates the matRef placeholder writes.
-  // OLD: matRef block ran unconditionally every frame (O(1) writes × frame-rate).
-  // NEW: writes only on visible weight delta > threshold (O(1) amortised).
-  const lastMatWeightRef = useRef(-1);
 
   const layout = LAYOUT[hobby.id]!;
   const anim = useMemo(() => makeAnim(hobby.id), [hobby.id]);
+  const toneColor = useMemo(() => TONE_COLOR[layout.tone], [layout.tone]);
 
-  // Per-instance dim tone (each placeholder kind reads as a distinct
-  // machined artifact). Pre-allocated so the per-frame color lerp never
-  // allocates. Falls back to the shared graphite base if a kind is
-  // somehow missing from the tone map.
-  const dimColor = useMemo(
-    () => new THREE.Color(PLACEHOLDER_TONES[layout.placeholder] ?? PLACEHOLDER_COLOR),
-    [layout.placeholder],
-  );
-
-  // Normalize GLB scale so every hobby reads at consistent size
-  // regardless of how it was modeled. PERF: we ALSO collect a flat
-  // list of every material in the cloned tree so the per-frame opacity
-  // update can iterate a small array instead of traversing the entire
-  // scene graph every frame (traverse allocates closures and walks
-  // children recursively, expensive at 60Hz × 10 hobbies).
+  // Normalize GLB scale so every prop reads at a consistent base size, plus a
+  // gloss boost so the real props sit in the same candy-glossy family as the
+  // placeholders (never recolours the authored materials).
   const normalizedScene = useMemo(() => {
     if (!scene) return null;
     const cloned = scene.clone(true);
     const box = new THREE.Box3().setFromObject(cloned);
     const sphere = new THREE.Sphere();
     box.getBoundingSphere(sphere);
-    const targetRadius = 0.6;
+    const targetRadius = 0.62;
     const k = sphere.radius > 0 ? targetRadius / sphere.radius : 1;
     cloned.scale.setScalar(k);
     const center = box.getCenter(new THREE.Vector3()).multiplyScalar(k);
     cloned.position.sub(center);
-    return cloned;
-  }, [scene]);
-
-  // Flat material list collected once when normalizedScene resolves,
-  // used by the per-frame opacity update (no traverse per tick). Each
-  // material starts transparent+dim; the useFrame loop drives it to the
-  // correct opacity (and flips transparent off once it reaches full).
-  const sceneMaterials = useMemo<THREE.Material[]>(() => {
-    if (!normalizedScene) return [];
-    const list: THREE.Material[] = [];
-    const seed = (m: THREE.Material) => {
-      m.transparent = true;
-      m.opacity = DIM_OPACITY;
-      list.push(m);
-    };
-    normalizedScene.traverse((o) => {
+    cloned.traverse((o) => {
       const mesh = o as THREE.Mesh;
       const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
       if (!mat) return;
-      if (Array.isArray(mat)) mat.forEach(seed);
-      else seed(mat);
+      const boost = (m: THREE.Material) => {
+        const sm = m as THREE.MeshStandardMaterial;
+        if (sm.isMeshStandardMaterial) {
+          sm.roughness = Math.min(sm.roughness ?? 0.5, 0.34);
+          sm.envMapIntensity = Math.max(sm.envMapIntensity ?? 1, 1.1);
+          sm.needsUpdate = true;
+        }
+      };
+      if (Array.isArray(mat)) mat.forEach(boost);
+      else boost(mat);
     });
-    return list;
-  }, [normalizedScene]);
-
-  // Reset the opacity-write memo whenever the material set changes
-  // (placeholder → GLB swap) so the first post-swap frame always
-  // re-applies opacity to the freshly collected materials instead of
-  // being skipped by the threshold gate against a stale value.
-  useEffect(() => {
-    lastOpacityRef.current = -1;
-    lastMatWeightRef.current = -1;
-  }, [sceneMaterials]);
+    return cloned;
+  }, [scene]);
 
   useFrame((state, dt) => {
-    const g = groupRef.current;
+    const g = rotRef.current;
     if (!g) return;
-    // PERF: skip per-frame work entirely when the section isn't on
-    // screen. visibleRef is toggled by the parent's IntersectionObserver.
     if (visibleRef && visibleRef.current === false) return;
-
-    // Compute target focus weight.
-    //
-    // BUGFIX HISTORY:
-    //   v1 used `1 - |index - f| / 0.6`, a narrow triangle on the integer
-    //      index: the active object only hit weight 1 at the exact
-    //      integer, so for most of each slot NOTHING was focused (ghosting).
-    //   v2 used `floor(f)` with a tail crossfade. Better, but the crossfade
-    //      window (sub > 0.75) plus the label's own boundary fade created a
-    //      DEAD-ZONE between hobbies where neither object clearly read as
-    //      the hero and the label blanked out, giving the glitchy/twitchy feel.
-    //
-    // CURRENT model: the hero is the parent's COMMITTED active index
-    // (NEAREST + hysteresis, the same index the label + dot strip use).
-    // The target weight is binary (1 for the hero, 0 for everyone else),
-    // and the exponential `focusLerpRef` below smooths the handoff. Because
-    // the active index only changes once (hysteresis prevents flicker), the
-    // handoff is a single clean crossfade between the old hero and the new
-    // one, never an ambiguous in-between with two half-lit objects.
-    const activeIdx = activeIdxRef.current ?? 0;
-    const targetWeight = index === activeIdx ? 1 : 0;
-    // Smooth toward target: exponential lerp so a focus change (scroll
-    // crossing a hysteresis boundary, or a dot-strip jump) eases rather
-    // than snaps. Same smoothness model as before; only the target source
-    // changed (committed index instead of fractional floor).
-    // dt*7 → dt*4.5: slower focus-weight ease so each object's scale/
-    // opacity arrival between hobbies feels more gradual (matches the
-    // slower camera glide + the widened reel window in Other.tsx).
-    focusLerpRef.current += (targetWeight - focusLerpRef.current) * (1 - Math.exp(-dt * 4.5));
-    const weight = focusLerpRef.current;
-
-    // Bob: sinusoidal Y offset around an outward-pushed layout pos.
-    // Non-focused items drift outward via DIM_OUTWARD, focused snap
-    // back to their layout slot.
-    const outward = DIM_OUTWARD - (DIM_OUTWARD - 1) * weight;
     const t = state.clock.elapsedTime;
-    // Reduced motion: no idle bob, no per-object rotation. The object
-    // still snaps between its outward (dim) and layout (focused) slot so
-    // dot-strip jumps re-frame, but it doesn't float or spin.
-    const bobY = PREFERS_REDUCED_MOTION
-      ? 0
-      : Math.sin((t / anim.bobPeriod) * Math.PI * 2 + anim.bobPhase) * anim.bobAmp;
-    g.position.set(
-      layout.pos[0] * outward,
-      layout.pos[1] * outward + bobY,
-      layout.pos[2] * outward,
-    );
-    // ---- Rotation: gentle FRONT-FACING sway (never a full rotation) ----
-    // The object is authored so identity == its front face toward the
-    // camera. We only ever apply a small oscillation about that pose, so
-    // the front always dominates and the back/underside is never shown.
-    // Focused objects damp the sway further (read clearly) and pick up a
-    // tiny flattering downward look; dim objects sway a touch more so the
-    // surrounding cluster still feels alive. No continuous spin, no
-    // authored per-object yaw.
+    const hovered = hoveredIndexRef.current === index;
+
+    // Hover weight (smoothed) drives scale + parallax blend.
+    const targetHover = hovered ? 1 : 0;
+    hoverLerpRef.current += (targetHover - hoverLerpRef.current) * (1 - Math.exp(-dt * 9));
+    const hw = hoverLerpRef.current;
+
+    // Rotation: gentle front-facing sway, damped as the object focuses, plus
+    // the keypad face-tracking parallax that turns it toward the cursor while
+    // hovered.
+    const rr = anim.restRot;
     if (PREFERS_REDUCED_MOTION) {
-      // Static still life: park front-facing. Focused hero gets the small
-      // flattering downward look; everything else sits at identity.
-      g.rotation.set(FOCUS_PITCH * weight, 0, 0);
+      g.rotation.set(rr[0], rr[1], rr[2]);
     } else {
-      // Damp amplitude as the object focuses (1 - weight blends from full
-      // sway when dim toward FOCUS_SWAY_DAMP of it when focused).
-      const damp = 1 - (1 - FOCUS_SWAY_DAMP) * weight;
+      const swayDamp = 1 - 0.75 * hw;
       const yaw =
-        Math.sin((t / SWAY_YAW_PERIOD) * Math.PI * 2 + anim.swayPhaseY) *
-        SWAY_YAW * damp;
+        Math.sin((t / SWAY_YAW_PERIOD) * Math.PI * 2 + anim.swayPhaseY) * SWAY_YAW * swayDamp;
       const pitch =
-        Math.sin((t / SWAY_PITCH_PERIOD) * Math.PI * 2 + anim.swayPhaseX) *
-        SWAY_PITCH * damp +
-        FOCUS_PITCH * weight; // flattering nose-down as it focuses
+        Math.sin((t / SWAY_PITCH_PERIOD) * Math.PI * 2 + anim.swayPhaseX) * SWAY_PITCH * swayDamp;
       const roll =
-        Math.sin((t / SWAY_ROLL_PERIOD) * Math.PI * 2 + anim.swayPhaseZ) *
-        SWAY_ROLL * damp;
-      // Keypad face-tracking parallax riding on the sway: the object
-      // turns toward the cursor (±15°, exp lerp rate 6 — identical
-      // constants to KeypadScene). Inactive cursor eases back to rest.
+        Math.sin((t / SWAY_ROLL_PERIOD) * Math.PI * 2 + anim.swayPhaseZ) * SWAY_ROLL * swayDamp;
+      // Face-tracking target (only while focused). cursor 0..1, centre 0.5.
       const c = cursorRef.current;
-      const cx = c && c.active ? (c.x - 0.5) * 2 : 0;
-      const cy = c && c.active ? (c.y - 0.5) * 2 : 0;
-      const pk = 1 - Math.exp(-dt * PARALLAX_LERP_RATE);
-      tiltRef.current.x += (cy * PARALLAX_X - tiltRef.current.x) * pk;
-      tiltRef.current.y += (cx * PARALLAX_Y - tiltRef.current.y) * pk;
+      const cx = hovered && c && c.active ? (c.x - 0.5) * 2 : 0;
+      const cy = hovered && c && c.active ? (c.y - 0.5) * 2 : 0;
+      const k = 1 - Math.exp(-dt * PARALLAX_LERP_RATE);
+      tiltRef.current.x += (-cy * PARALLAX - tiltRef.current.x) * k;
+      tiltRef.current.y += (cx * PARALLAX - tiltRef.current.y) * k;
+      // Sway + hover parallax oscillate AROUND the tossed-in rest pose.
       _eSway.set(
-        pitch + tiltRef.current.x,
-        yaw + tiltRef.current.y,
-        roll,
+        rr[0] + pitch + tiltRef.current.x,
+        rr[1] + yaw + tiltRef.current.y,
+        rr[2] + roll,
       );
       g.rotation.copy(_eSway);
     }
 
-    // Hover scale on top of the focus-driven base scale.
-    const target = hoveredRef.current ? 1.1 : 1.0;
-    hoverLerpRef.current += (target - hoverLerpRef.current) * (1 - Math.exp(-dt * 8));
-    const focusScale = DIM_SCALE + (FOCUS_SCALE - DIM_SCALE) * weight;
-    g.scale.setScalar(hoverLerpRef.current * focusScale);
+    // Scale lift on focus.
+    const s = layout.scale * (1 + (HOVER_SCALE - 1) * hw);
+    g.scale.setScalar(s);
 
-    // Opacity dim: non-focused items at DIM_OPACITY, focused at 1.0.
-    // Snap to a clean FOCUS_OPACITY when weight is essentially 1 so the
-    // active object can never be left fractionally transparent by the
-    // lerp's asymptotic tail (it approaches but never exactly reaches 1).
-    let targetOp = DIM_OPACITY + (FOCUS_OPACITY - DIM_OPACITY) * weight;
-    if (weight > 0.985) targetOp = FOCUS_OPACITY;
-    // A material only needs the (sorting-prone) transparent pass while
-    // it's actually < 1. At full opacity we flip transparent off so the
-    // focused object renders crisp in the opaque pass, no depth-sort
-    // wash, no blend against the bright page background.
-    const needsTransparent = targetOp < 0.995;
-
-    if (matRef.current && Math.abs(weight - lastMatWeightRef.current) > 0.003) {
-      lastMatWeightRef.current = weight;
-      matRef.current.opacity = targetOp;
-      matRef.current.transparent = needsTransparent;
-      matRef.current.depthWrite = !needsTransparent;
-      // PERF: reuse the pre-allocated per-instance dim color + shared hot
-      // color (used to be `new THREE.Color(...)` per frame × 10 hobbies).
-      matRef.current.color.lerpColors(dimColor, PLACEHOLDER_COLOR_HOT, weight);
-      // Light emissive lift on the focused placeholder so it glows
-      // slightly into the orange rather than just brightening flatly.
-      matRef.current.emissive.copy(PLACEHOLDER_COLOR_HOT);
-      matRef.current.emissiveIntensity = 0.18 * weight;
+    // Placeholder emissive hover glow.
+    if (matRef.current) {
+      matRef.current.emissiveIntensity = 0.06 + 0.22 * hw;
     }
-    // PERF: write opacity only when it has visibly changed. With 10
-    // hobbies each carrying dozens of GLB materials, the unconditional
-    // write was ~hundreds of property sets per frame even when nothing
-    // moved. Threshold gates the iteration to actual transitions.
-    if (Math.abs(targetOp - lastOpacityRef.current) > 0.003) {
-      lastOpacityRef.current = targetOp;
-      // Iterate the cached flat material list (no scene traversal).
-      for (let i = 0; i < sceneMaterials.length; i++) {
-        const m = sceneMaterials[i]!;
-        m.opacity = targetOp;
-        // Keep transparency state in sync so a focused GLB renders in
-        // the opaque pass (crisp) and a dim one blends correctly.
-        if (m.transparent !== needsTransparent) {
-          m.transparent = needsTransparent;
-          m.depthWrite = !needsTransparent;
-          m.needsUpdate = true;
-        }
+
+    // Label-over-object (jump-menu style): fade + lift the name in as the
+    // object focuses. Driven by the same hover weight so it never desyncs.
+    if (labelRef.current) {
+      if (mobile) {
+        // STATIC on phones (no hover on touch): the name tag is always on, fixed
+        // over the object so it never jitters with the sway. Placement/no-overlap
+        // is owned by the portrait LAYOUT spacing + the wander being off on mobile.
+        labelRef.current.style.opacity = "1";
+        labelRef.current.style.transform = "translateY(0) scale(1)";
+      } else {
+        labelRef.current.style.opacity = hw.toFixed(3);
+        labelRef.current.style.transform = `translateY(${(-6 - 10 * hw).toFixed(1)}px) scale(${(0.92 + 0.08 * hw).toFixed(3)})`;
       }
     }
   });
 
-  // Rotation is fully driven each frame by the useFrame sway block
-  // (small oscillation about the front-facing identity pose), so no
-  // mount-time rotation write is needed.
+  // Teardown contract: this tile writes document.body.style.cursor='pointer' on
+  // hover and only clears it on its own pointerOut — but R3F fires NO pointerOut
+  // when the Hobbies CANVAS UNMOUNTS (mount-on-approach tears it down as it
+  // scrolls out of view), which strands body.cursor='pointer' and sticks the
+  // spark cursor on the next section. Clear it on unmount.
+  useEffect(
+    () => () => {
+      if (document.body.style.cursor === "pointer")
+        document.body.style.cursor = "";
+    },
+    [],
+  );
 
   const onPointerOver = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    hoveredRef.current = true;
-    onHoverChange(true, hobby.label);
+    hoveredIndexRef.current = index;
+    document.body.style.cursor = "pointer";
   };
   const onPointerOut = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    hoveredRef.current = false;
-    onHoverChange(false, hobby.label);
+    document.body.style.cursor = "";
+    // Touch fires over->out in quick succession on a tap; keep the tapped
+    // label up until another object is tapped or empty space is hit
+    // (onPointerMissed clears it). Pointer devices clear on hover-out.
+    if (isTouch) return;
+    if (hoveredIndexRef.current === index) hoveredIndexRef.current = -1;
   };
 
   return (
-    <group ref={groupRef} onPointerOver={onPointerOver} onPointerOut={onPointerOut}>
+    <group ref={rotRef} onPointerOver={onPointerOver} onPointerOut={onPointerOut}>
       {normalizedScene ? (
         <primitive object={normalizedScene} />
       ) : (
         <mesh castShadow={false} receiveShadow={false}>
-          <PlaceholderMesh kind={layout.placeholder} size={0.7} />
-          {/* Slightly polished retro-machined look: lower roughness +
-              a touch more metalness picks up the directional rim so the
-              artifacts read as crafted objects, not flat clay blobs. The
-              useFrame loop drives color / opacity / emissive each tick. */}
-          <meshStandardMaterial
-            ref={matRef}
-            color={PLACEHOLDER_COLOR}
-            roughness={0.42}
-            metalness={0.28}
-            transparent
-            opacity={DIM_OPACITY}
-          />
+          <PlaceholderMesh kind={layout.placeholder} size={0.78} />
+          {/* PERF (touch): the clearcoat MeshPhysicalMaterial is a second BRDF
+              lobe per fragment. On phones drop to a plain MeshStandardMaterial
+              (no clearcoat) — the gloss difference is imperceptible at phone
+              size and DPR, and it halves the placeholder shading cost. Desktop
+              keeps the candy clearcoat. */}
+          {isTouch ? (
+            <meshStandardMaterial
+              ref={matRef}
+              color={toneColor}
+              emissive={toneColor}
+              emissiveIntensity={0.06}
+              roughness={0.3}
+              metalness={0.0}
+              envMapIntensity={1.1}
+            />
+          ) : (
+            <meshPhysicalMaterial
+              ref={matRef as React.RefObject<THREE.MeshPhysicalMaterial>}
+              color={toneColor}
+              emissive={toneColor}
+              emissiveIntensity={0.06}
+              roughness={0.26}
+              metalness={0.0}
+              clearcoat={1}
+              clearcoatRoughness={0.18}
+              envMapIntensity={1.1}
+            />
+          )}
         </mesh>
       )}
+      {/* Name label floating ON the object - same recipe as the jump menu's
+          spill labels: white pixel text with a dark stroke (no card), so it
+          reads over any object. Hidden until hovered (opacity driven above).
+          pointer-events:none so it never blocks hovering the object beneath. */}
+      <Html
+        center
+        position={[0, 0, 0]}
+        distanceFactor={mobile ? 12 : 9}
+        zIndexRange={[30, 0]}
+        style={{ pointerEvents: "none" }}
+      >
+        <span
+          ref={labelRef}
+          className={`hobbies-label${mobile ? " hobbies-label--static" : ""}`}
+          style={{ opacity: mobile ? 1 : 0 }}
+        >
+          {hobby.label}
+        </span>
+      </Html>
     </group>
   );
 }
 
-// Camera dolly geometry: the camera orbits around the FOCUSED object's
-// world position, sitting at a fixed offset. As focus shifts between
-// hobbies the lookAt + camera position both lerp to the new target.
-//
-// "FULLY VISIBLE WITH MARGIN" tune: the previous 2.6 was too close. At
-// 38° fov the visible half-height was only ~0.9 world units, smaller
-// than the focused object's radius (~1.26 at the old FOCUS_SCALE), so
-// the hero clipped off the edges. Pulled back to 4.4: visible
-// half-height ≈ 4.4·tan(19°) ≈ 1.51, and the focused radius is now ~0.9
-// (FOCUS_SCALE 1.5), so the hero sits at ~60% of the short axis with a
-// generous margin all around. Slightly above the focus for a flattering
-// 3/4 read. Well clear of the 0.1 near plane / 50 far plane.
-const CAM_DISTANCE = 4.4;     // camera-to-focus distance (landscape baseline)
-const CAM_HEIGHT_OFFSET = 0.35; // camera sits this much above focus
-// PORTRAIT FRAMING GUARD: the focused hero's normalized world radius
-// (targetRadius 0.6 × FOCUS_SCALE 1.5 ≈ 0.9). On a wide aspect the
-// vertical fov (38°) is the limiting axis and 4.4 frames it with margin.
-// In a tall narrow phone viewport (aspect < 1) the HORIZONTAL extent
-// becomes the tight axis (horizontal half-width = d·tan(vfov/2)·aspect),
-// so the same 4.4 clips the hero's sides. We pull the camera back just
-// enough that the LIMITING axis still fits the hero at ~FILL_FRACTION of
-// the frame's short side. Computed per-frame from the live canvas aspect
-// (state.size) so a portrait↔landscape rotation re-frames correctly.
-const FOCUS_WORLD_RADIUS = 0.6 * FOCUS_SCALE; // ≈ 0.9
-const VFOV_RAD = (38 * Math.PI) / 180;
+// Camera framing: fixed, looking at the cluster centre. The cluster is wider
+// than tall; we fit both half-extents against the frame and take whichever axis
+// is binding (height on desktop, width on portrait). FILL < 1 leaves a margin
+// so nothing is cut off; the per-body containment clamp (below) is the hard
+// guarantee that no object ever crosses the visible edge.
+const CLUSTER_HALF_W = 3.06;
+const CLUSTER_HALF_H = 1.82;
+// MOBILE PORTRAIT cluster — a TALL 2-column arrangement so the 10 objects FILL a
+// phone's portrait screen. The landscape spread above, framed to fit its WIDTH,
+// pulls the camera far back on a narrow viewport (small cluster + dead air); a
+// tall cluster lets the camera frame the HEIGHT and fill the screen. Positions
+// only — scale / radius / placeholder / tone stay from LAYOUT. Selected at
+// <=768px via the reactive `mobile` flag in SceneInner.
+const POS_PORTRAIT: Record<string, [number, number, number]> = {
+  // 2 cols x 5 rows. LABEL-AWARE: never two LONG names in the same row (their
+  // static labels would collide), and the long one alternates sides row to row.
+  // row 1 — CROCHETING (long) L | PIANO (short) R
+  yarn:     [-0.60,  2.48,  0.03],
+  piano:    [ 0.62,  2.50, -0.02],
+  // row 2 — SKIING (short) L | WORKSTATION (long) R
+  ski:      [-0.62,  1.22,  0.03],
+  pc:       [ 0.56,  1.25,  0.05],
+  // row 3 — KEYBOARDS (long) L | DESIGN (short) R
+  keyboard: [-0.58,  0.00,  0.00],
+  cursor:   [ 0.60, -0.04, -0.02],
+  // row 4 — TRAVEL (med) L | TAEKWONDO (long) R
+  luggage:  [-0.62, -1.22,  0.00],
+  belt:     [ 0.58, -1.25,  0.04],
+  // row 5 — FASHION (med) L | CARS (short) R
+  shoe:     [-0.62, -2.48,  0.03],
+  car:      [ 0.64, -2.50, -0.02],
+};
+const CLUSTER_HALF_W_PORTRAIT = 1.4;
+const CLUSTER_HALF_H_PORTRAIT = 3.1;
+// Look ABOVE centre so the cluster sits LOWER in the frame — the top row of
+// objects (+ their static labels) clears the big "Some interests" wordmark that
+// floats over the top of the section.
+const CAM_LOOK_Y_PORTRAIT = 0.5;
+// Look ABOVE the cluster centre so the whole spread sits in the LOWER part of
+// the frame, leaving clear space up top for the giant "Some interests"
+// wordmark (objects under the title read as messy / unreviewed). Eased back
+// from 0.42 so the lowest objects (the cone) keep clearance at the BOTTOM too.
+const CAM_LOOK_Y = 0.34;
+const CAM_HEIGHT_OFFSET = 0.0;
+const VFOV_DEG = 36;
+const VFOV_RAD = (VFOV_DEG * Math.PI) / 180;
 const HALF_VFOV_TAN = Math.tan(VFOV_RAD / 2);
-// Aim the hero at ~60% of the short axis (radius vs half-extent): clear
-// margin all around without looking lost in space.
-const FILL_FRACTION = 0.6;
-/** Distance at which FOCUS_WORLD_RADIUS fills FILL_FRACTION of the frame's
- *  LIMITING (short) axis for a given canvas aspect (w/h). At aspect ≥ 1 the
- *  vertical axis limits → returns the landscape baseline; below 1 the
- *  horizontal axis limits → distance scales up by 1/aspect. */
-function camDistanceForAspect(aspect: number): number {
-  const minAxis = Math.min(1, aspect); // <1 ⇒ horizontal is the tight axis
-  const need =
-    FOCUS_WORLD_RADIUS / (FILL_FRACTION * HALF_VFOV_TAN * Math.max(0.0001, minAxis));
-  // Never pull CLOSER than the authored landscape distance (keeps the
-  // desktop framing exactly as tuned); only ever pull back for portrait.
-  return Math.max(CAM_DISTANCE, need);
+// Eased from 0.92 so the cluster sits a touch smaller with clear margin top AND
+// bottom (the hovered bottom object was clipping the bottom edge).
+const FILL_FRACTION = 0.86;
+function camDistanceForAspect(
+  aspect: number,
+  halfW: number,
+  halfH: number,
+): number {
+  const a = Math.max(0.0001, aspect);
+  const distForHeight = halfH / (FILL_FRACTION * HALF_VFOV_TAN);
+  const distForWidth = halfW / (FILL_FRACTION * HALF_VFOV_TAN * a);
+  return Math.max(distForHeight, distForWidth);
 }
-// How fast camera position/lookAt lerps to the new focus per second.
-// 2.4 = ~420ms catch-up at 60fps (lowered from 4.0 ≈ 250ms): a more
-// deliberate, cinematic glide between hobbies so the jump rate between
-// the 3D objects reads slower. Still settles well within a chip-click.
-const CAM_LERP_RATE = 2.4;
-// Bounded orbit sway about dead-front. The camera oscillates within
-// ±CAM_ORBIT_AMP radians of straight-on (so it NEVER swings around to an
-// object's side/back (the front-facing rule), at CAM_ORBIT_RATE rad/s
-// on the sine phase. ~6° of parallax keeps the framing alive without
-// spoiling the head-on read of the authored front faces.
-const CAM_ORBIT_AMP = 0.11;   // ~±6.3° of yaw about dead-front
-const CAM_ORBIT_RATE = 0.22;  // sine-phase speed (rad/s)
-
-// Face-tracking parallax, ported VERBATIM from the keypad (user: "the
-// same exact parallax"): viewport-relative cursor, ±15° of tilt toward
-// the cursor, exponential lerp at rate 6. Each interest object turns
-// toward the pointer like the keypad does, riding on top of its idle
-// sway. Touch devices skip it (no meaningful cursor).
-const PARALLAX_X = THREE.MathUtils.degToRad(15);
-const PARALLAX_Y = THREE.MathUtils.degToRad(15);
-const PARALLAX_LERP_RATE = 6;
 
 function SceneInner({
   loaded,
-  activeIdxRef,
+  isTouch,
   visibleRef,
-  beatBLiveRef,
+  liveRef,
   cursorRef,
-  onHoverChange,
+  hoveredIndexRef,
 }: {
   loaded: Record<string, THREE.Group | null>;
-  activeIdxRef: React.RefObject<number>;
+  isTouch: boolean;
   visibleRef: React.RefObject<boolean>;
-  beatBLiveRef: React.RefObject<boolean>;
+  liveRef: React.RefObject<boolean>;
   cursorRef: React.RefObject<{ x: number; y: number; active: boolean }>;
-  onHoverChange: (hovering: boolean, label: string) => void;
+  hoveredIndexRef: React.RefObject<number>;
 }) {
   const { camera, invalidate } = useThree();
-  const targetLookAt = useRef(new THREE.Vector3(0, 0, 0));
-  const currentLookAt = useRef(new THREE.Vector3(0, 0, 0));
-  const targetCamPos = useRef(new THREE.Vector3(0, 0, CAM_DISTANCE));
-  // Orbit phase around the focus target: drives a BOUNDED gentle
-  // oscillation about head-on (angle 0 == camera directly in front along
-  // +Z), NOT an unbounded accumulating orbit. Objects are authored so
-  // identity faces +Z; a continuously-drifting orbit would eventually
-  // swing the camera around to their sides/backs, defeating the
-  // front-facing rule. Instead the camera sways within ±CAM_ORBIT_AMP of
-  // dead-front, so the front face is always toward the viewer while still
-  // getting a touch of parallax life.
-  const orbitPhaseRef = useRef(0);
+  // Outer position groups (one per body) written by the solver each frame.
+  const posRefs = useRef<(THREE.Group | null)[]>([]);
 
-  useFrame((state, dt) => {
-    // PERF: skip the camera dolly logic when the scene is off-screen
-    // OR while Beat A (photo reel) owns the section — the canvas sits
-    // behind an opacity-0 layer for that whole beat, and rendering it
-    // at full rate was the photo-reel scroll-entry jank. Combined with
-    // frameloop="demand", early-returning here stops scheduling frames
-    // entirely; the IO edge / beatBLive rising edge re-invalidate.
-    if (visibleRef.current === false || beatBLiveRef.current === false) return;
-    // Keep the demand loop alive while visible.
+  // <=768px → use the TALL portrait cluster (fills a phone screen) instead of the
+  // landscape spread. Reactive so an orientation/resize across the breakpoint
+  // rebuilds the body home slots + re-frames the camera.
+  const [mobile, setMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= 768,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+      return;
+    const mq = window.matchMedia("(max-width: 768px)");
+    const onChange = () => setMobile(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // Soft-body state for the drift + collision sim. Rebuilt when the portrait /
+  // landscape arrangement flips (positions differ; scale/radius are unchanged).
+  const bodies = useMemo<Body[]>(
+    () =>
+      HOBBIES.map((h, i) => {
+        const L = LAYOUT[h.id]!;
+        const p = mobile ? POS_PORTRAIT[h.id] ?? L.pos : L.pos;
+        const home = new THREE.Vector3(p[0], p[1], p[2]);
+        return {
+          id: h.id,
+          index: i,
+          home,
+          pos: home.clone(),
+          vel: new THREE.Vector3(),
+          radius: L.radius,
+          scale: L.scale,
+          anim: makeAnim(h.id),
+        };
+      }),
+    [mobile],
+  );
+
+  useFrame((state, dtRaw) => {
+    if (visibleRef.current === false || liveRef.current === false) return;
     invalidate();
-    // Aspect-aware dolly distance: pull back in portrait so the hero's
-    // sides aren't clipped in a tall narrow viewport (see
-    // camDistanceForAspect). state.size is the live canvas pixel size.
-    const aspect =
-      state.size.height > 0 ? state.size.width / state.size.height : 1;
-    const camDist = camDistanceForAspect(aspect);
-    // Camera framing locks onto the COMMITTED active hero (the same
-    // NEAREST+hysteresis index the label + per-mesh highlight use), not a
-    // fractional floor(focusRef). The target snaps to the active slot's
-    // world position; the exponential lerp below (CAM_LERP_RATE) provides
-    // the smooth (but not hair-trigger) handoff between heroes. Because
-    // the target is the committed index, the camera never sits halfway
-    // between two slots framing nothing: there is always exactly one hero
-    // centred, matching the label.
-    const idx = Math.max(
-      0,
-      Math.min(HOBBIES.length - 1, activeIdxRef.current ?? 0),
-    );
-    const a = HOBBIES[idx]!;
-    const layA = LAYOUT[a.id]!;
-    targetLookAt.current.set(layA.pos[0], layA.pos[1], layA.pos[2]);
+    const dt = Math.min(dtRaw, 0.05); // clamp so a stalled tab doesn't explode the sim
+    const t = state.clock.elapsedTime;
 
-    // Advance the orbit PHASE slowly so the framing breathes, then map it
-    // to a BOUNDED sway about head-on via sin(). Frozen under reduced
-    // motion so the camera holds a fixed, dead-front framing (no orbit).
-    // Focus jumps still re-frame via the lerp below.
-    if (!PREFERS_REDUCED_MOTION) {
-      orbitPhaseRef.current += dt * CAM_ORBIT_RATE;
+    // ---- Camera: fixed framing of the whole cluster ----
+    const aspect = state.size.height > 0 ? state.size.width / state.size.height : 1;
+    // Portrait phones frame the TALL cluster (fills the screen); desktop/tablet
+    // frame the landscape spread.
+    const halfW = mobile ? CLUSTER_HALF_W_PORTRAIT : CLUSTER_HALF_W;
+    const halfH = mobile ? CLUSTER_HALF_H_PORTRAIT : CLUSTER_HALF_H;
+    const lookY = mobile ? CAM_LOOK_Y_PORTRAIT : CAM_LOOK_Y;
+    const dist = camDistanceForAspect(aspect, halfW, halfH);
+    camera.position.set(0, lookY + CAM_HEIGHT_OFFSET, dist);
+    camera.lookAt(0, lookY, 0);
+
+    // Visible world half-extents at z=0 (for the containment clamp). Anything
+    // kept inside (half - radius - margin) can never be cut off at the edge.
+    const visHalfH = dist * HALF_VFOV_TAN;
+    const visHalfW = visHalfH * aspect;
+
+    const hoveredIdx = hoveredIndexRef.current;
+
+    if (PREFERS_REDUCED_MOTION) {
+      // Static still-life: park each body at its home, no drift / collisions.
+      for (let i = 0; i < bodies.length; i++) {
+        const b = bodies[i]!;
+        b.pos.copy(b.home);
+        posRefs.current[i]?.position.copy(b.pos);
+      }
+      return;
     }
-    // Bounded orbit angle: oscillates within ±CAM_ORBIT_AMP of dead-front
-    // (angle 0). Never accumulates past front, so the objects' authored
-    // front faces stay toward the camera at all times.
-    const angle = Math.sin(orbitPhaseRef.current) * CAM_ORBIT_AMP;
 
-    // Camera sits on an arc around the lookAt point, at a fixed distance +
-    // height offset, swaying gently to either side of dead-front.
-    targetCamPos.current.set(
-      targetLookAt.current.x + Math.sin(angle) * camDist,
-      targetLookAt.current.y + CAM_HEIGHT_OFFSET,
-      targetLookAt.current.z + Math.cos(angle) * camDist,
-    );
+    // ---- Integrate each body toward its slowly-wandering drift target ----
+    // Wander is OFF on mobile: the always-on labels must not drift into each
+    // other, so bodies hold their (spaced) portrait home slots. The sway
+    // ROTATION below still animates, so the objects stay alive.
+    const wAmp = mobile ? 0 : WANDER_AMP;
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i]!;
+      const wp = b.anim.wanderPhase;
+      const wp2 = b.anim.wanderPhase2;
+      // Smooth wander offset around home (two harmonics per axis).
+      const ox =
+        (Math.sin(t * WANDER_W1 + wp[0]) + 0.5 * Math.sin(t * WANDER_W2 + wp2[0])) * wAmp;
+      const oy =
+        (Math.sin(t * WANDER_W1 + wp[1]) + 0.5 * Math.sin(t * WANDER_W2 + wp2[1])) * wAmp;
+      const oz =
+        (Math.sin(t * WANDER_W1 + wp[2]) + 0.5 * Math.sin(t * WANDER_W2 + wp2[2])) * wAmp * 0.5;
+      // Focused body eases forward (toward camera) for a clear focus pop.
+      const fwd = b.index === hoveredIdx ? HOVER_FORWARD : 0;
+      _vTmp.set(b.home.x + ox, b.home.y + oy, b.home.z + oz + fwd).sub(b.pos);
+      // Spring toward target + linear damping. The focused body gets extra
+      // damping so it slows and holds still under the cursor.
+      const damp = LINEAR_DAMP + (b.index === hoveredIdx ? HOVER_DAMP_BONUS : 0);
+      b.vel.addScaledVector(_vTmp, SPRING_K * dt);
+      b.vel.addScaledVector(b.vel, -Math.min(1, damp * dt));
+      b.pos.addScaledVector(b.vel, dt);
+    }
 
-    // Exponential lerp toward target. Same easing on lookAt + camPos
-    // so the camera moves as one rigid system rather than separately.
-    const k = 1 - Math.exp(-dt * CAM_LERP_RATE);
-    currentLookAt.current.lerp(targetLookAt.current, k);
-    camera.position.lerp(targetCamPos.current, k);
-    camera.lookAt(currentLookAt.current);
+    // ---- Soft sphere collisions: bump apart, never interpenetrate ----
+    // PERF (touch): skip the O(n²) pair solver on phones — it's the most
+    // expensive per-frame work here and the slow drift alone reads fine on a
+    // small screen (the EDGE_MARGIN + spread home slots already keep visible
+    // gaps). Desktop keeps the full bump-apart sim. frameloop stays 'demand'.
+    if (!isTouch) {
+      for (let i = 0; i < bodies.length; i++) {
+        const a = bodies[i]!;
+        for (let j = i + 1; j < bodies.length; j++) {
+          const b = bodies[j]!;
+          _vTmp.subVectors(b.pos, a.pos);
+          const distSq = _vTmp.lengthSq();
+          const minDist = a.radius + b.radius;
+          if (distSq > 0 && distSq < minDist * minDist) {
+            const d = Math.sqrt(distSq);
+            const pen = minDist - d;
+            _vTmp.multiplyScalar(1 / d); // contact normal a→b
+            // Positional separation, split between the pair.
+            a.pos.addScaledVector(_vTmp, -pen * COLLISION_PUSH);
+            b.pos.addScaledVector(_vTmp, pen * COLLISION_PUSH);
+            // Velocity response: only damp the APPROACHING component, gently.
+            const rvn = b.vel.dot(_vTmp) - a.vel.dot(_vTmp);
+            if (rvn < 0) {
+              const imp = (1 + COLLISION_RESTITUTION) * rvn * 0.5;
+              a.vel.addScaledVector(_vTmp, imp);
+              b.vel.addScaledVector(_vTmp, -imp);
+            }
+          }
+        }
+      }
+    }
+
+    // ---- Containment: keep every body fully inside the visible frame ----
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i]!;
+      // Same clamp whether or not this body is focused, so hovering never snaps
+      // it. The uniform EDGE_MARGIN already leaves room for the hover growth.
+      const er = b.radius;
+      const limX = Math.max(0, visHalfW - er - EDGE_MARGIN);
+      const limY = Math.max(0, visHalfH - er - EDGE_MARGIN - lookY);
+      const limYNeg = Math.max(0, visHalfH - er - EDGE_MARGIN + lookY);
+      if (b.pos.x > limX) { b.pos.x = limX; if (b.vel.x > 0) b.vel.x *= -0.3; }
+      else if (b.pos.x < -limX) { b.pos.x = -limX; if (b.vel.x < 0) b.vel.x *= -0.3; }
+      if (b.pos.y > limY) { b.pos.y = limY; if (b.vel.y > 0) b.vel.y *= -0.3; }
+      else if (b.pos.y < -limYNeg) { b.pos.y = -limYNeg; if (b.vel.y < 0) b.vel.y *= -0.3; }
+      posRefs.current[i]?.position.copy(b.pos);
+    }
   });
 
   return (
     <>
-      {/* Cool-retro lighting: a clean neutral key picks out form, a low
-          cool fill keeps shadow sides from going muddy against the
-          white-grey page, and a warm orange-tinted rim from behind ties
-          the objects to the accent without warming the whole scene. */}
-      <ambientLight intensity={0.45} color="#eef1f4" />
-      <directionalLight position={[4, 6, 3]} intensity={2.4} color="#ffffff" />
-      <directionalLight position={[-4, 4, 2]} intensity={0.7} color="#d7dde3" />
-      <directionalLight position={[-2, 2, -5]} intensity={0.9} color="#e87040" />
+      {/* Punchy cool-retro lighting tuned for gloss. */}
+      <ambientLight intensity={0.5} color="#eef1f4" />
+      <directionalLight position={[4, 6, 4]} intensity={2.7} color="#ffffff" />
+      <directionalLight position={[-5, 3, 2]} intensity={0.8} color="#d7dde3" />
+      <directionalLight position={[-2, -1, -5]} intensity={1.1} color="#ff4f00" />
+      <directionalLight position={[3, -4, 2]} intensity={0.35} color="#ff6a2a" />
       {HOBBIES.map((h, i) => (
-        <HobbyMesh
-          key={h.id}
-          hobby={h}
-          index={i}
-          scene={loaded[h.id] ?? null}
-          cursorRef={cursorRef}
-          activeIdxRef={activeIdxRef}
-          visibleRef={visibleRef}
-          onHoverChange={onHoverChange}
-        />
+        <group key={h.id} ref={(el) => { posRefs.current[i] = el; }}>
+          <HobbyMesh
+            hobby={h}
+            index={i}
+            isTouch={isTouch}
+            mobile={mobile}
+            scene={loaded[h.id] ?? null}
+            hoveredIndexRef={hoveredIndexRef}
+            cursorRef={cursorRef}
+            visibleRef={visibleRef}
+          />
+        </group>
       ))}
     </>
   );
 }
 
-const HOVER_ENTER_DELAY_MS = 180;
-const HOVER_LEAVE_DELAY_MS = 200;
-
-interface TooltipState {
-  visible: boolean;
-  label: string;
-  x: number;
-  y: number;
-}
-
 interface HobbiesSceneProps {
-  /** 0..N-1 fractional focus index: integer = current hobby,
-   *  fractional = transition progress to the next. Used only for the
-   *  smooth camera dolly tween between heroes. */
-  focusRef: React.RefObject<number>;
-  /** Committed active (integer) hobby index, resolved by the parent with
-   *  NEAREST + hysteresis. This is the single source of truth for "which
-   *  object is the hero": the per-mesh focus weight + the camera framing
-   *  both target THIS index, so exactly one object reads as focused at
-   *  all times (no in-between dead-zone) and the highlight always agrees
-   *  with the floating label, which uses the same index. */
-  activeIdxRef: React.RefObject<number>;
-  /** Ordered hobby ids from the parent. Provided as a sanity guard
-   *  that parent + scene rosters agree; logged once on mount if not. */
   hobbyIds?: string[];
-  /** True while the Beat B (curated reel) window is live or imminent.
-   *  Gates the demand render loop: without it the scene rendered at
-   *  full rate behind the opacity-0 layer for ALL of Beat A — the
-   *  photo-reel scroll-entry jank. */
-  beatBLive?: boolean;
+  live?: boolean;
 }
 
 export const HobbiesScene = memo(function HobbiesScene({
-  activeIdxRef,
   hobbyIds,
-  beatBLive = true,
+  live = true,
 }: HobbiesSceneProps) {
   const [loaded, setLoaded] = useState<Record<string, THREE.Group | null>>(() => {
     const init: Record<string, THREE.Group | null> = {};
@@ -875,50 +765,24 @@ export const HobbiesScene = memo(function HobbiesScene({
     }
     return init;
   });
-  // PERF: visibility ref, true when the canvas wrapper is intersecting
-  // the viewport. Used by useFrame loops below to short-circuit per-
-  // frame work when the section isn't on-screen.
   const visibleRef = useRef<boolean>(false);
-  // Beat gate mirror (see HobbiesSceneProps.beatBLive). Mirrored to a
-  // ref so the useFrame gate reads it without re-creating the loop;
-  // the rising edge pokes the demand loop awake (same pattern as the
-  // IO visible edge below).
-  const beatBLiveRef = useRef<boolean>(beatBLive);
-  // Viewport-relative cursor for the keypad-style face-tracking
-  // parallax (see PARALLAX_* constants). Document-level like the
-  // keypad's, so tracking continues when the pointer leaves the canvas.
+  const liveRef = useRef<boolean>(live);
+  // Which body is hovered (index, -1 = none). Shared by the meshes (parallax /
+  // scale) and the solver (drift hold).
+  const hoveredIndexRef = useRef<number>(-1);
+  // Viewport-relative cursor for the face-tracking parallax.
   const parallaxCursorRef = useRef({ x: 0.5, y: 0.5, active: false });
-  const [tooltip, setTooltip] = useState<TooltipState>({
-    visible: false,
-    label: "",
-    x: 0,
-    y: 0,
-  });
   const containerRef = useRef<HTMLDivElement>(null);
-  const cursorRef = useRef({ x: 0, y: 0 });
-  const enterTimerRef = useRef<number | null>(null);
-  const leaveTimerRef = useRef<number | null>(null);
-  const pendingLabelRef = useRef<string>("");
   const isTouch = useMemo(
     () => typeof window !== "undefined" && "ontouchstart" in window,
     [],
   );
-  // PERF (mobile): cap the device-pixel-ratio lower on touch / narrow
-  // viewports. Phone GPUs pay a heavy fragment-shader cost per extra
-  // pixel, and ten simple GLBs over a TRANSPARENT canvas at 38° FOV gain
-  // almost nothing visually from 1.5x supersampling on a small screen.
-  // Desktop keeps the crisper [1, 1.5] cap; touch/≤768px drops to
-  // [1, 1.25] for a meaningful fragment-work saving without a visible
-  // softening of these low-detail objects.
   const dprCap = useMemo<[number, number]>(() => {
-    const narrow =
-      typeof window !== "undefined" && window.innerWidth <= 768;
+    const narrow = typeof window !== "undefined" && window.innerWidth <= 768;
     return isTouch || narrow ? [1, 1.25] : [1, 1.5];
   }, [isTouch]);
 
-  // Roster sanity check: warn (don't throw) if the parent and the
-  // scene's HOBBIES list drift. Helps catch a future "added a hobby
-  // in one place but not the other" bug.
+  // Roster sanity check (dev only).
   useEffect(() => {
     if (!hobbyIds) return;
     const sceneIds = HOBBIES.map((h) => h.id);
@@ -927,13 +791,14 @@ export const HobbiesScene = memo(function HobbiesScene({
       (sceneIds.length !== hobbyIds.length ||
         sceneIds.some((id, i) => id !== hobbyIds[i]))
     ) {
-      console.warn(
-        "[HobbiesScene] hobby roster mismatch with parent",
-        { parent: hobbyIds, scene: sceneIds },
-      );
+      console.warn("[HobbiesScene] hobby roster mismatch with parent", {
+        parent: hobbyIds,
+        scene: sceneIds,
+      });
     }
   }, [hobbyIds]);
 
+  // Subscribe to the module-scope preload so late-arriving GLBs swap in.
   useEffect(() => {
     const unsubs: Array<() => void> = [];
     HOBBIES.forEach((h) => {
@@ -949,27 +814,17 @@ export const HobbiesScene = memo(function HobbiesScene({
     return () => unsubs.forEach((u) => u());
   }, []);
 
-  // IntersectionObserver: sets visibleRef so per-frame loops can
-  // short-circuit when the section isn't on screen. rootMargin set
-  // generously so the scene is already "live" by the time it's
-  // visible (avoids a one-frame blip when transitioning in). The
-  // visible-edge transition pokes the demand frame loop alive via
-  // canvasInvalidateRef (set in Canvas onCreated below), otherwise
-  // the loop would never restart since SceneInner's useFrame is the
-  // only invalidator and it early-returns until visibleRef flips.
+  // Wake the demand loop on the live rising edge.
   const canvasInvalidateRef = useRef<(() => void) | null>(null);
-
-  // Mirror the beat gate + wake the demand loop on its rising edge.
   useEffect(() => {
-    const was = beatBLiveRef.current;
-    beatBLiveRef.current = beatBLive;
-    if (beatBLive && !was && visibleRef.current) {
+    const was = liveRef.current;
+    liveRef.current = live;
+    if (live && !was && visibleRef.current) {
       canvasInvalidateRef.current?.();
     }
-  }, [beatBLive]);
+  }, [live]);
 
-  // Keypad parallax cursor feed (desktop pointers only; touch has no
-  // meaningful cursor and the keypad skips it the same way).
+  // Face-tracking cursor feed (desktop pointers only).
   useEffect(() => {
     if (isTouch) return;
     const onMove = (e: PointerEvent) => {
@@ -988,6 +843,7 @@ export const HobbiesScene = memo(function HobbiesScene({
     };
   }, [isTouch]);
 
+  // IntersectionObserver: gate per-frame work + wake the demand loop.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -1008,137 +864,26 @@ export const HobbiesScene = memo(function HobbiesScene({
     return () => io.disconnect();
   }, []);
 
-  // Tooltip position tracking: write coords to the DOM via ref + rAF
-  // so pointermove never triggers a React re-render. Previously every
-  // pointer move while the tooltip was visible called setTooltip,
-  // reconciling the entire HobbiesScene tree on each event (50+ Hz).
-  // Now the tooltip element style is mutated directly.
-  const tooltipElRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    // PERF: cache the container's client rect, recomputed on
-    // window resize / scroll instead of per pointermove.
-    let rect = el.getBoundingClientRect();
-    const refreshRect = () => {
-      rect = el.getBoundingClientRect();
-    };
-    const onMove = (e: PointerEvent) => {
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      cursorRef.current.x = x;
-      cursorRef.current.y = y;
-      const tip = tooltipElRef.current;
-      if (tip) {
-        // Direct DOM write: bypasses React reconciliation entirely.
-        tip.style.transform = `translate(${x + 20}px, ${y + 20}px)`;
-      }
-    };
-    // Rect refresh on POINTERENTER (not per scroll event): during the
-    // pin scrub, scroll fires every frame and the old visible-gated
-    // listener forced a layout read against a dirty layout per frame
-    // for both beats — purely to keep tooltip coords fresh. The rect
-    // only needs to be current when the pointer actually engages the
-    // canvas; entering re-reads it, resize covers window changes.
-    el.addEventListener("pointermove", onMove);
-    el.addEventListener("pointerenter", refreshRect, { passive: true });
-    window.addEventListener("resize", refreshRect, { passive: true });
-    return () => {
-      el.removeEventListener("pointermove", onMove);
-      el.removeEventListener("pointerenter", refreshRect);
-      window.removeEventListener("resize", refreshRect);
-    };
-  }, []);
-
-  const handleHoverChange = (hovering: boolean, label: string) => {
-    document.body.style.cursor = hovering ? "pointer" : "";
-    if (hovering) {
-      pendingLabelRef.current = label;
-      if (leaveTimerRef.current != null) {
-        window.clearTimeout(leaveTimerRef.current);
-        leaveTimerRef.current = null;
-      }
-      if (isTouch) {
-        setTooltip({
-          visible: true,
-          label,
-          x: cursorRef.current.x,
-          y: cursorRef.current.y,
-        });
-        return;
-      }
-      if (enterTimerRef.current != null) return;
-      enterTimerRef.current = window.setTimeout(() => {
-        enterTimerRef.current = null;
-        setTooltip({
-          visible: true,
-          label: pendingLabelRef.current,
-          x: cursorRef.current.x,
-          y: cursorRef.current.y,
-        });
-      }, HOVER_ENTER_DELAY_MS);
-    } else {
-      if (enterTimerRef.current != null) {
-        window.clearTimeout(enterTimerRef.current);
-        enterTimerRef.current = null;
-      }
-      // TOUCH TAP-TO-SHOW (no hover dependency): on a touch tap R3F fires
-      // pointerover→…→pointerout in quick succession, so a leave timer here
-      // would flash the tooltip for ~200ms and auto-hide it. On touch we
-      // therefore IGNORE the leave entirely; the tapped label persists
-      // until the user taps another object (replaces it) or taps empty
-      // space (handleMissed dismisses it). Pointer/mouse keeps the timed
-      // leave so a desktop hover-out still fades the tooltip out.
-      if (isTouch) return;
-      if (leaveTimerRef.current != null) return;
-      leaveTimerRef.current = window.setTimeout(() => {
-        leaveTimerRef.current = null;
-        setTooltip((prev) => ({ ...prev, visible: false }));
-      }, HOVER_LEAVE_DELAY_MS);
-    }
-  };
-
-  // Tap empty canvas to dismiss the tap-shown tooltip (touch only). On
-  // pointer devices a hover-out already fades it via the leave timer.
+  // Tap empty space to dismiss a tapped label (touch); also clears the body
+  // cursor. On pointer devices a hover-out already clears the hovered index.
   const handleMissed = () => {
-    if (!isTouch) return;
-    if (leaveTimerRef.current != null) {
-      window.clearTimeout(leaveTimerRef.current);
-      leaveTimerRef.current = null;
-    }
-    setTooltip((prev) => ({ ...prev, visible: false }));
+    hoveredIndexRef.current = -1;
+    document.body.style.cursor = "";
   };
 
   return (
     <div ref={containerRef} className="hobbies-canvas-wrap">
       <Canvas
-        camera={{ position: [0, 0.35, 4.4], fov: 38, near: 0.1, far: 50 }}
-        // PERF: cap DPR at 1.5 on desktop (was capped at 2). On a 3x
-        // retina display the difference between 1.5 and 2 is a 78%
-        // increase in fragment shader work for fairly small visual gain,
-        // and 10 simple GLBs at 38° FOV don't benefit much from
-        // supersampling past 1.5x. On touch / ≤768px we drop further to
-        // 1.25 (see dprCap) for phone-GPU headroom. MSAA still on.
+        camera={{ position: [0, -0.06, 6], fov: VFOV_DEG, near: 0.1, far: 50 }}
         dpr={dprCap}
         gl={{
           antialias: true,
           alpha: true,
           powerPreference: "high-performance",
-          // TUNE/verification only: retain the drawing buffer so the
-          // Playwright harness can grab canvas.toDataURL() atomically
-          // (the shared browser is heavily contended, so a separate
-          // screenshot call races with other agents stealing the tab).
-          // Off in production: it has a small perf cost and no user
-          // benefit. Gated on the ?tune=other flag.
           preserveDrawingBuffer:
             typeof window !== "undefined" &&
             new URLSearchParams(window.location.search).get("tune") === "other",
         }}
-        // PERF: demand frame loop, useFrame inside SceneInner calls
-        // invalidate() each visible frame so the loop keeps ticking,
-        // but as soon as visibleRef flips false useFrame early-returns
-        // and stops scheduling new frames. Saves an entire WebGL
-        // submit pipeline while the user is on Hero/About/Mac/Work.
         frameloop="demand"
         onCreated={({ invalidate }) => {
           canvasInvalidateRef.current = invalidate;
@@ -1147,24 +892,13 @@ export const HobbiesScene = memo(function HobbiesScene({
       >
         <SceneInner
           loaded={loaded}
-          activeIdxRef={activeIdxRef}
+          isTouch={isTouch}
           visibleRef={visibleRef}
-          beatBLiveRef={beatBLiveRef}
+          liveRef={liveRef}
           cursorRef={parallaxCursorRef}
-          onHoverChange={handleHoverChange}
+          hoveredIndexRef={hoveredIndexRef}
         />
       </Canvas>
-      {tooltip.visible && (
-        <div
-          ref={tooltipElRef}
-          className="hobbies-tooltip"
-          style={{
-            transform: `translate(${tooltip.x + 20}px, ${tooltip.y + 20}px)`,
-          }}
-        >
-          {tooltip.label}
-        </div>
-      )}
     </div>
   );
 });

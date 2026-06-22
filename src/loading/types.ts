@@ -1,20 +1,5 @@
 // src/loading/types.ts
 
-interface WireframeMesh {
-  name: string;
-  center: [number, number, number];
-  half: [number, number, number];
-  /** 1..5: spatial assembly wave this mesh belongs to. */
-  phase: number;
-}
-
-export interface WireframeManifest {
-  version: number;
-  generatedAt: string;
-  sourceSha: string | null;
-  meshes: WireframeMesh[];
-}
-
 export interface AssemblyState {
   /** 0..1: driven by Date.now() since mount, paused while tab hidden. */
   timelinePct: number;
@@ -22,19 +7,45 @@ export interface AssemblyState {
   bytePct: number;
   /** min(timelinePct, bytePct): what the visible bar shows. */
   combinedPct: number;
-  /** 1..5: current spatial phase. Derived from combinedPct via THRESHOLDS. */
-  phase: number;
   /** Total bytes streamed so far (rounded to 0.1 MB for display). */
   bytesMB: number;
-  /** True once timeline finished AND assets ready AND 30 stable frames. */
+  /** True once timeline finished AND assets ready AND stable frames:
+   *  the loader has hit 100%. The loader plays its outro from here. */
   climaxReady: boolean;
-  /** True once the climax fade has fully completed (wireframes gone). */
+  /** True once the loader's progress run finished AND its outro
+   *  (LOADER_OUTRO_MS) elapsed — the moment the hero signature may START
+   *  drawing. This is the seam that sequences loader → signature (the
+   *  signature used to draw concurrently with the loading timeline). */
+  loaderDone: boolean;
+  /** rAF terminal early-out (loader math is stable past this). NO LONGER
+   *  drives the page unlock — html.loading-active now drops when the hero
+   *  composition settles (see AssemblyController). */
   climaxDone: boolean;
 }
 
-export const TIMELINE_FLOOR_MS = 2400;
-export const STABLE_FRAMES_REQUIRED = 30;
+/** Minimum wall-clock the loader's 0→100 run takes (the progress bar is
+ *  driven by elapsed / this). The heavy 27MB room GLB was removed, so the
+ *  load is now trivial and this is purely a pacing floor: long enough for
+ *  the pixel meter to read as a deliberate fill, short enough that the
+ *  signature (which now plays AFTER the loader, not concurrently) isn't
+ *  kept waiting. Was 2400 (tuned for the old wireframe-assembly beat). */
+export const TIMELINE_FLOOR_MS = 1200;
+/** Consecutive sub-budget frames preferred before declaring the scene
+ *  smooth. Lowered from 30: the always-on 3D room (shadows + physics) that
+ *  made 30 hard to sustain is gone; only the hero ring canvas renders now,
+ *  so a shorter streak is plenty and keeps climaxReady from lagging. */
+export const STABLE_FRAMES_REQUIRED = 18;
 export const STABLE_FRAME_BUDGET_MS = 22;
+/** Time the loader's outro (dim + lift) is given before the signature
+ *  starts. loaderDone fires LOADER_OUTRO_MS after climaxReady; the
+ *  BootLoader's CSS lift is slightly shorter so it has fully faded out
+ *  by the time the signature draws onto the bare orange field. */
+export const LOADER_OUTRO_MS = 440;
+/** Absolute failsafe for the page unlock: html.loading-active is normally
+ *  removed when the hero composition settles, but if that signal never
+ *  arrives (an unforeseen stall in the compose path) the scrim is lifted
+ *  this long after the loader completes so a visitor is never trapped. */
+export const UNLOCK_FAILSAFE_MS = 5000;
 /** Max time to keep waiting for STABLE_FRAMES_REQUIRED smooth frames AFTER
  *  assets + the timeline floor are satisfied. The "30 smooth frames" gate
  *  is a reveal-without-jank *preference*; on weak hardware the always-on
@@ -42,7 +53,7 @@ export const STABLE_FRAME_BUDGET_MS = 22;
  *  sub-22ms frames, which would trap the visitor on the loading screen
  *  forever. Once assets are ready we give smoothness this long to settle,
  *  then proceed regardless. */
-export const STABLE_WAIT_TIMEOUT_MS = 3000;
+export const STABLE_WAIT_TIMEOUT_MS = 600;
 /** Absolute failsafe: never hold the loading screen past this much
  *  wall-clock loading time, no matter what stalls (a silently-failed
  *  asset so drei.active never clears, untracked physics wasm, a lost
@@ -51,16 +62,5 @@ export const STABLE_WAIT_TIMEOUT_MS = 3000;
 export const HARD_CEILING_MS = 15000;
 export const CLIMAX_DURATION_MS = 400;
 export const POST_CLIMAX_HUD_FADE_MS = 320;
-/** GLB size in MB: display-only. Real bytes come from useProgress.
- *  room.glb is meshopt-compressed with WebP textures via
- *  scripts/optimize-assets.mjs (raw Blender export is ~22.6 MB). */
+/** Display-only divisor for the loader's byte readout. */
 export const GLB_TOTAL_MB = 4.0;
-/** combinedPct thresholds that unlock each phase. Index = phase - 1.
- *  Includes a sixth upper-bound entry so phase 5's window is bounded
- *  Without it, the `?? 1` fallback in ScrollWireframeRoom pushes phase
- *  5 starts up to ~0.97, well past the envelope's 0.48 fade-out, and
- *  phase 4/5 wireframes (57 of 75 meshes) never reach nonzero opacity.
- *  Compresses the whole assembly into the env-positive window so every
- *  phase has a chance to materialize before the 0.48→0.56 dissolve
- *  hands off to the cover-dome room reveal. */
-export const PHASE_THRESHOLDS = [0.0, 0.07, 0.16, 0.26, 0.36, 0.47];

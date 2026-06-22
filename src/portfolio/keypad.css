@@ -1,12 +1,21 @@
 /* Keypad section: full-width band that breaks out of the right-
    column layout used by every other portfolio section. The keypad
-   is the entire stage; no copy, no card chrome. Background matches
-   the trophy room (bp) section's --bg-elevated (user direction), so
-   the white transition banner reads as a bright band framed by two
-   identical elevated tones. RiceBlob.tsx BG_COLOR must stay in sync
-   (the shader backdrop paints over this CSS bg inside the canvas). */
+   is the entire stage; no copy, no card chrome. Background is the
+   site PAGE tone (--bg-page #eef0f3) so the keypad's 3D "viewport"
+   flows seamlessly out of the marquee + the page with NO visible
+   barrier where the model drops in (user direction — reverts the
+   d8b500c elevated-tone split that read as a hard seam). RiceBlob.tsx
+   BG_COLOR must stay in sync (the shader backdrop paints over this
+   CSS bg inside the canvas). */
 
-.keypad-section {
+/* Combined selector (.portfolio-section.keypad-section, specificity 0,2,0) so
+   this BEATS the shared `.portfolio-section { display:flex; align-items:center;
+   padding:140px 0 }` (0,1,0). Without the bump, the shared rule won and CENTERED
+   the keypad stage at its 720px min-height inside the 100vh pinned section —
+   leaving dead bands top + bottom that clipped the 3D scene + cursor blob (the
+   "viewport shrunk vertically" bug). The keypad IS the section: full-bleed
+   canvas, no flex centering, no padding. */
+.portfolio-section.keypad-section {
   /* Section is exactly one viewport tall in its un-pinned form.
      The dwell beat is now provided by GSAP ScrollTrigger (Keypad.tsx)
      which pins the section at top:top and accumulates PIN_DURATION_PX
@@ -16,7 +25,7 @@
   display: block;
   height: 100vh;
   padding: 0;
-  background: var(--bg-elevated, #f7f8fa);
+  background: var(--bg-page, #eef0f3);
   position: relative;
 }
 
@@ -26,16 +35,16 @@
    default, so as the user scrolls through it they see straight
    through to the room canvas / wrapper-bg behind, producing a
    visible "two-tone" seam right before the footer ("I can see part
-   of the other canvas here"). Painting the spacer the same cream as
-   the section makes the transition read as one continuous band. */
+   of the other canvas here"). Painting the spacer the same page tone
+   as the section makes the transition read as one continuous band. */
 .pin-spacer:has(> .keypad-section) {
-  background: var(--bg-elevated, #f7f8fa);
+  background: var(--bg-page, #eef0f3);
 }
 
-/* Kill the odd-row warm orange gradient; keypad wants the elevated
+/* Kill the odd-row warm orange gradient; keypad wants the page
    tone to read uninterrupted. */
 .keypad-section:nth-of-type(odd) {
-  background: var(--bg-elevated, #f7f8fa);
+  background: var(--bg-page, #eef0f3);
 }
 
 .keypad-stage {
@@ -123,35 +132,117 @@
   border: 0;
 }
 
-/* Mobile: keep the section full-viewport but a bit shorter so it
-   doesn't feel like dead space below a phone fold. */
+/* ── MOBILE (<=768px): clean CONTACT section, no canvas ────────────────
+   The keypad <Canvas> no longer mounts at <=768px (useSectionCanvasMount
+   returns false), so the .keypad-stage is an EMPTY reserved box. Its old
+   `flex:1` inside an 80svh flex column ate the whole viewport and shoved
+   the chips off-screen. Here we COLLAPSE the stage, let the section be
+   sized by its content (height:auto, NO svh floor), and compose a tidy
+   editorial stack: the "07 / Find me elsewhere" heading immediately
+   followed by the four social chips. Desktop (>768px) is untouched. */
 @media (max-width: 768px) {
-  .keypad-section {
-    /* svh (small viewport height) so the band is stable across the
-       mobile URL-bar collapse; `vh` jumps when the bar hides/shows,
-       which would resize the canvas mid-scroll. Falls back to vh on
-       engines without svh support. */
-    height: 80vh;
-    height: 80svh;
-    min-height: 520px;
-    /* Pure-canvas full-bleed band; nothing here should ever push
-       horizontal scroll on a 360px phone. */
+  /* Combined selector again so the mobile height beats the shared
+     .portfolio-section rule (same 0,2,0 > 0,1,0 reasoning as above). */
+  .portfolio-section.keypad-section {
+    /* Content-sized: drop the 100vh / 80svh that boxed the section and
+       reserved dead space. The section now flows with the page, tall
+       only as the heading + chips need. */
+    height: auto;
+    min-height: 0;
+    /* Single breathable column: heading, then chips. The collapsed
+       stage contributes nothing. */
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    /* Generous top/bottom rhythm so it reads as a real closing section,
+       not a cramped footer lead-in. Honour the home-indicator / notch. */
+    padding: var(--space-7) max(var(--space-4), env(safe-area-inset-left, 0px))
+      calc(var(--space-7) + env(safe-area-inset-bottom, 0px))
+      max(var(--space-4), env(safe-area-inset-right, 0px));
+    box-sizing: border-box;
+    /* Nothing here should ever push horizontal scroll on a 360px phone. */
     overflow-x: clip;
   }
-  .keypad-stage {
-    height: 100%;
-    min-height: 520px;
-    width: 100%;
+
+  /* Collapse the empty stage entirely: the canvas never mounts on mobile,
+     so this is dead space. Removing it (not just shrinking) means the
+     heading sits directly above the chips with no gap to fight. */
+  .keypad-section .keypad-stage {
+    display: none;
   }
-  /* Let a vertical finger-drag that lands on the keypad canvas scroll
-     the page (the pin is removed on mobile, so this band is in normal
-     flow). The global `canvas { touch-action: none }` would otherwise
-     swallow the drag and feel like the page is stuck on the keypad.
-     pan-y still lets single taps through to the social caps / dial.
-     DESCENDANT selector, not `>`: R3F wraps its canvas in an extra div,
-     so a child selector never matches. (index.css's any-pointer:coarse
-     canvas rule is the global net; this is the explicit local intent.) */
-  .keypad-canvas-wrapper canvas {
-    touch-action: pan-y;
+
+  /* The hint becomes a real in-flow section heading on mobile (it was a
+     faint absolute watermark behind the canvas on desktop). Pull it out
+     of `position:absolute` so it's the FIRST item: a legible
+     "Find me elsewhere" title above the chips. */
+  .keypad-section .keypad-hint {
+    position: static;
+    inset: auto;
+    z-index: auto;
+    /* Left-aligned editorial title, not a centered watermark. */
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: flex-start;
+    text-align: left;
+    gap: 0;
+    padding: calc(env(safe-area-inset-top, 0px)) 0 0;
+  }
+  .keypad-section .keypad-hint-eyebrow {
+    /* Legible section heading, not a quiet watermark, on touch.
+       --accent-deep (AA on light) for the small accent label. */
+    opacity: 1;
+    color: var(--accent-deep);
+    font-size: var(--fs-meta);
+    letter-spacing: 0.22em;
+  }
+
+  /* Contact chips: a clean two-column editorial grid. Each chip is a
+     real <a> — >=48px touch target, >=16px label, sharp corners, hairline
+     border + accent-tint wash, AA orange text (--accent-deep). Always in
+     the DOM, so this also covers the WebGL-unavailable case. */
+  .keypad-contact {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .keypad-contact-chip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px; /* comfortably >= 44px touch target */
+    padding: 0 var(--space-4);
+    font-family: var(--font-mono);
+    font-size: 16px; /* >= 16px content text */
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-decoration: none;
+    /* AA on the light surface (~5:1). --accent-deep per design system. */
+    color: var(--accent-deep);
+    /* Quiet accent-tint fill + hairline so the chips read as on-brand
+       cards without a wall of saturated orange. */
+    background: var(--accent-tint);
+    border: 1px solid var(--ink-hairline);
+    /* Sharp corners (TE / industrial), per the design language. */
+    border-radius: 0;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
+    transition: background var(--t-fast) var(--ease-out),
+      color var(--t-fast) var(--ease-out),
+      border-color var(--t-fast) var(--ease-out);
+  }
+  /* TAP feedback (touch has no hover): the chip fills accent while
+     pressed so the tap registers visibly. */
+  .keypad-contact-chip:active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .keypad-contact-chip {
+      transition: none;
+    }
   }
 }

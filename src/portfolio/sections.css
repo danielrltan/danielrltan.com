@@ -41,16 +41,15 @@
   --hdr-title: clamp(48px, 13vw, 190px);
 
   /* HEADER COLOUR SYSTEM (sitewide).
-     The big section titles used pure-ish near-black (--ink #0d0e10), which
-     read as "too much black / too harsh" across the warm-orange palette.
-     Titles now use a WARM CHARCOAL (still ~13:1 on --bg-page, so fully
-     legible — softened by warmth, not by dropping contrast), the section
-     NUMBER becomes the orange moment (deep orange, readable at display
-     size), and the eyebrow index sits in a warm grey. One system, every
-     section. */
-  --hdr-ink: #241e1a;                /* warm charcoal title (softer than #0d0e10) */
-  --hdr-num-color: var(--accent-deep, #b8431a); /* orange section numbers */
-  --hdr-eyebrow: #6c6660;            /* warm muted grey eyebrow */
+     COOL palette (white + cool ink + one orange). The big section titles use
+     the primary cool near-black ink (--ink #0d0e10): the old WARM CHARCOAL
+     (#241e1a) read brown against the cool surfaces — the design system's
+     banned warm-ink habit. The section NUMBER is the orange moment (deep
+     orange, readable at display size); the eyebrow index sits on the cool
+     muted-ink stack. One system, every section. */
+  --hdr-ink: var(--ink);             /* cool near-black title (was warm #241e1a) */
+  --hdr-num-color: var(--accent-deep, #c23d00); /* orange section numbers */
+  --hdr-eyebrow: var(--ink-muted);   /* cool muted eyebrow (was warm #6c6660) */
   /* Consistent header rhythm, shared by every section's corner header. */
   --hdr-gap-title: clamp(40px, 5vw, 64px); /* title → content breathing room */
 }
@@ -104,7 +103,7 @@
   line-height: 0.9;
   letter-spacing: 0.01em;
   /* The section number is the header's orange moment (deep orange reads). */
-  color: var(--hdr-num-color, #b8431a);
+  color: var(--hdr-num-color, var(--accent-deep));
   margin: 0 0 4px 0;
   display: inline-flex;
   align-items: baseline;
@@ -128,7 +127,7 @@
   font-size: 11px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--hdr-eyebrow, #6c6660);
+  color: var(--hdr-eyebrow, var(--ink-muted));
   font-weight: 500;
   /* 18px → 10px → 16px: the first tightening (for the pixel face's
      internal headroom) overshot — the eyebrow sat cramped against the
@@ -157,8 +156,8 @@
   line-height: 0.9;
   letter-spacing: 0.01em;
   text-transform: none;
-  /* Warm charcoal, not near-black — softer against the warm palette. */
-  color: var(--hdr-ink, #241e1a);
+  /* Cool near-black ink (cool palette). */
+  color: var(--hdr-ink, var(--ink));
   margin: 0 0 var(--hdr-gap-title, 48px);
   overflow-wrap: break-word;
   word-break: break-word;

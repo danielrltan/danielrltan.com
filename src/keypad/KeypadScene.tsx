@@ -211,7 +211,6 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
   // as one system. Pulses are stamped at the live cursor position
   // (viewport UV — the convention the RiceBlob shader already uses).
   const pulsesRef = useRef<PulseChannel>(createPulseChannel());
-  const hotRef = useRef(false);
   useEffect(() => {
     const onInteract = (e: Event) => {
       if (PREFERS_REDUCED_MOTION) return;
@@ -228,9 +227,11 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
       );
       canvasInvalidateRef.current?.();
     };
-    const onHover = (e: Event) => {
-      const ev = e as CustomEvent<{ hot?: boolean }>;
-      hotRef.current = !!ev.detail?.hot;
+    const onHover = () => {
+      // Wake the demand render loop on hover changes so the hover feedback (dial
+      // scale, cap dip) gets a frame. This previously also set a hotRef, but the
+      // RiceBlob rewrite dropped its hotRef/layer props, so nothing reads it now
+      // — the wake-poke is the only live purpose left.
       canvasInvalidateRef.current?.();
     };
     window.addEventListener("keypad-interact", onInteract);
@@ -307,7 +308,6 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
           transformMode={transformMode}
           visibleRef={visibleRef}
           pulsesRef={pulsesRef}
-          hotRef={hotRef}
         />
       </Canvas>
       {TUNE_MODE && (
@@ -411,7 +411,6 @@ function SceneContents({
   transformMode,
   visibleRef,
   pulsesRef,
-  hotRef,
 }: {
   cursorRef: React.MutableRefObject<CursorState>;
   riceCursorRef: React.MutableRefObject<CursorState>;
@@ -422,7 +421,6 @@ function SceneContents({
   transformMode: TuneTransformMode;
   visibleRef: React.MutableRefObject<boolean>;
   pulsesRef: React.MutableRefObject<PulseChannel>;
-  hotRef: React.MutableRefObject<boolean>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   // Track the group as REACT STATE too (not just ref) so the
@@ -477,6 +475,10 @@ function SceneContents({
   //   - barely-warm dial accent (very subtle, sells emissive
   //     without coloring the palette)
   // No cyan, no blue, no magenta, no saturated kickers.
+  // REVERTED to the earlier directional scheme (user: the IBL/Environment pass
+  // made the keypad "even more dull / flat"). A bright pure-white KEY from the
+  // upper-right is what gives the brushed metal + white caps their crisp
+  // highlight POP; the soft baked-cubemap fill read evenly lit = lifeless.
   const lightsKey = useMemo(() => new THREE.Vector3(4, 5, 3), []);
   const lightsFill = useMemo(() => new THREE.Vector3(-3.5, -1, -1), []);
 
@@ -645,54 +647,60 @@ function SceneContents({
 
   return (
     <>
+      {/* Cursor pool — a faithful port of the jump-menu MercuryAura effect, so
+          the keypad blob reads EXACTLY like the jump menu: a faint orange rice
+          field + a lit metaball pool + a thin orange membrane following the
+          cursor. Single plane (no front-wisp layer) to match the jump menu. */}
       <RiceBlob
         cursorRef={riceCursorRef}
         glowOpacityRef={glowOpacityRef}
-        hotRef={hotRef}
+        isMobile={isMobile}
       />
-      {/* A little of the same liquid floats IN FRONT of the keypad (desktop
-          only — a second full-screen shader is too heavy for mobile) so the
-          pool reads as 3D: liquid behind AND a few wisps over the device. */}
-      {!isMobile && (
-        <RiceBlob
-          cursorRef={riceCursorRef}
-          glowOpacityRef={glowOpacityRef}
-          hotRef={hotRef}
-          layer="front"
-        />
-      )}
       {/* Screen-space spacetime ripple. Takes over the render loop
           (scene -> FBO -> refracted fullscreen pass), so it is mounted
           ONLY outside tune mode, where R3F's auto-render must stay live
           for OrbitControls / TransformControls. Press ripples refract
-          the entire viewport - keypad, grains and screen alike. */}
-      {!TUNE_MODE && (
-        <RipplePost pulsesRef={pulsesRef} samples={isMobile ? 0 : 4} />
+          the entire viewport - keypad, grains and screen alike.
+
+          PERF (mobile): the whole pass is ABSENT on phones. The FBO
+          round-trip (render scene to an offscreen target, then a
+          fullscreen refraction shader to the canvas) doubles the per-
+          frame fill cost — and on touch there are no cursor presses
+          driving ripples anyway, so it only ever blits 1:1. Dropping it
+          lets R3F's normal auto-render draw the scene straight to the
+          canvas. The keypad + static orange wash read the same at phone
+          size for far less GPU. */}
+      {!TUNE_MODE && !isMobile && (
+        <RipplePost pulsesRef={pulsesRef} samples={4} />
       )}
-      {/* Cool paper-white ambient (was #f4f3f0 warm), which cast a
-          warm/muddy tint that clashed with the site's cool palette.
-          #f4f5f7 keeps the same brightness but reads cool/neutral. */}
-      <ambientLight intensity={0.5} color="#f4f5f7" />
-      {/* Pure-white KEY from upper-right with shadow. */}
+      {/* Cool paper-white ambient (no warm/muddy tint). Lifts the shadow side a
+          touch brighter than the old 0.5 so the dark body never reads moody. */}
+      <ambientLight intensity={0.6} color="#f4f5f7" />
+      {/* Pure-white KEY from the upper-right WITH shadow — the dominant light and
+          the source of the crisp highlight that makes the brushed metal + white
+          caps POP. Brightened over the original 1.6 → 1.9 for the "more popped"
+          ask. Intensities sit under the clip point (NoToneMapping + the RipplePost
+          lin2srgb output pass) so the white caps keep their form. */}
       <directionalLight
         position={[lightsKey.x, lightsKey.y, lightsKey.z]}
-        intensity={1.6}
+        intensity={1.9}
         color="#ffffff"
         castShadow
       />
-      {/* Soft white fill from lower-left, lifts shadow side, no
-          color cast. */}
+      {/* Soft white FILL from the lower-left — lifts the shadow side without a
+          colour cast so the key's contrast stays readable, not crushed. */}
       <directionalLight
         position={[lightsFill.x, lightsFill.y, lightsFill.z]}
-        intensity={0.45}
+        intensity={0.55}
         color="#f6f6f6"
       />
-      {/* Barely-warm dial accent. Low intensity + small radius so
-          it only tints the dial area, not the whole scene. Sells
-          the cat-face as a soft emissive without warming the room. */}
+      {/* Barely-warm dial accent: small radius + low-ish intensity so it only
+          tints the dial / cat-face into a soft emissive glow, not the whole
+          scene. Restored with the directional revert (the IBL pass had dropped
+          it, which is part of why the dial read flat). */}
       <pointLight
         position={[1.5, 1.0, -1.5]}
-        intensity={1.4}
+        intensity={1.5}
         color="#ffb98c"
         distance={2.4}
         decay={2}

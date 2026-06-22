@@ -57,9 +57,14 @@
   opacity: 0;
   overflow: hidden; /* clip the oversized ASCII ring at the viewport edge */
   transform-origin: 50% 50%;
-  /* will-change scoped to the actually animated props to keep the
-     compositor layer minimal (filter dropped with the blur; the dive's
-     depth cue is now the dither mask). */
+}
+html[data-hero-diving] .hero-composition {
+  /* PERF: promote the composition layer ONLY while diving (App.tsx sets
+     data-hero-diving from the first scroll). A PERMANENT will-change pins a
+     full-viewport compositor backing texture (VRAM) for the whole session,
+     which starves weak integrated GPUs and can itself cause the scroll jank;
+     the compositor promotes on demand for the brief dive and releases it at
+     rest. */
   will-change: transform, opacity;
 }
 
@@ -97,7 +102,7 @@
     var(--hero-to-about, 0) * var(--hero-to-about, 0) *
     (3 - 2 * var(--hero-to-about, 0))
   );
-  /* Scale: 1 → 3.0. Camera-dive feel: composition fills, then
+  /* Scale: 1 → 3.4. Camera-dive feel: composition fills, then
      overflows, the frame. Past p=1 the composition is fully off-
      screen and faded. SMOOTH on purpose: an earlier pass quantised
      this into 14 steps for a "pixelated zoom", but each step was a
@@ -105,7 +110,7 @@
      which read as the ring glitching during the scroll-up ease-back.
      The pixel identity lives entirely in the stepped mosaic filter
      below; geometry stays continuous. */
-  --hero-scale: calc(1 + var(--p) * 2.0);
+  --hero-scale: calc(1 + var(--p) * 2.4);
   /* Slight downward push (2vh max) so the dive isn't perfectly
      symmetric, which adds the sense that the viewer is sinking THROUGH
      the type, not staring at it pulling apart. */
@@ -117,38 +122,74 @@
      not a dither texture. */
 }
 
-/* REAL pixelation dissolve (replaces the old Bayer-dither mask, which
-   only painted a pixel TEXTURE over the type — user: "you're just
-   overlaying pixels on HTML"). App.tsx steps `data-hero-px` on <html>
-   as the eased dive progress crosses 0.08/0.26/0.44/0.62/0.80; each
-   step maps to an SVG mosaic filter defined in HeroSignature.tsx that
-   Gaussian-blurs the composition's OWN rendered pixels and resamples
-   them into cells (4→32px, further magnified by the dive's scale-up).
-   The content itself degrades into blocks as you zoom through it.
-   Bucket 0 = attribute absent = no filter, so the resting hero pays
-   nothing. Scroll-reversible: the buckets are a pure function of the
-   eased progress. */
-html[data-hero-px="1"] .hero-composition { filter: url(#hero-px-1); }
-html[data-hero-px="2"] .hero-composition { filter: url(#hero-px-2); }
-html[data-hero-px="3"] .hero-composition { filter: url(#hero-px-3); }
-html[data-hero-px="4"] .hero-composition { filter: url(#hero-px-4); }
-html[data-hero-px="5"] .hero-composition { filter: url(#hero-px-5); }
-/* During the dive, the composition mosaic owns the look: drop the
-   wordmark's ASCII-outline filter so the two don't stack. */
+/* PIXEL-ZOOM DISSOLVE — GPU-cheap, universal.
+   App.tsx steps `data-hero-px` on <html> as the eased dive progress crosses the
+   HERO_PX_STEPS thresholds. Each bucket HARDENS the composition with a stepped
+   contrast() tick — a color-matrix filter the GPU accelerates — so the type
+   visibly "crunches" at each boundary on top of the continuous scale-up. Bucket
+   0 = attribute absent = no filter, so the resting hero pays nothing.
+
+   PERF (why no SVG mosaic anymore): earlier buckets also ran a
+   feGaussianBlur+feTile+feMorphology MOSAIC (url(#hero-px-N), still defined but
+   PARKED/inert in HeroSignature.tsx). feMorphology + feTile have NO GPU path in
+   Chromium, so applying url() to this full-viewport composition — which contains
+   a live WebGL ring <canvas> — forced the WHOLE subtree to software-rasterize on
+   the MAIN THREAD every scroll frame as it scaled 1→3.4×. Measured on a DPR-1.25
+   display: ~31fps at 4× CPU throttle and ~19fps at 6×, with visible hitches even
+   un-throttled — and the DPR>1.4 / adaptive-degrade gates never caught the
+   common mid-range case. Dropped for ALL users: contrast() + the scale transform
+   composite on the GPU and still read as a dive (the type scales + hardens as you
+   punch through it). See the A/B in the perf notes: dropping url() ~tripled FPS. */
+html[data-hero-px="1"] .hero-composition { filter: contrast(1.05); }
+html[data-hero-px="2"] .hero-composition { filter: contrast(1.09); }
+html[data-hero-px="3"] .hero-composition { filter: contrast(1.13); }
+html[data-hero-px="4"] .hero-composition { filter: contrast(1.17); }
+html[data-hero-px="5"] .hero-composition { filter: contrast(1.2); }
+/* MOBILE: calm the hero exit — NO pixel-zoom DIVE. The 1->3.4x scale + contrast
+   crunch read as an interrupting "takeover" while you scroll the first screen on
+   a phone (owner-flagged). Here the composition holds at rest and the wrapper's
+   --hero-opacity does a clean cross-fade to About instead. */
+@media (max-width: 768px) {
+  .hero-composition {
+    --hero-scale: 1;
+    --hero-shift-y: 0;
+  }
+  html[data-hero-px] .hero-composition,
+  html[data-hero-diving] .hero-composition {
+    filter: none;
+  }
+}
+/* During the dive, drop the wordmark's ASCII-outline keyline (its own
+   feMorphology) so it doesn't software-raster while the composition scales. */
 html[data-hero-px] .hero-mega-fill { filter: none; }
-/* Opacity hand-off in two phases:
+
+/* PERF — the wordmark keyline (SVG feMorphology) re-rasterizes on the MAIN
+   THREAD at device pixels every scroll frame and is imperceptible mid-dive, so
+   drop it the instant the dive begins (App.tsx sets data-hero-diving from the
+   first non-zero progress — covers the scroll-in BEFORE bucket 1). */
+html[data-hero-diving] .hero-mega-fill { filter: none; }
+
+/* HI-DPR / browser-zoom: the RESTING wordmark keyline (#hero-ascii-outline, also
+   feMorphology) rasterizes at DEVICE pixels (~DPR² cost). data-hero-lite (App.tsx,
+   devicePixelRatio > 1.4, re-checked on resize/zoom) drops that one-time keyline
+   raster for hi-DPR / zoomed users. The dive itself is now GPU-cheap for everyone,
+   so it needs no separate lite path. */
+html[data-hero-lite] .hero-mega-fill { filter: none; }
+/* Opacity hand-off:
      1) LOAD-IN (0→1 over 600ms): a one-shot CSS animation on
-        .is-visible runs at higher priority than normal cascade,
-        so the calc opacity below is "hidden" during the fade-in.
-     2) SCROLL-LOCKED dive-out: animation-fill-mode is `none`, so
-        once the 600ms animation ends the property reverts to the
-        underlying `opacity: calc(...)` value below. At
-        --hero-to-about=0 that calc evaluates to 1, matching the
-        keyframe end-value, so there's no discontinuity at the
-        hand-off. From then on opacity is scroll-locked (no CSS
-        transition smoothing the change). */
+        .is-visible runs at higher priority than normal cascade.
+     2) DIVE-OUT: the composition stays FULLY OPAQUE through the zoom
+        (opacity:1) so the pixel-zoom is actually SEEN — it scales and
+        pixelates at full presence. The dissolve is owned solely by the
+        WRAPPER (.scroll-layer--hero's --hero-opacity in App.tsx, which
+        fades late). Coupling the composition's own opacity to the dive
+        (the old `calc(1 - var(--p))`) faded it out BEFORE the dramatic
+        2.4×→3.4× part of the zoom, so the zoom played invisibly and only
+        the next section sliding up was visible (the "card push over"
+        bug). animation-fill-mode `none` reverts to opacity:1 after the
+        load-in, matching the keyframe end (no discontinuity). */
 .hero-composition.is-visible {
-  opacity: calc(1 - var(--p));
+  opacity: 1;
   animation: hero-composition-fade-in 600ms var(--ease-soft) none;
 }
 @keyframes hero-composition-fade-in {
@@ -184,10 +225,75 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
   width: 100%;
   height: 100%;
   pointer-events: none;
-  /* No scroll-bound transform/filter here. The composition root
-     handles the dive-in transform; the ring moves as part of the
-     same rigid body. (Tile rendering is a WebGL post-process: squares,
-     outline boxes and diagonals drawn in-shader, no text glyphs.) */
+  /* Resting POP: a saturation + contrast boost on the shader output so the
+     orange tile field reads rich and the white symbols stop washing it out
+     (the same punch the scroll-time contrast ratchet adds, now in the base
+     state). Static colour grade, not motion — kept under reduced-motion too.
+     No scroll-bound TRANSFORM here; the composition root drives the dive and
+     the ring moves with it as one rigid body. */
+  filter: saturate(1.28) contrast(1.2);
+}
+
+/* Scroll cue: pixel down-chevron, bottom-centre of the hero, bobbing in
+   DISCRETE frame-by-frame steps (held % ranges = jumps, not a smooth glide).
+   Fades out as soon as the dive starts. */
+.hero-scroll-cue {
+  position: absolute;
+  left: 50%;
+  /* vh fallback first; svh + safe-area override below. On iOS the URL
+     bar eats bottom vh, and a bare 5.5vh sits the cue under the home
+     indicator — svh sizes to the small viewport and max() guarantees a
+     20px floor clear of the safe-area inset. */
+  bottom: 5.5vh;
+  bottom: max(20px, calc(5.5svh + var(--safe-bottom, 0px)));
+  z-index: 6;
+  pointer-events: none;
+  opacity: clamp(0, calc(1 - var(--hero-to-about, 0) * 5), 1);
+  animation: hero-cue-bob 1.15s steps(1, end) infinite;
+}
+.hero-scroll-cue svg {
+  display: block;
+  image-rendering: pixelated;
+}
+@keyframes hero-cue-bob {
+  0%, 24% { transform: translate(-50%, 0); }
+  25%, 49% { transform: translate(-50%, 4px); }
+  50%, 74% { transform: translate(-50%, 7px); }
+  75%, 99% { transform: translate(-50%, 3px); }
+}
+/* Mobile bob: the cue moves to the bottom-right corner (no left:50% centring)
+   so the bob is a pure translateY — no translateX(-50%) to preserve. */
+@keyframes hero-cue-bob-mobile {
+  0%, 24% { transform: translateY(0); }
+  25%, 49% { transform: translateY(4px); }
+  50%, 74% { transform: translateY(7px); }
+  75%, 99% { transform: translateY(3px); }
+}
+
+/* Hero ASCII cursor trail: spans get transform + opacity written per frame by
+   HeroCursorTrail.tsx. Small, pixel-font glyphs, white over the orange field. */
+.hero-cursor-trail {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+.hero-cursor-trail span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-family: var(--font-pixel, monospace);
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
+  color: #ffffff;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-scroll-cue {
+    animation: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -258,7 +364,7 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
   letter-spacing: 0.04em;
   line-height: 1.05;
   color: #ffffff;
-  -webkit-text-stroke: 2.2px var(--accent-deep, #b8431a);
+  -webkit-text-stroke: 2.2px var(--accent-deep, #c23d00);
   paint-order: stroke fill;
   max-width: 34ch;
 }
@@ -318,7 +424,10 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
      is already anchored from the loading phase, so the wordmark is
      the first new element to compose around it. */
   animation: hero-mega-in 900ms cubic-bezier(0.16, 0.84, 0.2, 1) both;
-  animation-delay: 0.4s;
+  /* Tightened 0.4s -> 0.25s: the loader now plays before this, so every ms
+     of post-compose delay is pure perceived lag. The wordmark still trails
+     the ring/signature, just sooner. */
+  animation-delay: 0.25s;
   /* No scroll-bound transform/mask here. The dive-in is driven by
      the .hero-composition root, so the wordmark moves as part of
      the single rigid body. The previous mask-image erosion and
@@ -400,8 +509,13 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
   /* Meta row enters LAST at 0.80s. See hero-ring-wrap for choreography
      note. Compressed from the previous 1.0s so the full composition
      settles within ~1.2s of phase=transition. */
-  animation: hero-meta-in 700ms var(--ease-soft) both;
-  animation-delay: 0.8s;
+  /* ease-out (matches the wordmark's entrance curve) + delay tightened 0.8s ->
+     0.65s so ring / wordmark / meta read as ONE composition settling rather
+     than three layers stacking in sequence. */
+  animation: hero-meta-in 700ms cubic-bezier(0.16, 0.84, 0.2, 1) both;
+  /* Tightened 0.65s -> 0.5s alongside the wordmark so the composition
+     settles sooner once the loader hands off. */
+  animation-delay: 0.5s;
 }
 .hero-meta-field {
   display: inline-flex;
@@ -413,7 +527,7 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
   font-size: 9.5px;
   letter-spacing: 0.26em;
   text-transform: uppercase;
-  /* A11y/contrast: raw --accent (#e87040) on the cool-white chip is
+  /* A11y/contrast: raw --accent (#ff4f00) on the cool-white chip is
      only ~3:1, below the 4.5:1 floor for this 9.5px label. Darken the
      orange toward --ink (stays on-palette, no new warm hex) so the
      key clears 4.5:1 while still reading as the accent. */
@@ -473,18 +587,34 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
        glyph runs (the text never changes), so the fit holds on every
        device width by construction. */
     /* Measured: DANIEL in OffBit 700 is 3.074em wide, content box is
-       100vw - 2*4vw padding = 92vw → font = 92/3.074 ≈ 29.9vw. */
-    font-size: max(56px, 29.8vw);
+       100vw - 2*4vw padding = 92vw → ~29.9vw would fill it edge-to-edge.
+       OVERFLOW HEADROOM (#24): pulled back ~8% to 27.5vw so the dilated
+       ASCII keyline band + per-glyph kerning never push past the content
+       box at 320/360/390px (the band adds width the bare advance measure
+       missed). Floor lowered 56→48px for sub-320 safety. */
+    font-size: max(48px, 27.5vw);
     letter-spacing: 0;
-    line-height: 0.85;
+    /* 0.85 cropped the keyline band top/bottom; 0.9 + the padding-block on
+       .hero-mega-line below gives the dilated band vertical room. */
+    line-height: 0.9;
+  }
+  .hero-mega-line {
+    /* The #hero-ascii-outline filter DILATES the glyph alpha into a dotted
+       keyline band that extends past the glyph box top + bottom. At the
+       tight mobile line-height the band was cropped by the line box;
+       0.04em vertical padding gives it room to render uncut (#24). */
+    padding-block: 0.04em;
   }
   .hero-mega-line-2 {
     /* TAN: 3 glyphs sized up so its width matches DANIEL's 6 — the
        justified-block move that makes the lockup monumental instead of
        a small left-ragged stack. No translateX: both lines run full
        width, so the desktop diagonal device retires on portrait. */
-    /* Measured: TAN is 1.886em wide → font = 92/1.886 ≈ 48.7vw. */
-    font-size: max(110px, 48.6vw);
+    /* Measured: TAN is 1.886em wide → ~48.7vw would fill the content box.
+       OVERFLOW HEADROOM (#24): pulled back ~7% to 45vw so the keyline band
+       on the 3 wide glyphs never overruns the right edge at 320/360/390px.
+       Floor lowered 110→96px for sub-320 safety. */
+    font-size: max(96px, 45vw);
     transform: none;
     margin-top: 0.02em;
     align-self: flex-start;
@@ -507,12 +637,24 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
     letter-spacing: 0.22em;
   }
   .hero-meta-val {
-    /* ≥16px-equivalent legibility for the primary meta value on mobile
-       (12.5px desktop reads too small on a phone). */
-    font-size: 15px;
+    /* ≥16px legibility for the primary meta value on mobile (12.5px
+       desktop reads too small on a phone; the chip flex-wraps so the
+       extra px don't overflow). */
+    font-size: 16px;
   }
   .hero-meta-sep {
     display: none;
+  }
+  /* Scroll cue (#25): the meta chip pins the BOTTOM-LEFT corner on mobile
+     (justify-self:start), so the centred cue collided with it. Move the cue
+     to the bottom-RIGHT corner clear of the chip. left:auto + right:6vw +
+     transform:none drops the desktop translateX(-50%) centring, so the bob
+     keyframe must also drop its -50% (see hero-cue-bob-mobile below). */
+  .hero-scroll-cue {
+    left: auto;
+    right: 6vw;
+    transform: none;
+    animation-name: hero-cue-bob-mobile;
   }
   /* Ring: still a presence, but the monumental type owns the frame now.
      Slightly smaller + quieter than the old 150vmax wash so the glyph
@@ -564,5 +706,48 @@ html[data-hero-px] .hero-mega-fill { filter: none; }
   .hero-composition {
     padding-top: calc(12px + var(--safe-top, 0px));
     padding-bottom: calc(12px + var(--safe-bottom, 0px));
+  }
+  /* Short landscape: the giant wordmark + bottom row already fight for
+     the tiny vertical space; the scroll cue has nowhere to live without
+     overlapping, so hide it (#25). */
+  .hero-scroll-cue {
+    display: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * TOUCH / COARSE-POINTER (#7): the oversized ASCII ring is a decorative
+ * backdrop. On phones/tablets it costs real GPU per frame for a body the
+ * monumental wordmark already owns, so shrink it from the mobile 135vmax
+ * wash to a quieter 110vmax. This wins over the max-width ring sizes above
+ * (it's placed last + is orthogonal to width: a touch device at any size
+ * gets the calmer ring).
+ *
+ * NOTE on the SPIN: the 26s ring rotation is NOT a CSS animation — it is a
+ * per-frame WebGL torus.rotation.y tick inside HeroGlyphRing.tsx's useFrame
+ * loop, driven by the spinDuration prop. CSS in this file cannot slow or
+ * pause it (there is no CSS animation on .hero-glyph-ring / the canvas to
+ * target), and HeroGlyphRing.tsx is out of scope for this pass. A no-op CSS
+ * @keyframes here would be a fake effect, so it's intentionally omitted; the
+ * genuine CSS-only lever — shrinking the ring's footprint, which also cuts
+ * its on-screen pixel/filter cost — is what's applied. Slowing the actual
+ * spin needs a one-line gate in HeroGlyphRing.tsx (spinPerSec scaled by a
+ * coarse-pointer / reduced-motion factor), flagged for a follow-up. */
+@media (hover: none) {
+  .hero-ring-wrap {
+    width: 110vmax;
+    height: 110vmax;
+  }
+}
+
+/* Reduced motion: the ring already lands at rest opacity 0.55 (see the
+   prefers-reduced-motion block up top). Pull its footprint in to match the
+   touch treatment so the dense ASCII field is quieter for these users too.
+   (The WebGL spin itself isn't slowed here for the same reason noted above —
+   that lives in HeroGlyphRing.tsx, out of scope for this CSS-only pass.) */
+@media (prefers-reduced-motion: reduce) {
+  .hero-ring-wrap {
+    width: 110vmax;
+    height: 110vmax;
   }
 }

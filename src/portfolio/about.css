@@ -1,172 +1,151 @@
-/* About section: GSAP-pinned theatrical reveal.
-   The canvas-overlay-panel that previously hid the right half of
-   the room is gone (per user's "break the half/half layout"
-   feedback). Room canvas now fills the full viewport behind the
-   About content; this CSS positions the text as an editorial
-   overlay over the room. */
+/* ======================================================================
+   About — BENTO DASHBOARD
+   ----------------------------------------------------------------------
+   An opaque light-grey bento grid that "boots up" as the GSAP pin scrubs.
+   The isometric room render is the feature centerpiece; two info cards sit
+   BEHIND it (occluded by the room silhouette, peeking through its
+   transparent PNG margins) and two chips float IN FRONT.
+
+   DESIGN-SYSTEM NOTES
+   • Only chromatic colour is International Orange (var(--accent)); the
+     readable small-text variant is var(--accent-deep). Everything else is
+     ink / grey / glass.
+   • Section bg is OPAQUE flat var(--bg-page) on purpose: there is a separate
+     fixed room-render layer BEHIND this section in the app, and the opaque bg
+     is what hides it so ONLY the bento's own render shows. Do NOT make this
+     section transparent. (The old faint dot-grid "rice" was removed so the
+     bento connects seamlessly with the flat Macintosh section below.)
+   • Glass cards: translucent white + backdrop-blur, hairline border, a
+     faint white top edge, soft shadow, ~18px radius. The FOCUS card is
+     near-ink with orange.
+   ====================================================================== */
 
 .portfolio-about {
   position: relative;
   height: 100vh;
   overflow: hidden;
+  /* <main> is pointer-events:none (so it never blocks the fixed hero/scroll
+     layers); EVERY interactive section must re-enable it or its links/buttons
+     silently inherit `none` and become unclickable. Without this the whole
+     About bento — including the Reach channel links + the "Currently @
+     Broadridge" link — swallowed no clicks at all (same footgun that once
+     broke the Work accordion). */
+  pointer-events: auto;
+  /* FLAT opaque light-grey ground (no dot-grid). Load-bearing: it hides the
+     fixed room-render layer behind the section so only the bento's render
+     shows. The dot-grid "rice" was removed so this section reads as the same
+     flat var(--bg-page) as the Macintosh section below — seamless, no seam. */
+  background-color: var(--bg-page, #eef0f3);
 }
 
-/* Cohesive corner header (01 + ABOUT) shown during the room-solo beat.
-   Sits bottom-left so it labels the room without overlapping it; this is
-   About's place on the sitewide corner-header system. The dotted "01"
-   and the OffBit wordmark ride the shared --hdr-num / --hdr-title scale
-   so the pair reads at the SAME size as every other section's header. The
-   big pin-progress-driven transform is on the about-col panel; this
-   header is a simple opacity gate. */
-.about-floating-eyebrow {
-  position: absolute;
-  bottom: 6vh;
-  left: 6vw;
-  right: 6vw;
-  display: flex;
-  /* Tiny "01" tag sits at the TOP-left of the giant wordmark (reference
-     layout), not on its baseline — flex-start, small gap. */
-  align-items: flex-start;
-  /* Very little padding between number tag and wordmark per the spec. */
-  gap: var(--space-2, 8px);
-  pointer-events: none;
-  z-index: 4;
-  opacity: 0;
-  transform: translateY(8px);
-  transition:
-    opacity var(--t-slow, 540ms) var(--ease-soft),
-    transform var(--t-slow, 540ms) var(--ease-soft);
-}
-.about-floating-eyebrow.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-/* Two-digit section number in the dot/pixel face on the shared scale —
-   now a SMALL tag (same tiny number voice + size as Work "03", Photos
-   "05"). A small top nudge floats it level with the wordmark's cap. */
-.about-floating-num {
-  font-family: var(--font-pixel, "Offbit", monospace);
-  font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 0.9;
-  color: var(--wrapper-ink, #0d0e10);
-  /* Drop the tiny tag off the very top so it reads as sitting in the
-     upper-left shoulder of the giant wordmark. */
-  margin-top: 0.35em;
-}
-.about-floating-label {
-  /* OffBit pixel display (sitewide big-title voice). UPPERCASE, weight
-     700, tight 0.01em tracking + 0.9 line-height, on the shared GIANT
-     --hdr-title scale. Pixel glyphs collide under negative tracking.
-     min-width:0 + break-word let "ABOUT" never force horizontal scroll. */
-  font-family: var(--font-dot, monospace);
-  font-size: var(--hdr-title, clamp(48px, 13vw, 190px));
-  font-weight: 700;
-  text-transform: none;
-  letter-spacing: 0.01em;
-  line-height: 0.9;
-  color: var(--wrapper-ink, #0d0e10);
-  min-width: 0;
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-/* Desktop kills the big dot marker for the same reason the mobile rule
-   (≤720px) does: it duplicates the floating "About." wordmark, which is
-   the section's editorial anchor here. Two competing giants both labelled
-   "About" (the 64–128px wordmark vs. the 96–148px .section-marker) read as
-   noise; the wordmark stays the sole hero and the mono "01 / 06 · About"
-   index handles wayfinding. */
-.portfolio-about .section-marker {
-  display: none;
-}
-
-/* Override the default `.portfolio-col` 50vw-right-margin so the
-   About text can use the full viewport, but pinned to the right
-   third with a slight backdrop-blur so it reads cleanly on top of
-   the visible room behind. The content forms a sidebar-ish editorial
-   panel rather than an opaque half-column. */
-.portfolio-about .about-col {
-  margin-left: auto;
-  width: min(540px, 42vw);
-  margin-right: 5vw;
-  padding-top: 9vh;
-  padding-bottom: 6vh;
-  display: flex;
-  flex-direction: column;
-  will-change: transform, opacity;
-  /* Solid wrapper-bg panel with a sharp left edge, no gradient
-     fade-in. User's note on the previous gradient: "looks like a
-     shitty gradient, you can do better." Editorial newsprint-style
-     side panel: clean hard edge, light grain via a subtle pseudo-
-     element noise, a thin orange spine rule for editorial structure. */
-  background: var(--wrapper-bg, #eef0f3);
-  border-left: 1px solid rgba(13, 14, 16, 0.08);
-  padding-left: 42px;
-  padding-right: 42px;
-  box-sizing: border-box;
-  position: relative;
-}
-
-/* Thin orange spine on the left edge: picks up the brand accent
-   and reads as a deliberate editorial mark (folio rule) instead of
-   a fade-in gradient. */
-.portfolio-about .about-col::before {
-  content: "";
-  position: absolute;
-  left: -1px;
-  top: 9vh;
-  bottom: 9vh;
-  width: 2px;
-  background: var(--accent, #e87040);
-  /* Tapered ends: masks the rule to fade out at top + bottom so it
-     doesn't read as a clinical border. */
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 8%,
-    black 92%,
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 8%,
-    black 92%,
-    transparent 100%
-  );
-}
-
-/* Paper grain over the panel: very subtle, ~3% opacity speckled
-   noise. Sells the "newsprint sheet" feel against the flat cream. */
-.portfolio-about .about-col::after {
+/* Faint warm pool behind the centerpiece so the orange room reads as a
+   light source. Pure decoration, no hue beyond the brand orange. The outer
+   dark vignette was removed alongside the dot-grid: it darkened the section
+   edges (incl. the bottom seam), which broke the seamless hand-off to the
+   flat Macintosh section. The pool fades to transparent well before the edge,
+   so the section now meets its neighbour as an unbroken flat field. */
+.portfolio-about::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image: radial-gradient(
-    circle at center,
-    rgba(13, 14, 16, 0.12) 0.5px,
-    transparent 1px
-  );
-  background-size: 4px 4px;
-  background-position: 0 0;
-  opacity: 0.45;
-  mix-blend-mode: multiply;
   z-index: 0;
+  background: radial-gradient(
+    1100px 720px at 50% 50%,
+    rgba(255, 79, 0, 0.06),
+    transparent 60%
+  );
 }
 
-/* Lift the actual content above the grain pseudo-element. */
-.portfolio-about .about-col > * {
+/* ----------------------------------------------------------------------
+   STAGE: a near-full-width, full-height canvas. The banner sits up top and
+   the bento fills the rest (grid is flex:1), so the section reads as a
+   full-screen banner rather than a compact block boxed in the middle. Only
+   reins the width in on ultrawide so line lengths stay readable.
+   ---------------------------------------------------------------------- */
+.about-stage {
   position: relative;
   z-index: 1;
+  width: min(1720px, 96vw);
+  margin: 0 auto;
+  /* Viewport-definite height (NOT height:100%): the GSAP pin stops the section
+     from being a definite containing block, so height:100% collapsed the stage
+     to its content (~620px) and the bento never filled the screen. 100vh is
+     always definite, giving flex:1 children a real height to fill. */
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  /* Banner + bento as ONE block, vertically centred so it fills the viewport
+     like a full-screen banner, without big empty bands above or below. */
+  justify-content: center;
+  gap: clamp(16px, 2.4vh, 32px);
+  padding: clamp(48px, 6vh, 76px) 0 clamp(32px, 4.5vh, 52px);
+}
+
+/* ----------------------------------------------------------------------
+   BANNER — big bold "ABOUT" wordmark + the section index / domain meta.
+   ---------------------------------------------------------------------- */
+.about-banner {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  opacity: 0;
+  transform: translateY(10px);
+  /* Match the card reveal: strong ease-out, brisk --t-med, so the banner
+     leads the bento boot-up crisply instead of drifting in. */
+  transition:
+    opacity var(--t-med, 400ms) var(--ease-out),
+    transform var(--t-med, 400ms) var(--ease-out);
+}
+.about-banner.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+.about-banner-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.about-crumb-idx {
+  font-family: var(--font-pixel, "Offbit", monospace);
+  font-weight: 700;
+  font-size: clamp(18px, 1.8vw, 26px);
+  letter-spacing: 0.01em;
+  line-height: 0.9;
+  color: var(--accent-deep, #c23d00);
+}
+.about-crumb-rule {
+  width: 46px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent, #ff4f00);
+}
+.about-banner-domain {
+  font-family: var(--font-mono, sans-serif);
+  font-size: var(--fs-mono, 11px);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+}
+/* Scoped under .portfolio-about so it beats the sitewide `.portfolio-section p`
+   rule (0,1,1) — a bare `.about-banner-title` (0,1,0) loses to it and the big
+   wordmark silently renders as 17px Geist body text. */
+.portfolio-about .about-banner-title {
+  font-family: var(--font-dot, "Offbit Dot", monospace);
+  font-weight: 700;
+  font-size: clamp(50px, 7.6vw, 112px);
+  line-height: 0.82;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--ink, #0d0e10);
+  margin: 0;
 }
 
 /* DOM-real <h2> for assistive tech + SEO. Visually hidden because the
-   floating "About." wordmark (aria-hidden) carries the heading
-   visually; this is the standard sr-only recipe, off-screen but
-   present in the accessibility tree and focusable scroll targets. */
+   painted "ABOUT" crumb (aria-hidden) carries the heading visually; this
+   is the standard sr-only recipe, off-screen but present in the a11y tree. */
 .about-sr-heading {
   position: absolute;
   width: 1px;
@@ -179,412 +158,910 @@
   border: 0;
 }
 
-/* Spec-sheet header: wayfinding index over a hairline rule. The title
-   block of the panel; gives the sheet a machined top edge instead of a
-   lone floating index line. */
-.about-spec-header {
-  padding-bottom: var(--space-3, 12px);
-  border-bottom: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
-  margin-bottom: var(--space-6, 32px);
-}
-/* The shared .section-index rule adds an 18px bottom margin for its
-   standalone use in other sections; inside the header the rule above
-   owns the spacing. */
-.about-spec-header .section-index {
-  margin-bottom: 0;
+/* ----------------------------------------------------------------------
+   BENTO GRID
+   ---------------------------------------------------------------------- */
+.about-grid {
+  position: relative;
+  /* Content-height rows (flex-grow fights the GSAP-pinned section's height,
+     collapsing the grid). Each row sizes to its tallest card; align-items:
+     stretch makes the shorter cards in a row fill it, so the only space
+     between cards is the 4px gap. */
+  /* Fill the stage with THREE EQUAL rows. The stage is now height:100vh
+     (definite), so flex:1 gives the grid a real height to divide into thirds.
+     Equal 1fr rows + align-items:stretch means every card is the same height as
+     its row and every inter-card gap is a uniform 4px — no card floats short in
+     a taller row (the cause of the uneven gaps). */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 4px;
+  margin: 0 auto;
+  width: 100%;
 }
 
-/* Intro row: square portrait left of the lede (fills the dead space
-   the user flagged). Spec-sheet treatment: sharp corners, hairline
-   border, no drop shadow. The row carries the photo's reveal on the
-   same beat as the lede. */
-.about-intro-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 18px;
-  margin: 0 0 var(--space-6, 32px);
+/* ----- shared card chrome (glassmorphism) ----- */
+.card {
+  position: relative;
+  /* Reset the UA margin: the dl-based cards (Currently/Studying/…) ship with
+     `dl { margin: 16px 0 }` while the div cards (name/portrait) have none, so
+     the first dl in each column sat 16px low and the inter-card gaps came out
+     uneven. Zeroing it makes every card flush. */
+  margin: 0;
+  /* Fill the (equal, definite 1fr) row so every inter-card gap is the 4px grid
+     gap. With 1fr rows this resolves cleanly — unlike the old auto/minmax rows
+     where 100% didn't resolve and cards floated short. */
+  height: 100%;
+  background: rgba(255, 255, 255, 0.58);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
+  border-radius: 0;
+  box-shadow:
+    0 18px 40px -18px rgba(13, 14, 16, 0.28),
+    0 4px 12px -6px rgba(13, 14, 16, 0.18);
+  overflow: hidden;
+  /* Per-cell reveal: starts slightly down + transparent, rises into place
+     when its progress threshold trips (.is-revealed from About.tsx). */
+  opacity: 0;
+  transform: translateY(16px);
+  /* Reveal is an ENTERING element: a strong ease-out (responsive front-loaded
+     move that settles) reads crisper than the gentle --ease-soft, and 400ms
+     lands it with intention instead of drifting for 540ms. (Emil: ease-out
+     for entrances, custom curve, keep it brisk.) */
+  transition:
+    opacity var(--t-med, 400ms) var(--ease-out),
+    transform var(--t-med, 400ms) var(--ease-out);
+  /* will-change is desktop-only choreography (the GSAP-scrubbed per-cell
+     reveal). It lives in the @media (min-width: 901px) block below so mobile —
+     where every cell is force-revealed up front and there is no scrub — never
+     pays the compositor-layer cost. Desktop is unchanged. */
 }
-.about-intro-row .about-lede {
-  margin-bottom: 0;
+/* Desktop-only: promote the cards to their own layer for the scrubbed reveal.
+   Gated at min-width:901px so it's a no-op on the mobile single column. */
+@media (min-width: 901px) {
+  .card {
+    will-change: transform, opacity;
+  }
+}
+.card.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+/* Faint white top edge on every glass card. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+  pointer-events: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.7);
+  -webkit-mask: linear-gradient(#000, transparent 42%);
+  mask: linear-gradient(#000, transparent 42%);
+}
+.card .pad {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  /* ONE padding scale for every card so content shares the same inset down each
+     column (the eyebrows used to sit at 24 / 20 / 14px — visibly misaligned). */
+  padding: clamp(20px, 1.7vw, 26px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Shared eyebrow label. */
+.card .label {
+  font-family: var(--font-mono, sans-serif);
+  font-size: var(--fs-mono, 11px);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent-deep, #c23d00);
+  margin: 0 0 auto;
+}
+
+/* ===== grid placement: a clean THREE-COLUMN bento =====
+   LEFT (cols 1-4):   name -> now -> study
+   CENTRE (cols 5-8):  render (feature, 4 rows) -> reach
+   RIGHT (cols 9-12):  portrait -> explore -> (loc | focus)
+   No card's CONTENT overlaps another's. The only overlap is the render's
+   transparent margin + drop-shadow bleeding a touch over the cards beside it
+   (see .c-render) — depth without clipping a single word. */
+.c-name {
+  grid-column: 1 / span 4;
+  grid-row: 1;
+}
+.c-now {
+  grid-column: 1 / span 4;
+  grid-row: 2;
+}
+.c-study {
+  grid-column: 1 / span 4;
+  grid-row: 3;
+}
+/* .c-render is positioned ABSOLUTELY (see the FEATURE RENDER block) — lifted
+   out of the grid so it floats on top of every card. The centre column rows
+   1-2 stay empty for the room to float over. */
+.c-reach {
+  grid-column: 5 / span 4;
+  grid-row: 3;
+}
+.c-portrait {
+  grid-column: 9 / span 4;
+  grid-row: 1;
+}
+.c-explore {
+  grid-column: 9 / span 4;
+  grid-row: 2;
+}
+.c-loc {
+  grid-column: 9 / span 4;
+  grid-row: 3;
+}
+
+/* ----------------------------------------------------------------------
+   NAME + LEDE
+   ---------------------------------------------------------------------- */
+.c-name .pad {
+  justify-content: flex-start;
+}
+.c-name-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.c-name .label {
+  margin: 0;
+}
+/* Scoped under .portfolio-about to beat the sitewide `.portfolio-section p`. */
+.portfolio-about .about-name-h {
+  font-family: var(--font-dot, "Offbit Dot", monospace);
+  font-weight: 700;
+  /* One line so the lede below it fits the cell with bottom breathing room. */
+  font-size: clamp(26px, 2.7vw, 38px);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink, #0d0e10);
+  margin: 8px 0 0;
+}
+.about-name-h span {
+  color: var(--accent, #ff4f00);
+}
+/* Scoped to beat `.portfolio-section p` (else the lede inherits the body
+   override and loses its intended size / line-height). */
+.portfolio-about .about-lede {
+  font-family: var(--font-body, "Geist", sans-serif);
+  /* Smaller + tighter so the whole card (eyebrow + heading + lede) clears the
+     cell with real bottom padding instead of running to the edge. */
+  font-size: clamp(12.5px, 0.92vw, 13.5px);
+  line-height: 1.45;
+  font-weight: 400;
+  color: var(--ink-muted, rgba(13, 14, 16, 0.78));
+  /* Wide enough to wrap to ~4 lines, still in the card's OUTER (left) half so
+     it clears the floating room's inner edge. */
+  max-width: 31ch;
+  margin: 12px 0 0;
+  text-wrap: pretty;
+}
+.about-lede .accent {
+  color: var(--accent-deep, #c23d00);
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------------------
+   FEATURE RENDER — the centerpiece.
+   The cell is mostly TRANSPARENT: only the room art is painted, so the
+   transparent PNG margins let the BEHIND cards show through, while the room
+   silhouette occludes the part of those cards it covers.
+   ---------------------------------------------------------------------- */
+.c-render {
+  /* Lifted OUT of grid flow: a big isometric room that FLOATS on top of the
+     whole bento (z-index above every card) for depth, gently bobbing.
+     Positioned with inset — not transform — so the .card reveal's translateY
+     still rises it in; the bob lives on .render-frame so the two never fight. */
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  /* Keep the room within the top two rows so its floor never dips onto the
+     bottom row's cards (it was hiding the "Reach" label). */
+  top: -4%;
+  height: 70%;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  /* Kill the glass: .card applies backdrop-filter: blur(14px); on this
+     transparent render cell that blur paints a frosted rectangle over
+     everything behind the room. The room art needs no glass. */
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  z-index: 20;
+  overflow: visible;
+  pointer-events: none;
+}
+.c-render::before {
+  display: none;
+}
+.render-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* Gentle vertical bob — the room floats. Lives here (not on .c-render) so it
+     never collides with the cell's reveal translateY. */
+  animation: about-room-bob 6.5s ease-in-out infinite;
+}
+@keyframes about-room-bob {
+  0%,
+  100% {
+    transform: translateY(-7px);
+  }
+  50% {
+    transform: translateY(7px);
+  }
+}
+.about-room {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center 50%;
+  /* Scale the room up so it dominates the feature cell (the render.png carries
+     wide transparent margins, so unscaled it read as a small floating object
+     in a big empty column). overflow:visible on the cell lets the transparent
+     margin spill harmlessly. */
+  transform: scale(1.3);
+  /* A deeper, softer drop-shadow sells the "floating above the cards" read. */
+  filter: drop-shadow(0 36px 38px rgba(13, 14, 16, 0.32));
+  z-index: 3;
+}
+
+/* ----------------------------------------------------------------------
+   BEHIND CARDS — peek out from behind the room silhouette.
+   Low z-index; the render cell (z5) + room art (z3) occlude their inner
+   edges. They reach UNDER the render cell so the room art clips them.
+   ---------------------------------------------------------------------- */
+.behind {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+/* ----------------------------------------------------------------------
+   SHARED INFO CARD anatomy (Currently / Exploring / Studying / Reach / Loc)
+   ---------------------------------------------------------------------- */
+.c-info .pad {
+  justify-content: flex-start;
+}
+.c-info dt.label {
+  margin: 0 0 16px;
+}
+.c-info-body {
+  margin: 0;
+  /* Fill the space under the label and centre the value in it, so a sparse
+     cell reads as balanced rather than top-hugging with an empty bottom. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.c-info .big {
+  font-family: var(--font-pixel, "Offbit", monospace);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ink, #0d0e10);
+}
+.c-info .sub {
+  font-family: var(--font-body, "Geist", sans-serif);
+  font-size: 12px;
+  color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+/* Currently */
+.c-now .big {
+  font-size: clamp(18px, 1.8vw, 24px);
+}
+.c-now .pill {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono, sans-serif);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-deep, #c23d00);
+  background: var(--accent-tint, rgba(255, 79, 0, 0.1));
+  border: 1px solid rgba(255, 79, 0, 0.22);
+  padding: 4px 9px;
+  border-radius: 0;
+  margin-top: 10px;
+}
+.c-now .pill a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+}
+.c-now .pill a:hover {
+  color: var(--accent, #ff4f00);
+}
+
+/* Exploring */
+.c-explore .big {
+  font-size: clamp(15px, 1.4vw, 18px);
+}
+.c-explore .tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.c-explore .tag {
+  font-family: var(--font-body, "Geist", sans-serif);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink, #0d0e10);
+  background: rgba(13, 14, 16, 0.05);
+  border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
+  padding: 4px 9px;
+  border-radius: 0;
+}
+
+/* Studying */
+.c-study {
+  background: rgba(255, 255, 255, 0.6);
+}
+.c-study .study-split {
+  display: flex;
+  margin-top: 10px;
+}
+.c-study .study-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.c-study .study-col + .study-col {
+  border-left: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
+  padding-left: 16px;
+  margin-left: 16px;
+}
+.c-study .mini {
+  font-family: var(--font-mono, sans-serif);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint, rgba(13, 14, 16, 0.4));
+  margin-bottom: 5px;
+}
+.c-study .val {
+  font-family: var(--font-body, "Geist", sans-serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #0d0e10);
+  line-height: 1.25;
+}
+
+/* Reach */
+.c-reach {
+  background: rgba(255, 255, 255, 0.72);
+}
+.c-reach .mail {
+  font-family: var(--font-pixel, "Offbit", monospace);
+  font-weight: 700;
+  font-size: clamp(16px, 1.6vw, 20px);
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
+  color: var(--ink, #0d0e10);
+  word-break: break-all;
+  line-height: 1;
+  text-decoration: none;
+  border: none;
+}
+.c-reach .mail .accent {
+  color: var(--accent, #ff4f00);
+}
+.c-reach .reach-primary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ----- COMMS SWITCHBOARD: GitHub / LinkedIn / X as channel rows -----
+   Not buttons. Each row is a link an orange bar wipes across on hover (text
+   flips to ink — 6:1 on #ff4f00, AA-safe), with the handle and an external
+   mark that shoots up-right. Reads like the site's channel dial. */
+.c-reach .reach-channels {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
+}
+.c-reach .ch + .ch {
+  border-top: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
+}
+.c-reach .ch a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  text-decoration: none;
+  overflow: hidden;
+  isolation: isolate;
+}
+.c-reach .ch a:focus-visible {
+  outline: none;
+}
+.c-reach .ch a::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--accent, #ff4f00);
+  /* COLOUR IN-FADE, not a slide. The old scaleX(0->1) wipe read as a templated /
+     "vibe-coded" hover; a straight opacity fade of the orange fill (text inverts
+     to white below) is quieter and more intentional. */
+  opacity: 0;
+  transition: opacity 180ms var(--ease-out, ease);
+}
+.c-reach .ch a:hover::before,
+.c-reach .ch a:focus-visible::before {
+  opacity: 1;
+}
+.c-reach .ch-name {
+  flex: 0 0 auto;
+  min-width: 86px;
+  font-family: var(--font-mono, sans-serif);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-deep, #c23d00);
+  transition: color 150ms ease;
+}
+.c-reach .ch-handle {
+  flex: 1;
+  font-family: var(--font-body, "Geist", sans-serif);
+  font-size: 12.5px;
+  color: var(--ink, #0d0e10);
+  transition: color 150ms ease;
+}
+.c-reach .ch-go {
+  flex: 0 0 auto;
+  font-family: var(--font-mono, sans-serif);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--ink-faint, rgba(13, 14, 16, 0.4));
+  transition:
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 150ms ease;
+}
+.c-reach .ch a:hover .ch-name,
+.c-reach .ch a:hover .ch-handle,
+.c-reach .ch a:hover .ch-go,
+.c-reach .ch a:focus-visible .ch-name,
+.c-reach .ch a:focus-visible .ch-handle,
+.c-reach .ch a:focus-visible .ch-go {
+  /* Invert to white on the orange fill (was ink). */
+  color: var(--bg-surface, #fff);
+}
+.c-reach .ch a:hover .ch-go,
+.c-reach .ch a:focus-visible .ch-go {
+  transform: translate(3px, -3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .c-reach .ch a::before,
+  .c-reach .ch-go {
+    transition: none;
+  }
+  .c-reach .ch a:hover .ch-go,
+  .c-reach .ch a:focus-visible .ch-go {
+    transform: none;
+  }
+}
+.c-reach .hint {
+  font-family: var(--font-mono, sans-serif);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint, rgba(13, 14, 16, 0.4));
+}
+
+/* Location */
+.c-loc .big {
+  font-size: clamp(17px, 1.7vw, 22px);
+}
+/* Secondary location (London, ON / Western). Reads below Toronto as a
+   smaller, muted sibling with a gap above so the two places group apart;
+   the coord line below it carries Western University's coordinates. */
+.c-loc .loc-alt {
+  margin-top: 14px;
+  font-size: clamp(14px, 1.35vw, 18px);
+  color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+}
+.c-loc .coord {
+  font-family: var(--font-mono, sans-serif);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint, rgba(13, 14, 16, 0.4));
+  margin-top: 8px;
+}
+
+/* ----------------------------------------------------------------------
+   PORTRAIT
+   ---------------------------------------------------------------------- */
+/* A SQUARE photo + name/role beside it = a compact profile card (not a big
+   cropped landscape). Sharp-cornered to match the blocky site. */
+.c-portrait .pad,
+.c-portrait {
+  padding: 0;
+}
+.portrait-wrap {
+  display: flex;
+  /* Stack photo over caption, both hugging the right edge (clear of the room). */
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  /* Same padding scale as every other card so the photo + caption share the
+     right inset with Exploring / Location below it. */
+  padding: clamp(20px, 1.7vw, 26px);
 }
 .about-portrait {
-  flex: 0 0 auto;
-  width: 128px;
-  /* height:auto re-enables aspect-ratio: the JSX height attribute is a
-     presentational hint that otherwise pins the box to 800px tall. */
+  /* Definite square. height:auto is REQUIRED — the <img> carries an HTML
+     height="800" attribute (a presentational hint = height:800px) that would
+     otherwise beat aspect-ratio and stretch the photo into a tall sliver,
+     blowing the auto row up to 800px. Modest size: a profile photo, not a crop. */
+  /* Sized to fit the card height under the unified padding (photo + caption +
+     gap must clear the row, ~218px, minus 2x padding). */
+  width: clamp(104px, 8.5vw, 124px);
   height: auto;
   aspect-ratio: 1;
   object-fit: cover;
   display: block;
-  border: 1px solid var(--ink-hairline);
-  border-radius: 0;
-  opacity: 0;
-  transform: translateY(14px);
-  transition:
-    opacity 700ms var(--ease-soft),
-    transform 700ms var(--ease-soft);
+  flex: 0 0 auto;
+  border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
 }
-.about-intro-row.is-revealed .about-portrait {
-  opacity: 1;
-  transform: none;
-}
-
-/* Lede paragraph: reveals at the start of the pin. */
-.about-lede {
-  font-family: var(--font-display, "Geist", "Inter", sans-serif);
-  font-size: var(--fs-lead, clamp(20px, 2.1vw, 28px));
-  line-height: 1.35;
-  font-weight: 400;
-  letter-spacing: -0.015em;
-  color: var(--wrapper-ink, #0d0e10);
-  margin: 0 0 var(--space-6, 32px);
-  max-width: 540px;
-  /* Avoid ragged orphans on the narrow editorial measure. */
-  text-wrap: pretty;
-  opacity: 0;
-  transform: translateY(14px);
-  /* 700ms one-shot intro stays literal (off-spine); only the easing
-     folds to the shared --ease-soft token. */
-  transition:
-    opacity 700ms var(--ease-soft),
-    transform 700ms var(--ease-soft);
-}
-.about-lede.is-revealed {
-  opacity: 1;
-  transform: translateY(0);
-}
-.about-lede .accent {
-  color: var(--accent, #e87040);
-  font-weight: 600;
-}
-
-/* Description list of key/value rows. Reset the UA <dl> margin so it
-   doesn't add a phantom gap below the lede. */
-.about-grid {
+.portrait-info {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  max-width: 520px;
-  margin: 0;
+  gap: 7px;
+  min-width: 0;
 }
-
-/* Per-row reveal: each row at its own pin-progress threshold.
-   Spec-sheet anatomy: numeral | label | value. The numeral column uses
-   the same "01"-chrome as the Mac project tiles so the whole site reads
-   as one numbering system. */
-.about-row {
-  display: grid;
-  grid-template-columns: 30px 96px 1fr;
-  gap: var(--space-4h, 20px);
-  align-items: baseline;
-  /* Row spacing scales with viewport height so the few rows spread out
-     evenly to fill the panel instead of bunching at the top with dead
-     space below. Floor keeps it tidy on short screens. */
-  padding: clamp(18px, 3.6vh, 48px) 0;
-  border-bottom: 1px solid rgba(13, 14, 16, 0.08);
-  opacity: 0;
-  transform: translateX(16px);
-  transition:
-    opacity var(--t-slow, 540ms) var(--ease-soft),
-    transform var(--t-slow, 540ms) var(--ease-soft);
+.portrait-info .n {
+  font-family: var(--font-pixel, "Offbit", monospace);
+  font-weight: 700;
+  font-size: clamp(16px, 1.5vw, 20px);
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--ink, #0d0e10);
 }
-.about-row.is-revealed {
-  opacity: 1;
-  transform: translateX(0);
+.portrait-info .r {
+  font-family: var(--font-mono, sans-serif);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-muted, rgba(13, 14, 16, 0.55));
 }
-.about-row:last-of-type {
+/* The shared .portfolio-section a rule adds an accent underline; the bento
+   uses bespoke link treatments per-card, so neutralise the base here. */
+.portfolio-about a {
   border-bottom: none;
 }
-
-/* Row numeral: small accent-toward-ink mono digits. --accent-text (the
-   WCAG-safe accent mix) rather than raw --accent: these sit at 11px next
-   to body text, where the base orange is below the small-text contrast
-   floor. */
-.about-row-num {
-  font-family: var(--font-mono, sans-serif);
-  font-size: var(--fs-mono, 11px);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--accent-text, #9a4f30);
-  font-variant-numeric: tabular-nums;
-  user-select: none;
-}
-
-.about-label {
-  font-family: var(--font-mono, sans-serif);
-  /* 10px mono caps at 0.45 alpha failed contrast (~3:1) and was below
-     the design-system floor for muted text. Use the canonical muted
-     ink token (0.62 alpha ≈ 4.7:1 on the panel bg) and nudge the size
-     to 11px so the tracked caps stay legible. */
-  font-size: var(--fs-mono, 11px);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ink-muted, rgba(13, 14, 16, 0.62));
-  font-weight: 600;
-}
-
-.about-value {
-  font-family: var(--font-body, "Inter", sans-serif);
-  /* Snapped to --fs-body (16) so desktop matches the mobile rule below
-     (which is already 16px), reading coherently across breakpoints. */
-  font-size: var(--fs-body, 16px);
-  line-height: 1.45;
-  color: var(--wrapper-ink, #0d0e10);
-  /* Reset UA <dd> indent. */
-  margin: 0;
-}
-
-/* Links inside the rows (Windscribe, mailto). They inherit the accent
-   colour + underline from .portfolio-section a, but that base rule has
-   no focus ring and only an opacity hover; too weak for an actionable
-   target. Give them a clear pointer, a hot-accent hover, and a visible
-   keyboard focus ring that meets the a11y checklist. */
-.portfolio-about .about-value a {
-  cursor: pointer;
-  border-radius: 2px;
-  transition:
-    color var(--t-fast, 180ms) ease,
-    opacity var(--t-fast, 180ms) ease;
-}
-.portfolio-about .about-value a:hover {
-  color: var(--accent-hot, #ff6a2a);
+.portfolio-about a:hover {
   opacity: 1;
-}
-.portfolio-about .about-value a:focus-visible {
-  outline: 2px solid var(--accent, #e87040);
-  outline-offset: 3px;
-  opacity: 1;
-}
-
-/* Tablet (≤900px): the 42vw pinned-right panel collapses to ~157px on a
-   phone (illegible). Between 769-900px give it room and centre it.
-   (Lower bound moved 721 → 769: the room canvas hides below 768 on the
-   App.tsx choreography, so ≤768 uses the mobile build-out below.) */
-@media (max-width: 900px) and (min-width: 769px) {
-  .portfolio-about .about-col {
-    width: min(560px, 70vw);
-    margin-right: auto;
-    margin-left: auto;
-    padding-top: 6vh;
-  }
-  .about-lede {
-    font-size: clamp(18px, 4vw, 22px);
-  }
-  .about-row {
-    grid-template-columns: 26px 80px 1fr;
-    gap: var(--space-4, 16px);
-  }
-  /* Tablets (e.g. iPad portrait at 768px) are touch devices too, so the
-     row links need the same ≥44px hit area as phones. The desktop base
-     rule only sets cursor/radius; mirror the phone touch-target treatment
-     here so a finger lands cleanly on the Broadridge / mailto links. */
-  .portfolio-about .about-value a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-    padding: 4px 6px;
-    margin: -4px -6px;
-    gap: 8px;
-  }
 }
 
 /* ----------------------------------------------------------------------
-   MOBILE BUILD-OUT (<=720px): portrait phones.
+   MIRRORED COLUMNS around the central floating room.
+   The big room floats over the bento's centre and overlaps the side cards'
+   INNER edges. So the LEFT column hugs the left and the RIGHT column hugs the
+   right — content always lives on the OUTER half, clear of the room, and the
+   only thing the room ever covers is empty card padding. Reads as a deliberate
+   symmetric control panel with the room as its core.
+   ---------------------------------------------------------------------- */
+.c-portrait .portrait-info {
+  align-items: flex-end;
+  text-align: right;
+}
+.c-explore .pad,
+.c-loc .pad {
+  align-items: flex-end;
+}
+.c-explore .c-info-body,
+.c-loc .c-info-body {
+  align-items: flex-end;
+  text-align: right;
+}
+.c-explore .tags {
+  justify-content: flex-end;
+}
 
-   IMPORTANT (flagged to the room/App owner): on mobile the room canvas is
-   faded fully out during the About beat (App.tsx installScrollChoreography
-   ramps --canvas-opacity 1→0 over 0.55→1.0vh on phones and never restores
-   it). So there is NO room visible behind About on a phone; the backdrop
-   is flat --bg-page. The desktop "editorial text over the live room"
-   concept can't apply here, so mobile presents About as a clean, fully
-   self-contained readable section on the page ground: the "About."
-   wordmark heads the section, then the lede, key/value rows, and sign-off
-   stack full-width beneath it.
+/* ======================================================================
+   TABLET / MEDIUM (≤1040px): the dense 12-col bento needs more room than
+   a narrow laptop gives. Loosen the centerpiece a touch and let the stage
+   breathe; the full single-column collapse happens at ≤900px below.
+   ====================================================================== */
+@media (max-width: 1040px) {
+  .about-lede {
+    max-width: none;
+  }
+}
 
-   The pin/scrub is KEPT (it's structural + the reveal choreography is
-   GPU-cheap with physics paused on mobile). About.tsx switches the slide
-   axis to a short translateY rise and pulls the reveal beats earlier/
-   tighter for this breakpoint so a thumb-scrub lands the whole block
-   without a long drip. The resting layout is top-anchored (header → body)
-   rather than the desktop bottom-of-viewport rail. (Breakpoint 768:
-   matches App.tsx's canvas-fade/physics-pause cutoff and About.tsx's
-   `mobile` matchMedia, so layout + schedule + canvas always agree.) */
-@media (max-width: 768px) {
+/* ======================================================================
+   MOBILE BUILD-OUT (≤900px): collapse the bento to a single readable
+   column. The render becomes a smaller hero at the top; every card stacks
+   full-width beneath it. The GSAP pin is SKIPPED on mobile (About.tsx) — the
+   pinned, internally-scrolling stage was a nested scroll-trap (rubber-band)
+   inside the page pin. The column now flows + scrolls with the page like
+   Work's staticLayout, and About.tsx force-reveals every cell up front.
+   Breakpoint 900 matches Work's mobile cutoff + About.tsx's `mobile`
+   matchMedia, so layout + behaviour always agree (no cramped 769-900 band).
+   ====================================================================== */
+@media (max-width: 900px) {
+  /* Auto height (NOT 100vh/100svh): the section is no longer pinned on
+     mobile, so it should grow with the stacked column and scroll as part of
+     the page — never box its content into one viewport with an inner scroll. */
   .portfolio-about {
-    /* svh tracks the visible viewport under mobile browser chrome. */
-    height: 100svh;
-  }
-
-  .portfolio-about .about-col {
-    width: 100%;
-    margin: 0;
+    height: auto;
     min-height: 100svh;
-    /* Top-anchored editorial flow (no room to reveal above). */
+  }
+  .about-stage {
+    width: 100%;
+    /* #27: trim the top inset (was 96px) so the first card isn't pushed below
+       the fold; keep a safe-area cushion on notched devices. */
+    padding: calc(56px + env(safe-area-inset-top, 0px)) 20px
+      calc(48px + env(safe-area-inset-bottom, 0px));
+    /* Top-anchored editorial flow that grows with the column. NO inner scroll:
+       the old `overflow-y:auto; height:100svh` was a rubber-band scroll-trap
+       captured inside the page pin. The page itself scrolls the column now. */
     justify-content: flex-start;
-    padding-left: 24px;
-    padding-right: 24px;
-    /* Clear the wordmark header that sits at the top of the section, and
-       the top-left brand-cat HUD. Bottom padding clears the home
-       indicator + the bottom-left reset/audio HUD pills (~14px up). */
-    padding-top: calc(132px + env(safe-area-inset-top, 0px));
-    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-    border-left: none;
-    /* Flat page ground: clean + legible, matches the design system. */
-    background: var(--bg-page, #eef0f3);
-  }
-  /* Spine rule + paper grain were tuned for the desktop rail; drop them. */
-  .portfolio-about .about-col::before,
-  .portfolio-about .about-col::after {
-    display: none;
+    height: auto;
+    gap: 16px;
   }
 
-  /* Floating "About." wordmark: becomes the section header at the top,
-     above the stacked body. Anchored top, clear of the top-left brand-cat
-     HUD (~14px). z-index keeps it above the rising panel during the slide
-     so the header never flickers behind the body. */
-  .about-floating-eyebrow {
-    bottom: auto;
-    top: calc(54px + env(safe-area-inset-top, 0px));
-    left: 24px;
-    right: 24px;
-    gap: var(--space-2, 8px);
-    z-index: 5;
-  }
-  /* Portrait header: the giant wordmark eases down on the narrow card so
-     "ABOUT" never forces horizontal scroll, while the number stays the
-     tiny tag (the flipped hierarchy holds at every width). The desktop
-     --hdr-title max (190px) would overpower a phone, so cap it here. */
-  .about-floating-label {
-    font-size: clamp(48px, 17vw, 92px);
-    line-height: 0.95;
-  }
-  .about-floating-num {
-    /* Small tag, scaled with the wordmark but kept tiny beside it. */
-    font-size: clamp(13px, 3vw, 18px);
-    margin-top: 0.4em;
+  /* #27: cap the big "ABOUT" wordmark so it never eats the first viewport. */
+  .portfolio-about .about-banner-title {
+    font-size: clamp(40px, 12vw, 64px);
   }
 
-  /* The big dot marker ("01") duplicates the wordmark's "01" and eats
-     vertical room on the tight card; hide it. The mono index line
-     ("01 / 06 · About") stays: it adds the "/ 06" progress wayfinding and
-     now has clean space below the wordmark header. */
-  .portfolio-about .section-marker {
-    display: none;
-  }
-  .portfolio-about .about-col .section-index {
-    margin-bottom: var(--space-4, 16px);
+  .about-banner {
+    align-items: flex-start;
   }
 
-  /* Portrait shrinks to a bio-chip beside the opening lines so the
-     lede keeps a readable measure on a narrow card. */
-  .about-intro-row {
-    gap: 14px;
-  }
-  .about-portrait {
-    width: 92px;
-  }
-
-  /* Scoped under .portfolio-about so it outranks the shared
-     `.portfolio-section p { font-size:17px }` rule (which otherwise wins on
-     specificity and pins the lede to 17px). Keeps the lede ≥18px on phones. */
-  .portfolio-about .about-lede {
-    font-size: clamp(18px, 5vw, 22px);
-    line-height: 1.4;
-    margin: 0 0 var(--space-5, 24px);
-    /* Full measure on the narrow card; let it use the column width. */
-    max-width: none;
-  }
-
+  /* Single readable column: drop the 12-col grid, stack everything. */
   .about-grid {
-    max-width: none;
+    /* COMPACT 2-COLUMN grid (was a tall single-column card stack — the owner
+       flagged "millions of cards / screen bloat" on mobile). The intro, photo,
+       and reach span full width; the four small facts pair up 2-per-row, which
+       roughly halves the scroll and reads scannable instead of bloated. */
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    align-items: stretch;
+    max-height: none;
+    flex: 0 0 auto;
+  }
+  /* Reset desktop grid placement / margins. */
+  .about-grid > .card,
+  .c-name,
+  .c-portrait,
+  .c-now,
+  .c-explore,
+  .c-study,
+  .c-reach,
+  .c-loc,
+  .c-focus {
+    grid-row: auto;
+    margin: 0;
+  }
+  /* Intro, portrait, and reach span the full width; the four facts pair up. */
+  .c-name,
+  .c-portrait,
+  .c-reach {
+    grid-column: 1 / -1;
+  }
+  .c-now,
+  .c-explore,
+  .c-study,
+  .c-loc {
+    grid-column: span 1;
+  }
+  /* Reach is full-width and sits between Studying and Location in the DOM, which
+     orphaned Location into its own row. Order it LAST so the four facts pair up
+     cleanly: [Currently | Exploring], [Studying | Location], then Reach. */
+  .c-reach {
+    order: 1;
+  }
+  /* STUDYING: its internal Degree|Business split is too tight in a half-width
+     card (it was clipping "Business School"). Stack it vertically, swapping the
+     left-divider for a top hairline. */
+  .c-study .study-split {
+    flex-direction: column;
+    margin-top: 10px;
+  }
+  .c-study .study-col + .study-col {
+    border-left: none;
+    padding-left: 0;
+    margin-left: 0;
+    border-top: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
+    padding-top: 10px;
+    margin-top: 10px;
+  }
+  /* Unify card padding on mobile: the old fixed 18px 20px override broke the
+     vertical rhythm against the other stacked cards (which use the shared
+     clamp(20px, 1.7vw, 26px) inset). Match that scale so every stacked card
+     shares one padding. */
+  .c-now .pad,
+  .c-explore .pad {
+    padding: clamp(20px, 1.7vw, 26px);
   }
 
-  .about-row {
-    /* Stack label over value on the narrowest phones so the value gets
-       the full width and never truncates a link/email. */
-    grid-template-columns: 1fr;
-    gap: var(--space-1, 4px);
-    padding: var(--space-3, 12px) 0;
+  /* #15 PERF: drop the live backdrop-blur on the 8 glass cards. On a flat
+     opaque section bg the frosted glass reads near-identical to a solid
+     near-white panel, but the live blur is expensive to repaint every frame
+     while the column scrolls. Swap to a cheap opaque surface. */
+  .card {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.92);
+  }
+  /* The .behind tuck (0.72) only exists for desktop occlusion peek-through; on
+     a single column there's nothing overlapping these cards, so match the
+     regular mobile card surface. (Specificity-equal to .card but later in
+     source, so it lands; also re-asserts over .c-study/.c-reach's own 0.6/0.72
+     backgrounds where they're .behind.) */
+  .behind {
+    background: rgba(255, 255, 255, 0.92);
   }
 
-  /* The numeral column is desktop spec-sheet chrome; in the stacked
-     single-column rows it would render as its own line of clutter. */
-  .about-row-num {
+  /* #27: viewport-relative media heights so the first real content isn't
+     shoved below the fold by a fixed-tall hero. */
+  /* Render: a compact hero at the top of the column (no longer an occluding
+     centerpiece — depth doesn't read on a single stacked column). */
+  .c-render {
+    /* DROP the big room-render poster on mobile — it was the single biggest
+       bloat block in the stacked column. The desktop bento keeps its floating
+       room; phones are facts-first + compact. */
     display: none;
   }
-
-  .about-label {
-    font-size: var(--fs-mono, 11px);
-    letter-spacing: 0.18em;
+  .render-frame {
+    height: 100%;
+    animation: none;
+  }
+  .about-room {
+    object-position: center 52%;
+    /* #27: drop the desktop 1.3x scale — full-width it over-crops the room. */
+    transform: none;
   }
 
-  .about-value {
-    /* ≥16px avoids iOS tap-zoom + clears the mobile body-text floor. */
-    font-size: var(--fs-body, 16px);
-    line-height: 1.5;
+  /* Portrait needs an explicit height once it's no longer a grid cell. */
+  .c-portrait {
+    height: clamp(150px, 44vw, 210px);
   }
 
-  /* Links: ≥44px touch targets with breathing room. Inline-flex turns
-     the anchor into a comfortably-tall hit area without disturbing the
-     dd text flow; negative inline margin keeps the visible text aligned
-     to the row's left edge while the padding grows the tap box. */
-  .portfolio-about .about-value a {
+  /* #11 READABILITY: a flat 16px body floor for the lede (not a clamp that
+     bottoms at 14.4px on small screens). */
+  .about-lede {
+    font-size: 16px;
+    max-width: none;
+  }
+  /* #11: bump content VALUES to the 16px content floor; the study sub to 14px. */
+  .c-study .val,
+  .c-reach .ch-handle {
+    font-size: 16px;
+  }
+  .c-info .sub {
+    font-size: 14px;
+  }
+
+  /* #26 LAYOUT: reset the desktop mirrored / right-aligned treatments to a
+     consistent LEFT-aligned column on mobile (the room no longer floats over
+     the inner edges, so right-hugging just reads as ragged). */
+  .portrait-wrap {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 16px;
+  }
+  .c-portrait .portrait-info {
+    align-items: flex-start;
+    text-align: left;
+  }
+  .c-explore .pad,
+  .c-loc .pad {
+    align-items: flex-start;
+  }
+  .c-explore .c-info-body,
+  .c-loc .c-info-body {
+    align-items: flex-start;
+    text-align: left;
+  }
+  .c-explore .tags {
+    justify-content: flex-start;
+  }
+
+  /* #9 TOUCH: give every comms-channel row a 44px hit area (the block only
+     sized .mail / .pill a before). The vertical padding is folded into the
+     min-height so the row stays tight while still being tappable. */
+  .c-reach .ch a {
+    min-height: 44px;
+    padding-top: 0;
+    padding-bottom: 0;
+    align-items: center;
+  }
+  /* #9 TOUCH: tap press-state for the hover-only orange wipe — there is no
+     hover on touch, so :active fires the same bar fill on press. */
+  .c-reach .ch a:active::before {
+    opacity: 1;
+  }
+  /* Match the desktop hover: text inverts to white on the orange press fill. */
+  .c-reach .ch a:active .ch-name,
+  .c-reach .ch a:active .ch-handle,
+  .c-reach .ch a:active .ch-go {
+    color: var(--bg-surface, #fff);
+  }
+
+  /* Touch targets: the mail link + Broadridge link + Say-hello button all
+     need a comfortable hit area. */
+  .c-reach .mail,
+  .c-now .pill a {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
-    padding: 4px 6px;
-    margin: -4px -6px;
-    /* 8px gap between adjacent tappable links if a value ever holds two. */
-    gap: 8px;
+  }
+  .c-reach .btn {
+    min-height: 44px;
   }
 }
 
-/* Smallest phones (<=360px, e.g. 360x640): trim padding + type so the
-   card never forces horizontal scroll or clips the wordmark. The shorter
-   640px height also means less vertical room, so tighten the header gap. */
+/* Smallest phones (≤360px): trim the stage padding so cards never force
+   horizontal scroll. */
 @media (max-width: 360px) {
-  .portfolio-about .about-col {
-    padding-left: 18px;
-    padding-right: 18px;
-    padding-top: calc(120px + env(safe-area-inset-top, 0px));
+  .about-stage {
+    padding-left: 16px;
+    padding-right: 16px;
   }
-  .about-floating-eyebrow {
-    left: 18px;
-    right: 18px;
-  }
-  .about-floating-label {
-    font-size: clamp(44px, 15vw, 72px);
-  }
-  .about-floating-num {
-    font-size: clamp(12px, 3vw, 16px);
-  }
-  /* Scoped to match the ≤720px `.portfolio-about .about-lede` rule's
-     specificity (0,2,0); the bare `.about-lede` selector (0,1,0) lost to
-     it, so the 360px margin trim never applied. */
-  .portfolio-about .about-lede {
-    margin-bottom: var(--space-4h, 20px);
+  .about-name-h {
+    font-size: clamp(34px, 11vw, 44px);
   }
 }
 
-/* prefers-reduced-motion: the pin still scrolls (structural) but the
-   panel slide, row stagger, lede rise, and floating wordmark must not
-   animate. The JS already force-reveals every beat and snaps the panel
-   in; here we neutralise the CSS transitions so the change is
-   instantaneous and the content is fully visible at rest. */
+/* ======================================================================
+   prefers-reduced-motion: the pin still scrolls (structural) but no cell
+   may slide/fade. About.tsx force-reveals every cell; here we neutralise
+   the transitions so the dashboard is instantaneous + fully readable.
+   ====================================================================== */
 @media (prefers-reduced-motion: reduce) {
-  .about-floating-eyebrow,
-  .about-lede,
-  .about-portrait,
-  .about-row {
+  .about-banner,
+  .card {
     transition: none !important;
   }
-  .about-floating-eyebrow,
-  .about-floating-eyebrow.is-visible,
-  .about-lede,
-  .about-lede.is-revealed,
-  .about-portrait,
-  .about-row,
-  .about-row.is-revealed {
+  .render-frame {
+    animation: none !important;
+  }
+  .about-banner,
+  .about-banner.is-revealed,
+  .card,
+  .card.is-revealed {
     opacity: 1 !important;
     transform: none !important;
   }

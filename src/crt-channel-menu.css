@@ -10,9 +10,9 @@
  * ──────────────────────────────────────────────────────────────────── */
 
 :root {
-  --navx-accent: #e87040;
+  --navx-accent: #ff4f00;
   --navx-accent-hot: #ff6a2a;
-  --navx-accent-deep: #b8431a;
+  --navx-accent-deep: #c23d00;
   --navx-ink: #0d0e10;
 }
 
@@ -31,18 +31,29 @@
   cursor: pointer;
   background: #ffffff;
   color: var(--navx-ink);
-  /* Clean flat rectangle — no clip notch, no corner shadow (both read as
-     broken/odd here). It's a tidy white bar with the orange number + grid. */
-  transition: background 130ms ease;
+  /* Clean flat rectangle — no clip notch, no corner shadow at rest. The ring
+     is present but TRANSPARENT so it can ease IN on hover (a smooth, sustained
+     highlight) rather than snapping/slamming in (which read like a click). */
+  outline: 2px solid transparent;
+  outline-offset: 3px;
+  transition: background 130ms ease, outline-color 220ms ease,
+    box-shadow 240ms ease, transform 220ms cubic-bezier(0.2, 0.9, 0.25, 1);
 }
 /* Click reaction: the number block flashes deep-orange (a tactile press),
-   with NO downward shift. */
+   with NO downward shift. This is the PRESS cue — kept distinct from hover. */
 .snc-dial:active .snc-dial-numblock {
   background: var(--navx-accent-deep);
 }
+/* Hover/focus: a CALM, SUSTAINED highlight, held for as long as you hover —
+   the orange ring fades in around the whole bar, a soft orange glow blooms
+   beneath it, and the bar LIFTS 1px (up, the opposite of a press). Nothing
+   slams or pulses, so it reads as "this is live / liftable", never as a click.
+   The press feel is owned by :active above. */
+.snc-dial:hover,
 .snc-dial:focus-visible {
-  outline: 2px solid var(--navx-accent);
-  outline-offset: 3px;
+  outline-color: var(--navx-accent);
+  box-shadow: 0 8px 26px -10px rgba(255, 79, 0, 0.5);
+  transform: translateY(-1px);
 }
 
 /* Orange number block: the drum aperture. */
@@ -85,8 +96,12 @@
   font-weight: 700;
   font-size: 27px;
   line-height: 1;
-  letter-spacing: 0.04em;
+  /* No trailing letter-spacing: on a 2-digit readout it pushed the glyphs
+     left of the aperture centre. The small upward nudge optically centres the
+     OffBit numerals, which sit low in their em box. */
+  letter-spacing: 0;
   color: #ffffff;
+  transform: translateY(-1px);
 }
 
 /* White readout body — just the SECTION eyebrow now. */
@@ -121,7 +136,7 @@
   justify-content: center;
   gap: 5px;
   padding: 0 12px;
-  background: rgba(232, 112, 64, 0.1);
+  background: rgba(255, 79, 0, 0.1);
   border-left: 1px solid rgba(13, 14, 16, 0.12);
   transition: background 130ms ease;
 }
@@ -157,11 +172,32 @@
   color: #ffffff;
 }
 
-/* Mobile: trim the readout so the bar stays compact. */
+/* Mobile (#29): the dial is just chrome on a phone — shrink it to a compact
+   bar. Shorter overall (46px), a narrower readout (30vw), and a proportionally
+   smaller number drum so the whole odometer reads as a small chit, not a
+   towering control. The drum's 3D cylinder geometry is fixed in JS
+   (translateZ(RADIUS) per face), so we shrink it UNIFORMLY with a scale()
+   transform rather than touching face heights, keeping the cylinder true. */
+.snc-dial[data-mobile="true"] {
+  height: 46px;
+}
+.snc-dial[data-mobile="true"] .snc-dial-numblock {
+  width: 42px;
+}
+/* Scale the APERTURE, not the drum: the rAF loop overwrites the drum's inline
+   transform every frame (rotateX(...)), so a scale there is wiped. The window
+   wrapper is never touched by JS, and scaling it uniformly shrinks the whole
+   3D cylinder (faces + perspective) so the odometer stays geometrically true. */
+.snc-dial[data-mobile="true"] .snc-dial-window {
+  transform: scale(0.82);
+}
+.snc-dial[data-mobile="true"] .snc-dial-num {
+  font-size: 22px;
+}
 .snc-dial[data-mobile="true"] .snc-dial-body {
   min-width: 0;
-  max-width: 40vw;
-  padding: 0 10px;
+  max-width: 30vw;
+  padding: 0 9px;
 }
 .snc-dial[data-mobile="true"] .snc-dial-label {
   font-size: 13px;
@@ -170,6 +206,13 @@
 }
 .snc-dial[data-mobile="true"] .snc-dial-trigger {
   padding: 0 10px;
+}
+/* Touch-visible PRESSED state: the dial's lift/glow cue is hover-only, so on
+   touch nothing acknowledged the tap. :active borrows the same orange ring +
+   glow so the press registers on a finger. */
+.snc-dial[data-mobile="true"]:active {
+  outline-color: var(--navx-accent);
+  box-shadow: 0 6px 18px -10px rgba(255, 79, 0, 0.5);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -247,7 +290,7 @@
   justify-content: center;
   gap: 5px;
   padding: 0 13px;
-  background: rgba(232, 112, 64, 0.1);
+  background: rgba(255, 79, 0, 0.1);
   border-left: 1px solid rgba(13, 14, 16, 0.12);
   transition: background 130ms ease;
 }
@@ -348,7 +391,7 @@
   inset: 0;
   background: rgba(238, 240, 243, 0.5);
   background-image: radial-gradient(
-    rgba(232, 112, 64, 0.18) 1px,
+    rgba(255, 79, 0, 0.18) 1px,
     transparent 1.4px
   );
   background-size: 7px 7px;
@@ -425,7 +468,7 @@
 .navx-stage[data-open="true"] .navx-shard[data-armed="true"] {
   transform: translateZ(40px);
   box-shadow: 12px 14px 0 0 var(--navx-accent);
-  background: #fff6f1;
+  background: var(--accent-tint); /* on-brand orange hover wash (was warm cream #fff6f1) */
 }
 .navx-shard:focus-visible {
   outline: 2px solid var(--navx-accent);
@@ -534,7 +577,7 @@
   .navx-stage[data-open="true"] .navx-shard:hover,
   .navx-stage[data-open="true"] .navx-shard[data-armed="true"] {
     transform: none;
-    background: #fff6f1;
+    background: var(--accent-tint); /* on-brand orange hover wash (was warm cream #fff6f1) */
   }
   .navx-stage[data-closing="true"] .navx-slot,
   .navx-stage[data-closing="true"] .navx-head {
@@ -562,13 +605,14 @@
 .navx-spill-scrim {
   position: absolute;
   inset: 0;
-  /* Heavier white wash + strong gaussian blur so whatever is behind the
-     menu nearly disappears and the sharp orange shapes own the frame. The
-     orange "rice" dots are drawn in the canvas (MercuryAura) so the cursor
-     can light them up — keeping them here too would double the grid. */
-  background: rgba(244, 245, 247, 0.66);
-  backdrop-filter: blur(28px) saturate(104%) brightness(1.05);
-  -webkit-backdrop-filter: blur(28px) saturate(104%) brightness(1.05);
+  /* SOLID page-tone fill (--bg-page #eef0f3), no backdrop blur. A translucent
+     blur let the page show through, so clicking a section scrolled the page past
+     every section behind the glass and you saw it flicker by (and the blur
+     re-rasterises each frame). An opaque plate hides the page entirely and costs
+     nothing. Tone matched to the keypad backdrop (was #ffffff): the MercuryAura
+     canvas now composites its rice OPAQUELY over this same #eef0f3 in linear
+     space, so the cursor blob reads the EXACT same colour as the keypad's. */
+  background: var(--bg-page, #eef0f3);
   pointer-events: none;
 }
 .navx-spill-root[data-open="true"] .navx-spill-scrim {
@@ -643,6 +687,112 @@
   outline: 2px solid var(--navx-accent);
   outline-offset: 3px;
 }
+
+/* ── MOBILE: bigger touch target + safe-area inset (#28) ───────────────── */
+@media (pointer: coarse) {
+  .navx-close {
+    width: 48px;
+    height: 48px;
+    top: max(14px, calc(env(safe-area-inset-top, 0px) + 8px));
+    right: max(14px, calc(env(safe-area-inset-right, 0px) + 8px));
+  }
+}
+
+/* ── MOBILE: accessible jump LIST (replaces the WebGL spill ring, #4) ───── */
+/* On touch the ring is unusable (hover-driven enlarge/aim, 8 crowded objects),
+   so NavSpillMenu renders this vertical list instead. Large full-width tap
+   rows (≥48px), ≥16px text, TAP not hover, reuses the .navx-shard block
+   language. The whole sheet fades with data-open and respects safe areas. */
+.navx-spill-root--list {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.navx-list {
+  position: relative;
+  z-index: 4; /* above the scrim, below the close button (z-index:5) */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: max(72px, calc(env(safe-area-inset-top, 0px) + 64px))
+    max(18px, env(safe-area-inset-right, 0px))
+    max(24px, calc(env(safe-area-inset-bottom, 0px) + 18px))
+    max(18px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 220ms ease, transform 260ms cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.navx-spill-root--list[data-open="true"] .navx-list {
+  pointer-events: auto;
+  opacity: 1;
+  transform: translateY(0);
+}
+/* Full-width tap row. Reuses .navx-shard for the block look (orange edge bar,
+   hard offset shadow) but flattens the 3D plane transforms for a flat list. */
+.navx-list-row {
+  width: 100%;
+  min-height: 56px;
+  height: auto;
+  padding: 10px 18px;
+  box-sizing: border-box;
+  transform: none;
+  box-shadow: 4px 5px 0 0 var(--navx-accent);
+  transition: background 130ms ease, box-shadow 130ms ease, transform 90ms ease;
+}
+/* TAP feedback (no hover): the row presses into its shadow when touched. */
+.navx-list-row:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 3px 0 0 var(--navx-accent);
+  background: var(--accent-tint);
+}
+.navx-list-row[data-active="true"] {
+  background: var(--navx-accent-hot);
+  color: #ffffff;
+  border-color: var(--navx-accent-deep);
+  box-shadow: 4px 5px 0 0 var(--navx-accent-deep);
+}
+.navx-list-row[data-active="true"]::before {
+  background: #ffffff;
+}
+.navx-list-row[data-active="true"]:active {
+  background: var(--navx-accent-hot);
+  box-shadow: 2px 3px 0 0 var(--navx-accent-deep);
+}
+.navx-list-num {
+  transform: translateY(2px);
+  min-width: 42px;
+}
+.navx-list-label {
+  flex: 1;
+  font-size: 17px;
+}
+.navx-list-here {
+  font-family: "VT323", monospace;
+  font-size: 14px;
+  letter-spacing: 0.16em;
+  color: #ffffff;
+  opacity: 0.9;
+}
+@media (prefers-reduced-motion: reduce) {
+  .navx-list {
+    transition: opacity 140ms ease;
+    transform: none;
+  }
+  .navx-spill-root--list[data-open="true"] .navx-list {
+    transform: none;
+  }
+  .navx-list-row:active {
+    transform: none;
+  }
+}
+
 /* drei <Html> label = real clickable button on each object. */
 /* Text sits ON the object as graphic OUTLINED type — white fill with a
    crisp ink stroke (no mushy drop shadow), so it reads as a sticker/jersey
@@ -661,7 +811,11 @@
   white-space: nowrap;
   cursor: pointer;
   pointer-events: auto;
-  -webkit-text-stroke: 2.6px var(--navx-ink);
+  /* Heavier dark stroke for legibility over the busy orange-dotted objects
+     (user: visibility was poor). Matches the bolder read of the Play-section
+     hover labels - a thick ink outline around the white pixel text so it pops
+     off any object beneath it. */
+  -webkit-text-stroke: 4.5px var(--navx-ink);
   paint-order: stroke fill;
   transition: transform 130ms cubic-bezier(0.2, 0.9, 0.25, 1.05), color 130ms ease;
 }

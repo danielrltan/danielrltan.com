@@ -4,10 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "bake-wireframes": "node scripts/bake-wireframes.mjs",
     "optimize:assets": "node scripts/optimize-assets.mjs",
-    "predev": "npm run bake-wireframes",
-    "prebuild": "npm run bake-wireframes",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "postbuild": "node scripts/stamp-build-date.mjs",

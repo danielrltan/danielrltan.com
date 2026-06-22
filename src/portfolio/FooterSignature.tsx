@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Self-contained footer signature. Renders the captured gesture
@@ -30,7 +30,9 @@ interface SignatureJSON {
 }
 
 interface Props {
-  /** CSS height of the signature canvas. Defaults to 120px. */
+  /** CSS height of the signature canvas on desktop. Defaults to 120px.
+   *  Phones (<768px) use a shorter band (84px) so the signature doesn't
+   *  leave a dead vertical gap on a narrow stacked column. */
   height?: number;
   /** Stroke colour (defaults to brand accent orange). */
   color?: string;
@@ -43,14 +45,34 @@ interface Props {
 const STAMP_ALPHA = 0.55;
 const STEP_PX = 4;
 
+/** Resolve the canvas height for the current viewport: phones (<768px) get
+ *  a shorter band so the signature doesn't leave a dead vertical gap on the
+ *  narrow stacked footer column; desktop keeps the full `base` height. */
+const resolveHeight = (base: number): number =>
+  typeof window !== "undefined" && window.innerWidth < 768 ? 84 : base;
+
 export function FooterSignature({
   height = 120,
-  color = "232, 112, 64",
+  color = "255, 79, 0",
   brushRadius = 6,
   speed = 2.4,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Responsive height: shorter on phones, re-measured on resize/orientation
+  // change so the canvas (and the wrap that sizes to it) track the breakpoint.
+  const [effHeight, setEffHeight] = useState(() => resolveHeight(height));
+
+  useEffect(() => {
+    const onMeasure = () => setEffHeight(resolveHeight(height));
+    onMeasure();
+    window.addEventListener("resize", onMeasure);
+    window.addEventListener("orientationchange", onMeasure);
+    return () => {
+      window.removeEventListener("resize", onMeasure);
+      window.removeEventListener("orientationchange", onMeasure);
+    };
+  }, [height]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -64,11 +86,11 @@ export function FooterSignature({
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let w = Math.max(1, wrap.clientWidth);
-    let h = height;
+    let h = effHeight;
 
     const setupCanvas = () => {
       w = Math.max(1, wrap.clientWidth);
-      h = height;
+      h = effHeight;
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
       canvas.style.width = `${w}px`;
@@ -258,14 +280,28 @@ export function FooterSignature({
       if (cachedSig) void ensureRendered(false);
     };
     window.addEventListener("resize", onResize);
+    // iOS Safari can fire `orientationchange` WITHOUT a matching `resize`,
+    // and the IntersectionObserver has already disconnected after its
+    // one-shot fire — so without this the freshly-cleared canvas would be
+    // left blank after a rotate. A ResizeObserver on the wrap is the
+    // belt-and-braces catch: any width/height change (rotate, dynamic
+    // browser chrome) repaints the cached signature in place.
+    window.addEventListener("orientationchange", onResize);
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => onResize())
+        : null;
+    ro?.observe(wrap);
 
     return () => {
       cancelled = true;
       obs.disconnect();
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+      ro?.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [height, color, brushRadius, speed]);
+  }, [effHeight, color, brushRadius, speed]);
 
   return (
     <div
@@ -273,7 +309,7 @@ export function FooterSignature({
       style={{
         position: "relative",
         width: "100%",
-        height,
+        height: effHeight,
         marginBottom: 24,
         overflow: "hidden",
       }}

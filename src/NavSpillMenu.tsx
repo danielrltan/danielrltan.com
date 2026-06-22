@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import * as THREE from "three";
 import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
+import { useIsMobile } from "./useIsMobile";
 import { scrollToSection, setScrollLocked } from "./portfolio/Keypad";
 import { MercuryAura, type CursorState, type AuraTarget } from "./MercuryAura";
 import {
@@ -13,6 +14,7 @@ import {
   briefcaseGeom,
   playGeom,
   trophyGeom,
+  cameraGeom,
   planeGeom,
 } from "./menuGeometries";
 import "./crt-channel-menu.css";
@@ -29,7 +31,7 @@ import "./crt-channel-menu.css";
  * + a11y ride on clean DOM). Honors prefers-reduced-motion (no tumble/parallax).
  */
 
-const ACCENT = "#e87040";
+const ACCENT = "#ff4f00";
 
 // Resting 3/4 pose for every spill icon: a gentle yaw (right side face
 // visible) + a slight upward pitch (top tipped toward the camera) so the
@@ -98,6 +100,15 @@ const ASCII_FRAG = /* glsl */ `
 function easeOutQuart(t: number): number {
   return 1 - Math.pow(1 - t, 4);
 }
+// easeOutBack: eases out but OVERSHOOTS past 1 near the end, then settles back
+// to exactly 1 at t=1. Used on the spill RADIUS so each icon's own outward
+// momentum carries it a few % past its slot and recoils in — the recoil is the
+// tail of the spiral, not a separate bounce. `s` tunes the overshoot amount.
+function easeOutBack(t: number, s = 1.1): number {
+  const c1 = s;
+  const c3 = s + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
 // Deterministic per-object pseudo-random in [0,1) for varied paths.
 function hashF(n: number): number {
   const s = Math.sin(n * 53.13) * 7891.23;
@@ -114,17 +125,22 @@ interface Spec {
   spin: [number, number, number];
 }
 const CLUSTER_CENTER = new THREE.Vector3(0, 0, 0);
+// Scratch vectors for the per-frame hover projection test (module-scope so the
+// loop never allocates).
+const _c = new THREE.Vector3();
+const _up = new THREE.Vector3();
 // Thematic low-poly object per section (index matches SECTION_REGISTRY):
-// Hero=house, About=?, Projects=Mac, Work=briefcase, Play=▶, Photos=camera,
-// Contact=envelope. Each is a chunky shape the label sits on.
+// Hero=house, About=?, Projects=Mac, Work=briefcase, Play=▶, Honors=trophy,
+// Photos=camera, Contact=paper plane. Each is a chunky shape the label sits on.
 const SPECS: Spec[] = [
-  { geom: houseGeom, size: 0.95, spin: [0, 0, 0] }, // Hero
-  { geom: questionGeom, size: 0.95, spin: [0, 0, 0] }, // About
-  { geom: macGeom, size: 0.95, spin: [0, 0, 0] }, // Projects
-  { geom: briefcaseGeom, size: 0.95, spin: [0, 0, 0] }, // Work
-  { geom: playGeom, size: 0.95, spin: [0, 0, 0] }, // Play
-  { geom: trophyGeom, size: 0.95, spin: [0, 0, 0] }, // Honors (trophy wall)
-  { geom: planeGeom, size: 0.95, spin: [0, 0, 0] }, // Contact
+  { geom: houseGeom, size: 0.95, spin: [0, 0, 0] }, // 00 Hero
+  { geom: questionGeom, size: 0.95, spin: [0, 0, 0] }, // 01 About
+  { geom: macGeom, size: 0.95, spin: [0, 0, 0] }, // 02 Projects
+  { geom: briefcaseGeom, size: 0.95, spin: [0, 0, 0] }, // 03 Work
+  { geom: playGeom, size: 0.95, spin: [0, 0, 0] }, // 04 Play
+  { geom: trophyGeom, size: 0.95, spin: [0, 0, 0] }, // 05 Honors (trophy wall)
+  { geom: cameraGeom, size: 0.95, spin: [0, 0, 0] }, // 06 Photos
+  { geom: planeGeom, size: 0.95, spin: [0, 0, 0] }, // 07 Contact
 ];
 // A CLOCKWISE ring centred on screen with index 0 (Hero) at top-centre
 // (12 o'clock); subsequent sections step clockwise around the circle.
@@ -141,6 +157,25 @@ function ringTarget(i: number, n: number): THREE.Vector3 {
 // Objects BURST out from the centre to their ring positions.
 const SPILL_ORIGIN = new THREE.Vector3(0, 0, 0.6);
 
+// On OPEN, hold the icons at the centre (invisible, scale 0) for this long
+// BEFORE the spill begins, so the white background establishes FIRST and the
+// icons spiral out against it (instead of bursting in together, which read "too
+// instant"). A full mirror of the close would be ~610ms (scrim fade 260 + a
+// 350ms hold), but that dead hold felt like too big a gap — so we keep just the
+// scrim-establish beat (~260ms) plus a hair, and drop most of the hold. Enough
+// to read "background, THEN spiral" without the wait.
+const SPILL_LEAD_MS = 340;
+
+// SETTLE DRIFT — after the spill spirals out, the field COASTS a few degrees in
+// the SAME rotational direction the spill opened (the objects sweep clockwise
+// into their slots, so the residual momentum is clockwise), then eases to a
+// stop. This is a pure velocity DECAY — one kick at spill-start, no spring back
+// toward 0 — because a spring swings RETURN past its kick, and that return read
+// as a recoil spinning the opposite way. Coasting in one direction and stopping
+// is the fluid follow-through we want (settles ~0.5s, a few degrees of offset).
+const DRIFT_KICK = -1.1; // initial angular velocity (rad/s); negative = clockwise, matching the open sweep
+const DRIFT_DECAY = 9; // 1/s velocity decay → coasts to rest in one direction, no recoil
+
 // Jump-menu label overrides (keyed by section number). Empty now that the
 // registry itself carries the friendly labels (Projects, Honors, ...).
 const MENU_LABELS: Record<string, string> = {};
@@ -153,10 +188,10 @@ function SpillObject({
   startMs,
   reduced,
   onSelect,
-  onArm,
   posEntry,
   closing,
   closeMsRef,
+  pointer,
 }: {
   index: number;
   label: string;
@@ -165,41 +200,45 @@ function SpillObject({
   startMs: number;
   reduced: boolean;
   onSelect: () => void;
-  onArm: () => void;
   posEntry: AuraTarget;
   closing: boolean;
   closeMsRef: React.MutableRefObject<number>;
+  pointer: React.MutableRefObject<{ x: number; y: number }>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const stretchRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   const labelRef = useRef<HTMLButtonElement>(null);
   const armRef = useRef(armed);
   armRef.current = armed;
   const scaleRef = useRef(0);
+  const stretchRef = useRef<THREE.Group>(null);
   const smearRef = useRef(0);
   const prevSpRef = useRef({ x: 0, y: 0, init: false });
+  const tiltRef = useRef(0); // eased hover-parallax weight (0 → 1 on hover)
 
   const spec = SPECS[index]!;
   const geometry = useMemo(() => spec.geom(), [spec]);
+  // Generous, forgiving hit area: a sphere sized to the object's bounds (padded)
+  // carries the hover/click instead of the detailed, holey mesh. Without it you
+  // could only arm an icon while exactly over its geometry — drift into a gap
+  // (the @, the trophy handles) and it disarmed, so the reactive zone felt tiny.
+  // It's a CHILD of the visible mesh, so it inherits the same scale/rotation and
+  // grows with the icon on hover. Radius is in geometry-local units (the parent
+  // mesh's scale maps it to the same world size ratio as the art).
+  const hitRadius = useMemo(() => {
+    geometry.computeBoundingSphere();
+    return (geometry.boundingSphere?.radius ?? 1) * 1.5;
+  }, [geometry]);
   const target = useMemo(
     () => ringTarget(index, SECTION_REGISTRY.length),
     [index],
   );
-  // Per-object varied start (so they don't all launch from the exact same
-  // point) and a signed arc amount (so each curves its OWN way, not all the
-  // same down-then-up swoop).
-  const start = useMemo(
-    () =>
-      SPILL_ORIGIN.clone().add(
-        new THREE.Vector3(
-          (hashF(index * 1.7) - 0.5) * 0.9,
-          (hashF(index * 2.3 + 1) - 0.5) * 0.8,
-          (hashF(index * 3.1 + 2) - 0.5) * 0.7,
-        ),
-      ),
-    [index],
-  );
+  // Every icon launches from — and retracts back to — the SAME single point
+  // (SPILL_ORIGIN), so the spill reads as one cohesive burst from the centre
+  // rather than each appearing out of a different spot. A per-object signed arc
+  // still gives each its OWN curve on the way out so the paths fan instead of
+  // overlapping in one straight line, but the ORIGIN is unified.
+  const start = useMemo(() => SPILL_ORIGIN.clone(), []);
   const arcAmt = useMemo(() => (hashF(index * 4.7 + 3) - 0.5) * 0.7, [index]);
   const material = useMemo(
     () =>
@@ -226,38 +265,51 @@ function SpillObject({
     const now = performance.now();
     const dtc = Math.min(dt, 0.05);
     // Deal-out progress. OPEN: p 0→1 (each object spills out from the centre to
-    // its ring slot, staggered + quart ease-out). CLOSE: the SAME animation
-    // played backwards — p 1→0 (each retracts to the centre), with reversed
-    // stagger + time-reversed ease, so the close is literally the open reversed.
+    // its ring slot SIMULTANEOUSLY — no per-object stagger, so the whole ring
+    // spirals open at once rather than being drawn clockwise one icon at a time.
+    // CLOSE: the same animation time-reversed (p 1→0, all retract together).
     let p: number;
+    // radFrac drives the RADIUS only. On open it rides easeOutBack so the icon
+    // slips a few % PAST its slot as it arrives and recoils back in — the recoil
+    // is the spiral's own deceleration, not a layered-on bounce. Everything else
+    // (scale, orientation, label) stays on the monotonic `p` so nothing else
+    // overshoots. On close it tracks `p` (clean retract, no recoil).
+    let radFrac: number;
     if (reduced) {
       p = closing ? 0 : 1;
+      radFrac = clamp01(p);
     } else if (closing) {
-      // True time-reverse of the open: reversed stagger + easeOutQuart(1 - τ)
-      // (NOT 1 - easeOutQuart(τ), which isn't the reverse). p runs 1 → 0 and
-      // ACCELERATES into the centre, exactly mirroring the open's decelerate-out.
-      const ce =
-        (now - closeMsRef.current) / 1000 -
-        (SECTION_REGISTRY.length - 1 - index) * 0.05;
+      // True time-reverse of the open: easeOutQuart(1 - τ) (NOT 1 -
+      // easeOutQuart(τ), which isn't the reverse). p runs 1 → 0 and ACCELERATES
+      // into the centre, mirroring the open. No stagger — all retract together.
+      const ce = (now - closeMsRef.current) / 1000;
       p = easeOutQuart(1 - clamp01(ce / 0.5));
+      radFrac = clamp01(p);
     } else {
-      const e = (now - startMs) / 1000 - index * 0.05;
-      p = easeOutQuart(clamp01(e / 0.5));
+      const tRaw = clamp01((now - startMs) / 1000 / 0.5);
+      p = easeOutQuart(tRaw);
+      radFrac = easeOutBack(tRaw);
     }
 
     // Spill position = lerp start->target + a per-object signed ARC bump, so
     // each curves its own way (not all the same swoop).
-    const sx = start.x + (target.x - start.x) * p;
-    const sy = start.y + (target.y - start.y) * p;
     const sz = start.z + (target.z - start.z) * p;
     const dxT = target.x - start.x;
     const dyT = target.y - start.y;
-    const lenT = Math.hypot(dxT, dyT) || 1;
-    const arc = Math.sin(clamp01(p) * Math.PI) * arcAmt;
-    const curSx = sx + (-dyT / lenT) * arc;
-    const curSy = sy + (dxT / lenT) * arc;
+    // SPIRAL-OUT path: instead of a straight shot, each icon CORKSCREWS out from
+    // the centre — its angle winds by `swirl` (which decays to 0 by p=1, so it
+    // still lands EXACTLY on its slot) while the radius grows 0→R. `arcAmt` (a
+    // small per-object value) just varies the swirl AMOUNT so they don't wind in
+    // perfect lockstep; the direction is shared so the burst reads as one vortex.
+    const slotAngle = Math.atan2(dyT, dxT);
+    const R = Math.hypot(dxT, dyT);
+    const cp = clamp01(p);
+    const swirl = Math.PI * (0.7 + arcAmt) * (1 - cp); // extra winding, → 0 at p=1
+    const rad = R * radFrac; // easeOutBack on open → overshoot the slot, recoil in
+    const curSx = start.x + rad * Math.cos(slotAngle + swirl);
+    const curSy = start.y + rad * Math.sin(slotAngle + swirl);
 
-    // Velocity (pre-bob) for the motion-blur smear.
+    // Frame-delta velocity — drives the motion-blur smear's magnitude/direction.
     const prev = prevSpRef.current;
     let vx = 0;
     let vy = 0;
@@ -269,42 +321,40 @@ function SpillObject({
     prev.y = curSy;
     prev.init = true;
 
-    // Final position + idle float.
-    let bobx = 0;
-    let boby = 0;
-    if (!reduced) {
-      const t = now / 1000;
-      const ph = index * 1.3;
-      bobx = Math.cos(t * 0.7 + ph) * 0.05;
-      boby = Math.sin(t * 0.9 + ph) * 0.07;
-    }
-    g.position.set(curSx + bobx, curSy + boby, sz);
+    // IDLE LIFE: once the icon has settled (`idle` ramps 0→1 over the last
+    // sliver of the deal, so it never fights the spiral), it gently BREATHES — a
+    // soft vertical float here + a subtle scale pulse below — so the menu reads
+    // as alive, not a frozen stamp. Bounded + slow; the per-object phase keeps
+    // them from pulsing in lockstep. (Unlike the old ungated bob that drifted
+    // forever, this only wakes at rest and stays tiny.)
+    const idle = reduced ? 0 : clamp01((cp - 0.8) / 0.2);
+    const tNow = now / 1000;
+    // Gentle Lissajous drift (different x/y frequencies + per-object phase) so
+    // each icon floats in place as if suspended, not pinned to a slot. These are
+    // BOUNDED sinusoids around the rest position — they never accumulate/drift.
+    const floatY = Math.sin(tNow * 0.85 + index * 2.1) * 0.06 * idle;
+    const floatX = Math.cos(tNow * 0.7 + index * 1.3) * 0.045 * idle;
+    g.position.set(curSx + floatX, curSy + floatY, sz);
 
-    // Idle tumble + EXAGGERATED entrance spin: while an object is dealing out
-    // (p < 1) it spins fast and unwinds to its idle tumble, so each shape
-    // visibly whirls into place as it grows. (1-p)^1.5 keeps real angular
-    // speed through the visible part of the grow-in, not just the first frame.
-    if (!reduced) {
-      // Entrance whirl that DECAYS to a gentle 3/4 REST POSE (not flat-on),
-      // so each icon ends up readable AND shows its extruded depth — a small
-      // yaw reveals the right side face, a small pitch tips the top toward
-      // the camera, so it reads as a dimensional object catching light rather
-      // than a flat stamp. The whirl is an extra full turn on yaw that decays
-      // into REST_YAW. It must spin the SAME rotational direction on open AND
-      // close: on open `es` falls 1→0 (yaw winds DOWN to rest); reusing the
-      // +whirl on close (es 0→1) would wind yaw back UP — the icons visibly
-      // "reorient the opposite direction" on back-out (reported bug). Negate
-      // the whirl while closing so the self-spin keeps turning the same way as
-      // it retracts (only the spiral/position reverses, not each icon's spin).
-      const es = Math.pow(1 - clamp01(p), 1.6);
-      const whirlDir = closing ? -1 : 1;
-      m.rotation.set(REST_PITCH, REST_YAW + whirlDir * es * Math.PI * 2, 0);
-    } else {
-      m.rotation.set(REST_PITCH, REST_YAW, 0);
-    }
-    // Scale: SHRINK -> full (so each emerges small) * hover lift.
+    // Rest pose = a gentle 3/4 view. On HOVER the icon tilts toward the cursor —
+    // a parallax that "grabs its attention" and tracks your mouse (like the
+    // keypad). `tiltRef` eases the hover in/out so the tilt never snaps.
+    const wantTilt = armRef.current ? 1 : 0;
+    tiltRef.current += (wantTilt - tiltRef.current) * (1 - Math.exp(-dtc * 9));
+    // Same sign convention as the keypad (head-follows-hand): rotation.x += y,
+    // rotation.y += −x (cursor x right-positive, y down-positive) so the icon
+    // leans TOWARD the cursor, not away from it.
+    const tiltX = pointer.current.y * 0.42 * tiltRef.current;
+    const tiltY = -pointer.current.x * 0.42 * tiltRef.current;
+    // Idle sway: a slow rocking once settled, on top of the hover tilt, so each
+    // icon feels alive even with the cursor still. Bounded + per-object phase.
+    const swayX = Math.sin(tNow * 0.6 + index * 1.7) * 0.05 * idle;
+    const swayY = Math.cos(tNow * 0.5 + index * 2.3) * 0.05 * idle;
+    m.rotation.set(REST_PITCH + tiltX + swayX, REST_YAW + tiltY + swayY, 0);
+    // Scale: SHRINK -> full (so each emerges small) * hover lift * breathing.
     const hoverMul = armRef.current ? 1.54 : 1.0;
-    const targetScale = spec.size * clamp01(p) * hoverMul;
+    const breath = 1 + Math.sin(tNow * 1.15 + index * 1.7) * 0.035 * idle;
+    const targetScale = spec.size * clamp01(p) * hoverMul * breath;
     scaleRef.current += (targetScale - scaleRef.current) * (1 - Math.exp(-dtc * 14));
     m.scale.setScalar(scaleRef.current);
 
@@ -312,26 +362,26 @@ function SpillObject({
     g.getWorldPosition(posEntry.pos);
     posEntry.r = scaleRef.current;
 
-    // CARTOON SMEAR (artificial motion blur): stretch along the travel
-    // direction + squash perpendicular, scaled by speed — so as it's spat out
-    // it streaks like a smear frame, then snaps back round as it settles.
+    // SPIN-OUT smear: the stretch (motion blur) follows the actual speed and
+    // fades to nothing as the icon eases into its slot. `sgrp` carries it so the
+    // LABEL (a sibling) stays unsmeared.
     const speed = Math.hypot(vx, vy);
     const smearTarget = reduced ? 0 : Math.min(0.85, speed * 0.1);
     smearRef.current += (smearTarget - smearRef.current) * (1 - Math.exp(-dtc * 18));
     const s = smearRef.current;
-    if (s > 0.004 && speed > 0.001) {
-      // Active smear: align the stretch with the travel direction.
-      sgrp.rotation.z = Math.atan2(vy, vx);
-    } else {
-      // Smear over → UNWIND the residual rotation back to upright. Without
-      // this the group froze at its fly-in angle, so every icon settled
-      // rotated by its ring-slot direction (Honors ≈ −167° ≈ upside-down
-      // trophy, Contact ≈ +140° ≈ plane pointing the wrong way, About's "?"
-      // tilted). The shapes were always correct — only this leftover smear
-      // rotation made them read inverted/wrong. Lerp to 0 so each icon
-      // rights itself as it lands.
-      sgrp.rotation.z += (0 - sgrp.rotation.z) * (1 - Math.exp(-dtc * 14));
-    }
+    // SPIRAL ORIENTATION — driven by the deal progress `p`, NOT the frame
+    // velocity. (Velocity-based pointing crammed the whole un-rotation into the
+    // last ~20% as speed decayed, which read as an end-of-animation correction.)
+    // Here the icon launches leaning FULLY into its travel direction
+    // (travelAngle = centre→slot, i.e. nose-first the way it's going), holds that
+    // lean through the first third, then rights itself to upright across the
+    // whole back portion. The smoothstep `rightWeight` is FLAT (zero slope) at
+    // p=1, so the rotation reaches exactly 0 with zero angular velocity — it
+    // CONVERGES to the rest orientation throughout, never snaps at the end.
+    const travelAngle = Math.atan2(dyT, dxT);
+    const rt = clamp01((p - 0.35) / 0.65); // ramp the righting over p ∈ [0.35, 1]
+    const rightWeight = rt * rt * (3 - 2 * rt); // smoothstep: C1, flat at both ends
+    sgrp.rotation.z = travelAngle * (1 - rightWeight);
     sgrp.scale.set(1 + s * 1.7, 1 / (1 + s * 0.95), 1);
 
     // Orange glow is reserved for the ACTIVE object (you-are-here). Hover gets
@@ -357,25 +407,28 @@ function SpillObject({
 
   return (
     <group ref={groupRef}>
-      {/* stretch group carries the cartoon smear so the LABEL stays unsmeared. */}
+      {/* stretch group carries the spin-out smear so the LABEL stays unsmeared. */}
       <group ref={stretchRef}>
-        <mesh
-          ref={meshRef}
-          geometry={geometry}
-          material={material}
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect();
-          }}
-          onPointerOver={(e) => {
-            e.stopPropagation();
-            onArm();
-            document.body.style.cursor = "pointer";
-          }}
-          onPointerOut={() => {
-            document.body.style.cursor = "";
-          }}
-        />
+        <mesh ref={meshRef} geometry={geometry} material={material}>
+          {/* Invisible hit-proxy: a padded sphere over the object's bounds is the
+              actual hover/click target, so the reactive area is the whole icon,
+              not just where a ray happens to strike the holey art. It rides the
+              parent's scale/rotation, so it grows with the icon on hover. */}
+          <mesh
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+            }}
+          >
+            {/* CLICK target only. Hover/enlarge is driven by SpillField's
+                every-frame screen-space proximity test (see there) — NOT
+                onPointerOver/Out, which dropped intermittently as the icons
+                floated/tilted under a still cursor and raced with the DOM
+                label's own enter/leave (the "sometimes it won't enlarge" bug). */}
+            <sphereGeometry args={[hitRadius, 12, 12]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+        </mesh>
       </group>
       {/* Label sits ON the object (white text, no card). */}
       <Html center position={[0, 0, 0]} distanceFactor={6} zIndexRange={[40, 0]}>
@@ -385,8 +438,7 @@ function SpillObject({
           data-active={active ? "true" : "false"}
           data-armed={armed ? "true" : "false"}
           onClick={onSelect}
-          onPointerEnter={onArm}
-          tabIndex={armed ? 0 : -1}
+          tabIndex={0}
         >
           {label}
         </button>
@@ -407,6 +459,7 @@ function SpillField({
   startMs,
   reduced,
   pointer,
+  cursor,
   select,
   positionsRef,
   closing,
@@ -418,53 +471,114 @@ function SpillField({
   startMs: number;
   reduced: boolean;
   pointer: React.MutableRefObject<{ x: number; y: number }>;
+  cursor: React.MutableRefObject<CursorState>;
   select: (i: number) => void;
   positionsRef: React.MutableRefObject<AuraTarget[]>;
   closing: boolean;
   closeMsRef: React.MutableRefObject<number>;
 }) {
   const fieldRef = useRef<THREE.Group>(null);
+  const { camera, size } = useThree();
+  // Last armed index this loop pushed to React state — so we only setArmed on
+  // an actual change, not every frame.
+  const armedRef = useRef(-1);
   // Parallax base, tracked separately from the spin so the two can be summed
   // each frame (lerping the *sum* would fight the decaying spin).
   const rotYRef = useRef(0);
   const rotXRef = useRef(0);
+  // Settle drift state: z = current drift angle, v = angular velocity, kicked =
+  // whether the one-time impulse has fired this open. Fresh each open (the whole
+  // menu unmounts between opens), so `kicked` re-arms naturally.
+  const driftRef = useRef({ z: 0, v: 0, kicked: false });
   useFrame((_, dt) => {
     const g = fieldRef.current;
     if (!g) return;
     const dtc = Math.min(dt, 0.05);
     const now = performance.now();
-    const elapsed = (now - startMs) / 1000;
-    // Parallax target (toward cursor); zero under reduced motion.
-    const ty = reduced ? 0 : pointer.current.x * 0.1;
-    const tx = reduced ? 0 : -pointer.current.y * 0.08;
+    // Parallax target — leans the whole ring TOWARD the cursor, same sign
+    // convention as the keypad (rotation.y += −x, rotation.x += y). Zero under
+    // reduced motion.
+    const ty = reduced ? 0 : -pointer.current.x * 0.1;
+    const tx = reduced ? 0 : pointer.current.y * 0.08;
     const k = 1 - Math.exp(-dtc * 5);
     rotYRef.current += (ty - rotYRef.current) * k;
     rotXRef.current += (tx - rotXRef.current) * k;
-    // ENTRANCE / EXIT SPIN: a modest in-plane (Z) whirl. OPEN eases out
-    // (1.3π → 0). CLOSE is the EXACT reverse: it winds back up (0 → 1.3π) over
-    // the same curve played backwards. Combined with the per-object retract,
-    // the close is literally the open animation in reverse (spirals back in).
-    let spinOff = 0;
-    if (!reduced) {
-      // Same duration + same curve, exactly reversed: open eases 1.3π → 0 over
-      // SPIN_DUR; close is pow(t)^3.5 (the time-reverse of pow(1-t)^3.5) over
-      // the SAME SPIN_DUR, winding 0 → 1.3π. So the spin mirrors the open.
-      const SPIN_DUR = 0.85;
-      if (closing) {
-        const cp = clamp01((now - closeMsRef.current) / 1000 / SPIN_DUR);
-        spinOff = Math.pow(cp, 3.5) * -Math.PI * 1.3;
-      } else {
-        const e = clamp01(elapsed / SPIN_DUR);
-        spinOff = Math.pow(1 - e, 3.5) * -Math.PI * 1.3;
-      }
-    }
     g.position.copy(CLUSTER_CENTER);
     g.scale.setScalar(1); // the per-object retract handles the shrink on close
     g.rotation.y = rotYRef.current; // cursor parallax only
     g.rotation.x = rotXRef.current; // cursor parallax only
-    // In-plane spin = the entrance/exit whirl ONLY (no auto-spin drift, no
-    // user drag-to-spin — both removed per request).
-    g.rotation.z = spinOff;
+
+    // SETTLE DRIFT (rotation.z): the field carries a brief decaying spin so the
+    // open doesn't lock instantly. One angular impulse is kicked the moment the
+    // spill begins (now ≥ startMs); from there a pure velocity-decay coast
+    // carries it a few degrees in the open direction and RESTS there (no spring
+    // pull back to 0 — that read as a recoil).
+    //
+    // It is deliberately NOT zeroed on close. The coast settles at a small
+    // NON-zero offset, so forcing rotation.z to 0 on the first closing frame
+    // snapped the whole ring back by that offset BEFORE the retract — the "cut
+    // back a few positions, then back out" glitch. Instead the drift simply
+    // HOLDS its settled value through the close (so the close's first frame
+    // matches the open's last frame exactly); the objects retract to centre
+    // regardless, and driftRef resets fresh on the next open (the menu unmounts
+    // between opens). Only reduced-motion forces it flat.
+    const dr = driftRef.current;
+    if (reduced) {
+      dr.z = 0;
+      dr.v = 0;
+    } else {
+      if (!dr.kicked && now >= startMs) {
+        dr.v = DRIFT_KICK;
+        dr.kicked = true;
+      }
+      if (dr.kicked) {
+        // Pure coast: velocity decays toward 0 while the angle accumulates in
+        // ONE direction — no spring pull back to 0, so it never swings the
+        // other way (the recoil we removed). Drifts, then rests + holds.
+        dr.v *= Math.exp(-DRIFT_DECAY * dtc);
+        dr.z += dr.v * dtc;
+      }
+    }
+    g.rotation.z = dr.z;
+
+    // ── HOVER / ENLARGE — every-frame screen-space proximity ──────────────
+    // Drive `armed` from the SAME robust test the aura hug uses (project each
+    // object, measure the cursor's screen distance to its disc, arm the
+    // nearest one) instead of the per-object R3F pointerOver/Out, which
+    // dropped intermittently as the icons floated + tilted under a still
+    // cursor and raced with the DOM label's enter/leave. This is why the hug
+    // always worked but the enlarge "sometimes wouldn't latch".
+    const cur = cursor.current;
+    let best = -1;
+    let bestDist = 1e9;
+    if (cur.active && !closing) {
+      const ax = size.width >= size.height ? size.width / size.height : 1;
+      const ay = size.width >= size.height ? 1 : size.height / size.width;
+      const arr = positionsRef.current;
+      for (let i = 0; i < arr.length; i++) {
+        const e = arr[i];
+        if (!e || e.r < 0.0001) continue;
+        _c.copy(e.pos).project(camera);
+        const cx = _c.x * 0.5 + 0.5;
+        const cy = (1 - _c.y) * 0.5; // y-down 0..1
+        _up.copy(e.pos);
+        _up.y += e.r;
+        _up.project(camera);
+        const rad = Math.abs((1 - _up.y) * 0.5 - cy);
+        const dist = Math.hypot((cx - cur.x) * ax, (cy - cur.y) * ay);
+        // 1.3× the projected radius: a forgiving disc with a touch of
+        // hysteresis so an edge-parked cursor doesn't chatter on/off.
+        if (dist < rad * 1.3 && dist < bestDist) {
+          best = i;
+          bestDist = dist;
+        }
+      }
+    }
+    if (best !== armedRef.current) {
+      armedRef.current = best;
+      setArmed(best);
+      document.body.style.cursor = best >= 0 ? "pointer" : "";
+    }
   });
   return (
     <group ref={fieldRef} position={CLUSTER_CENTER}>
@@ -478,10 +592,10 @@ function SpillField({
           startMs={startMs}
           reduced={reduced}
           onSelect={() => select(i)}
-          onArm={() => setArmed(i)}
           posEntry={positionsRef.current[i]!}
           closing={closing}
           closeMsRef={closeMsRef}
+          pointer={pointer}
         />
       ))}
     </group>
@@ -495,9 +609,19 @@ interface Props {
 }
 
 export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
+  // MOBILE / touch branch: the WebGL spill ring is hover-driven (enlarge + aim
+  // cue ride on an every-frame screen-space proximity test against the cursor),
+  // so on a phone its 8 crowded objects are nearly untappable. On coarse
+  // pointers we render a plain accessible list overlay instead — large
+  // full-width rows, one per section, tap to jump + close. Desktop keeps the
+  // ring untouched.
+  const isMobile = useIsMobile();
   const [mounted, setMounted] = useState(false);
   const [shown, setShown] = useState(false);
-  const [armed, setArmed] = useState(activeIdx);
+  // -1 = nothing armed. Hover arms an index (enlarge + select cue); pointer-out
+  // releases back to -1. It must NOT default to activeIdx, or the current
+  // section spawns permanently enlarged with no way to shrink it.
+  const [armed, setArmed] = useState(-1);
   const startMsRef = useRef(0);
   const closeMsRef = useRef(0);
   const pointer = useRef({ x: 0, y: 0 });
@@ -533,8 +657,10 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
 
   useEffect(() => {
     if (open) {
-      startMsRef.current = performance.now();
-      setArmed(activeIdx);
+      // Lead with the background: delay the spill so the scrim establishes
+      // first, then the icons spiral out against it (see SPILL_LEAD_MS).
+      startMsRef.current = performance.now() + SPILL_LEAD_MS;
+      setArmed(-1); // open with nothing enlarged; hover is what arms an object
       cursor.current.active = false;
       setMounted(true);
       setScrollLocked(true); // page can't be scrolled under the open menu
@@ -607,6 +733,42 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
 
   if (!mounted) return null;
 
+  // ── MOBILE / touch: simple accessible list overlay (no WebGL ring) ──────
+  if (isMobile) {
+    return (
+      <div
+        className="navx-spill-root navx-spill-root--list"
+        data-open={shown ? "true" : "false"}
+      >
+        <div className="navx-spill-scrim" onClick={onClose} aria-hidden />
+        <button
+          className="navx-close"
+          onClick={onClose}
+          aria-label="Close section menu"
+        />
+        <nav className="navx-list" aria-label="Jump to section">
+          {SECTION_REGISTRY.map((s, i) => (
+            <button
+              key={s.number}
+              type="button"
+              className="navx-list-row navx-shard"
+              data-active={i === activeIdx ? "true" : "false"}
+              onClick={() => select(i)}
+            >
+              <span className="navx-list-num navx-num">{s.number}</span>
+              <span className="navx-list-label navx-label">
+                {MENU_LABELS[s.number] ?? s.label}
+              </span>
+              {i === activeIdx && (
+                <span className="navx-list-here navx-tag">HERE</span>
+              )}
+            </button>
+          ))}
+        </nav>
+      </div>
+    );
+  }
+
   return (
     <div className="navx-spill-root" data-open={shown ? "true" : "false"}>
       <div className="navx-spill-scrim" onClick={onClose} aria-hidden />
@@ -616,31 +778,41 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
         aria-label="Close section menu"
       />
       <div className="navx-spill-stage">
-        <Canvas
-          className="navx-spill-canvas"
-          camera={{ position: [0, 0, 10], fov: 40 }}
-          dpr={[1, 2]}
-          gl={{ alpha: true, antialias: true }}
-          onPointerMissed={onClose}
-        >
-          <MercuryAura
-            cursorRef={cursor}
-            positionsRef={positionsRef}
-            reduced={reduced}
-          />
-          <SpillField
-            activeIdx={activeIdx}
-            armed={armed}
-            setArmed={setArmed}
-            startMs={startMsRef.current}
-            reduced={reduced}
-            pointer={pointer}
-            select={select}
-            positionsRef={positionsRef}
-            closing={!open}
-            closeMsRef={closeMsRef}
-          />
-        </Canvas>
+        {/* The 3D ring is DESKTOP-ONLY. On touch (<=768px) we already early-return
+            the accessible list overlay above, so this branch never renders on a
+            phone — but the canvas is hover-driven (every-frame proximity test) and
+            a wasted/at-risk WebGL context on mobile, so we also gate the <Canvas>
+            on !isMobile as a hard belt-and-braces guard: it can NEVER spin up a
+            WebGL context on a phone even if this branch is ever reached. Desktop
+            (isMobile=false) is unaffected. */}
+        {!isMobile && (
+          <Canvas
+            className="navx-spill-canvas"
+            camera={{ position: [0, 0, 10], fov: 40 }}
+            dpr={[1, 2]}
+            gl={{ alpha: true, antialias: true }}
+            onPointerMissed={onClose}
+          >
+            <MercuryAura
+              cursorRef={cursor}
+              positionsRef={positionsRef}
+              reduced={reduced}
+            />
+            <SpillField
+              activeIdx={activeIdx}
+              armed={armed}
+              setArmed={setArmed}
+              startMs={startMsRef.current}
+              reduced={reduced}
+              pointer={pointer}
+              cursor={cursor}
+              select={select}
+              positionsRef={positionsRef}
+              closing={!open}
+              closeMsRef={closeMsRef}
+            />
+          </Canvas>
+        )}
       </div>
     </div>
   );

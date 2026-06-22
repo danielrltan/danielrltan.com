@@ -1,112 +1,93 @@
-/* Work: "The Ledger" with a vertical SLIDING YEAR TICKER
+/* Work: "The Ledger" — PINNED SCROLL-DRIVEN ACCORDION TIMELINE
    -------------------------------------------------------------
-   Editorial vertical-pinned timeline. The signature device is a
-   LEFT-GUTTER VERTICAL YEAR STACK: a height-clipped frame with a
-   mask-image fade on top + bottom, and inside it an absolute
-   column of year rows that slides vertically (transform Y) so the
-   active stint's year lands geographically at the frame's vertical
-   centre. The active year is rendered in accent orange; that is
-   the indicator. A single small orange dot sits in the left gutter
-   as a quiet anchor, clear of the digits (no line, no caption).
+   Every role is a node on a left spine and is always visible as a header
+   (dot-matrix year + sector + company + dates). The section pins; the active
+   node drops open to reveal its detail while the rest stay collapsed, so you
+   see the whole timeline and the scroll rolls through it. Pinning locks the
+   page scroll while panels expand, so the accordion never fights the document
+   scroll (no jank). Click a header to jump to (and open) that node.
 
-   Alignment math (load-bearing, do not regress):
-     .work-ticker-stack {
-       top: calc(50% - var(--row-h) / 2);
-       transform: translateY(calc(var(--ticker-offset) * var(--row-h) * -1));
-     }
-   This anchors row 0's centre at the frame midline, then slides
-   the stack up by N row-heights for offset N. The naive
-   `top: 50% + translateY(-50%)` math is WRONG because `-50%` is
-   relative to the stack's intrinsic height (changes with row
-   count / row-h).
-
-   Layout system:
-     .work-ledger          → outer pad + max-width frame, 100vh
-     .work-ledger-head     → top strip: section number + title
-     .work-ledger-body     → 2-col grid: [ticker gutter] [stage]
-       .work-ticker        → ticker stage container
-         .work-ticker-frame      → height-clipped fade frame
-           .work-ticker-stack    → absolute column, slides via --ticker-offset
-             .work-ticker-row    → one row per year (year glyph only)
-               .work-ticker-year → big Geist year label
-           (gutter marker dot removed: the orange active year IS the
-            indicator; decorative dots are the vibe-coded tell)
-       .work-stage         → absolutely-layered stints (cross-fade)
-     .work-ledger-foot     → STINT counter + section progress bar */
+   Layout:
+     .portfolio-work     → pinned 100vh frame
+       .work-ledger      → max-width frame: header row + accordion
+         .work-ledger-head → "03 / WORK" tag + giant EXPERIENCE wordmark
+         .work-resume      → résumé CTA, top-right
+         .work-acc         → the accordion (left spine + nodes)
+           .work-acc-item  → one role
+             .work-acc-head  → button: node/year + company + dates + chevron
+             .work-acc-panel → grid-rows 0fr↔1fr drop-open detail
+   Mobile + reduced-motion: no pin; a static tap-to-expand stack.
+*/
 
 .portfolio-work {
   position: relative;
-  height: 100vh;
-  overflow: hidden;
-  /* Subtle edge-tone: lifts the section out of the wrapper bg so the
-     editorial layout reads as its own chapter. Re-anchored LEFT (12% 0%)
-     so the ambient bloom rises from the year-ticker gutter and echoes the
-     section's left-weighted asymmetry, instead of a generic centred halo
-     that softened the very off-centre signature it sits over. */
-  background:
-    radial-gradient(
-      120% 80% at 12% 0%,
-      rgba(232, 112, 64, 0.045) 0%,
-      transparent 60%
-    ),
-    var(--wrapper-bg);
+  /* CLICK-DRIVEN now (no GSAP pin / scroll-scrub): the section flows with the
+     page and grows with whichever panel is open, with a full-viewport MINIMUM so
+     it still lands as a full-screen editorial frame. overflow visible so an
+     expanded lower row is never clipped. */
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+  display: block;
+  /* <main> is pointer-events:none (so it never blocks the hero/scroll layers);
+     each interactive section must re-enable it. Without this the whole Work
+     accordion inherited none and NO clicks landed — the "can't click to
+     expand" bug. */
+  pointer-events: auto;
+  /* Override the shared .portfolio-section padding (120px+ top/bottom): the
+     ledger owns its own padding. */
+  padding: 0;
+  background: var(--bg-page);
 }
-
-/* ----- Outer frame ---------------------------------------------- */
 
 .work-ledger {
   position: relative;
-  height: 100%;
+  min-height: 100vh;
+  height: auto;
   width: 100%;
-  max-width: 1480px;
+  max-width: 1280px;
   margin: 0 auto;
-  /* Exit dissolve, driven per-frame by the pin's onUpdate (--work-exit
-     ramps 1→0 over the last tenth of the pin) so the handoff into the
-     Other section reads as a soft cross-dissolve, not a hard swap.
-     Defaults to 1 (and stays 1 in the static/mobile layout, where the
-     var is never written). */
-  opacity: var(--work-exit, 1);
-  padding: clamp(40px, 5.5vh, 64px) clamp(40px, 6vw, 96px)
-    clamp(36px, 5vh, 60px);
+  /* Roomier vertical padding now that the section is natural-height, not crammed
+     into a pinned 100vh frame — it reads as a calm editorial page. */
+  padding: clamp(40px, 7vh, 96px) clamp(28px, 6vw, 96px) clamp(48px, 8vh, 96px);
   box-sizing: border-box;
-  display: grid;
-  /* header → body. Header is intrinsic; the body (ticker + stage) takes the
-     rest. (Progress-bar foot removed — it cut a line across the stint text.) */
-  grid-template-rows: auto 1fr;
-  gap: clamp(18px, 3vh, 36px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(22px, 4vh, 44px);
 }
 
-/* ----- Header strip --------------------------------------------- */
+/* ----- Header: tiny "03" tag + GIANT EXPERIENCE wordmark -------- */
 
 .work-ledger-head {
-  display: grid;
-  /* Number column shrunk to content (was minmax(180px,22%), sized for a
-     big numeral): the "03" is now a tiny tag, so an auto/min column keeps
-     it flush-left without leaving a big empty gap, and the title's 1fr
-     stage takes the freed width to run GIANT. */
-  grid-template-columns: minmax(max-content, auto) 1fr;
-  gap: clamp(20px, 2.4vw, 36px);
-  align-items: end;
-  /* Hairline divider: quiet editorial rule under the header. */
+  /* Header is now a ROW: eyebrow + giant wordmark on the left, the résumé CTA
+     baseline-aligned on the right (relocated out of the floating top-right
+     corner the user couldn't find). */
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: clamp(16px, 3vw, 44px);
   padding-bottom: clamp(14px, 2vh, 24px);
   border-bottom: 1px solid var(--ink-hairline);
 }
-
+.work-ledger-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.2vh, 16px);
+  min-width: 0;
+}
 .work-ledger-head-left {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 .work-ledger-num {
   font-family: var(--font-pixel);
   font-weight: 700;
-  /* Small section-number tag on the shared corner-header scale
-     (--hdr-num): the "03" is now a tiny tag beside the giant EXPERIENCE
-     wordmark (reference: tiny number + huge title). */
   font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  color: var(--hdr-num-color, #b8431a);
+  color: var(--hdr-num-color, #c23d00);
   user-select: none;
 }
 .work-ledger-index {
@@ -114,276 +95,277 @@
   font-size: var(--fs-mono);
   letter-spacing: 0.24em;
   text-transform: uppercase;
-  color: var(--hdr-eyebrow, #6c6660);
+  color: var(--hdr-eyebrow, var(--ink-muted));
   font-weight: 500;
 }
-
-.work-ledger-head-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-/* (Removed the empty .work-ledger-eyebrow span + its accent dash rule:
-   it was a decorative caption with no text, clutter against the cohesive
-   number + wordmark header. The "03" numeral + the EXPERIENCE wordmark
-   are the whole header now.) */
-.work-ledger-title {
-  /* OffBit pixel display, GIANT. "EXPERIENCE" is a single 10-glyph word
-     that cannot wrap, and this is a PINNED ledger whose 1fr stage must
-     not be clipped, so the title rides a local step just under the shared
-     190px max — big enough to span most of the ledger width yet bounded
-     so the long single word never overflows the frame at any width.
-     UPPERCASE, 0.9 line-height, tight tracking, anchored top-left. */
+/* Specificity MUST beat the shared `.portfolio-section h2` (0,1,1) or it forces
+   --fs-h1 (~187px) and the title starves the pinned frame. (.portfolio-section
+   footgun.) */
+.portfolio-work .work-ledger-title {
   font-family: var(--font-dot);
   font-weight: 700;
-  font-size: clamp(48px, 11vw, 150px);
+  /* Giant, but sized so the wordmark + the 3-row accordion + the open panel all
+     fit the pinned 100vh frame without clipping the last node. */
+  font-size: clamp(44px, 7.5vw, 116px);
   line-height: 0.9;
   letter-spacing: 0.01em;
-  text-transform: none;
-  color: var(--hdr-ink, #241e1a);
-  margin: 0;
-  /* Single word; keep it from forcing horizontal scroll if a narrower
-     frame ever clamps the 1fr track below the word's intrinsic width. */
+  color: var(--hdr-ink, var(--ink));
+  margin: clamp(4px, 0.8vh, 12px) 0 0;
   min-width: 0;
   overflow-wrap: break-word;
-  word-break: break-word;
 }
-/* (Removed dead .work-ledger-title-em: the title is plain "Experience."
-   with no <em>; the rule was an orphaned italic. No italics anywhere
-   in this section.) */
-
-/* Short-viewport guard: the ledger is a pinned grid (auto header / 1fr
-   stage / auto foot). On short screens the GIANT header would eat the 1fr
-   stage and clip the stint content, so ease the wordmark down here while
-   keeping it the section's hero (the number stays the tiny tag). The title
-   still runs large for impact but yields enough height back to the stage
-   that the headline + bullets never clip. */
-@media (max-height: 780px) and (min-width: 901px) {
-  .work-ledger-num {
-    font-size: clamp(13px, 1.4vw, 20px);
+/* Short desktop (≈768): the dot-matrix title renders ~2x its font-size, so on a
+   short pinned frame everything has to come down a tier or the last open node
+   clips. Trims the title, company, gaps + paddings together. */
+@media (max-height: 800px) and (min-width: 901px) {
+  .work-ledger {
+    gap: clamp(6px, 1vh, 12px);
+    padding-top: clamp(16px, 2.4vh, 28px);
+    padding-bottom: clamp(12px, 2vh, 22px);
   }
-  .work-ledger-title {
-    font-size: clamp(40px, 7vw, 100px);
+  .work-ledger-head {
+    padding-bottom: clamp(8px, 1.1vh, 13px);
+  }
+  .portfolio-work .work-ledger-title {
+    font-size: clamp(34px, 4.5vw, 64px);
+    margin-top: clamp(2px, 0.5vh, 8px);
+  }
+  .work-acc-company {
+    font-size: clamp(22px, 2.8vw, 40px);
+  }
+  .work-acc-head {
+    padding-top: clamp(7px, 1vh, 11px);
+    padding-bottom: clamp(7px, 1vh, 11px);
+  }
+  .work-acc-panel-inner {
+    gap: clamp(8px, 1.2vh, 14px);
+    padding-bottom: clamp(10px, 1.6vh, 18px);
+  }
+  .work-acc-bullets {
+    gap: clamp(4px, 0.6vh, 8px);
   }
 }
 
-/* ===============================================================
-   BODY: [gutter ticker] [stage]
-   --------------------------------------------------------------- */
+/* ----- Résumé CTA (top-right of the frame) --------------------- */
 
-.work-ledger-body {
-  display: grid;
-  /* Gutter sized for the ticker frame: the year label is ~56-64px
-     so the column needs to fit that plus the left marker dot. */
-  grid-template-columns: clamp(140px, 16vw, 200px) 1fr;
-  gap: clamp(24px, 3.4vw, 52px);
-  min-height: 0;
-  min-width: 0;
-}
-
-/* ===============================================================
-   LEFT-GUTTER YEAR TICKER: vertical sliding stack
-   ---------------------------------------------------------------
-   .work-ticker-frame is the height-clipped window. A mask-image
-   fades the top + bottom so rows further than ~±2 from the active
-   row dissolve naturally into the gutter background.
-
-   .work-ticker-stack is the absolute column of year rows. Per the
-   alignment math above, row 0's centre lands at the frame midline
-   when --ticker-offset is 0; each integer step slides the stack
-   up by one row-height. The rAF lerp writes --ticker-offset as a
-   floating-point number, so glides between stints (e.g. Nodes
-   2025 → Western 2027) pass smoothly through 2026 at the
-   frame centre. */
-
-.work-ticker {
+.portfolio-work .work-resume {
+  /* In-flow now (was absolute top-right, awkward + low-contrast). Sits at the
+     bottom-right of the header, baseline with the wordmark. */
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  min-height: 0;
-  gap: clamp(8px, 1.6vh, 14px);
-}
-
-.work-ticker-frame {
-  --row-h: clamp(64px, 7.2vh, 86px);
-  /* Shorter frame so fewer rows fit in view; at ~2.7×row-h only the
-     active year + its two half-faded neighbours occupy the window,
-     and the ±2 rows are already pushed into the mask fade. Was
-     280–360px (≈4 rows tall) which is what made the stack read as a
-     cluttered list. */
-  --frame-h: clamp(220px, 30vh, 280px);
-  position: relative;
-  width: 100%;
-  height: var(--frame-h);
-  overflow: hidden;
-  /* Top + bottom fade, TIGHTENED so anything past the immediate
-     neighbour dissolves: the #000 core (full opacity) only spans the
-     centre ~36% of the frame, roughly the active row + a sliver of
-     each neighbour. Rows at ±2 fall in the transparent ramp and are
-     gone. Was 22%/78% (a tall readable window). mask-image
-     linear-gradient is supported by all current evergreen browsers. */
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    transparent 14%,
-    #000 38%,
-    #000 62%,
-    transparent 86%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    transparent 14%,
-    #000 38%,
-    #000 62%,
-    transparent 86%,
-    transparent 100%
-  );
-}
-
-/* The sliding column. CRITICAL alignment math: anchor row 0's
-   CENTRE at the frame midline (top = 50% - row-h/2), then slide
-   up by --ticker-offset row-heights. Do NOT use translateY(-50%)
-   here; that's relative to the stack's intrinsic height, which
-   shifts the moment row count or row-h changes. */
-.work-ticker-stack {
-  --ticker-offset: 0;
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(50% - var(--row-h) / 2);
-  transform: translateY(calc(var(--ticker-offset) * var(--row-h) * -1));
-  display: flex;
-  flex-direction: column;
-  pointer-events: none;
-  will-change: transform;
-}
-
-/* One year row: fixed height for the math above to work. The row
-   itself stays opacity-bands controlled by JS (per-frame); the
-   active row also gets .is-active for colour / weight. */
-.work-ticker-row {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  height: var(--row-h);
-  /* Indent the digits past the left-gutter marker dot (7px at left:0)
-     so the dot has clear horizontal clearance and never touches the
-     number. */
-  padding: 0 0 0 22px;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
   box-sizing: border-box;
-  /* First-paint fallback; JS overrides per-frame with the tighter
-     active/±1/±2 bands. Kept low so a flash before the rAF kicks in
-     reads as faint, not as a cluttered full-opacity list. */
-  opacity: 0.05;
-  transition: color var(--t-base) var(--ease-out, ease),
-              font-weight var(--t-fast) ease;
-}
-
-.work-ticker-year {
-  /* Dot-matrix numerals (the section-marker "03" face): the sliding
-     year stack reads as a hardware counter instead of editorial Geist
-     digits — the ticker's whole conceit. */
-  font-family: var(--font-dot);
-  font-weight: 700;
-  font-size: clamp(44px, 4.4vw, 58px);
-  line-height: 0.92;
-  letter-spacing: 0.02em;
-  color: var(--ink);
-  font-feature-settings: "tnum" 1;
-  font-variant-numeric: tabular-nums;
-  transition: color var(--t-base) var(--ease-out, ease),
-              font-weight var(--t-fast) ease;
-}
-
-/* Active row: orange, semibold. Year colour flips to accent; that
-   is the active-year indicator. JS still owns the per-frame opacity
-   ramp for non-active bands, so we don't touch .work-ticker-row
-   opacity here. */
-.work-ticker-row.is-active .work-ticker-year {
-  color: var(--accent);
+  padding: 12px 18px;
+  background: transparent;
+  color: var(--ink) !important;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-decoration: none;
   font-weight: 600;
+  white-space: nowrap;
+  /* Real ACCENT keyline (was a near-invisible --ink-hairline) so it reads as the
+     orange primary action of the section instead of vanishing into the chrome. */
+  border: 1.5px solid var(--accent);
+  border-radius: 0;
+  transition: color var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out), transform var(--t-fast) var(--ease-out),
+    box-shadow var(--t-fast) var(--ease-out);
 }
-
-/* (Removed .work-ticker-marker + its pulsing gutter dot: decorative
-   status dots are the canonical vibe-coded tell. The active year in
-   accent orange is the indicator; it needs no anchor. The earlier
-   crosshair hairline and "YEAR · TICKER" caption were removed for the
-   same reason. .work-ticker-row keeps its padding-left indent purely
-   as breathing room.) */
+.work-resume-arrow {
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1;
+  transition: transform var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+}
+.portfolio-work .work-resume:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff !important;
+}
+.portfolio-work .work-resume:hover .work-resume-arrow {
+  color: #fff;
+  transform: translate(2px, -2px);
+}
+.portfolio-work .work-resume:active {
+  transform: scale(0.97);
+}
+.portfolio-work .work-resume:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 
 /* ===============================================================
-   STAGE: magazine spread per stint
-   --------------------------------------------------------------- */
+   ACCORDION + SPINE
+   =============================================================== */
 
-.work-stage {
+.work-acc {
+  --gutter: clamp(72px, 8vw, 104px);
+  --spine-x: 9px;
   position: relative;
-  min-width: 0;
-  min-height: 0;
-  /* Stage holds layered absolute spreads. Height is intrinsic to
-     the grid row (1fr of the .work-ledger-body). */
-}
-
-/* Semantic ordered list wrapping the stints. It is the positioning
-   context for the absolutely-layered spreads, so it must fill the
-   stage. List affordances are stripped (the editorial spreads carry
-   their own numbering via the STINT counter + bullet ordinals). */
-.work-stint-list {
-  position: absolute;
-  inset: 0;
   list-style: none;
   margin: 0;
   padding: 0;
-  min-width: 0;
+  /* Top-align under the header: centering pushed the tall open panel
+     symmetrically off both ends of the frame; top-aligned, even the 3-bullet
+     row ends within the fold and any slack sits quietly at the bottom. */
+  align-self: start;
+  width: 100%;
+}
+/* The spine: a hairline from the first node to the last. */
+.work-acc::before {
+  content: "";
+  position: absolute;
+  left: var(--spine-x);
+  top: clamp(22px, 3vh, 34px);
+  bottom: clamp(22px, 3vh, 34px);
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--ink-hairline);
+  pointer-events: none;
+}
+/* The spine FILL: an accent line that grows top→down with the scroll progress
+   (--work-fill 0..1, written by the desktop pin in Work.tsx) so the timeline
+   visibly "completes" as you traverse it. Rest / mobile / reduced-motion =
+   --work-fill unset = scaleY(0) = invisible. */
+.work-acc::after {
+  content: "";
+  position: absolute;
+  left: var(--spine-x);
+  top: clamp(22px, 3vh, 34px);
+  bottom: clamp(22px, 3vh, 34px);
+  width: 2px;
+  transform: translateX(-50%) scaleY(var(--work-fill, 0));
+  transform-origin: top center;
+  background: var(--accent);
+  pointer-events: none;
+  transition: transform 0.12s linear;
 }
 
-.work-stint {
+.work-acc-item {
+  position: relative;
+  border-top: 1px solid var(--ink-hairline);
+}
+/* The header already carries a bottom rule; the first row's top border doubled
+   it into a parallel "double line". Drop it so there's a single divider. */
+.work-acc-item:first-child {
+  border-top: none;
+}
+.work-acc-item:last-child {
+  border-bottom: 1px solid var(--ink-hairline);
+}
+
+/* Header row: the always-visible, clearly-clickable node. */
+.work-acc-head {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  background: none;
+  border: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  display: grid;
+  grid-template-columns: var(--gutter) 1fr auto;
+  align-items: center;
+  gap: clamp(14px, 2.4vw, 36px);
+  /* Roomier vertical padding so the hover/active band has real breathing space
+     around the big pixel type instead of hugging it (user). Left stays 0 so the
+     node dot keeps riding the spine. */
+  padding: clamp(18px, 2.7vh, 30px) clamp(10px, 1.4vw, 18px)
+    clamp(18px, 2.7vh, 30px) 0;
+  border-radius: 2px;
+  transition: background var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out);
+}
+/* Affordance: on hover the whole row warms to a clear soft-orange SURFACE (not
+   the old barely-there 10%-alpha tint) and the year node + company + chevron all
+   light accent together — so it unmistakably reads as one pressable control. The
+   colour shift is the primary "this is clickable" signal now that the chevron
+   ring is gone. */
+.work-acc-head {
+  border-radius: 3px;
+}
+.work-acc-head:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-page));
+}
+.work-acc-head:hover .work-acc-year {
+  color: var(--accent);
+}
+.work-acc-head:active {
+  transform: scale(0.994);
+}
+/* Already-open row: it IS the active view, not a fresh click target. Make its
+   header INERT to the pointer so it stops showing the hover band AND the custom
+   cursor's "clickable" spark once open (user — note the site hides the OS cursor
+   with `cursor:none` + a custom cursor, so `cursor:default` alone does nothing;
+   pointer-events is the real lever). Keyboard focus is unaffected and Enter is a
+   no-op on the open row anyway; you switch by clicking another row. The open
+   row's accent year/company + the expanded panel already mark it as active. */
+.work-acc-item.is-open .work-acc-head {
+  pointer-events: none;
+}
+.work-acc-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Node column: dot-matrix year + a node dot riding the spine. */
+.work-acc-node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-left: 26px; /* clears the spine + dot */
+  min-height: 1.2em;
+}
+.work-acc-node::before {
+  content: "";
   position: absolute;
-  inset: 0;
+  left: var(--spine-x);
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  transform: translate(-50%, -50%);
+  background: var(--bg-page);
+  box-shadow: inset 0 0 0 2px var(--ink-faint);
+  transition: box-shadow var(--t-base) var(--ease-out),
+    background var(--t-base) var(--ease-out);
+}
+/* Reached nodes (active + past) fill accent — the spine "completes" downward. */
+.work-acc-item.is-open .work-acc-node::before,
+.work-acc-item.is-past .work-acc-node::before {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 4px var(--bg-page);
+}
+.work-acc-year {
+  font-family: var(--font-dot);
+  font-weight: 700;
+  font-size: clamp(20px, 2.1vw, 30px);
+  line-height: 0.9;
+  letter-spacing: 0.02em;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--t-base) var(--ease-out);
+}
+.work-acc-item.is-open .work-acc-year {
+  color: var(--accent);
+}
+
+/* Company headline block (sector eyebrow + giant company name). */
+.work-acc-headline {
   display: flex;
   flex-direction: column;
-  gap: clamp(12px, 1.6vh, 20px);
-  opacity: 0;
-  pointer-events: none;
-  transform: translate3d(0, 12px, 0);
-  transition:
-    opacity var(--t-slow) var(--ease-entrance),
-    transform 640ms var(--ease-entrance);
-  will-change: opacity, transform;
+  gap: clamp(4px, 0.8vh, 10px);
+  min-width: 0;
 }
-/* Children of the flex-column stint never shrink past their intrinsic
-   content. Without flex-shrink: 0 long headlines like "Western"
-   get clamped to one-line height in absolute-positioned flex columns. */
-.work-stint > * {
-  flex-shrink: 0;
-}
-.work-stint.is-on-stage {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-  pointer-events: auto;
-}
-/* Past stints fade, visible behind the active one so the scroll
-   feels like turning pages, not snapping slides. */
-.work-stint.is-past {
-  opacity: 0;
-  transform: translate3d(0, -14px, 0);
-  pointer-events: none;
-}
-
-/* Mobile-only timeline rail marker (see the @media 900px block). On
-   desktop the sliding dot-matrix ticker owns the year, so the span is
-   hidden entirely. */
-.work-stint-year-marker {
-  display: none;
-}
-
-/* Brand line: small mono eyebrow with the company shorthand. */
-.work-stint-brand {
+.work-acc-brand {
   display: inline-flex;
   align-items: center;
   gap: 12px;
@@ -391,70 +373,108 @@
   font-size: var(--fs-mono);
   letter-spacing: 0.28em;
   text-transform: uppercase;
-  color: var(--ink);
   font-weight: 600;
-  opacity: 0;
-  transform: translate3d(0, 8px, 0);
-  transition: opacity var(--t-base) var(--ease-entrance) 40ms, transform var(--t-med) var(--ease-entrance) 40ms;
 }
-.work-stint.is-active .work-stint-brand,
-.work-stint.is-past .work-stint-brand {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-}
-/* (No .work-stint-brand-dot: the accent-colored sector text reads as
-   a chapter label on its own; a dot beside it is a vibe-coded tell.) */
-.work-stint-brand-text {
-  /* The brand text mirrors the section eyebrow; accent orange
-     wins because we want it to read as a chapter label. */
+.work-acc-brand-text {
   color: var(--accent);
 }
-.work-stint-current {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 8px;
-  padding: 4px 10px;
+.work-acc-current {
+  padding: 3px 9px;
   background: var(--accent);
   color: #fff;
   font-size: var(--text-xs);
-  letter-spacing: 0.22em;
-  /* Sharp block (was a 999px pill): rounded pills are off-voice in the
-     pixel/spec-sheet language. */
-  border-radius: 0;
+  letter-spacing: 0.2em;
   font-weight: 700;
+  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out),
+    box-shadow var(--t-fast) var(--ease-out);
 }
-/* (No .work-stint-current-dot: the solid accent badge already says
-   "live"; a flashing dot inside it is a vibe-coded tell.) */
-
-/* Giant company headline: OffBit pixel display (was Geist 500 at
-   -0.055em — the "minimalist, off-theme" read the user flagged). The
-   company name joins the sitewide big-title voice; zero tracking per
-   the pixel-glyph rule, sized down ~15% since OffBit runs optically
-   larger. */
-.work-stint-headline {
+/* Collapsed rows recess to a hollow outline so the solid badge doesn't out-shout
+   the open row (its full orange fill is reserved for the active node). */
+.work-acc-item:not(.is-open) .work-acc-current {
+  background: transparent;
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.work-acc-company {
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(44px, 6.2vw, 110px);
-  line-height: 0.98;
+  font-size: clamp(26px, 3.4vw, 50px);
+  line-height: 0.94;
   letter-spacing: 0;
   color: var(--ink);
-  margin: 0;
+  transition: color var(--t-fast) var(--ease-out);
+}
+/* Collapsed rows read slightly recessive so the open one is clearly the focus. */
+.work-acc-item:not(.is-open) .work-acc-company {
+  color: var(--ink-muted);
+}
+.work-acc-head:hover .work-acc-company {
+  color: var(--accent);
+}
+
+/* Side: dates + chevron affordance. */
+.work-acc-side {
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 1.6vw, 24px);
+  white-space: nowrap;
+}
+.work-acc-when {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+.work-acc-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--ink-faint);
+  flex: 0 0 auto;
+  /* NO ring. The bordered circle read as "this little button is the click
+     target" while the whole row is the control — misleading (user). A bare
+     chevron that rotates + goes accent on hover/open is the honest affordance. */
+  transition: transform var(--t-base) var(--ease-out),
+    color var(--t-fast) var(--ease-out);
+}
+.work-acc-head:hover .work-acc-chevron {
+  color: var(--accent);
+}
+.work-acc-item.is-open .work-acc-chevron {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+/* Drop-open panel: grid-rows 0fr → 1fr for smooth height + a soft fade. */
+.work-acc-panel {
+  display: grid;
+  grid-template-rows: 0fr;
   opacity: 0;
-  transform: translate3d(0, 18px, 0);
-  transition: opacity var(--t-slow) var(--ease-entrance) 80ms, transform 680ms var(--ease-entrance) 80ms;
-  font-feature-settings: "kern" 1;
-  min-height: 0.96em;
-  overflow: visible;
-  word-break: normal;
+  transition: grid-template-rows var(--t-base) var(--ease-out),
+    opacity var(--t-base) var(--ease-out);
 }
-.work-stint.is-active .work-stint-headline,
-.work-stint.is-past .work-stint-headline {
+.work-acc-item.is-open .work-acc-panel {
+  grid-template-rows: 1fr;
   opacity: 1;
-  transform: translate3d(0, 0, 0);
 }
-/* Meta row: role · location · when, all in mono uppercase. */
-.work-stint-meta {
+.work-acc-panel-inner {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 1.8vh, 22px);
+  /* Indent to align with the company headline (clear the node gutter). */
+  padding: 0 0 clamp(14px, 2.2vh, 26px)
+    calc(var(--gutter) + clamp(14px, 2.4vw, 36px));
+}
+
+/* ----- Panel detail content ------------------------------------ */
+
+.work-acc-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -465,603 +485,207 @@
   text-transform: uppercase;
   color: var(--ink-muted);
   font-weight: 500;
-  opacity: 0;
-  transform: translate3d(0, 8px, 0);
-  transition: opacity var(--t-base) var(--ease-entrance) 140ms, transform var(--t-med) var(--ease-entrance) 140ms;
 }
-.work-stint.is-active .work-stint-meta,
-.work-stint.is-past .work-stint-meta {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-}
-.work-stint-role {
+.work-acc-role {
   color: var(--ink);
   font-weight: 600;
 }
-.work-stint-sep {
+.work-acc-sep {
   color: var(--ink-faint);
 }
-
-/* Pull-quote: oversized impact metric on the left, one-line
-   caption on the right. No bracketing rules: the giant orange metric
-   + vertical spacing carry the separation. (Removed the top + bottom
-   hairlines that boxed in the -50% metric; the user flagged the
-   spread as over-ruled; type hierarchy structures it now.) */
-.work-stint-pull {
+/* Keep "/ Location" together so it never wraps with a dangling separator. */
+.work-acc-locgroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.work-acc-pull {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: clamp(20px, 3vw, 36px);
+  gap: clamp(16px, 2.6vw, 32px);
   align-items: center;
-  padding: clamp(14px, 2vh, 22px) 0;
-  opacity: 0;
-  transform: translate3d(0, 10px, 0);
-  transition: opacity var(--t-med) var(--ease-entrance) 220ms, transform var(--t-slow) var(--ease-entrance) 220ms;
 }
-.work-stint.is-active .work-stint-pull,
-.work-stint.is-past .work-stint-pull {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-}
-.work-stint-pull-metric {
-  /* Pixel display for the hero number (matches the trophy-wall
-     metrics): the pulled-out stat is display type, and display type
-     sitewide is the pixel face. */
+.work-acc-pull-metric {
   font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: clamp(32px, 4vw, 62px);
+  font-size: clamp(28px, 3.4vw, 52px);
   line-height: 0.96;
-  letter-spacing: 0;
   color: var(--accent);
-  font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.work-stint-pull-caption {
+.work-acc-pull-caption {
   font-family: var(--font-body);
-  font-size: clamp(var(--fs-sub), 1.2vw, var(--fs-body-lg));
+  font-size: clamp(var(--fs-sub), 1.15vw, var(--fs-body-lg));
   line-height: 1.5;
-  letter-spacing: -0.005em;
   color: var(--ink);
   opacity: 0.78;
   margin: 0;
 }
-
-/* Bullets: numbered roman-style list. Each bullet eases in via
-   CSS stagger (--bullet-i is set inline per item). */
-.work-stint-bullets {
+.work-acc-bullets {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.2vh, 14px);
+  gap: clamp(7px, 1vh, 12px);
 }
-.work-stint-bullet {
+.work-acc-bullet {
   display: grid;
-  grid-template-columns: 36px 1fr;
+  grid-template-columns: 34px 1fr;
   gap: 14px;
   align-items: baseline;
+  /* Stagger in once the panel opens (Emil): each bullet eases up just after
+     the panel reveal, capped short so it never feels slow. */
   opacity: 0;
-  transform: translate3d(0, 8px, 0);
-  transition:
-    opacity var(--t-base) var(--ease-entrance) calc(var(--bullet-i, 0) * 80ms + 300ms),
-    transform var(--t-med) var(--ease-entrance) calc(var(--bullet-i, 0) * 80ms + 300ms);
+  transform: translateY(7px);
 }
-.work-stint.is-active .work-stint-bullet,
-.work-stint.is-past .work-stint-bullet {
+.work-acc-item.is-open .work-acc-bullet {
   opacity: 1;
-  transform: translate3d(0, 0, 0);
+  transform: translateY(0);
+  transition: opacity var(--t-base) var(--ease-out)
+      calc(var(--bullet-i, 0) * 55ms + 120ms),
+    transform var(--t-base) var(--ease-out)
+      calc(var(--bullet-i, 0) * 55ms + 120ms);
 }
-.work-stint-bullet-num {
+.work-acc-bullet-num {
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
   letter-spacing: 0.18em;
-  text-transform: uppercase;
   color: var(--accent);
   font-weight: 600;
   padding-top: 3px;
 }
-.work-stint-bullet-text {
+.work-acc-bullet-text {
   font-family: var(--font-body);
-  font-size: clamp(13.5px, 1.05vw, 15.5px);
+  font-size: clamp(14px, 1.05vw, 15.5px);
   line-height: 1.55;
-  letter-spacing: -0.005em;
   color: var(--ink);
-  opacity: 0.88;
+  opacity: 0.9;
 }
 
-/* ----- Foot: STINT counter + section progress bar -------------- */
-
-.work-ledger-foot {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: clamp(16px, 3vw, 32px);
-  padding-top: clamp(8px, 1.4vh, 14px);
-  /* (Removed border-top: the progress bar is already a line in this
-     row; the rule above it was redundant clutter.) */
-}
-.work-ledger-counter {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-  font-weight: 500;
-  font-feature-settings: "tnum" 1;
-}
-.work-ledger-bar {
-  position: relative;
-  height: 1px;
-  width: 100%;
-  max-width: 320px;
-  background: var(--ink-hairline);
-  overflow: hidden;
-}
-.work-ledger-bar-fill {
-  position: absolute;
-  inset: 0;
-  background: var(--accent);
-  transform-origin: left center;
-  transform: scaleX(0);
-  will-change: transform;
-}
-
-/* ----- Resume CTA (pinned top-right of the ledger frame) -------- */
-
-.portfolio-work .work-resume {
-  position: absolute;
-  /* Top-right corner of the padded ledger frame, aligned with the header.
-     Clear of the left-aligned "Experience." title. */
-  top: clamp(40px, 5.5vh, 64px);
-  right: clamp(40px, 6vw, 96px);
-  bottom: auto;
-  z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  background: transparent;
-  color: var(--ink) !important;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  text-decoration: none;
-  font-weight: 600;
-  /* Sharp bordered chip (was a bottom-hairline underline): the CTA
-     joins the spec-sheet chip language; hover flips it to a flat
-     accent block below. */
-  border: 1px solid var(--ink-hairline);
-  border-radius: 0;
-  opacity: 0;
-  transform: translate3d(0, 6px, 0);
-  transition:
-    opacity var(--t-med) ease,
-    transform var(--t-med) ease,
-    color var(--t-fast) ease,
-    background var(--t-fast) ease;
-  pointer-events: auto;
-  cursor: pointer;
-}
-.portfolio-work .work-resume.is-revealed {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-}
-.work-resume-arrow {
-  color: var(--accent);
-  font-size: 16px;
-  line-height: 1;
-  transform: translateY(-1px);
-  transition: transform var(--t-fast) var(--ease-bounce);
-}
-.portfolio-work .work-resume:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff !important;
-}
-.portfolio-work .work-resume:hover .work-resume-arrow {
-  color: #fff;
-  transform: translate(2px, -3px);
-}
-/* Keyboard focus: the CTA is opacity-0 until revealed, so it can be
-   tab-reachable while invisible mid-scroll. Force it visible + give a
-   clear accent ring when focused so keyboard users never land on an
-   unseen control. */
-.portfolio-work .work-resume:focus-visible {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-  color: var(--accent) !important;
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
-.portfolio-work .work-resume:focus-visible .work-resume-arrow {
-  transform: translate(2px, -3px);
-}
-
-/* ===============================================================
-   Mobile (< 900px): STATIC stacked spread, no pin, ticker hidden
-   ---------------------------------------------------------------
-   A phone in portrait cannot fit a giant headline + multi-line
-   bullets + pull metric + foot inside one pinned ~100svh viewport
-   without clipping (the desktop stage is overflow:hidden and the
-   stints are absolutely layered for the cross-fade). So on mobile
-   the JS drops the pin/scrub + ticker lerp (it adds
-   .is-static-layout to the section) and the layout below unwinds
-   the absolute stage into a NATURAL top-to-bottom flow: the section
-   grows to content height, every stint is a full-width single-column
-   spread, all bullets are fully readable, and native momentum scroll
-   carries the reader through the three stints like a résumé.
-
-   The left-gutter year ticker is a wide-gutter motion device that
-   doesn't shrink to a phone column legibly, so it's hidden. No data is
-   lost: each stint's meta row carries the full date range
-   ("MAY 2025 - NOV 2025"), and the brand eyebrow carries the company.
-
-   Single-column, full-width spread with sensible padding, NO
-   horizontal scroll, ≥16px bullet/body, ≥44px résumé touch target. */
+/* (The old `.is-static` desktop/mobile split is gone: the whole section is now
+   one click-driven accordion at every width, so there is no separate static
+   layout to style.) */
 
 @media (max-width: 900px) {
-  /* Grow to content: drop the 100svh pin frame + overflow clip so
-     the stacked spreads flow and scroll natively. Also neutralise the
-     shared `.portfolio-section` flex-centering + large vertical padding
-     (set in sections.css: display:flex / align-items:center /
-     padding:120px 0, and 80px 0 below 768) that we inherit but don't
-     want for a top-aligned static column. Overriding here (not editing
-     sections.css); work-timeline.css wins on source order at equal
-     specificity. */
+  /* Flow at content height on phones — the desktop 100vh frame left dead space
+     below the last accordion row once the section is no longer pinned. */
   .portfolio-work {
-    height: auto;
-    min-height: 100svh;
-    overflow: visible;
-    display: block;
-    padding: 0;
-  }
-  .work-ledger {
-    height: auto;
-    min-height: 100svh;
-    /* Intrinsic rows so header / body / foot size to content rather
-       than being squeezed into a fixed-height grid. */
-    grid-template-rows: auto auto auto;
-    padding: 28px 20px 28px;
-    gap: clamp(20px, 5vw, 32px);
-  }
-  .work-ledger-head {
-    grid-template-columns: 1fr;
-    gap: 12px;
-    padding-bottom: 14px;
-  }
-  .work-ledger-head-left {
-    flex-direction: row;
-    /* Tiny "03" tag sits at the wordmark's top shoulder (reference), not
-       on its baseline, now that the title dwarfs it. */
-    align-items: flex-start;
-    gap: 8px;
-  }
-  /* Mobile static stack: the tiny "03" tag sits beside the GIANT
-     EXPERIENCE wordmark. The single 10-glyph word can't wrap, so the
-     title is capped to a phone-safe large step that never forces
-     horizontal scroll at 360px (12.5vw floor → ~45px at 360px, ~10 glyphs
-     in the pixel face fit the 320px content width). The number stays the
-     tag. align-items shifts to flex-start (set below) so the tag sits at
-     the wordmark's top shoulder, not on the descender baseline. */
-  .work-ledger-num {
-    font-size: clamp(13px, 3.6vw, 18px);
+    min-height: auto;
   }
   .work-ledger-title {
-    font-size: clamp(44px, 12.5vw, 76px);
+    font-size: clamp(44px, 13vw, 80px);
   }
-
-  /* Body collapses to a single full-width column; drop the ticker
-     gutter entirely. The vertical ticker doesn't translate to a tiny
-     mobile column without losing legibility, so it's hidden; the
-     stint brand + meta carry the company + dates. */
-  .work-ledger-body {
-    grid-template-columns: 1fr;
-    gap: 0;
-    min-height: 0;
-  }
-  .work-ticker {
-    display: none;
-  }
-
-  /* Un-absolute the stage + list so the stints become a stacked,
-     naturally-flowing column instead of cross-faded overlays. */
-  .work-stage,
-  .work-stint-list {
-    position: static;
-    inset: auto;
-  }
-  .work-stint-list {
-    display: flex;
+  /* Header stacks on narrow screens: the giant wordmark + the résumé CTA can't
+     share a row, so the CTA drops below, left-aligned. */
+  .work-ledger-head {
     flex-direction: column;
-    gap: clamp(40px, 9vw, 64px);
+    align-items: flex-start;
+    gap: clamp(12px, 3vw, 20px);
+    padding-bottom: 8px;
   }
-
-  /* Every stint is laid out static + fully visible (no opacity-0
-     overlay, no cross-fade transform). The reveal/stagger transitions
-     are dropped so the spread reads instantly on scroll-in. */
-  .work-stint {
-    position: static;
-    inset: auto;
-    gap: clamp(12px, 3vw, 18px);
-    opacity: 1;
-    transform: none;
-    pointer-events: auto;
-    transition: none;
-    /* No overflow clip; content defines its own height now. */
-    overflow: visible;
+  .portfolio-work .work-resume {
+    align-self: flex-start;
+    /* Breathing room under the header hairline so the stacked CTA doesn't sit
+       flush against the border on a phone. */
+    margin-top: var(--space-2);
   }
-  .work-stint-brand,
-  .work-stint-headline,
-  .work-stint-meta,
-  .work-stint-pull,
-  .work-stint-bullet {
-    opacity: 1;
-    transform: none;
-    transition: none;
+  .work-acc {
+    --gutter: clamp(72px, 19vw, 90px);
+    /* A touch more air between the resume CTA / header and the first row. */
+    margin-top: var(--space-2);
   }
-
-  /* GIANT headline gets a mobile ceiling: at 11.5vw "Windscribe" (the
-     longest headline, 10 glyphs) fits a 360-390px portrait width in
-     the pixel face with margin and never triggers horizontal scroll.
-     min-width:0 + the wrapper padding keep it bounded. */
-  .work-stint-headline {
-    font-size: clamp(34px, 11.5vw, 64px);
-    line-height: 1;
-    min-width: 0;
+  .work-acc-head {
+    grid-template-columns: var(--gutter) 1fr;
+    grid-template-areas: "node main" "node side";
+    row-gap: 8px;
+    column-gap: clamp(14px, 4vw, 20px);
+    /* Looser vertical padding on phones so each row has real breathing space
+       around the big pixel type instead of hugging it. */
+    padding: clamp(20px, 5.5vw, 28px) 0;
   }
-
-  /* Pull metric stacks above its caption (single column). The metric
-     is allowed to wrap on the very narrowest screens so "3.9 / 4.0"
-     never forces horizontal scroll. */
-  .work-stint-pull {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    padding: 12px 0;
-  }
-  .work-stint-pull-metric {
-    font-size: clamp(34px, 12vw, 56px);
-    white-space: normal;
-  }
-  .work-stint-pull-caption {
-    /* >=16px body: readable on a phone, sensible measure via the
-       single column + wrapper padding. --fs-body IS the 16px body token. */
-    font-size: var(--fs-body);
-    line-height: 1.5;
-    opacity: 0.82;
-  }
-
-  .work-stint-meta {
-    /* Slightly larger meta so the dates (carrying the hidden ticker's
-       info) read clearly. */
-    font-size: 11.5px;
-    gap: 8px 12px;
-  }
-
-  .work-stint-bullet {
-    grid-template-columns: 30px 1fr;
-    gap: 12px;
-  }
-  .work-stint-bullet-text {
-    /* >=16px body: the brief's hard floor for mobile readability.
-       --fs-body IS the 16px body token. */
-    font-size: var(--fs-body);
-    line-height: 1.55;
-    opacity: 0.9;
-  }
-  .work-stint-bullet-num {
+  .work-acc-node {
+    grid-area: node;
+    align-self: start;
     padding-top: 4px;
+    /* Tighter dot clearance on mobile so the year fits its column. */
+    padding-left: 22px;
   }
-
-  /* Foot: STINT counter + progress bar. In the static flow the pin's
-     live scrub no longer drives the bar (the scaleX JS only runs while
-     pinned), so it would sit empty. Park it FULL so it reads as a
-     completed-progress accent rule under the fully-shown résumé rather
-     than a broken empty track. The counter is HIDDEN here: its text is
-     also pin-driven, so static flow would forever show "01 / 03" under
-     the third stint — a stale, wrong number. The rail + year markers
-     above carry the timeline structure instead. */
-  .work-ledger-foot {
-    padding-top: clamp(12px, 4vw, 18px);
+  .work-acc-headline {
+    grid-area: main;
   }
-  .work-ledger-counter {
+  .work-acc-side {
+    grid-area: side;
+    justify-content: space-between;
+  }
+  .work-acc-company {
+    /* #6 OVERFLOW: long single-word names ("Windscribe"/"Broadridge") in the
+       pixel face overran the narrow column at 320-360px. min-width:0 lets the
+       grid cell shrink below content size, overflow-wrap:anywhere + hyphens
+       allow a mid-word break as a last resort, and the lower clamp floor
+       (24px) shrinks the type before it ever needs to break. */
+    min-width: 0;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+    font-size: clamp(24px, 8vw, 46px);
+  }
+  .work-acc-year {
+    font-size: clamp(15px, 4vw, 20px);
+  }
+  /* Stack role over location (no inline "/") so the meta never wraps awkwardly. */
+  .work-acc-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .work-acc-locgroup .work-acc-sep {
     display: none;
   }
-  .work-ledger-bar-fill {
-    transform: scaleX(1);
+  .work-acc-panel-inner {
+    padding-left: var(--gutter);
   }
-
-  /* ===== Mobile timeline rail with year markers =====
-     The static stacked list reads as a TIMELINE again (user: "just a
-     list of stuff"): a left-gutter hairline rail runs the full list,
-     each stint pins a dot-matrix year marker (the desktop ticker's
-     face) + an accent node to the rail, and an accent segment bridges
-     the gap between stints. Pure decoration (markers are aria-hidden;
-     the meta rows carry the real dates), no pin, native scroll. */
-  .work-stint-list {
-    position: relative;
-    padding-left: clamp(40px, 10vw, 56px);
+  .work-acc-pull {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
-  .work-stint-list::before {
-    content: "";
-    position: absolute;
-    left: clamp(9px, 4vw, 14px);
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: var(--ink-hairline);
-    pointer-events: none;
+  .work-acc-pull-metric {
+    white-space: normal;
+    font-size: clamp(28px, 11vw, 46px);
   }
-  .work-stint-year-marker {
-    display: block;
-    position: absolute;
-    left: clamp(9px, 4vw, 14px);
-    top: 0;
-    transform: translateX(-50%);
-    font-family: var(--font-dot);
-    font-weight: 700;
-    font-size: clamp(18px, 4.2vw, 26px);
-    line-height: 0.88;
-    letter-spacing: 0.02em;
-    color: var(--accent);
-    font-feature-settings: "tnum" 1;
-    font-variant-numeric: tabular-nums;
-    text-align: center;
-    /* Quiet plate behind the digits so the rail doesn't strike through
-       them where they cross. */
-    background: var(--bg-page, #eef0f3);
-    padding: 2px 0;
-    pointer-events: none;
-    user-select: none;
-  }
-  /* Node: small accent square (sharp, spec-sheet voice) on the rail
-     beneath the year digits. */
-  .work-stint-year-marker::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: 100%;
-    margin-top: 5px;
-    transform: translateX(-50%);
-    width: 7px;
-    height: 7px;
-    background: var(--accent);
-    box-shadow: 0 0 0 2px var(--bg-page, #eef0f3);
-  }
-  .work-stint {
-    position: relative;
-    /* Clearance so the year marker + node sit above the brand row. */
-    padding-top: clamp(34px, 8vw, 44px);
-  }
-  /* Accent rail segment bridging the gap to the next stint. */
-  .work-stint-list > li:not(:last-child) {
-    position: relative;
-  }
-  .work-stint-list > li:not(:last-child)::after {
-    content: "";
-    position: absolute;
-    left: clamp(9px, 4vw, 14px);
-    top: 100%;
-    height: clamp(20px, 5vw, 32px);
-    width: 1px;
-    background: var(--accent);
-    transform: translateX(-50%);
-    pointer-events: none;
-  }
-
-  /* Resume CTA: full editorial affordance, >=44px touch target.
-     Relative-positioned (out of the desktop bottom-right absolute
-     anchor) so it sits at the end of the stacked column. */
-  .portfolio-work .work-resume {
-    position: relative;
-    /* top MUST be reset too: the desktop rule pins the CTA with
-       `top: clamp(40px, 5.5vh, 64px)`, and on a relative box that
-       leaks through as a ~50px downward visual shift — the CTA sat in
-       a dead band below the header and its arrow collided with the
-       first stint's FINTECH / CURRENTLY chips. */
-    top: auto;
-    right: auto;
-    bottom: auto;
-    align-self: flex-start;
-    /* min-height + box-sizing guarantee ≥44px regardless of font line
-       box; the chip keeps its full border on mobile now (the old
-       underline-only override predates the chip treatment). */
-    min-height: 48px;
-    box-sizing: border-box;
-    padding: 14px 18px;
-    margin-top: 0;
-    font-size: 12px;
+  .work-acc-pull-caption,
+  .work-acc-bullet-text {
+    font-size: var(--fs-body);
   }
 }
 
-/* ===============================================================
-   REDUCED MOTION: static resume stack, no pin / scrub / slide
-   ---------------------------------------------------------------
-   Users who opted out of motion get NO scroll-pin, NO ticker slide,
-   NO cross-fade. JS skips the ScrollTrigger pin + the rAF lerp and
-   adds .is-reduced-motion to the section; CSS then unwinds the
-   absolute-stacked stage into a plain top-to-bottom list where every
-   stint is fully visible and readable like a printed résumé. The
-   left-gutter ticker (a pure motion device) is hidden; the dates
-   still read in each stint's meta row, so no information is lost.
+/* #34 OVERFLOW: at ≤380px the EXPERIENCE wordmark mid-broke ("Experi-ence").
+   Drop the title floor so it scales down to fit the line instead of wrapping.
+   Placed after the ≤900px rule so it wins for the overlapping range. */
+@media (max-width: 380px) {
+  .work-ledger-title {
+    font-size: clamp(38px, 12vw, 64px);
+  }
+}
 
-   Two selectors:
-     • .portfolio-work.is-reduced-motion → structural relayout (JS
-       only applies the class when matchMedia confirms the pref).
-     • @media (prefers-reduced-motion: reduce) → belt-and-suspenders
-       transition/animation kill for any element JS doesn't reach. */
-
-.portfolio-work.is-reduced-motion {
-  height: auto;
-  min-height: 100vh;
-  overflow: visible;
-}
-.portfolio-work.is-reduced-motion .work-ledger {
-  height: auto;
-  min-height: 100vh;
-}
-.portfolio-work.is-reduced-motion .work-ledger-body {
-  /* Single column: drop the ticker gutter entirely. */
-  grid-template-columns: 1fr;
-}
-.portfolio-work.is-reduced-motion .work-ticker {
-  display: none;
-}
-/* Stage + list flow naturally; stints become a stacked column. */
-.portfolio-work.is-reduced-motion .work-stage,
-.portfolio-work.is-reduced-motion .work-stint-list {
-  position: static;
-  inset: auto;
-}
-.portfolio-work.is-reduced-motion .work-stint-list {
-  display: flex;
-  flex-direction: column;
-  gap: clamp(36px, 6vh, 72px);
-}
-.portfolio-work.is-reduced-motion .work-stint,
-.portfolio-work.is-reduced-motion .work-stint-brand,
-.portfolio-work.is-reduced-motion .work-stint-headline,
-.portfolio-work.is-reduced-motion .work-stint-meta,
-.portfolio-work.is-reduced-motion .work-stint-pull,
-.portfolio-work.is-reduced-motion .work-stint-bullet {
-  position: static;
-  inset: auto;
+/* Reduced-motion: every panel open, no drop / stagger / press motion. */
+.portfolio-work.is-reduced-motion .work-acc-panel {
+  grid-template-rows: 1fr;
   opacity: 1;
-  transform: none;
-  pointer-events: auto;
-  transition: none;
 }
-/* Tame the giant headline so the static stack stays scannable rather
-   than each company eating a full viewport. */
-.portfolio-work.is-reduced-motion .work-stint-headline {
-  font-size: clamp(40px, 6vw, 72px);
-}
-.portfolio-work.is-reduced-motion .work-resume {
-  position: relative;
-  top: auto; /* desktop top-pin leaks through on a relative box */
-  right: auto;
-  bottom: auto;
-  opacity: 1;
-  transform: none;
-  transition: none;
-  border-left: none;
-  align-self: flex-start;
-  margin-top: clamp(20px, 4vh, 40px);
-}
-
-/* Disable transitions / looping animations for motion-sensitive users
-   regardless of the structural relayout above. */
 @media (prefers-reduced-motion: reduce) {
-  .work-stint,
-  .work-stint-brand,
-  .work-stint-headline,
-  .work-stint-meta,
-  .work-stint-pull,
-  .work-stint-bullet,
-  .portfolio-work .work-resume,
-  .work-ticker-row,
-  .work-ticker-year {
+  .work-acc-head,
+  .work-acc-panel,
+  .work-acc-chevron,
+  .work-acc-node::before,
+  .work-acc-year,
+  .work-acc-company,
+  .work-acc-bullet,
+  .portfolio-work .work-resume {
+    transition: none !important;
+  }
+  .work-acc-item.is-open .work-acc-bullet {
     transition: none !important;
   }
 }

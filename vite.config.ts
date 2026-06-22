@@ -16,9 +16,15 @@ export default defineConfig({
         // matters: the drei rule must precede the generic @react-three rule,
         // or drei would fall into the "three" chunk.
         manualChunks: (id) => {
+          // Vite's __vitePreload helper is imported by the entry (it wraps
+          // every lazy() dynamic import). Rollup otherwise co-locates it into
+          // the `drei` chunk; since drei imports three, that single edge drags
+          // BOTH drei and the ~1MB three chunk onto the first-paint/preload
+          // path even though no eager code uses them. Pin the helper to the
+          // always-eager react-vendor chunk so the entry's static graph never
+          // reaches three/drei.
+          if (id.includes("preload-helper")) return "react-vendor";
           if (!id.includes("node_modules")) return undefined;
-          if (id.includes("@react-three/rapier") || id.includes("@dimforge"))
-            return "rapier";
           // drei is large and is referenced by the lazy section scenes; its
           // own chunk lets the browser cache it independently of three core.
           if (id.includes("@react-three/drei")) return "drei";
@@ -31,7 +37,21 @@ export default defineConfig({
           )
             return "three";
           if (id.includes("lucide-react")) return "icons";
-          return "vendor";
+          // React core in its own long-lived cache chunk.
+          if (
+            id.includes("/react/") ||
+            id.includes("/react-dom/") ||
+            id.includes("/scheduler/")
+          )
+            return "react-vendor";
+          // Everything else: let Rollup auto-split. A catch-all "vendor" chunk
+          // here was the bug behind the "three -> vendor -> three" circular
+          // warning AND kept three on the first-paint path: it mixed eager
+          // React with three-DEPENDENT libs that drei pulls (troika-three-text,
+          // three-mesh-bvh, etc.). Those libs import three, so an eager vendor
+          // chunk forced three eager. Returning undefined lets Rollup place
+          // those lazy-only deps inside the LAZY scene/drei chunks instead.
+          return undefined;
         },
       },
     },

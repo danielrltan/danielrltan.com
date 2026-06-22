@@ -1,27 +1,20 @@
 /* ======================================================================
-   Other: "Off the clock"
+   Other: "Off the clock" (section 04, "Play") — BOLD INTEREST CLUSTER
    ----------------------------------------------------------------------
-   Pinned section (~5000px scroll) with two crossfaded beats:
+   A single bold screen (no pin, no scroll-jack). The 3D HobbiesScene fills
+   the viewport full-bleed and floats all ten interest objects together as
+   one dense, overlapping cluster suspended in open space. The editorial
+   corner header (tiny "04" tag + giant wordmark) floats on top; hovering an
+   object surfaces its label via a tooltip. The only scroll-driven motion is
+   a light entrance fade-up of the header.
 
-     Beat A (pin 0.00–0.50)   PHOTO TRAIN STACK
-       Three horizontal rows of placeholder photo cards stacked
-       vertically; each row glides at its own controlled rate (lerp
-       toward target, never directly bound to scroll). Adjacent rows
-       slide opposite directions for a layered parallax read.
-
-     Beat B (pin 0.55–1.00)   CURATED HOBBY REEL
-       3D HobbiesScene takes the full viewport. A restrained editorial
-       label floats in the bottom-left (mono index · display name +
-       1-line poetic quote). A 10-dot strip at the bottom conveys
-       position through the reel. No photo plate, no offset shadow, no
-       corner ticks; the 3D scene is unambiguously the focus.
-
-   Both beats share the same header position + the same pin envelope.
-   The internal layouts changed; the pin envelope did not.
+   NOTE: the Photos ("Recents") section reuses the `.other-gallery*` +
+   `.other-train*` rules further down this file for its photo-train stack, so
+   those rules remain even though Play itself no longer renders them.
    ====================================================================== */
 
 /* ----------------------------------------------------------------------
-   Accent-as-text contrast token. Raw --accent (#e87040) on the cool page
+   Accent-as-text contrast token. Raw --accent (#ff4f00) on the cool page
    is ~2.6:1, fails AA for the small mono eyebrow + scrub label text.
    Darken toward ink (66% accent / 34% ink) for ~5:1 while keeping the
    orange identity. Same darkening trick the hero used. Used only for
@@ -57,82 +50,39 @@
   height: 100vh;
   height: 100svh;
   overflow: hidden;
-  /* Cool retro-futurism wrapper: radial gradient stays in the cool-
-     grey family (--bg-page → --bg-deep) per the design-system rule
-     "no warm cream backgrounds, ever". Centered ellipse so the dot
-     strip at the bottom reads as its own rail.
-
-     SEAM FIX (03→04): the Work section above ends on a flat
-     --wrapper-bg (#eef0f3). This radial's top edge is a different,
-     lighter tone, so the two full-bleed sections met at a hard
-     horizontal line during the handoff. A top linear-fade layer
-     (--wrapper-bg → transparent over the top 22%) makes this section's
-     top edge EXACTLY match Work's bottom, so the gradient continues
-     seamlessly out of Work instead of stepping. rgba(238,240,243,0) is
-     --bg-page at 0 alpha, so the fade is pure opacity (no hue shift). */
+  /* Flat page tone, uniform with every other content section. (Was a cool-grey
+     radial vignette + top/bottom seam-fades; removed in the bg-consistency pass
+     — Work above and BitsAndPieces below are both flat #eef0f3, so the edges
+     already match with nothing to patch.) */
   background-color: var(--bg-page);
   background-image:
-    /* SEAM FIX (04→05): BitsAndPieces below opens on a flat
-       --wrapper-bg (#eef0f3), but this section's radial has reached its
-       darker --bg-deep (#d8dade) tone by the bottom edge, so the two
-       full-bleed sections met at a hard horizontal step (user-flagged).
-       A BOTTOM linear-fade layer (transparent → --wrapper-bg over the
-       bottom ~24%) pulls this section's bottom edge back to EXACTLY
-       #eef0f3, so the grey resolves into BitsAndPieces' top with no
-       line. Mirrors the top fade that already smooths Work→Other.
-       rgba(238,240,243,0) is --bg-page at 0 alpha → pure-opacity fade,
-       no hue shift. */
-    linear-gradient(
-      0deg,
-      var(--wrapper-bg) 0%,
-      rgba(238, 240, 243, 0) 24%
-    ),
-    linear-gradient(
-      180deg,
-      var(--wrapper-bg) 0%,
-      rgba(238, 240, 243, 0) 22%
-    ),
-    radial-gradient(
-      ellipse at 50% 30%,
-      var(--bg-page) 0%,
-      var(--bg-elevated) 60%,
-      var(--bg-deep) 100%
-    ),
+    /* Flat page tone (background-color above) + the sitewide dot-grid texture.
+       The tonal radial (--bg-page → --bg-elevated → --bg-deep) and its two
+       seam-fade linears were removed: the centre-light / edge-dark vignette
+       drifted this section off the flat #eef0f3 that every other content
+       section uses (bg-consistency pass). The dot grid is kept. */
     radial-gradient(
       circle at center,
       rgba(13, 14, 16, 0.05) 0.5px,
       transparent 1px
     );
-  background-size: 100% 100%, 100% 100%, 100% 100%, 5px 5px;
-  background-blend-mode: normal, normal, normal, multiply;
+  background-size: 5px 5px;
+  background-blend-mode: multiply;
   color: var(--ink);
 }
 
 /* ======================================================================
-   Beat-A vs Beat-B containers: both absolutely positioned, full-bleed
-   inside the section. Driven by inline opacity from React; they
-   crossfade across the [0.48, 0.55] handoff window of the pin.
+   Photos (Recents) reuses this file's `.other-gallery*` + `.other-train*`
+   rules for its own photo-train stack, so the gallery container rule stays
+   here. (The Play section itself no longer has a gallery beat.)
    ====================================================================== */
-.other-gallery,
-.other-curated {
+.other-gallery {
   position: absolute;
   inset: 0;
   /* GSAP-onUpdate writes opacity inline; CSS transition smooths edge
      cases like jump-to-section anchors. */
   transition: opacity var(--t-fast) linear;
   will-change: opacity;
-}
-
-/* BEAT BLEED FIX: the curated 3D stage is absolutely positioned ON TOP
-   of the photo train stack (later sibling). It MUST start fully hidden
-   so the floating interest objects never flash over Beat A before the
-   first scroll tick / React inline opacity write lands. React then
-   drives this via inline `opacity: beatBOpacity` (0 during Beat A, fades
-   in at the [0.48, 0.55] handoff). pointer-events guards stray clicks
-   reaching the canvas while it's invisible. */
-.other-curated {
-  opacity: 0;
-  pointer-events: none;
 }
 
 /* ======================================================================
@@ -151,9 +101,8 @@
   z-index: 5;
   pointer-events: none;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr;
   grid-template-rows: auto auto;
-  column-gap: 4vw;
   align-items: end;
 }
 
@@ -178,7 +127,7 @@
   font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  color: var(--hdr-num-color, #b8431a);
+  color: var(--hdr-num-color, #c23d00);
 }
 
 /* Title: "Some interests." OffBit pixel display (sitewide big-title
@@ -190,8 +139,9 @@
 .portfolio-other .other-title {
   grid-column: 1;
   grid-row: 2;
-  /* Very little padding under the small number tag. */
-  margin: 2px 0 0;
+  /* Clear gap under the eyebrow — the pixel title's line-height:0.9 overflows
+     upward, so the old 2px let it crowd/overlap the number tag. */
+  margin: clamp(16px, 2.2vh, 34px) 0 0;
   /* OffBit pixel display on the shared GIANT --hdr-title scale — SAME
      wordmark size as every other section. UPPERCASE, 0.9 line-height,
      tight tracking. "SOME INTERESTS" wraps to stacked huge lines
@@ -202,7 +152,7 @@
   line-height: 0.9;
   letter-spacing: 0.01em;
   text-transform: none;
-  color: var(--hdr-ink, #241e1a);
+  color: var(--hdr-ink, var(--ink));
   min-width: 0;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -211,21 +161,6 @@
   /* Title is the slowest reveal so it lands last + most deliberately. */
   transition: opacity var(--t-slow) var(--ease-entrance),
               transform var(--t-slow) var(--ease-entrance);
-}
-
-.other-sub {
-  grid-column: 2;
-  grid-row: 2;
-  margin: 0 0 14px;
-  align-self: end;
-  max-width: 280px;
-  font-family: var(--font-body);
-  font-size: var(--fs-meta);
-  line-height: 1.6;
-  color: var(--ink-muted);
-  opacity: var(--head-sub, 1);
-  transform: translateY(calc((1 - var(--head-sub, 1)) * 10px));
-  transition: opacity 360ms ease, transform 360ms ease;
 }
 
 /* Short-viewport guard: this section is pinned full-bleed with the 3D reel
@@ -257,19 +192,14 @@
 
 .other-scene-wrap {
   position: absolute;
-  /* FULL-BLEED CANVAS (overhaul): the 3D reel is the selling point, so
-     the canvas now spans nearly the whole viewport: full width and a
-     generous height. It extends UNDER the header + caption (both are
-     pointer-events:none overlays on a higher z-index, and the canvas is
-     transparent so they read cleanly on top). The focused hero is
-     centred in this tall box, so it lands mid-screen with clear margin
-     above (below the title) and below (above the caption/dots). The old
-     28vh/18vh band squeezed the canvas to ~54vh tall on a wide aspect,
-     which is exactly why the focused object clipped at the sides. */
-  top: 13vh;
-  left: 0;
-  right: 0;
-  bottom: 10vh;
+  /* FULL-BLEED CLUSTER: the bold interest cluster is the whole section, so the
+     canvas spans the entire viewport edge-to-edge with low padding. The header
+     floats on top (pointer-events:none, higher z-index); the canvas is
+     transparent so the cool-grey section gradient reads through behind the
+     suspended objects. The camera frames the cluster to fill ~92% of the short
+     axis, so the outermost objects sit near the edges for a bold, low-padding
+     read. */
+  inset: 0;
   z-index: 3;
   pointer-events: auto;
   overflow: hidden;
@@ -277,212 +207,48 @@
 
 /* Wrapper inside the scene canvas + absolutely-positioned tooltip.
    Position:relative so the tooltip transform is measured from this
-   box, not the section/viewport. */
+   box, not the section/viewport.
+
+   NO edge mask: the previous radial fade-to-transparent read as a "weird
+   white gradient" at the top/bottom (user-flagged — this site stays clean
+   and gradient-free). Instead the 3D solver CONTAINS every object fully
+   inside the visible frame (HobbiesScene's per-body clamp), so nothing ever
+   reaches the canvas edge to need feathering. Clean hard edges, no fade. */
 .hobbies-canvas-wrap {
   position: relative;
   width: 100%;
   height: 100%;
-  /* EDGE-DISSOLVE (user-flagged "ends with a line"): the section clips
-     the scene with overflow:hidden, so when a dim neighbour (pushed
-     outward by DIM_OUTWARD to frame the hero), or a long model like the
-     ski, reaches the canvas edge, it gets cut into a hard straight line.
-     A feathered radial mask fades the 3D content to transparent at the
-     frame edges, so anything reaching them dissolves into the page's
-     cool-grey gradient (the canvas is transparent) instead of hard-
-     clipping. Reinforces the intended "objects suspended in the page,
-     not in a framed box" read, and mirrors the train-row mask idiom.
-     `ellipse 50% 50%` touches the edge MIDPOINTS (corners fully
-     transparent); opaque to 78% keeps the centred hero (which fills
-     only ~60% of the short axis, FILL_FRACTION) fully crisp while
-     feathering just the outer rim where objects clip. */
-  -webkit-mask-image: radial-gradient(
-    ellipse 50% 50% at 50% 50%,
-    #000 78%,
-    transparent 100%
-  );
-  mask-image: radial-gradient(
-    ellipse 50% 50% at 50% 50%,
-    #000 78%,
-    transparent 100%
-  );
 }
 
-/* Tooltip: DOM div positioned via inline transform from cursor
-   coords. Translates from top-left so the inline transform's x/y
-   land at cursor + 20px offset. */
-.hobbies-tooltip {
-  position: absolute;
-  top: 0;
-  left: 0;
-  pointer-events: none;
-  background: var(--ink);
-  color: var(--bg-surface);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  padding: 7px 12px;
-  border-radius: 0;
-  border: 1px solid var(--accent);
-  z-index: 5;
-  white-space: nowrap;
-  /* RECIPROCAL FOCUS CUE (Play swing): the tooltip used to fade in flat,
-     reading as a detached UI chip. It now latches on with a brief accent
-     halo that overshoots then settles (--ease-bounce), so it registers as
-     a focus indicator clamping onto the hovered object rather than a solo
-     label. NOTE: `transform` is OFF-LIMITS to animate here — HobbiesScene
-     sets the tooltip position via an inline transform (cursor coords), so
-     the cue rides opacity + box-shadow only (no transform collision, no
-     behaviour change). The paired 3D model scale/glow proposed alongside
-     this lives in HobbiesScene (out of scope) and is left to sign-off. */
-  animation: hobbies-tooltip-in var(--t-base) var(--ease-bounce);
-}
-@keyframes hobbies-tooltip-in {
-  from {
-    opacity: 0;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 38%, transparent);
-  }
-  60% {
-    opacity: 1;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
-  }
-  to {
-    opacity: 1;
-    box-shadow: 0 0 0 0 transparent;
-  }
-}
-
-/* ======================================================================
-   Floating editorial label: bottom-left. Mono index · display name
-   on one row, upright poetic quote below. Drifts + fades with
-   --cap-opacity / --cap-drift custom props poked from React on each
-   slot crossover.
-   ====================================================================== */
-
-.other-caption {
-  position: absolute;
-  left: 6vw;
-  bottom: 9vh;
-  z-index: 5;
-  max-width: 520px;
-  pointer-events: none;
-  /* The label container ALWAYS stays solid (opacity 1 by default). The
-     dead-zone bug was caused by gating this opacity on a per-slot
-     crossfade so it faded to ~0 between hobbies; now React only ever
-     writes --cap-opacity = 1 during the reel, so a hobby is labelled at
-     every scroll position. The 140ms transition only smooths edge cases
-     (jump-to-section anchors / reduced-motion settle). */
-  opacity: var(--cap-opacity, 1);
-  transform: translate3d(0, var(--cap-drift, 0px), 0);
-  will-change: opacity, transform;
-  transition: opacity 140ms linear;
-}
-/* Keyed inner wrapper: remounts when the active hobby changes, which
-   retriggers this brief fade/rise so the NEW hobby's text eases in
-   instead of hard-popping. The OUTER container does not animate, so the
-   label is never absent: the previous text is replaced by the new text,
-   both fully readable. */
-.other-caption-inner {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  animation: other-caption-swap var(--t-base) var(--ease-entrance);
-}
-@keyframes other-caption-swap {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.other-caption-label {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-4);
-}
-.other-caption-no {
-  font-family: var(--font-mono);
-  font-size: var(--text-base);
-  letter-spacing: 0.22em;
-  /* WARM SEAM CLOSE (Play swing): the index used cool --ink-muted while
-     the Beat-B eyebrow uses warm --accent-text, so the reel's two mono
-     markers read in different temperatures. Unified to --accent-text — the
-     darkened accent (66% accent / 34% ink, defined at top of file) that is
-     AA-safe (~5:1) for small accent text, so the index stays legible for
-     low-vision users while joining the warm eyebrow voice. */
-  color: var(--accent-text);
-  font-weight: 600;
-}
-.other-caption-divider {
-  /* Warm editorial slash, matching the header dividers above. */
-  color: var(--accent-text);
-}
-.other-caption-name {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: clamp(28px, 3.2vw, 44px);
-  letter-spacing: -0.03em;
-  color: var(--ink);
+/* Hover label floating ON the 3D object - same recipe as the jump menu's
+   spill labels (.navx-spill-label): white pixel text with a dark stroke and
+   NO card, so the name reads cleanly over any object. drei <Html> anchors it
+   at the object's centre; HobbiesScene drives opacity + a small lift/scale per
+   frame from the hover weight (so no CSS transition here - the JS lerp is the
+   easing). pointer-events:none so it never blocks hovering the object. */
+.hobbies-label {
+  display: inline-block;
+  font-family: var(--font-pixel, "Offbit", "VT323", monospace);
+  font-weight: 700;
+  font-size: 26px;
   line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: #ffffff;
+  -webkit-text-stroke: 3px var(--ink, #0d0e10);
+  paint-order: stroke fill;
+  user-select: none;
+  pointer-events: none;
+  will-change: opacity, transform;
 }
-/* ======================================================================
-   Dot strip: bottom-centered 10 small dots. Active dot is filled
-   accent orange; others are a neutral ring. Each dot is clickable
-   (jump-nav).
-   ====================================================================== */
-
-.other-dots {
-  position: absolute;
-  left: 50%;
-  bottom: 4vh;
-  transform: translateX(-50%);
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  pointer-events: auto;
-}
-
-.other-dot {
-  /* Larger hit area than the visible mark so cells are easy to tap. */
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  /* Square hit shape: the focus outline then draws as a box, matching
-     the pixel chrome (round rings retired with the retrofuturism pass). */
-  border-radius: 0;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-/* Visible keyboard focus ring: icon-only buttons MUST show focus for
-   keyboard nav (design-system anti-pattern: invisible focus states).
-   Ring is on the 24px hit-box, not the 8px mark, so it's clearly
-   visible. No outline on mouse click (:focus-visible only). */
-.other-dot:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* The visible mark: a square pixel cell, same segment-display language
-   as the StatusBar scroll meter. Active = the cell stretches into a
-   wide filled segment (a cartridge-slot "you are here"), instead of the
-   old circular ring + scale-up. */
-.other-dot-mark {
-  width: 7px;
-  height: 7px;
-  background: rgba(13, 14, 16, 0.16);
-  transition:
-    background var(--t-fast) var(--ease-out),
-    width var(--t-fast) var(--ease-out);
-}
-.other-dot:hover .other-dot-mark {
-  background: rgba(13, 14, 16, 0.38);
-}
-.other-dot.is-active .other-dot-mark {
-  background: var(--accent);
-  width: 18px;
+/* STATIC (mobile) variant: always-on name tag over each 3D object. Smaller than
+   the desktop hover tag so the two-column cluster's labels don't collide across
+   columns; the dark stroke keeps it legible over any object. */
+.hobbies-label--static {
+  font-size: 15px;
+  -webkit-text-stroke-width: 2px;
+  letter-spacing: 0.02em;
 }
 
 /* ======================================================================
@@ -535,14 +301,15 @@
   font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  color: var(--hdr-num-color, #b8431a);
+  color: var(--hdr-num-color, #c23d00);
 }
 /* Scoped for the same specificity reason as .other-title above. */
 .portfolio-other .other-gallery-title {
   grid-column: 1;
   grid-row: 2;
-  /* Very little padding under the small number tag. */
-  margin: 2px 0 0;
+  /* Clear gap under the eyebrow — the pixel title's line-height:0.9 overflows
+     upward, so the old 2px let it crowd/overlap the number tag. */
+  margin: clamp(16px, 2.2vh, 34px) 0 0;
   /* OffBit pixel display on the shared GIANT --hdr-title scale. UPPERCASE.
      "RECENTS" is a single 7-glyph word that fits the 1fr stage at full
      size; break-word guards narrower frames. */
@@ -552,7 +319,7 @@
   line-height: 0.9;
   letter-spacing: 0.01em;
   text-transform: none;
-  color: var(--hdr-ink, #241e1a);
+  color: var(--hdr-ink, var(--ink));
   min-width: 0;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -636,22 +403,9 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  /* Left/right edge fade so cards entering or leaving the viewport
-     dissolve rather than hard-clip. */
-  mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    rgba(0, 0, 0, 1) 8%,
-    rgba(0, 0, 0, 1) 92%,
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    rgba(0, 0, 0, 1) 8%,
-    rgba(0, 0, 0, 1) 92%,
-    transparent 100%
-  );
+  /* No left/right edge fade — the gradient mask read as a "weird fade" the
+     owner flagged. Cards hard-clip at the row edge instead (clean, gradient-
+     free, on both desktop and mobile). */
 }
 
 .other-train-strip {
@@ -686,7 +440,7 @@
      design system card spec. */
   box-shadow:
     0 1px 0 rgba(13, 14, 16, 0.04),
-    0 24px 48px -28px rgba(180, 80, 30, 0.18),
+    0 24px 48px -28px rgba(194, 61, 0, 0.18),
     0 2px 0 rgba(255, 255, 255, 0.05) inset;
   overflow: hidden;
 }
@@ -726,121 +480,30 @@
    Mobile (≤ 768px)
    ====================================================================== */
 @media (max-width: 768px) {
-  /* HEADER CLEARANCE: the global HUD pins a cat/brand chip top-LEFT and a
-     status pill top-RIGHT, each anchored ~14px + safe-area-inset from the
-     top and ~32-44px tall. A 5vh top pad (≈42px at 844h, ≈32px at 640h)
-     dropped the editorial eyebrow straight under that chrome. Push the
-     header start below the HUD strip, max(72px, 9vh) + the notch inset,
-     so "04 - OFF THE CLOCK" never collides with the cat or the section
-     pill on any phone. Side gutter trimmed to 6vw (header is single-col). */
+  /* FULL-BLEED 3D ON PHONES: the hobby cluster IS this section and fills the
+     screen. The canvas stays mounted on mobile (Other.tsx passes
+     disableOnMobile:false) and HobbiesScene switches to a TALL portrait
+     arrangement at <=768px. Keep the base .portfolio-other (100svh,
+     overflow:hidden) and .other-scene-wrap (inset:0) — only tune the floating
+     header sizing + the touch label chips here. */
+
+  /* Header floats over the cluster (base: position:absolute, z-index:5). Only
+     re-pad for HUD/notch clearance + size the wordmark for a phone. */
   .other-header {
     padding: calc(max(72px, 9vh) + env(safe-area-inset-top, 0px)) 6vw 0;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto;
-    row-gap: 6px;
   }
-  .other-eyebrow { grid-column: 1; grid-row: 1; }
-  /* Mobile: the tiny "04" tag sits just above the GIANT wordmark over the
-     reel. The title gets a phone ceiling so "SOME INTERESTS" (wrapping to
-     stacked lines) stays large without forcing horizontal scroll; the
-     number stays the tag (flipped hierarchy holds on phones). */
   .other-section-num {
     font-size: clamp(13px, 3.4vw, 18px);
   }
-  .portfolio-other .other-title  {
-    grid-column: 1;
-    grid-row: 2;
-    /* Very little padding under the number tag. */
-    margin-top: 2px;
-    font-size: clamp(44px, 15vw, 84px);
+  .portfolio-other .other-title {
+    /* Phone ceiling so "SOME INTERESTS" stays bold but never forces horizontal
+       scroll; it floats over the top of the full-screen cluster. */
+    font-size: clamp(40px, 12vw, 64px);
   }
-  .other-sub {
-    grid-column: 1;
-    grid-row: 3;
-    margin: 4px 0 0;
-    max-width: none;
-    /* Secondary blurb: nudged 12.5 to 14px for mobile legibility while
-       staying under the header height budget (the scene band starts at
-       24vh; a full 16px here would wrap taller and collide with it). It
-       is decorative prose floating over the 3D scene; the sr-only
-       interests list carries the accessible copy. */
-    font-size: 14px;
-    line-height: 1.5;
-  }
+  /* Each interest's NAME is now rendered STATICALLY over its 3D object inside
+     the canvas (.hobbies-label--static), so there's no bottom chip row here. */
 
-  /* Scene takes a tall full-bleed band on mobile too; the narrow
-     viewport is the tight axis, so a generous height lets the focused
-     hero fill the frame without clipping. Header + caption float on top
-     (pointer-events:none) over the transparent canvas. Band starts below
-     the pushed-down header (24vh clears the title block at this type
-     scale) and ends above the caption+dots so the hero centres in clear
-     air. The camera also pulls back in portrait (HobbiesScene aspect
-     guard) so the object reads fully even in this narrow box. */
-  .other-scene-wrap {
-    top: 24vh;
-    bottom: 20vh;
-  }
-
-  /* Floating label tighter against the bottom-left edge, lifted clear of
-     the 44px dot strip below it (dots sit at ~5vh + 44px tall). */
-  .other-caption {
-    left: 6vw;
-    right: 6vw;
-    bottom: 13vh;
-    max-width: none;
-  }
-  .other-caption-name {
-    font-size: clamp(22px, 6.4vw, 30px);
-  }
-
-  /* DOT STRIP: 44px TAP FLOOR (was a 24px hit box / 7px mark, flagged
-     below the 44px touch minimum). Ten dots can't each be 44px WIDE with
-     an 8px gap inside a 360-390px viewport (10×44 + 9×8 = 512px → would
-     force horizontal scroll), so we keep the VISIBLE marks small + evenly
-     spaced (≥8px effective gap between marks) and pad each TAP TARGET to a
-     full 44px height with a flex-shared width whose hit boxes TOUCH (no
-     dead gaps between adjacent targets). Net: the whole strip is live,
-     every dot is ≥44px tall and ~34-39px wide at 360-390px, and there is
-     no horizontal scroll. Strip width is capped so it never overflows. */
-  .other-dots {
-    bottom: 5vh;
-    /* Left-anchored (not centered): the fixed JumpToTop circle parks in
-       the bottom-right corner and was sitting on the last dot's 44px
-       hit box. Anchoring at the 6vw gutter and reserving ~68px on the
-       right keeps every dot tappable; the strip also now aligns with
-       the left-aligned caption above it. */
-    left: 6vw;
-    right: auto;
-    transform: none;
-    width: min(92vw - 68px, 430px);
-    gap: 0;
-    justify-content: space-between;
-  }
-  .other-dot {
-    flex: 1 1 0;
-    width: auto;
-    min-width: 0;
-    height: 44px;       /* 44px vertical tap floor */
-    min-height: 44px;
-    /* touch-action: keep taps snappy (no 300ms delay) and stop the strip
-       from hijacking the page's vertical scroll gesture. */
-    touch-action: manipulation;
-  }
-  /* The visible mark stays small; the 8px+ effective spacing between
-     marks comes from the flex-distributed dot widths (each ~34-39px) far
-     exceeding the 7px mark, so adjacent marks sit well apart while their
-     hit boxes touch. */
-  .other-dot-mark {
-    width: 7px;
-    height: 7px;
-  }
-  /* Focus ring sits on the tall hit box; offset inward so it doesn't
-     clip against neighbours now that hit boxes touch. */
-  .other-dot:focus-visible {
-    outline-offset: -2px;
-  }
-
-  /* ===== Beat A: mobile train stack ===== */
+  /* ===== Beat A: mobile train stack (reused by the Photos section) ===== */
   /* Same HUD clearance as Beat B's header; drop the "01 - PHOTO REEL /
      Flashes." block below the cat + status pill so it never collides. */
   .other-gallery-header {
@@ -904,54 +567,27 @@
 }
 
 /* ======================================================================
-   prefers-reduced-motion: static, scroll-jack-free fallback
+   prefers-reduced-motion: static fallback
    ----------------------------------------------------------------------
-   Other.tsx already skips the GSAP pin entirely under reduced motion
-   (no scrub, no scroll-jacking) and reveals BOTH beats at opacity 1 with
-   the header up and the 3D scene parked on hobby 0. Here we kill the
-   residual CSS-driven motion so nothing animates:
-
-     - header per-element fade-up transitions (the custom props are
-       forced to 1 by JS, but neutralise the transition + transform so
-       there's never a tween)
-     - the beat crossfade opacity transition
-     - the caption drift / fade transition
-     - the dot-mark scale + hover scale transitions
-     - the train-card hover lift
-     - the tooltip keyframe fade-in
-
-   The photo train strip is positioned by a per-frame JS transform; under
-   reduced motion the parent parks Beat A at a neutral 0.50 progress and
-   the rAF loop simply holds it there (it lerps to a fixed target and
-   settles); no continuous slide. The trains read as a static rack.
+   Other.tsx reveals the header statically (no entrance scrub) and the 3D
+   HobbiesScene parks itself static (no bob, sway, or parallax) under reduced
+   motion. Here we kill the residual CSS-driven motion so nothing tweens: the
+   header per-element fade-up transitions, the gallery-header transitions (the
+   Photos section reuses these classes), the train-card transition, and the
+   tooltip keyframe.
    ====================================================================== */
 @media (prefers-reduced-motion: reduce) {
-  .other-gallery,
-  .other-curated {
+  .other-gallery {
     transition: none;
   }
   .other-header .other-eyebrow,
   .other-header .other-title,
-  .other-header .other-sub,
   .other-gallery-eyebrow,
   .other-gallery-title,
   .other-gallery-sub {
     transition: none;
     transform: none;
     opacity: 1;
-  }
-  .other-caption {
-    transition: none;
-    transform: none;
-  }
-  .other-caption-inner {
-    animation: none;
-  }
-  .other-dot-mark {
-    transition: none;
-  }
-  .other-dot:hover .other-dot-mark {
-    transform: none;
   }
   .other-train-strip {
     transition: none;

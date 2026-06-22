@@ -20,6 +20,10 @@ import { type SignatureData, eventsToStrokes } from "./signatureGeometry";
 interface Props {
   data: SignatureData | null;
   onComplete: () => void;
+  /** Gate: the stroke playback (and the reduced-motion one-pass paint)
+   *  only begins once this is true. The loader now finishes BEFORE the
+   *  signature draws, so the parent flips this on loaderDone. */
+  start: boolean;
   /** Multiplies the natural playback speed. 1 = recorded pace. */
   speedMultiplier?: number;
   /** Visible opacity (parent controls the crossfade out). */
@@ -75,7 +79,8 @@ function resolveWidthRatio(vw: number, vh: number): number {
 export function HeroSignature2D({
   data,
   onComplete,
-  speedMultiplier = 1.6,
+  start,
+  speedMultiplier = 2.2,
   opacity,
   zIndex = 5,
 }: Props) {
@@ -83,7 +88,10 @@ export function HeroSignature2D({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !data) return;
+    // `start` gates the whole draw: until the loader reports done the
+    // effect bails, so the signature never paints concurrently with the
+    // loading bar. It re-runs (and draws) when start flips true.
+    if (!canvas || !data || !start) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -322,11 +330,11 @@ export function HeroSignature2D({
       window.removeEventListener("resize", onResize);
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
     };
-    // We intentionally re-run only on data change. Speed multiplier
-    // changes after first render are ignored; first-paint timing
-    // determines the loading sequence pace.
+    // Re-run on data arrival AND when `start` flips true (the loader-done
+    // gate). Speed multiplier changes after first render are ignored;
+    // first-paint timing determines the loading sequence pace.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, start]);
 
   return (
     <canvas
@@ -341,7 +349,7 @@ export function HeroSignature2D({
         zIndex,
         pointerEvents: "none",
         opacity,
-        transition: "opacity 480ms ease",
+        transition: "opacity 360ms ease",
       }}
     />
   );

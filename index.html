@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#e87040" />
+    <meta name="theme-color" content="#ff4f00" />
 
     <!-- Favicon: same cat asset as the loading screen, so the browser
          tab matches the site's mascot. Modern browsers render SVG
@@ -21,18 +21,32 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- VT323: terminal pixel face for the Mac section's CRT canvas
          textures (screen UI, boot type-in, orbiting skill cards). -->
+    <!-- Loaded NON-render-blocking (media=print, flipped to all on load) so the
+         orange boot screen paints immediately instead of waiting on a Google CDN
+         round-trip — critical on slow links and behind corporate firewalls.
+         display=swap already handles the fallback→Geist swap. -->
     <link
       href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=VT323&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=VT323&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
 
-    <!-- Preload the heavy assets: room GLB (~4MB, meshopt-compressed)
-         and the signature path used by both hero + footer. Kicks the
-         fetches off in parallel with the JS module download so they're
-         in cache by the time React mounts. -->
-    <link rel="preload" href="/room-optimized.web.glb" as="fetch" type="model/gltf-binary" crossorigin="anonymous" />
+    <!-- Preload the signature path used by both hero + footer so it's cached by
+         the time React mounts. The room RENDER image is NOT preloaded: it only
+         fades in AFTER the hero (decorative backdrop), so it stays off the
+         first-paint critical path and loads when its <img> renders. -->
     <link rel="preload" href="/signature.json" as="fetch" type="application/json" crossorigin="anonymous" />
-    <link rel="preload" href="/wireframes.json" as="fetch" type="application/json" crossorigin="anonymous" />
+    <!-- Preload the OffBit display weight used by BOTH the hero wordmark and the
+         nav dial numeral, so they render in the real pixel font immediately
+         instead of flashing a fallback glyph (the dial's "weird symbol"). -->
+    <link rel="preload" href="/fonts/offbit/OffBit-Bold.ttf" as="font" type="font/ttf" crossorigin />
 
     <title>Daniel Tan // Portfolio</title>
     <meta
@@ -118,31 +132,48 @@
     </script>
 
     <style>
-      html, body { margin: 0; background: #e87040; }
-      /* Boot screen: visible immediately on first paint, before any JS
-         parses. Orange "blueprint" background; React removes the
-         #boot-screen from the DOM once the scene is ready. */
+      html, body { margin: 0; background: #ff4f00; }
+      /* Boot screen: visible immediately on first paint, before any JS parses.
+         A minimal on-brand orange frame (SYS / BOOT chip + LOADING caption)
+         on the SAME International Orange field as the live <BootLoader> dial
+         that React mounts a moment later — so the hand-off has no colour jump,
+         only the dial fading up in the centre. Literal values only (no CSS
+         vars): index.css has not loaded yet at first paint. React removes
+         #boot-screen on mount. */
       #boot-screen {
         position: fixed;
         inset: 0;
-        background: #e87040;
-        color: #ffffff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-family: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
-        font-size: 12px;
-        letter-spacing: 4px;
-        text-transform: uppercase;
         z-index: 9999;
+        background: #ff4f00;
+        color: #ffffff;
+        font-family: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
-      #boot-screen .bs-pulse {
-        opacity: 0.55;
-        animation: bs-pulse 1.4s ease-in-out infinite;
+      #boot-screen .bs-status {
+        position: absolute;
+        top: 28px;
+        left: 6vw;
+        display: inline-flex;
+        align-items: baseline;
+        gap: 10px;
+        font-size: 9.5px;
+        letter-spacing: 0.26em;
+        text-transform: uppercase;
       }
-      @keyframes bs-pulse {
-        0%, 100% { opacity: 0.30; }
-        50%      { opacity: 0.85; }
+      #boot-screen .bs-status b { font-weight: 600; color: rgba(255, 255, 255, 0.72); }
+      #boot-screen .bs-status span { font-weight: 500; color: #ffffff; }
+      #boot-screen .bs-caption {
+        position: absolute;
+        bottom: 28px;
+        left: 6vw;
+        font-size: 11px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.82);
+      }
+      @media (max-width: 768px) {
+        #boot-screen .bs-status,
+        #boot-screen .bs-caption { left: 4vw; }
       }
       /* Crawler-only fallback. Hidden from sighted users (the canvas covers
          everything) but indexable. Web-filter crawlers and search engines
@@ -161,7 +192,10 @@
     </style>
   </head>
   <body>
-    <div id="boot-screen"><span class="bs-pulse">loading</span></div>
+    <div id="boot-screen" aria-hidden="true">
+      <div class="bs-status"><b>SYS</b><span>BOOT</span></div>
+      <div class="bs-caption">LOADING</div>
+    </div>
     <div id="root"></div>
 
     <!-- Visible to crawlers and screen readers; hidden visually. Gives

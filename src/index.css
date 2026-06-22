@@ -49,7 +49,7 @@
  *   3. Ink alphas: use the cool stack, rgba(13, 14, 16, ...). The old
  *      rgba(26, 23, 20, ...) (walnut) and rgba(21, 23, 26, ...) are
  *      legacy; convert when you see them.
- *   4. Orange (#e87040) is the ONLY chromatic colour in UI. No teals,
+ *   4. Orange (#ff4f00, International Orange) is the ONLY chromatic colour in UI. No teals,
  *      purples, secondary accents. White + ink + orange. Period.
  *
  * TOKENS (defined below in :root)
@@ -57,7 +57,7 @@
  *   Surfaces: --bg-page #eef0f3, --bg-surface #ffffff,
  *             --bg-elevated #f7f8fa, --bg-deep #d8dade
  *   Ink:      --ink #0d0e10, --ink-muted, --ink-faint, --ink-hairline
- *   Accent:   --accent #e87040, --accent-hot #ff6a2a, --accent-tint
+ *   Accent:   --accent #ff4f00, --accent-hot #ff6a2a, --accent-tint
  *   Type:     --font-display / --font-body / --font-mono Geist,
  *             --font-dot Offbit Dot, --font-pixel Offbit
  *   Sizes:    --fs-mono 11, --fs-meta 13, --fs-sub 14, --fs-body 16,
@@ -135,14 +135,19 @@
   --ink-faint: rgba(13, 14, 16, 0.32);
   --ink-hairline: rgba(13, 14, 16, 0.10);
 
-  /* -- Accent (orange: only chromatic colour in UI) ---------------- */
-  --accent: #e87040;
+  /* -- Accent (orange: only chromatic colour in UI) ----------------
+     Brand orange is INTERNATIONAL ORANGE (#ff4f00) — the saturated
+     aerospace/Golden-Gate red-orange — not the old softer terracotta
+     (#e87040). --accent-hot stays a lighter sibling for hover lifts;
+     --accent-deep is a darkened int'l orange that still clears the
+     large-display-text contrast bar on the light bg. */
+  --accent: #ff4f00;
   --accent-hot: #ff6a2a;
-  --accent-deep: #b8431a;            /* deeper orange — readable as large display text (~4.2:1 on --bg-page) */
-  --accent-tint: rgba(232, 112, 64, 0.10);
-  --accent-soft: rgba(232, 112, 64, 0.12);  /* legacy alias */
+  --accent-deep: #c23d00;            /* deeper int'l orange — readable as large display text (~4.6:1 on --bg-page) */
+  --accent-tint: rgba(255, 79, 0, 0.10);
+  --accent-soft: rgba(255, 79, 0, 0.12);  /* legacy alias */
   /* Accent darkened toward ink for SMALL text that must pass WCAG AA.
-     Base --accent (#e87040) on --bg-page is only ~2.64:1, fine for
+     Base --accent (#ff4f00) on --bg-page is only ~2.83:1, fine for
      large/bold display, fails 4.5:1 for small text. This mix lands
      ~5:1 and stays on-palette (accent toward ink, no new hue). Use it
      for accent-colored labels/eyebrows/numerals at body size. */
@@ -255,10 +260,49 @@
    on every scroll frame. Keeps App.tsx from re-rendering on scroll. */
 .scroll-layer--hero {
   opacity: var(--hero-opacity, 1);
+  /* Opaque orange field: the hero OWNS the first screen and the next section
+     rises behind it, so dissolving --hero-opacity reveals the content instead of
+     an opaque section sliding up over the hero as a wall. (z-index is set above
+     the content in App.tsx.) The ring shader paints over this; this backs its
+     transparent gaps + covers the page before the ring lazy-loads. */
+  background: var(--accent);
 }
 .scroll-layer--canvas {
   opacity: var(--canvas-opacity, 0);
   pointer-events: var(--canvas-pointer-events, none);
+}
+/* MOBILE: hide the static room-render backdrop entirely. It's object-fit:contain,
+   so on a portrait phone the landscape room letterboxes into a ~220px band
+   floating mid-screen — it bleeds behind the sections as the "weird image line"
+   the owner flagged. The render is a desktop hero->About flourish; phones get
+   the clean flat page (and a smoother hero->About handoff). */
+@media (max-width: 768px) {
+  .scroll-layer--canvas {
+    display: none;
+  }
+}
+/* Static room render (replaced the live 3D room). Fills the fixed canvas
+   layer; contained + centred so the whole iso room reads, and its transparent
+   background lets the light page show through around it. Layer opacity is
+   driven by --canvas-opacity from the scroll choreography. */
+.room-render {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  /* Feather the bottom edge so the room's saturated wood floor-line dissolves
+     into the page instead of surviving as a hard sliver when this layer fades
+     out (--canvas-opacity) into the Projects section. The room is object-fit:
+     contained and fills the layer's full height, so the bottom of the box is
+     the bottom of the room; fading the lowest band softens the floor edge
+     without touching the bed/desk/walls in the centre. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent 98%);
+  mask-image: linear-gradient(to bottom, #000 80%, transparent 98%);
 }
 
 * {
@@ -457,10 +501,29 @@ html.loading-active .scroll-rail {
   display: none !important;
 }
 
-/* Custom pointer (see MoveableCursor.tsx): a sharp PIXEL ARROW in the accent
-   orange with a dark keyline, plus a small rice-grain that trails on motion.
-   JS places the 0×0 root at the pointer (the arrow's tip is the hotspot) and
-   toggles opacity for the reveal / room cursor-mode swap. */
+/* Hide the OS cursor SITE-WIDE so only the custom MoveableCursor shows — this
+   beats the per-element `cursor: pointer` rules that would otherwise let the
+   native hand reappear over links/buttons. Clickable DETECTION no longer keys
+   on the computed cursor (it uses an interactive selector), so forcing none is
+   safe. body included so the Mac/Hobbies canvases' inline pointer is hidden too
+   (the JS still reads the inline string for the spark variant).
+   Gated to fine-pointer devices ONLY: the custom MoveableCursor mounts behind
+   the same `(hover:hover) and (pointer:fine)` condition (App.tsx: `!isMobile`),
+   so on touch / hybrid devices where it is NOT mounted, this would otherwise
+   hide the OS pointer with nothing to replace it. */
+@media (hover: hover) and (pointer: fine) {
+  *,
+  *::before,
+  *::after {
+    cursor: none !important;
+  }
+}
+
+/* Custom pointer (see MoveableCursor.tsx): the bold accent-orange arrow from
+   /Cursor.svg (white keyline + soft baked shadow). JS places the 0×0 root at
+   the pointer (the arrow's tip is the hotspot) and toggles opacity for the
+   reveal. Over a clickable it swaps to the spark variant (Cursor-Hover.svg)
+   and pops. */
 .moveable-cursor {
   position: fixed;
   left: 0;
@@ -473,63 +536,34 @@ html.loading-active .scroll-rail {
   transition: opacity 0.18s ease;
 }
 
-/* The arrow: tip pinned to the local origin (= the pointer). Scale/press
-   anchor at the tip so the hotspot never drifts. */
+/* The arrow (or spark variant). Per-state left/top (inline) pin the tip to the
+   pointer; press/pop scale about the tip (inline transform-origin). */
 .moveable-cursor__arrow {
   position: absolute;
-  left: 0;
-  top: 0;
-  transform-origin: 0 0;
-  /* Snappy overshoot on the hot/grow reaction — intentionally distinct. */
-  transition:
-    transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1),
-    filter 0.18s ease;
-  filter: drop-shadow(0 1px 1px rgba(20, 12, 6, 0.28));
+  display: block;
 }
 
-/* Trailing rice grain: a small orange pixel that lags BEHIND the tip on fast
-   motion (offset + opacity written by JS), springing back when at rest. */
-.moveable-cursor__trail {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 5px;
-  height: 5px;
-  margin: -2.5px 0 0 -2.5px;
-  background: var(--accent, #e87040);
-  box-shadow: 0 0 0 1px rgba(27, 18, 9, 0.5);
-  transform: translate(var(--trail-x, 0px), var(--trail-y, 0px));
-  opacity: 0;
-  will-change: transform, opacity;
+/* Over a clickable: the arrow + sparks pop in. */
+.moveable-cursor--clickable .moveable-cursor__arrow {
+  animation: moveable-cursor-pop 240ms cubic-bezier(0.2, 0.7, 0.3, 1.3);
 }
 
-/* Over interactive room meshes: the arrow grows + warms. */
-.moveable-cursor--hot .moveable-cursor__arrow {
-  transform: scale(1.28);
-  filter: drop-shadow(0 0 5px rgba(232, 112, 64, 0.6));
-}
-
-/* Click: a quick press-in of the arrow (separate keyframe while hot so it
-   presses from the grown baseline). */
-.moveable-cursor--click .moveable-cursor__arrow {
-  animation: moveable-cursor-press 200ms cubic-bezier(0.2, 0.7, 0.3, 1.2);
-}
-.moveable-cursor--hot.moveable-cursor--click .moveable-cursor__arrow {
-  animation: moveable-cursor-press-hot 200ms cubic-bezier(0.2, 0.7, 0.3, 1.2);
-}
-@keyframes moveable-cursor-press {
-  0%   { transform: scale(1); }
-  35%  { transform: scale(0.8); }
+/* Click PRESS is no longer a CSS keyframe: it is a sustained scale composed
+   into the root transform from JS (see MoveableCursor.tsx) so it holds while the
+   button is held and springs back on release. */
+@keyframes moveable-cursor-pop {
+  0%   { transform: scale(0.86); }
+  60%  { transform: scale(1.08); }
   100% { transform: scale(1); }
 }
-@keyframes moveable-cursor-press-hot {
-  0%   { transform: scale(1.28); }
-  35%  { transform: scale(1.02); }
-  100% { transform: scale(1.28); }
+@media (prefers-reduced-motion: reduce) {
+  .moveable-cursor--clickable .moveable-cursor__arrow {
+    animation: none;
+  }
 }
 
-/* Glass HUD buttons: hover/active reactivity for inline-styled
-   icon buttons (StatusBar reset + mute, JumpToTop). */
+/* Glass HUD buttons: hover/active reactivity for the inline-styled
+   JumpToTop icon button. */
 .hud-btn {
   transition:
     background 0.18s ease,
@@ -540,9 +574,9 @@ html.loading-active .scroll-rail {
 }
 .hud-btn:hover {
   background: var(--accent-tint) !important;
-  border-color: rgba(232, 112, 64, 0.55) !important;
+  border-color: rgba(255, 79, 0, 0.55) !important;
   color: var(--accent) !important;
-  box-shadow: 0 4px 14px -8px rgba(232, 112, 64, 0.55);
+  box-shadow: 0 4px 14px -8px rgba(255, 79, 0, 0.55);
 }
 .hud-btn:active {
   transform: scale(0.94);

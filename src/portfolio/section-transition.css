@@ -12,12 +12,12 @@
   display: flex;
   align-items: center;
   overflow: hidden;
-  /* Pure white band (user direction): pops against the two elevated
-     near-white neighbours (bp gradient ends at --bg-elevated, keypad
-     is --bg-elevated). Hairlines keep the band's edges legible. */
+  /* Banner stands out a tad (user direction): a clean WHITE band that gently
+     pops against the #eef0f3 page + keypad — WITHOUT the old hard hairline
+     borders that read as a barrier. The keypad viewport below stays seamless
+     (its own --bg-page backdrop fills the screen); this white band is the one
+     deliberate lift above it, just as the deep footer is the one below. */
   background: var(--bg-surface, #ffffff);
-  border-top: 1px solid rgba(13, 14, 16, 0.07);
-  border-bottom: 1px solid rgba(13, 14, 16, 0.07);
   z-index: 0;
 }
 
@@ -74,6 +74,25 @@
   .st-text,
   .st-bullet {
     font-size: clamp(32px, 12vw, 64px);
+  }
+}
+
+/* #33 SPACING: on SHORT phones the 26vh/180px band ate ~27% of the viewport.
+   Pull it down to 22vh/140px when the viewport is both narrow AND short, so
+   the bridge stays a divider rather than a full screen-eating band. */
+@media (max-width: 768px) and (max-height: 700px) {
+  .section-transition {
+    height: 22vh;
+    min-height: 140px;
+  }
+}
+
+/* Lower the text clamp floor on the smallest phones so the marquee phrase
+   stays proportionate to the slimmer band. */
+@media (max-width: 480px) {
+  .st-text,
+  .st-bullet {
+    font-size: clamp(26px, 12vw, 64px);
   }
 }
 
