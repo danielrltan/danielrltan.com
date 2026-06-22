@@ -84,3 +84,4 @@ public/room-optimized.glb
 
 # Local asset backup (kept out of public/ so it never ships in dist)
 room.original.glb.bak
+.gstack/
