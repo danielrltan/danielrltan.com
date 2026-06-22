@@ -6,6 +6,12 @@
   position: relative;
   height: 100vh;
   overflow: hidden;
+  /* Solid page bg so the global body::before dot texture doesn't bleed through
+     the transparent 3D canvas and read as a darker "viewport" band against the
+     solid-bg sections around it (Work/keypad). This section was the only one
+     left transparent; the alpha canvas still composites over the same --bg-page
+     tone, so the 3D scene is unchanged — only the empty backdrop now matches. */
+  background: var(--bg-page);
 }
 
 /* Visually-hidden but DOM-real + focusable accessible content (the
@@ -42,7 +48,7 @@
   background: var(--bg-surface);
   color: var(--ink);
   border: 1px solid var(--accent);
-  border-radius: var(--r-card, 14px);
+  border-radius: 0;
   font-family: var(--font-mono, sans-serif);
   font-size: 12px;
   outline: 2px solid var(--accent);
@@ -102,7 +108,7 @@
   width: 8px;
   height: 8px;
   border-radius: 0;
-  background: var(--accent, #e87040);
+  background: var(--accent, #ff4f00);
   animation: mac-loading-blink 1s steps(2, jump-none) infinite;
 }
 @keyframes mac-loading-blink {
@@ -145,25 +151,20 @@
   left: 0;
   right: 0;
   height: 60px;
-  pointer-events: none;
   z-index: 3;
-  overflow: hidden;
-  /* Soft fade at left + right edges so the marquee loop point is
-     never visible. */
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 6%,
-    black 94%,
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 6%,
-    black 94%,
-    transparent 100%
-  );
+  /* USER-SWIPEABLE horizontal scroller (the ticker only renders at <=900px).
+     Native touch pan, momentum scroll, hidden scrollbar — no auto-marquee, no
+     edge-fade mask (the partial chip at the edge already hints "more"). */
+  overflow-x: auto;
+  overflow-y: hidden;
+  pointer-events: auto;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.tech-ticker::-webkit-scrollbar {
+  display: none;
 }
 
 .tech-ticker-track {
@@ -173,18 +174,8 @@
   height: 100%;
   width: max-content;
   white-space: nowrap;
-  /* Triple-content slide: -33.33% positions the second copy at the
-     original starting point, making the loop seamless. 42s is slow
-     enough to read each chip without feeling stalled. steps() so the
-     chips tick across in ~4px jumps (350 steps over the one-copy
-     travel) instead of gliding — the flat marquee inherits the CRT's
-     pixel-motion language. Distance + duration unchanged. */
-  animation: tech-ticker-slide 42s steps(350) infinite;
-  will-change: transform;
-}
-@keyframes tech-ticker-slide {
-  0%   { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(-33.333%, 0, 0); }
+  /* Side padding so the first/last chip can scroll clear of the edge. */
+  padding: 0 max(6vw, var(--safe-left, 0px));
 }
 
 /* Flat spec-sheet chips matching the hero meta chips: solid surface,
@@ -288,7 +279,10 @@
      right-aligned wordmark stays tucked in the top-right corner, clear of the
      centred Mac + orbit arc — it was overrunning left into the model. */
   font-size: clamp(40px, 6.2vw, 92px);
-  margin: 2px 0 0;
+  /* Clear gap under the eyebrow: the pixel title's line-height:0.9 overflows
+     its box UPWARD, so a 2px gap let the wordmark overlap the "02 / 06" eyebrow.
+     This margin clears the overflow + leaves real breathing room. */
+  margin: clamp(14px, 1.8vh, 26px) 0 0;
   line-height: 0.9;
   white-space: nowrap;
 }
@@ -300,7 +294,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  color: #e8e2d6;
+  color: #eef2f7; /* cool CRT near-white (was warm cream #e8e2d6) */
 }
 
 .mac-desktop-bar {
@@ -308,10 +302,10 @@
   font-size: 14px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #e87040;
+  color: #ff4f00;
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(232, 112, 64, 0.35);
+  border-bottom: 1px solid rgba(255, 79, 0, 0.35);
   padding-bottom: 10px;
 }
 
@@ -324,7 +318,7 @@
 
 .mac-tile {
   position: relative;
-  border-radius: 12px;
+  border-radius: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 18px 20px 20px;
   text-align: left;
@@ -350,7 +344,7 @@
   left: 0;
   bottom: 0;
   width: 2px;
-  background: var(--accent, #e87040);
+  background: var(--accent, #ff4f00);
   transform: scaleY(0);
   transform-origin: top;
   transition: transform var(--t-fast) var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1));
@@ -420,7 +414,7 @@
   background: var(--bg-surface);
   color: var(--accent);
   border: 1px solid var(--accent);
-  border-radius: var(--r-card, 14px);
+  border-radius: 0;
   font-family: var(--font-mono, sans-serif);
   font-size: 12px;
   outline: 2px solid var(--accent);
@@ -467,7 +461,7 @@
 .mac-crt-close:focus-visible,
 .mac-crt-link:focus-visible {
   /* Draw the keyboard focus ring directly over the painted control. */
-  outline: 2px solid var(--accent, #e87040);
+  outline: 2px solid var(--accent, #ff4f00);
   outline-offset: 2px;
 }
 
@@ -550,13 +544,18 @@
     font-size: clamp(13px, 3.4vw, 18px);
   }
   .portfolio-mac h2 {
-    font-size: clamp(48px, 16vw, 96px);
+    /* Lower clamp floor (40px) + 15vw so the single pixel word "Projects"
+       SCALES with the viewport rather than fracturing mid-word. */
+    font-size: clamp(40px, 15vw, 96px);
     margin-top: 4px;
-    /* Stacked layout has full width; allow a break on the narrowest phones
-       so the single word can never force horizontal scroll (desktop keeps
-       the nowrap corner treatment). */
+    /* Stacked layout has full width; the word must stay intact (no
+       hyphenation, no mid-word break) and scale down instead. keep-all +
+       hyphens:none prevent the pixel glyphs from fracturing into a second
+       line on narrow phones. */
     white-space: normal;
-    overflow-wrap: break-word;
+    overflow-wrap: normal;
+    word-break: keep-all;
+    hyphens: none;
   }
   /* Flat ticker sits between the header and the Mac. No scroll-pin
      gate on mobile, so force it visible (the desktop opacity:0 default
@@ -622,6 +621,27 @@
   .mac-project-list li {
     margin: 0;
   }
+  /* Each project is an ACCORDION ITEM: the bordered card is the item; the
+     header button + the drop-open panel live inside it so an open row reads as
+     one connected card (sharp corners — spec-sheet voice). */
+  .mac-acc-item {
+    background: var(--bg-surface, #fff);
+    border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
+    border-radius: 0;
+    overflow: hidden;
+    transition: border-color var(--t-fast) ease;
+  }
+  .mac-acc-item.is-open {
+    border-color: var(--accent, #ff4f00);
+  }
+  @media (hover: hover) {
+    .mac-acc-item:hover {
+      border-color: var(--accent, #ff4f00);
+    }
+  }
+  /* Header row = the whole tappable disclosure control. Borderless (the item
+     carries the border); full-width, >=44px (min-height 60), touch active
+     state, no 300ms tap delay. */
   .mac-project-btn {
     display: flex;
     align-items: center;
@@ -629,10 +649,8 @@
     width: 100%;
     min-height: 60px;
     padding: 12px 16px;
-    background: var(--bg-surface, #fff);
-    border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
-    /* Sharp corners: the rows join the spec-sheet voice (rounded cards
-       are off-theme since the pixel pass). */
+    background: transparent;
+    border: none;
     border-radius: 0;
     text-align: left;
     cursor: pointer;
@@ -640,32 +658,21 @@
     color: var(--ink, #0d0e10);
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    transition: border-color var(--t-fast) ease, box-shadow var(--t-fast) ease,
-      transform 120ms ease, background-color var(--t-fast) ease;
+    transition: background-color var(--t-fast) ease;
   }
   /* Touch active state (no hover dependency): clear pressed feedback. */
   .mac-project-btn:active {
-    transform: scale(0.985);
-    border-color: var(--accent, #e87040);
-    background: var(--accent-tint, rgba(232, 112, 64, 0.1));
+    background: var(--accent-tint, rgba(255, 79, 0, 0.1));
   }
   .mac-project-btn:focus-visible {
-    outline: 2px solid var(--accent, #e87040);
-    outline-offset: 2px;
-  }
-  /* Pointer/hover devices ≤900px (rare, e.g. small windows) still get a
-     subtle non-layout-shifting hover cue. */
-  @media (hover: hover) {
-    .mac-project-btn:hover {
-      border-color: var(--accent, #e87040);
-      box-shadow: 0 8px 22px -14px rgba(232, 112, 64, 0.5);
-    }
+    outline: 2px solid var(--accent, #ff4f00);
+    outline-offset: -2px;
   }
   .mac-project-swatch {
     flex: 0 0 auto;
     width: 58px;
     height: 42px;
-    border-radius: 6px;
+    border-radius: 0;
     background-size: cover;
     background-position: center;
     border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
@@ -690,17 +697,112 @@
     font-weight: 600;
     letter-spacing: -0.01em;
     line-height: 1.15;
-    white-space: nowrap;
+    /* Allow up to two lines instead of single-line ellipsis: long titles
+       like "Interactive 3D Portfolio" were clipped mid-word. The
+       min-height:60px row has slack for a second line. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
-  .mac-project-open {
+  /* Chevron: rotates 180deg + goes accent on open. Mirrors the Work accordion
+     so the two tap-to-expand sections read as one system. */
+  .mac-acc-chevron {
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-faint, rgba(13, 14, 16, 0.4));
+    transition:
+      transform var(--t-base) var(--ease-out),
+      color var(--t-fast) var(--ease-out);
+  }
+  .mac-acc-item.is-open .mac-acc-chevron {
+    transform: rotate(180deg);
+    color: var(--accent, #ff4f00);
+  }
+
+  /* Drop-open detail panel: grid-rows 0fr -> 1fr for a smooth height + fade
+     (same trick + tokens as the Work accordion). The inner wrapper clips so
+     content never spills while collapsed; honoured by reduced-motion below. */
+  .mac-acc-panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition:
+      grid-template-rows var(--t-base) var(--ease-out),
+      opacity var(--t-base) var(--ease-out);
+  }
+  .mac-acc-item.is-open .mac-acc-panel {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  .mac-acc-panel-inner {
+    overflow: hidden;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    /* HORIZONTAL padding only. Vertical padding on this element (the grid item)
+       does NOT collapse with grid-template-rows:0fr — it survives as a ~20px
+       min box height, leaving a dead gap below collapsed rows. The open-state
+       vertical breathing is applied via .is-open below so it only exists when
+       the row is actually expanded. */
+    padding: 0 16px;
+  }
+  .mac-acc-item.is-open .mac-acc-panel-inner {
+    padding-top: 2px;
+    padding-bottom: 18px;
+  }
+  /* Scoped under .mac-acc-panel so it beats the sitewide `.portfolio-section p`
+     (0,1,1) — a bare `.mac-acc-blurb` (0,1,0) loses and renders as faded body. */
+  .mac-acc-panel .mac-acc-blurb {
+    margin: 0;
+    opacity: 1;
+    font-family: var(--font-body, "Geist", system-ui, sans-serif);
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+    text-wrap: pretty;
+  }
+  /* Live / source link: solid orange button, >=44px. Scoped under
+     .mac-acc-panel to beat `.portfolio-section a` (colour + underline). */
+  .mac-acc-panel .mac-acc-link {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    margin: 0;
+    padding: 11px 22px;
+    background: var(--accent, #ff4f00);
+    color: var(--bg-surface, #fff);
+    border: none;
+    border-radius: 0;
     font-family: var(--font-mono, sans-serif);
-    font-size: 11px;
-    letter-spacing: 0.14em;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--accent, #e87040);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: background-color var(--t-fast) ease;
+  }
+  .mac-acc-panel .mac-acc-link:active {
+    background: var(--accent-hot, #ff6a2a);
+    opacity: 1;
+  }
+  @media (hover: hover) {
+    .mac-acc-panel .mac-acc-link:hover {
+      background: var(--accent-hot, #ff6a2a);
+      opacity: 1;
+    }
+  }
+  .mac-acc-panel .mac-acc-link:focus-visible {
+    outline: 2px solid var(--ink, #0d0e10);
+    outline-offset: 2px;
   }
 
   /* VISIBLE detail panel on narrow: overrides the desktop sr-only clip.
@@ -729,7 +831,7 @@
     margin-top: 18px;
     background: var(--bg-surface, #fff);
     border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
-    border-radius: var(--r-card-lg, 20px);
+    border-radius: 0;
     padding: 18px 18px 20px;
     display: flex;
     flex-direction: column;
@@ -745,7 +847,7 @@
     margin-bottom: 4px;
     background: transparent;
     border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
-    border-radius: var(--r-chip, 999px);
+    border-radius: 0;
     color: var(--ink, #0d0e10);
     font-family: var(--font-mono, sans-serif);
     font-size: 12px;
@@ -759,12 +861,12 @@
       background-color var(--t-fast) ease;
   }
   .mac-detail-back:active {
-    border-color: var(--accent, #e87040);
-    color: var(--accent, #e87040);
-    background: var(--accent-tint, rgba(232, 112, 64, 0.1));
+    border-color: var(--accent, #ff4f00);
+    color: var(--accent, #ff4f00);
+    background: var(--accent-tint, rgba(255, 79, 0, 0.1));
   }
   .mac-detail-back:focus-visible {
-    outline: 2px solid var(--accent, #e87040);
+    outline: 2px solid var(--accent, #ff4f00);
     outline-offset: 2px;
   }
   .mac-detail-a11y[data-narrow="true"] .mac-detail-thumb {
@@ -772,7 +874,7 @@
     width: 100%;
     aspect-ratio: 806 / 537;
     object-fit: cover;
-    border-radius: 12px;
+    border-radius: 0;
     border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
     margin: 0 0 4px;
   }
@@ -820,7 +922,7 @@
     text-transform: uppercase;
     color: var(--ink-muted, rgba(13, 14, 16, 0.62));
     border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
-    border-radius: var(--r-chip, 999px);
+    border-radius: 0;
   }
   .mac-detail-a11y[data-narrow="true"] .mac-detail-link {
     align-self: flex-start;
@@ -830,9 +932,9 @@
     min-height: 44px;
     margin-top: 6px;
     padding: 11px 22px;
-    background: var(--accent, #e87040);
+    background: var(--accent, #ff4f00);
     color: var(--bg-surface, #fff);
-    border-radius: var(--r-chip, 999px);
+    border-radius: 0;
     font-family: var(--font-mono, sans-serif);
     font-size: 12px;
     font-weight: 600;
@@ -862,17 +964,55 @@
     width: auto;
     height: auto;
     clip: auto;
-    background: var(--accent, #e87040);
+    background: var(--accent, #ff4f00);
     color: var(--bg-surface, #fff);
     outline: 2px solid var(--ink, #0d0e10);
     outline-offset: 2px;
   }
 }
 
-/* Very narrow phones: give the Mac a touch more vertical room. */
-@media (max-width: 480px) {
+/* ── PHONE (≤ 768px): NO SECTION CANVAS ────────────────────────────
+   The keystone (useSectionCanvasMount → false at ≤768px) means the Mac
+   <Canvas> NEVER mounts on a phone, so .mac-stage is now an EMPTY box.
+   The 900px block above reserves it min(58vh,460px) of height — on a
+   phone that's pure dead space (a blank gap where the 3D used to be).
+   Collapse it here so the section reads as a clean editorial stack:
+
+     02 / Stack + Projects → Projects   (header)
+     ‹ tech ticker marquee ›            (.mac-ticker-slot)
+     [ project list ]                   (.mac-project-list — centerpiece)
+
+   GATED AT 768, NOT 900: the 769-900px TABLET band STILL mounts the
+   canvas (useSectionCanvasMount only bails ≤768), so it must keep the
+   stage box from the 900px block. Only phones (≤768) collapse it. The
+   section is already height:auto / overflow:visible / display:flex from
+   the 900px block, so it flows top-to-bottom without a fixed-vh box. */
+@media (max-width: 768px) {
+  /* Canvas doesn't mount here → reserve no height, no dead gap. */
   .mac-stage {
-    height: min(64vh, 480px);
+    display: none;
+  }
+
+  /* With the stage gone, the ticker is the last thing above the project
+     list. Give the list real breathing room under the header + ticker so
+     it lands as the clear centerpiece (was tucked right under a 58vh
+     canvas box). Single-column, generous gaps per the mobile principles. */
+  .mac-ticker-slot {
+    margin: 24px 0 0;
+  }
+  .mac-project-list {
+    margin-top: 28px;
+    gap: 12px;
+  }
+}
+
+/* Sub-360px phones (e.g. 320px iPhone SE): step the single "Projects"
+   pixel word down further so it fits one line and never fractures or
+   forces horizontal scroll. word-break:keep-all from the 900px block
+   keeps the glyph run intact; this just shrinks it to fit. */
+@media (max-width: 360px) {
+  .portfolio-mac h2 {
+    font-size: clamp(34px, 13vw, 48px);
   }
 }
 
@@ -889,6 +1029,12 @@
   }
   .mac-tile,
   .mac-tile::before {
+    transition: none;
+  }
+  /* Mobile project accordion: open/close instantly, no grid-rows/chevron
+     animation (the panel still toggles via the is-open class). */
+  .mac-acc-panel,
+  .mac-acc-chevron {
     transition: none;
   }
 }

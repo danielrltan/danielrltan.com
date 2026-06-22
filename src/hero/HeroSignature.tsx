@@ -1,7 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { HeroSignature2D } from "./HeroSignature2D";
-import { HeroGlyphRing } from "./HeroGlyphRing";
 import { HeroIgnition } from "./HeroIgnition";
+// HeroGlyphRing pulls in three.js + @react-three/fiber (the ~1MB `three`
+// chunk). Lazy-load it so that chunk leaves the entry/first-paint path: the
+// orange scrim, loader, and static wordmark paint immediately and the ring
+// streams in a beat later (it sits behind the loader until loaderDone anyway).
+// This is the single biggest first-paint win on weak hardware.
+const HeroGlyphRing = lazy(() =>
+  import("./HeroGlyphRing").then((m) => ({ default: m.HeroGlyphRing })),
+);
 import { type SignatureData } from "./signatureGeometry";
 import { useAssembly } from "../loading";
 import "./hero-composition.css";
@@ -10,11 +17,11 @@ import "./hero-composition.css";
  * Hero composition. ASCII ring is the kinetic centerpiece; editorial
  * type frames it (eyebrow top-left, wordmark center, meta row bottom).
  *
- * State machine:
- *   drawing:    2D signature draws on the orange loading scrim
- *   transition: both gates met (draw done + assets climaxReady),
- *               600ms crossfade window
- *   settled:    composition is the only visible layer
+ * State machine (the loader now finishes BEFORE the signature draws):
+ *   drawing:    waits for loaderDone, then the 2D signature draws on the
+ *               orange scrim (the BootLoader has already lifted off)
+ *   transition: draw done AND loaderDone, ~520ms crossfade window
+ *   settled:    composition is the only visible layer; fires `hero-composed`
  */
 
 type Phase = "drawing" | "transition" | "settled";
@@ -59,8 +66,11 @@ export function HeroSignature() {
   }, []);
 
   // Two-step state advance:
-  //   1) drawing → transition (when draw complete AND assets ready)
-  //   2) transition → settled (after a 600ms crossfade window)
+  //   1) drawing → transition (when the signature draw is done AND the
+  //      loader has finished — loaderDone, not climaxReady, so a failed
+  //      signature fetch that flips drawingComplete early still can't
+  //      compose before the loader is off-screen)
+  //   2) transition → settled (after the crossfade window)
   // Splitting these into two effects so the timeout that schedules
   // step 2 isn't torn down by the dep-change from step 1. When the
   // single combined effect re-ran on phase change, React's cleanup
@@ -69,13 +79,21 @@ export function HeroSignature() {
   useEffect(() => {
     if (phase !== "drawing") return;
     if (!drawingComplete) return;
-    if (!assembly.climaxReady) return;
+    if (!assembly.loaderDone) return;
     setPhase("transition");
-  }, [phase, drawingComplete, assembly.climaxReady]);
+  }, [phase, drawingComplete, assembly.loaderDone]);
   useEffect(() => {
     if (phase !== "transition") return;
-    const t = window.setTimeout(() => setPhase("settled"), 600);
+    const t = window.setTimeout(() => setPhase("settled"), 520);
     return () => window.clearTimeout(t);
+  }, [phase]);
+  // Composition settled ⇒ the whole opening sequence (loader → signature →
+  // wordmark) is done. Signal AssemblyController to lift the orange scrim
+  // and unlock the page. This is the page-unlock seam (it replaced the
+  // fixed climaxDone timer, which would now fire mid-signature-draw).
+  useEffect(() => {
+    if (phase !== "settled") return;
+    window.dispatchEvent(new Event("hero-composed"));
   }, [phase]);
 
   // The 2D signature draws at full opacity on the orange loading scrim,
@@ -92,7 +110,10 @@ export function HeroSignature() {
   // gesture the wordmark "loads around", not a faint veil sitting over
   // the orange type muddying its edges.
   const twoDZIndex = phase === "settled" ? 1 : 5;
-  const renderTwoD = true;
+  // Unmount the 2D signature canvas once settled (it's opacity 0 then anyway) —
+  // frees its full-viewport backing buffer (~tens of MB) + one compositor layer,
+  // which compounds the hero's VRAM pressure on weak GPUs through the scroll.
+  const renderTwoD = phase !== "settled";
   const compositionVisible = phase !== "drawing";
 
   // Wordmark split into per-character spans so the entrance /
@@ -287,11 +308,20 @@ export function HeroSignature() {
       schedule();
     };
 
+    // PERF: only refresh rects on scroll while the cursor is actually over the
+    // wordmark — the proximity field is unused otherwise, so the default
+    // behaviour was a per-glyph getBoundingClientRect() forced-layout storm on
+    // every scroll frame (pricey inside the scaled + filtered composition).
+    // pointerenter already re-caches, so a scroll that ends over the wordmark
+    // still gets fresh rects on the next pointermove.
+    const onScrollRects = () => {
+      if (hovering) scheduleRects();
+    };
     wrap.addEventListener("pointermove", onMove);
     wrap.addEventListener("pointerenter", onEnter);
     wrap.addEventListener("pointerleave", onLeave);
     window.addEventListener("resize", scheduleRects, { passive: true });
-    window.addEventListener("scroll", scheduleRects, { passive: true });
+    window.addEventListener("scroll", onScrollRects, { passive: true });
     return () => {
       if (rafId !== 0) window.cancelAnimationFrame(rafId);
       if (rectsRaf !== 0) window.cancelAnimationFrame(rectsRaf);
@@ -299,22 +329,24 @@ export function HeroSignature() {
       wrap.removeEventListener("pointerenter", onEnter);
       wrap.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("resize", scheduleRects);
-      window.removeEventListener("scroll", scheduleRects);
+      window.removeEventListener("scroll", onScrollRects);
     };
   }, []);
 
   return (
     <>
-      {/* REAL pixelation filters for the hero→about dive. Each filter
-          Gaussian-blurs the composition's actual rendered pixels
-          (feGaussianBlur), samples one dot per cell (feFlood→feComposite
-          →feTile→composite-in), and dilates the samples back to full
-          cells (feMorphology) — a true blur-then-downsample mosaic of
-          the content itself. App.tsx's scroll choreography steps
-          `data-hero-px` on <html> through these as the dive progresses;
-          hero-composition.css maps each step to its filter. (Replaces
-          the Bayer-dither mask overlay, which just painted a pixel
-          TEXTURE over the type instead of pixelating it.) */}
+      {/* PARKED / INERT (perf): these blur-then-downsample mosaic filters
+          (feGaussianBlur → feFlood/feComposite/feTile → feMorphology) are a
+          true pixelation of the composition's own rendered pixels, BUT
+          feMorphology + feTile have no GPU path in Chromium, so applying
+          url(#hero-px-N) to the full-viewport composition (which holds the live
+          WebGL ring <canvas>) software-rasterized the whole subtree on the MAIN
+          THREAD every dive frame as it scaled — ~19fps at 6× CPU. The live dive
+          now uses GPU-cheap contrast()+scale only (see hero-composition.css), so
+          NOTHING references these anymore — an unreferenced <filter> in <defs>
+          never executes, so they cost nothing at rest. Kept (not deleted) so the
+          block mosaic is a one-line opt-in (re-add `url(#hero-px-N)` to the
+          data-hero-px rules) if it's ever wanted behind a capability probe. */}
       <svg
         aria-hidden
         focusable="false"
@@ -334,7 +366,7 @@ export function HeroSignature() {
             >
               <feGaussianBlur
                 in="SourceGraphic"
-                stdDeviation={c * 0.35}
+                stdDeviation={c * 0.175}
                 result="blur"
               />
               <feFlood
@@ -346,7 +378,7 @@ export function HeroSignature() {
               <feComposite width={c} height={c} />
               <feTile result="grid" />
               <feComposite in="blur" in2="grid" operator="in" />
-              <feMorphology operator="dilate" radius={c / 2} />
+              <feMorphology operator="dilate" radius={Math.min(4, c / 2)} />
             </filter>
           ))}
           {/* ASCII outline: the wordmark's keyline is a DITHERED orange
@@ -370,7 +402,7 @@ export function HeroSignature() {
               result="dil"
             />
             <feComposite in="dil" in2="SourceAlpha" operator="out" result="ring" />
-            <feFlood floodColor="#e87040" x="1" y="1" width="2.4" height="2.4" />
+            <feFlood floodColor="#ff4f00" x="1" y="1" width="2.4" height="2.4" />
             <feComposite width="5" height="5" result="cell" />
             <feTile in="cell" result="grid" />
             <feComposite in="grid" in2="ring" operator="in" result="outline" />
@@ -386,6 +418,7 @@ export function HeroSignature() {
           data={data}
           opacity={twoDOpacity}
           zIndex={twoDZIndex}
+          start={assembly.loaderDone}
           onComplete={() => setDrawingComplete(true)}
         />
       )}
@@ -400,7 +433,9 @@ export function HeroSignature() {
         <h1 className="hero-sr-heading">Daniel Tan, Software Engineer</h1>
 
         <div className="hero-ring-wrap" aria-hidden>
-          <HeroGlyphRing color="#e87040" spinDuration={26} />
+          <Suspense fallback={null}>
+            <HeroGlyphRing color="#ff4f00" spinDuration={26} />
+          </Suspense>
         </div>
 
         {/* One-shot ASCII blast on load, centred on the ring; the ring then
@@ -431,6 +466,23 @@ export function HeroSignature() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Scroll cue: a pixel down-chevron, lower-middle, bobbing frame-by-frame.
+          Sibling of .hero-composition so the dive transform/pixelation doesn't
+          scale it; fades the instant the dive begins (--hero-to-about). */}
+      <div className="hero-scroll-cue" aria-hidden="true">
+        <svg width="46" height="26" viewBox="0 0 9 5" fill="#ffffff" shapeRendering="crispEdges">
+          <rect x="0" y="0" width="1" height="1" />
+          <rect x="8" y="0" width="1" height="1" />
+          <rect x="1" y="1" width="1" height="1" />
+          <rect x="7" y="1" width="1" height="1" />
+          <rect x="2" y="2" width="1" height="1" />
+          <rect x="6" y="2" width="1" height="1" />
+          <rect x="3" y="3" width="1" height="1" />
+          <rect x="5" y="3" width="1" height="1" />
+          <rect x="4" y="4" width="1" height="1" />
+        </svg>
       </div>
     </>
   );

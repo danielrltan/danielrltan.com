@@ -88,7 +88,7 @@
   font-size: var(--fs-mono);
   letter-spacing: 0.28em;
   text-transform: uppercase;
-  /* Base --accent (#e87040) on the bg-deep band is < 2.6:1, fails AA
+  /* Base --accent (#ff4f00) on the bg-deep band is < 2.6:1, fails AA
      for this 10.5px label. --accent-text is the on-palette darkened
      orange that clears 4.5:1. */
   color: var(--accent-text);
@@ -276,12 +276,11 @@
 @media (max-width: 768px) {
   .portfolio-footer {
     /* Bottom pad must clear BOTH the home-indicator inset AND the fixed
-       HUD pills: the reset/sound pills (bottom-left) + jump-to-top
-       (bottom-right) sit ~14px up and are 44px tall, i.e. a ~58px chrome
-       strip across the bottom. The footer is the terminal section where
-       scroll STOPS, so its copyright row was left resting BEHIND those
-       pills (the "MADE WITH ORANGE CRAYON" tagline was clipped). 80px +
-       inset leaves a comfortable margin above the chrome. */
+       jump-to-top FAB (bottom-right): it sits ~14px up and is 44px tall,
+       i.e. a ~58px chrome strip across the bottom. The footer is the
+       terminal section where scroll STOPS, so its copyright row was left
+       resting BEHIND that FAB (the "MADE WITH ORANGE CRAYON" tagline was
+       clipped). 80px + inset leaves a comfortable margin above the chrome. */
     padding: 72px 6vw calc(80px + env(safe-area-inset-bottom, 0px));
     margin-top: 48px;
   }
@@ -294,22 +293,42 @@
     margin-bottom: var(--space-7);
   }
   .footer-signoff {
-    margin-bottom: 40px;
+    /* #38: the signature band shrinks to 84px on phones; pull the gap below
+       it in to ~24px so the shorter mark doesn't float over a wide void
+       above the copyright row. */
+    margin-bottom: 24px;
   }
 
-  /* TOUCH TARGETS: on desktop the jump-link buttons + elsewhere links
+  /* TOUCH TARGETS (#20): on desktop the jump-link buttons + elsewhere links
      render ~34px tall (6px padding + ~22px line-box), BELOW the 44px
      touch floor. Bump to a full 44px min-height with vertical padding
      so the whole cell is tappable, and centre the label vertically.
-     The .footer-nav `gap: 8px` already gives the required ≥8px spacing
-     between adjacent targets. */
+     Drop the desktop `width: max-content` so each link fills the column —
+     a full-width 44px row is a far bigger (mis-tap-proof) target than one
+     sized to its short label, and the index+label left-align cleanly. */
+  .footer-nav {
+    /* 8px → 12px so stacked full-width rows have ~56px pitch (44px row +
+       12px gap) and read as discrete targets, not a contiguous block. */
+    gap: var(--space-3);
+  }
   .footer-link {
     min-height: 44px;
     padding-top: 10px;
     padding-bottom: 10px;
+    width: 100%;
+    justify-content: flex-start;
     /* baseline alignment collapses the line box on a multi-line flex
        item; switch to center so num + label sit mid-target. */
     align-items: center;
+  }
+
+  /* READABILITY (#21): the colophon VALUES are real content (tech stack,
+     location, the accent name), not labels — lift them to 16px body so
+     they clear the mobile legibility floor. The KEYS (.footer-meta-key)
+     stay at the 11px mono tag size; they're labels, not prose. */
+  .footer-meta-val {
+    font-size: var(--fs-body);
+    line-height: 1.45;
   }
 
   .footer-bottom {

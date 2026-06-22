@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect } from "react";
 import { useAssemblyProgress } from "./useAssemblyProgress";
-import type { AssemblyState } from "./types";
+import { type AssemblyState, UNLOCK_FAILSAFE_MS } from "./types";
 
 /**
  * Loading state context. Tracks bytes / timeline / stable frames via
@@ -21,16 +21,36 @@ export function useAssembly(): AssemblyState {
 export function AssemblyProvider({ children }: { children: React.ReactNode }) {
   const state = useAssemblyProgress();
 
+  // The orange loading scrim (html.loading-active, added synchronously in
+  // main.tsx BEFORE React mounts) stays up through the WHOLE opening beat:
+  // loader fill → signature draw → wordmark compose. HeroSignature fires a
+  // `hero-composed` event once the composition settles; that is the unlock.
+  //
+  // Previously the class dropped on a fixed timer after climaxReady. Now
+  // that the signature plays AFTER the loader (not concurrently), that
+  // timer would lift the scrim mid-draw and flash the page behind it —
+  // so the unlock moved to the genuine end of the sequence.
   useEffect(() => {
-    if (state.climaxDone) {
+    const unlock = () =>
       document.documentElement.classList.remove("loading-active");
-    } else {
-      document.documentElement.classList.add("loading-active");
-    }
-    return () => {
+    window.addEventListener("hero-composed", unlock);
+    // Cleanup only drops the listener — NOT the class. Removing the class
+    // here would lift the scrim during React StrictMode's dev mount→unmount
+    // →mount cycle (main.tsx adds it once and never re-adds).
+    return () => window.removeEventListener("hero-composed", unlock);
+  }, []);
+
+  // Failsafe: never trap a visitor behind the scrim. If the compose signal
+  // never arrives (an unforeseen stall once the loader is done), lift it
+  // UNLOCK_FAILSAFE_MS after the loader completes. climaxReady is bounded by
+  // HARD_CEILING_MS, so this fires even if assets silently fail to load.
+  useEffect(() => {
+    if (!state.climaxReady) return;
+    const t = window.setTimeout(() => {
       document.documentElement.classList.remove("loading-active");
-    };
-  }, [state.climaxDone]);
+    }, UNLOCK_FAILSAFE_MS);
+    return () => window.clearTimeout(t);
+  }, [state.climaxReady]);
 
   // Remove the static #boot-screen the moment React mounts.
   useEffect(() => {

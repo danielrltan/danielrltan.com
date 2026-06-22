@@ -137,13 +137,34 @@ export function trophyGeom(): THREE.BufferGeometry {
   return icon([s, lh, rh]);
 }
 
+export function cameraGeom(): THREE.BufferGeometry {
+  // Front-on camera, silhouette-first so it reads under the orange ASCII
+  // dither: a wide body with a big central LENS opening (a large circular hole
+  // — sized to survive the dither, unlike the small interior holes that wash
+  // out at ring scale), a viewfinder/prism hump centred on the top deck, a
+  // flash block to its left and a shutter button to its right.
+  const body = rectShape(-0.62, -0.34, 1.24, 0.64);
+  // Big round lens opening, centred on the body face (the camera's tell).
+  const lensHole = new THREE.Path();
+  lensHole.absarc(0, -0.02, 0.26, 0, Math.PI * 2, true);
+  body.holes.push(lensHole);
+  const hump = rectShape(-0.2, 0.3, 0.4, 0.16); // pentaprism / viewfinder
+  const flash = rectShape(-0.54, 0.3, 0.2, 0.1); // flash block, top-left
+  const shutter = rectShape(0.36, 0.3, 0.14, 0.11); // shutter button, top-right
+  return icon([body, hump, flash, shutter]);
+}
+
 export function planeGeom(): THREE.BufferGeometry {
-  // Paper-airplane / "send" dart pointing right, with the tail notch.
+  // Paper-airplane / "send" dart. Built pointing right, then rotated so the
+  // nose points NORTHEAST (up-right) — the Contact "cursor" dart in the jump
+  // menu reads as a pointer aimed off-screen toward send/reply.
   const s = new THREE.Shape();
   s.moveTo(0.58, 0); // nose
   s.lineTo(-0.52, 0.46); // top-back
   s.lineTo(-0.18, 0); // centre notch (fold)
   s.lineTo(-0.52, -0.46); // bottom-back
   s.closePath();
-  return icon(s);
+  const g = icon(s);
+  g.rotateZ(Math.PI / 4); // due-east -> northeast (+45°, CCW toward up)
+  return g;
 }

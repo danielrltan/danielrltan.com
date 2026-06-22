@@ -165,6 +165,14 @@ export interface KeypadModelApi {
 interface CapState {
   obj: THREE.Object3D;
   baseY: number;
+  /** Hit-volume centre in the cloned-root local frame, derived from the cap's
+   *  GEOMETRY (Box3) — NOT obj.position. A re-exported keypad.glb can bake the
+   *  cap node transforms into their meshes and zero the node translations, in
+   *  which case obj.position is (0,0,0) and a hit-box placed there collapses onto
+   *  the model origin (caps stop receiving onPointerOver → no hover-sink AND no
+   *  spark cursor, since one handler drives both). Geometry-centre tracks where
+   *  the cap actually renders regardless of baked transforms. */
+  hitPos: THREE.Vector3;
   pressT: number;
   hovered: boolean;
   pressedAt: number | null;
@@ -172,10 +180,15 @@ interface CapState {
 
 // Fit policy: model's bounding-sphere radius (rotation-invariant)
 // should equal this fraction of the visible camera HALF-HEIGHT at
-// world z=0. Picked empirically. Bump down if it reads too tight,
-// up to fill more of the frame. 0.92 puts the model nicely filling
-// the laying-flat view without kissing canvas edges.
-const TARGET_FILL_RATIO = 0.92;
+// world z=0. The bounding SPHERE circumscribes the tilted slab PLUS
+// the protruding dial, so its top/bottom reach further up the frame
+// than the keypad body does; 0.92 left the body kissing (and the idle
+// bob + knob wobble pushing it past) the bottom edge - the keypad read
+// as cut off. 0.80 keeps the full keypad on-screen with a comfortable
+// vertical margin (~20% of the half-height) that absorbs the base tilt,
+// bob, and wobble. (Bump up toward 0.85 to fill more; below that the
+// cutoff returns.)
+const TARGET_FILL_RATIO = 0.8;
 // PORTRAIT (phones): the fit clamps to the TIGHTER axis, which in
 // portrait is the half-WIDTH, and the bounding SPHERE circumscribes the
 // tilted slab PLUS the protruding dial, so a 0.92 sphere-fit left the
@@ -199,7 +212,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   // Clone + traverse synchronously so caps & dial are known before
   // the first render returns. Hit-volume meshes need their world
   // positions on mount.
-  const { cloned, recenterOffset, sphereRadius, caps, dial, screenMat } = useMemo(() => {
+  const { cloned, recenterOffset, sphereRadius, caps, dial, dialHitPos, screenMat } = useMemo(() => {
     const cl = scene.clone(true);
     const capMap: Record<string, CapState> = {};
     let dialObj: THREE.Object3D | null = null;
@@ -218,6 +231,8 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
         capMap[name] = {
           obj,
           baseY: obj.position.y,
+          // Filled below from geometry centre once world matrices are current.
+          hitPos: new THREE.Vector3(),
           pressT: 0,
           hovered: false,
           pressedAt: null,
@@ -301,6 +316,22 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
         );
       }
     }
+    // Bring all world matrices current before any Box3 reads (clone() can leave
+    // matrixWorld stale, and the hit-volume placement below reads geometry
+    // bounds in the cloned-root frame).
+    cl.updateMatrixWorld(true);
+
+    // Hit-volume centres from GEOMETRY, not node.position — see CapState.hitPos.
+    // This is what makes the four social caps clickable again after a GLB
+    // re-export baked their node translations to zero.
+    const hb = new THREE.Box3();
+    for (const key of Object.keys(capMap)) {
+      hb.setFromObject(capMap[key]!.obj).getCenter(capMap[key]!.hitPos);
+    }
+    const dialHitPos = dialObj
+      ? hb.setFromObject(dialObj).getCenter(new THREE.Vector3())
+      : null;
+
     const box = new THREE.Box3().setFromObject(cl);
     const center = new THREE.Vector3();
     box.getCenter(center);
@@ -312,6 +343,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       sphereRadius: sphere.radius,
       caps: capMap,
       dial: dialObj as THREE.Object3D | null,
+      dialHitPos,
       screenMat: screenMaterial as THREE.Material | null,
     };
   }, [scene]);
@@ -501,11 +533,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
           return (
             <mesh
               key={name}
-              position={[
-                cap.obj.position.x,
-                cap.obj.position.y,
-                cap.obj.position.z,
-              ]}
+              position={[cap.hitPos.x, cap.hitPos.y, cap.hitPos.z]}
               onPointerOver={handleCapEnter(name)}
               onPointerOut={handleCapLeave(name)}
               onClick={handleCapClick(name)}
@@ -515,9 +543,9 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
             </mesh>
           );
         })}
-        {dial && (
+        {dial && dialHitPos && (
           <mesh
-            position={[dial.position.x, dial.position.y, dial.position.z]}
+            position={[dialHitPos.x, dialHitPos.y, dialHitPos.z]}
             onPointerOver={handleDialEnter}
             onPointerOut={handleDialLeave}
             onClick={handleDialClick}

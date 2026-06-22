@@ -30,17 +30,16 @@ export const SECTION_REGISTRY: SectionEntry[] = [
   { number: "01", label: "About", selector: ".portfolio-section:not([class*='--'])" },
   { number: "02", label: "Projects", selector: ".portfolio-mac" },
   { number: "03", label: "Work", selector: ".portfolio-work" },
-  {
-    number: "04",
-    label: "Play",
-    selector: ".portfolio-other",
-    // Land on Beat B (the "Some interests" 3D hobby reel) — header landed,
-    // first hobby focused — not the section top (the "Recents" photo beat).
-    pinId: "other-pin",
-    jumpProgress: 0.44,
-  },
+  // Play is now interests-only — the "Recents" photos moved out into their own
+  // Photos section (below), so a jump lands on the section top, which is the
+  // 3D hobby reel itself (no more Beat A to skip past).
+  { number: "04", label: "Play", selector: ".portfolio-other" },
   { number: "05", label: "Honors", selector: ".portfolio-bp" },
-  { number: "06", label: "Contact", selector: ".keypad-section" },
+  // Recents: the photo trains, extracted from Play into a standalone section
+  // sitting between Honors and Contact. (Labelled "Recents" to match the
+  // section's own header, the footer index, and the jump-menu object.)
+  { number: "06", label: "Recents", selector: ".portfolio-photos" },
+  { number: "07", label: "Contact", selector: ".keypad-section" },
 ];
 
 /**
@@ -63,6 +62,7 @@ export function findSectionElements(): Array<{
           !e.classList.contains("portfolio-work") &&
           !e.classList.contains("portfolio-other") &&
           !e.classList.contains("portfolio-bp") &&
+          !e.classList.contains("portfolio-photos") &&
           !e.classList.contains("keypad-section"),
       );
       return { entry, el: generic[0] ?? null };

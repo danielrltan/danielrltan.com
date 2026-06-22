@@ -26,8 +26,10 @@ orange accent.** That is the whole palette.
 3. **Ink alphas: cool stack.** `rgba(13, 14, 16, ...)`. Legacy
    `rgba(26, 23, 20, ...)` (walnut) and `rgba(21, 23, 26, ...)` should
    be converted on sight.
-4. **Orange `#e87040` is the only chromatic colour in UI.** No teals,
-   purples, secondary accents. White + ink + orange. Period.
+4. **Orange `#ff4f00` (International Orange) is the only chromatic colour
+   in UI.** This is now the brand accent, replacing the old `#e87040`
+   terracotta. No teals, purples, secondary accents. White + ink + orange.
+   Period.
 
 ---
 
@@ -55,9 +57,9 @@ orange accent.** That is the whole palette.
 
 | Token | Value | Use |
 |---|---|---|
-| `--accent` | `#e87040` | Base orange: links, tags, highlights |
+| `--accent` | `#ff4f00` | Base orange (International Orange): links, tags, highlights |
 | `--accent-hot` | `#ff6a2a` | Hover / active state |
-| `--accent-tint` | `rgba(232,112,64,0.10)` | Soft fills (chip backplates, hover fills) |
+| `--accent-tint` | `rgba(255,79,0,0.10)` | Soft fills (chip backplates, hover fills) |
 
 ### Legacy aliases
 
@@ -127,7 +129,7 @@ background: var(--bg-surface);            /* or var(--bg-elevated) for secondary
 border: 1px solid var(--ink-hairline);
 box-shadow:
   0 1px 0 rgba(13, 14, 16, 0.04),
-  0 24px 48px -32px rgba(180, 80, 30, 0.10);  /* warm orange-cast shadow OK */
+  0 24px 48px -32px rgba(194, 61, 0, 0.10);  /* warm orange-cast shadow OK */
 ```
 
 Existing cards keep sharp corners (TE/industrial). New cards use

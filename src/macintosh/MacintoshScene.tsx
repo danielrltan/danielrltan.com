@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useGLTF, OrbitControls } from "@react-three/drei";
+import { useGLTF, OrbitControls, Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 import { SKILL_LOGOS, liveLinkLabel, type MacProject, type SkillLogo } from "./projects";
 import { useMacNarrow } from "./useMacNarrow";
@@ -518,7 +518,7 @@ function LogoSprite({
 // --bg-elevated, --ink, --ink-muted, --ink-hairline, --accent).
 const CARD_INK = "#0d0e10";
 const CARD_INK_FAINT = "rgba(13, 14, 16, 0.34)";
-const CARD_ACCENT = "#e87040";
+const CARD_ACCENT = "#ff4f00";
 
 /* Pixel face for EVERYTHING rasterized into this section's 3D canvas
    textures: the CRT screen UI, the boot type-in, and the orbiting
@@ -710,6 +710,11 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
       // project open/close/switch, decaying over ~400ms. Drives the
       // slice-tear / chroma-split / noise burst below.
       uGlitch: { value: 0 },
+      // Retro CRT POWER-OFF 0..1: the section-exit "going to sleep" collapse.
+      // 0 = on; ramped to 1 by the Scene's time-based shutdown (double-blink
+      // handled via uOpacity). 0->0.5 collapses the picture to a hot horizontal
+      // line, 0.5->0.86 pinches that line to a centre dot, 0.86->1 fades it out.
+      uPowerOff: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -723,6 +728,7 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
       uniform float uOpacity;
       uniform float uTime;
       uniform float uGlitch;
+      uniform float uPowerOff;
       varying vec2 vUv;
       void main() {
         // PAGE-TRANSITION GLITCH (uGlitch 0..1, decaying pulse): the
@@ -755,6 +761,21 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
           float tear = (h - 0.5) * 0.20 * uGlitch * step(0.62, h);
           uv.x = fract(uv.x + tear);
           uv.y = fract(uv.y + 0.012 * uGlitch * sin(uTime * 60.0));
+        }
+
+        // RETRO CRT POWER-OFF: squeeze the picture into a shrinking lit window —
+        // VERTICAL first (-> a hot horizontal line), then HORIZONTAL (-> a centre
+        // dot) — compressing the image into it rather than clipping. poWin masks
+        // everything outside the window; the flash + fade land at the end.
+        float poWin = 1.0;
+        if (uPowerOff > 0.0001) {
+          float poV = smoothstep(0.0, 0.5, uPowerOff);
+          float poH = smoothstep(0.5, 0.86, uPowerOff);
+          float bH = mix(0.5, 0.006, poV);
+          float bW = mix(0.5, 0.006, poH);
+          vec2 c2 = vUv - 0.5;
+          poWin = step(abs(c2.y), bH) * step(abs(c2.x), bW);
+          uv = 0.5 + vec2(c2.x * (0.5 / bW), c2.y * (0.5 / bH));
         }
         float ca = 0.006 * uGlitch;
         vec3 col;
@@ -814,8 +835,13 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
         // touch of unmodulated bleed keeps text legible through the
         // raster, like real phosphor glow spilling between rows.
         outCol += col * 0.10;
-        // Tube rim: black out the curved over-edge region.
-        gl_FragColor = vec4(outCol * bezel, uOpacity);
+        // POWER-OFF: the collapsing line/dot glows HOT as the beam pinches,
+        // then the dot fades out to black (the classic CRT sleep).
+        outCol *= 1.0 + 3.5 * smoothstep(0.0, 0.5, uPowerOff) * (1.0 - smoothstep(0.86, 1.0, uPowerOff));
+        // Tube rim: black out the curved over-edge region; poWin gates the
+        // power-off window; the last 0.86->1 fades the dot.
+        float poAlpha = uOpacity * poWin * (1.0 - smoothstep(0.86, 1.0, uPowerOff));
+        gl_FragColor = vec4(outCol * bezel, poAlpha);
         #include <colorspace_fragment>
       }
     `,
@@ -889,6 +915,21 @@ function MacBody({
       // it only on the large meshes that actually form the contact blob.
       obj.castShadow = false;
       obj.receiveShadow = false;
+      // Realism pass: the GLB ships a flat grey MeshStandardMaterial (rough
+      // 0.5, no env map) which reads as a Roblox primitive. Give it a
+      // believable warm-plastic Macintosh housing that responds to the
+      // studio IBL — proper roughness + env reflections are what separate a
+      // real object from a flat box. The screen material is overwritten to
+      // black below, so tweaking every standard material here is safe.
+      for (const m of matSources) {
+        if (m instanceof THREE.MeshStandardMaterial) {
+          m.color.set("#e8e2d4"); // warm classic-Macintosh off-white
+          m.roughness = 0.42;
+          m.metalness = 0;
+          m.envMapIntensity = 1.25;
+          m.needsUpdate = true;
+        }
+      }
       // Record bounding-box volume for the size-based fallback below.
       obj.geometry.computeBoundingBox();
       const bb = obj.geometry.boundingBox;
@@ -1282,7 +1323,7 @@ const CRT_TEXT = "#eef2f7"; // cool near-white, primary text
 const CRT_TEXT_DIM = "rgba(238, 242, 247, 0.66)"; // secondary
 const CRT_TEXT_FAINT = "rgba(238, 242, 247, 0.40)"; // low-emphasis
 const CRT_HAIRLINE = "rgba(238, 242, 247, 0.16)"; // dividers / chip borders
-const CRT_ACCENT = "#e87040"; // signature orange
+const CRT_ACCENT = "#ff4f00"; // signature orange
 const CRT_ACCENT_INK = "#0a0c10"; // ink on an accent fill
 
 // Shared layout fractions (of the canvas w/h) for the controls the DOM
@@ -1749,9 +1790,12 @@ function drawAsciiSphere(
       if (L < -1) continue;
       const g = Math.pow(Math.min(1, L), 0.8);
       const ch = ASCII_SPHERE_RAMP[Math.min(last, Math.round(g * last))]!;
-      const rr = Math.round(232 + (255 - 232) * g);
-      const gg = Math.round(112 + (240 - 112) * g);
-      const bb = Math.round(64 + (220 - 64) * g);
+      // Orange phosphor ramp: base = --accent International Orange #ff4f00
+      // rgb(255,79,0) (was the off-brand terracotta #e87040 rgb(232,112,64))
+      // brightening to a warm near-white at the hot end of the ramp.
+      const rr = 255;
+      const gg = Math.round(79 + (240 - 79) * g);
+      const bb = Math.round(0 + (220 - 0) * g);
       ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
       ctx.fillText(ch, c * cellW, r * cellH);
     }
@@ -1917,7 +1961,7 @@ function drawScreen(
 /** Parse a #rrggbb hex into an `rgba()` string at the given alpha. */
 function withAlpha(hex: string, alpha: number): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return `rgba(232, 112, 64, ${alpha})`;
+  if (!m) return `rgba(255, 79, 0, ${alpha})`;
   const n = parseInt(m[1]!, 16);
   const rr = (n >> 16) & 255;
   const gg = (n >> 8) & 255;
@@ -1970,6 +2014,18 @@ function ScreenClickPlane({
     const i = row * cols + col;
     return i < projects.length ? i : null;
   };
+
+  // Teardown contract: this tile mesh writes body.cursor='pointer' on hover and
+  // only clears it on its own pointerOut — but R3F fires NO pointerOut when the
+  // Mac CANVAS UNMOUNTS (mount-on-approach), stranding the spark cursor on the
+  // next section. Clear on unmount (ScreenBackPlane already does this for its
+  // own writer; the tile-grid writer needs its own).
+  useEffect(
+    () => () => {
+      document.body.style.cursor = "";
+    },
+    [],
+  );
 
   return (
     <mesh
@@ -2065,6 +2121,10 @@ function Scene({
   // progress to 1 lands it immediately.
   const narrow = useMacNarrow();
   const macGroupRef = useRef<THREE.Group>(null);
+  // Timestamp the retro CRT power-off began (section started exiting), or -1 when
+  // not shutting down. Drives the time-based double-blink + collapse on the
+  // overlay shader (uPowerOff). Reset when the user scrolls back into the pin.
+  const shutdownStartRef = useRef(-1);
   // Tilt group sits between the Y-translation group (macGroupRef) and
   // the spin group (macSpinRef). It holds the keypad-style float pose
   // (X/Y/Z euler from MAC_FLOAT_TILT_*) and unwinds to 0 during the
@@ -2108,6 +2168,10 @@ function Scene({
   const [floatActive, setFloatActive] = useState(false);
   const [floatSpin, setFloatSpin] = useState(0);
   const lastTickRef = useRef(0);
+  // Separate, slower throttle for the float-beat screensaver (ASCII sphere): a
+  // CanvasTexture rebuild + GPU re-upload + React reconcile at 30Hz was wasted
+  // cost for a slow idle drift; ~13Hz looks identical and halves the churn.
+  const lastFloatSpinRef = useRef(0);
   // Normalized cursor position (-1..1 each axis; top = -1) for the float
   // parallax. Ref, not state, so the per-frame read never re-renders.
   const pointerRef = useRef({ x: 0, y: 0 });
@@ -2308,7 +2372,11 @@ function Scene({
       // so useScreenTexture re-runs and the ASCII sphere animates.
       const fa = !narrow && !selected && p < THRESHOLDS.bootStart;
       setFloatActive((prev) => (prev === fa ? prev : fa));
-      if (fa) setFloatSpin((s) => (s + 1) % 1000000);
+      // Screensaver throttled to ~13Hz independent of this 30Hz mirror block.
+      if (fa && now - lastFloatSpinRef.current >= 75) {
+        lastFloatSpinRef.current = now;
+        setFloatSpin((s) => (s + 1) % 1000000);
+      }
       const dz = detailZoomRef.current;
       // Snap to exactly 0 once closed (texture falls back to the tile grid)
       // AND exactly 1 once fully open. Without the ==1 case, the throttled
@@ -2513,14 +2581,32 @@ function Scene({
       // overlay carries the boot type-in + desktop. Opacity = max(on, boot
       // ramp) so it's always at full while floating and through boot/desktop.
       const screenOn = 1;
-      // Power the picture down as the Mac vanishes on exit (exitScale → 0).
-      const targetOpacity = Math.max(screenOn, newBoot) * exitScale;
-      // Cheap guard against re-writing the same value every frame.
+      // RETRO POWER-OFF: when the exit window opens (you scroll OUTWARDS), play a
+      // one-shot CRT "go to sleep" — a DOUBLE BLINK, then a collapse to a hot
+      // line -> centre dot -> black (uPowerOff). Time-based (not scroll-bound) so
+      // the blink reads as a real flicker; resets if you scroll back into the pin.
+      const exiting = exitT > 0.04;
+      if (exiting && shutdownStartRef.current < 0) {
+        shutdownStartRef.current = performance.now();
+      } else if (!exiting && shutdownStartRef.current >= 0) {
+        shutdownStartRef.current = -1;
+      }
+      let targetOpacity = Math.max(screenOn, newBoot) * exitScale;
+      let powerOff = 0;
+      if (shutdownStartRef.current >= 0) {
+        const el = performance.now() - shutdownStartRef.current;
+        // Two quick off-beats (the double blink) before the collapse begins.
+        const blinkOff = (el > 70 && el < 120) || (el > 185 && el < 240);
+        targetOpacity = blinkOff ? 0.1 : 1;
+        // Collapse the picture (line -> dot -> fade) over ~320..700ms, AFTER the
+        // blinks land.
+        powerOff = clamp01((el - 320) / 380);
+      }
+      mat.uniforms.uOpacity!.value = targetOpacity;
       if (
-        Math.abs((mat.uniforms.uOpacity!.value as number) - targetOpacity) >
-        0.005
+        Math.abs((mat.uniforms.uPowerOff!.value as number) - powerOff) > 0.001
       ) {
-        mat.uniforms.uOpacity!.value = targetOpacity;
+        mat.uniforms.uPowerOff!.value = powerOff;
       }
       // CRT clock: drives the scanline drift / refresh roll / flicker.
       // Ticks only while this scene's frameloop runs (i.e. while the
@@ -2541,29 +2627,71 @@ function Scene({
 
   return (
     <>
-      {/* Cool retro-futurism studio lighting: neutral key + soft
-          fill, no warm cast. Matches the keypad scene's product-shot
-          treatment so the two floating-in-empty-space scenes read as
-          a coherent pair. */}
-      <ambientLight intensity={0.55} color="#ffffff" />
+      {/* Studio IBL built from Lightformers (NOT a drei preset HDRI — those
+          fetch from an external CDN, which corporate firewalls block and this
+          site must survive). This baked cubemap is what gives the matte
+          housing real soft reflections + roughness response: the single
+          biggest change that stops it reading as a flat game-engine box.
+          frames={1} renders the env once (static lights + demand loop). */}
+      <Environment resolution={256} frames={1} environmentIntensity={0.5}>
+        {/* big soft key panel, front-above */}
+        <Lightformer
+          form="rect"
+          intensity={2.4}
+          position={[1.5, 3, 3]}
+          scale={[8, 5, 1]}
+          rotation={[-0.3, 0, 0]}
+          color="#ffffff"
+        />
+        {/* cool fill from the left */}
+        <Lightformer
+          form="rect"
+          intensity={1.0}
+          position={[-5, 1.5, 2]}
+          scale={[3, 6, 1]}
+          color="#eaf1ff"
+        />
+        {/* warm brand rim from behind-right (ties reflections to #ff4f00) */}
+        <Lightformer
+          form="rect"
+          intensity={1.6}
+          position={[4, 1.5, -3]}
+          scale={[3, 6, 1]}
+          color="#ff7a36"
+        />
+        {/* soft ground bounce so undersides aren't dead */}
+        <Lightformer
+          form="rect"
+          intensity={0.5}
+          position={[0, -3, 1]}
+          scale={[10, 4, 1]}
+          rotation={[Math.PI / 2, 0, 0]}
+          color="#ffffff"
+        />
+      </Environment>
+
+      {/* Low ambient — the IBL now provides the soft fill the old 0.55
+          ambient was faking. */}
+      <ambientLight intensity={0.18} color="#ffffff" />
       {/* PERF: shadow-camera frustum snugged to the Mac footprint and the
           shadow map gated on by the useFrame loop only once the contact
-          shadow ramps in (shadowLightRef + shadowT above).
-            OLD: default ortho frustum (±5, near 0.5, far 500) → the 1024px
-                 map spread over a 10×10 box (~10mm/texel) and the depth
-                 pass ran every frame.
-            NEW: ±1.6 box, near 1, far 12 → ~3mm/texel (sharper) AND the
-                 depth pass is skipped entirely until shadowT>0. The Mac
-                 body + its plate shadow sit well inside ±1.6, so the
-                 visible (soft, peak-0.22) shadow is unchanged. */}
+          shadow ramps in (shadowLightRef + shadowT above). ±1.6 box, near 1,
+          far 12. Now PCFSoft + 2048 map + bias for a clean soft contact
+          shadow; intensity dropped (the IBL fills) and warmed slightly.
+          MOBILE PERF (#17): the shadow map drops to 1024 on narrow — the
+          contact shadow is a soft, low-opacity blob, indistinguishable at
+          1024 on a phone-sized canvas, and it quarters the shadow-map
+          depth-pass fill cost. */}
       <directionalLight
         ref={shadowLightRef}
         position={[3, 5, 3]}
-        intensity={1.4}
-        color="#ffffff"
+        intensity={1.0}
+        color="#fff6ee"
         castShadow={false}
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        shadow-mapSize-width={narrow ? 1024 : 2048}
+        shadow-mapSize-height={narrow ? 1024 : 2048}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.02}
         shadow-camera-left={-1.6}
         shadow-camera-right={1.6}
         shadow-camera-top={1.6}
@@ -2571,7 +2699,11 @@ function Scene({
         shadow-camera-near={1}
         shadow-camera-far={12}
       />
-      <directionalLight position={[-3, 2, 2]} intensity={0.45} color="#eef4ff" />
+      {/* Cool fill (kept low — the IBL does most of the fill now). */}
+      <directionalLight position={[-3, 2, 2]} intensity={0.25} color="#eef4ff" />
+      {/* Warm brand rim: a crisp orange edge separates the housing from the
+          cool page and ties to the accent. */}
+      <directionalLight position={[-2, 2.5, -4]} intensity={0.55} color="#ff4f00" />
 
       {/* Mac descent group: drives the float→land Y translation.
           Composition (outer → inner):
@@ -2764,21 +2896,26 @@ export function MacintoshScene(props: Props) {
         // vertically centered. FOV stays 28; a tighter FOV would crop the
         // wider orbit ring on the sides.
         camera={{ position: [0, 0.58, 8.5], fov: 28, near: 0.1, far: 40 }}
-        // PERF: cap DPR at 1.25 (was 1.5). The Mac surface is mostly
-        // matte and the CanvasTexture for the screen is 780x550; past
-        // 1.25× we're shading pixels nobody can see in the resolved
-        // output. 1.25 is the same target as the room canvas.
-        dpr={[1, 1.25]}
+        // DPR cap 1.5 (was 1.25): the housing now carries env reflections +
+        // soft shadows, and the boxy silhouette aliases at 1.25; 1.5 cleans
+        // the edges. Matches the Hobbies canvas's desktop cap.
+        // MOBILE: pin DPR to 1 on narrow (matches the Keypad's mobile DPR
+        // discipline). Phone screens are dense (DPR 2-3); rendering the boxy
+        // Mac at 1.5x device pixels on a retina phone is a heavy per-frame
+        // cost for a small canvas, so the narrow path caps at 1.
+        dpr={narrow ? 1 : [1, 1.5]}
         // PERF: demand frame loop; Scene's useFrame calls invalidate()
         // each visible frame to keep the loop running while on-screen,
         // and as soon as visibleRef flips false the loop quiets.
         frameloop="demand"
-        shadows={{ type: THREE.PCFShadowMap }}
+        shadows={{ type: THREE.PCFSoftShadowMap }}
         gl={{
           antialias: true,
           alpha: true,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.0,
+          // Slightly under 1.0 so the new IBL reflections don't blow out the
+          // housing highlights.
+          toneMappingExposure: 0.95,
           powerPreference: "high-performance",
         }}
         onCreated={({ camera, gl, invalidate }) => {
@@ -2814,15 +2951,12 @@ export function MacintoshScene(props: Props) {
           />
         )}
       </Canvas>
-      {/* DOM loading state: a quiet "booting" chip centered over the
-          stage until the GLB resolves. Removed (not just hidden) once
-          loaded so it never intercepts pointer events on the canvas. */}
-      {!loaded && (
-        <div className="mac-loading" role="status" aria-live="polite">
-          <span className="mac-loading-dot" aria-hidden="true" />
-          <span>Booting projects…</span>
-        </div>
-      )}
+      {/* While the GLB resolves we render NOTHING visible — no "loading" text.
+          The scene mounts on approach (useSectionCanvasMount) with mac.glb
+          module-preloaded, so it's ready before it scrolls into view; a brief
+          empty stage beats a loading placeholder. `loaded` is still consumed
+          here so the LoadedSignal path stays live. */}
+      {!loaded && <div aria-hidden="true" />}
       {TUNE_MODE && <MacTuneHUD />}
     </div>
   );

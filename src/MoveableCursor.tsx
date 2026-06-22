@@ -1,127 +1,168 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
-  /** True while the pointer is over a draggable mesh or drawer. */
+  /** True while the keypad reports the pointer is over an interactive cap/dial. */
   hot: boolean;
 }
 
 /**
- * Custom site pointer: a sharp PIXEL-STYLE ARROW in the accent orange with a
- * dark keyline (the site hides the OS cursor with `cursor: none`). A small
- * "rice grain" trails behind the tip on fast movement — the site's
- * rice/pixel motif — and springs back to the tip when the pointer rests.
- * The arrow presses in on click and grows + glows over interactive room
- * meshes (`hot`). Mounted at the App level so it's the cursor everywhere; the
- * keypad and jump-menu layer their own in-canvas cursor treatments on top.
+ * Custom site pointer: the charcoal (#1B1B1F) arrow from public/Cursor.svg with
+ * a white keyline and soft shadow. Charcoal is the one tone NOT in the site's
+ * white+orange palette, so the pointer stays legible on the white page, on solid
+ * orange UI, and on the orange dotted texture alike. The OS cursor is hidden
+ * site-wide (see the global `cursor: none` in index.css) so this is the only
+ * pointer shown.
  *
- * Replaces the previous plain ring+dot. The arrow's TIP is the hotspot, so
- * the root element is a 0×0 anchor placed exactly at the pointer and the SVG
- * is drawn with its tip at the local origin.
+ * Over anything CLICKABLE the arrow swaps to public/Cursor-Hover.svg — the same
+ * charcoal arrow with three little charcoal spark lines by the tip — and pops in.
+ * "Clickable" = the keypad `hot` signal, OR a DOM element matching the
+ * interactive selector below, OR a canvas that set body cursor to `pointer`.
+ *
+ * Hotspot = the arrow's TIP: the 0×0 root sits exactly at the pointer and each
+ * SVG is nudged up-left by ITS OWN tip offset so the tip stays put when the
+ * spark variant swaps in.
  */
-const TRAIL_SPRING = 0.22; // how fast the grain catches up to the tip
-const TRAIL_MAX_PX = 16; // clamp the lag so the grain never flies off
+
+// Both SVGs draw the identical dart; only the canvas size (hence the tip's
+// coordinate) differs. Rendering both at the same SCALE keeps one fixed arrow
+// size and a fixed hotspot. Tip points: Cursor.svg (151×165) -> (19.9652,
+// 14.4321); Cursor-Hover.svg (189×205) -> (57.6095, 54.9027).
+const ART_W = 32; // default canvas width on screen
+const SCALE = ART_W / 151;
+const TIP_X = 19.9652 * SCALE; // ≈ 4.23px
+const TIP_Y = 14.4321 * SCALE; // ≈ 3.06px
+const HOVER_W = 189 * SCALE; // wider canvas, same arrow size (≈ 40px)
+const HOVER_TIP_X = 57.6095 * SCALE; // ≈ 12.21px
+const HOVER_TIP_Y = 54.9027 * SCALE; // ≈ 11.64px
+
+// Elements that should show the spark (clickable) variant. `closest()` against
+// this walks ancestors, so a span inside a button still counts.
+const CLICKABLE_SEL =
+  'a[href], button, [role="button"], [role="link"], [role="menuitem"], summary, label[for], select, [data-clickable]';
 
 export function MoveableCursor({ hot }: Props) {
   const root = useRef<HTMLDivElement>(null);
-  const trail = useRef<HTMLSpanElement>(null);
+  // Whether the pointer is over a clickable surface (drives the spark variant).
+  const [clickable, setClickable] = useState(false);
 
   useEffect(() => {
     const rootEl = root.current;
-    const trailEl = trail.current;
-    if (!rootEl || !trailEl) return;
+    if (!rootEl) return;
 
     let px = 0;
     let py = 0; // live pointer
-    let tx = 0;
-    let ty = 0; // trailing grain (springs toward the pointer)
     let revealed = false;
     let frame = 0;
-    // Hidden until the first real pointer position so it doesn't ghost at
-    // the viewport origin on load (same guard as the old cursor).
+    let lastClick = false; // last value pushed to React (setState only on change)
+
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    // PRESS-AND-HOLD dip. pressTarget is 1 (up) or PRESS_SCALE (held down);
+    // pressCur eases toward it every frame — fast on the way DOWN (reactive
+    // click) and softer on the way UP (a little spring on release). The scale is
+    // composed into the ROOT transform (alongside the translate) so it scales
+    // around the root origin = the arrow's TIP, and it never fights the inner
+    // arrow's hover-pop animation. Holding the button keeps it dipped; the old
+    // one-shot keyframe popped back up even while you were still holding.
+    const PRESS_SCALE = 0.82;
+    let pressTarget = 1;
+    let pressCur = 1;
+
+    // Hidden until the first real pointer position so it doesn't ghost at the
+    // viewport origin on load.
     rootEl.style.opacity = "0";
+
+    const applyTransform = () => {
+      rootEl.style.transform = `translate3d(${px}px,${py}px,0) scale(${pressCur})`;
+    };
 
     const onMove = (e: PointerEvent) => {
       px = e.clientX;
       py = e.clientY;
-      rootEl.style.transform = `translate3d(${px}px,${py}px,0)`;
+      applyTransform();
       if (!revealed) {
         revealed = true;
         rootEl.style.opacity = "1";
-        tx = px;
-        ty = py; // seed the grain at the tip so it doesn't streak in from (0,0)
       }
     };
 
     const tick = () => {
-      // Spring the grain toward the pointer; the lag (grain − pointer) points
-      // opposite the travel direction, i.e. BEHIND the arrow tip.
-      tx += (px - tx) * TRAIL_SPRING;
-      ty += (py - ty) * TRAIL_SPRING;
-      let ox = tx - px;
-      let oy = ty - py;
-      const len = Math.hypot(ox, oy);
-      if (len > TRAIL_MAX_PX) {
-        const k = TRAIL_MAX_PX / len;
-        ox *= k;
-        oy *= k;
+      // Ease the press scale toward its target: snappy DOWN, softer UP.
+      const rate = pressTarget < pressCur ? 0.5 : 0.26;
+      pressCur += (pressTarget - pressCur) * rate;
+      if (Math.abs(pressTarget - pressCur) < 0.001) pressCur = pressTarget;
+      applyTransform();
+
+      // Re-derive the clickable (spark) state EVERY FRAME from whatever is under
+      // the pointer right now — via elementFromPoint, NOT pointerover/pointerout.
+      // Those only fire on real pointer MOVEMENT, so while the page scrolled
+      // under a stationary mouse the spark got "stuck" (it wouldn't light up over
+      // links/buttons you scrolled onto until you wiggled the mouse). A per-frame
+      // hit-test tracks whatever scrolls beneath the cursor.
+      // Canvases (Mac / Hobbies tiles) also signal via body cursor:pointer (an
+      // inline string read directly; the global `cursor:none !important` only
+      // changes the COMPUTED value).
+      let domClick = false;
+      if (revealed) {
+        const el = document.elementFromPoint(px, py);
+        domClick = !!(el && el.closest && el.closest(CLICKABLE_SEL));
       }
-      trailEl.style.setProperty("--trail-x", `${ox.toFixed(2)}px`);
-      trailEl.style.setProperty("--trail-y", `${oy.toFixed(2)}px`);
-      // Fade the grain in with the lag amount so it only shows while moving.
-      trailEl.style.opacity = Math.min(1, len / TRAIL_MAX_PX).toFixed(3);
+      const next = domClick || document.body.style.cursor === "pointer";
+      if (next !== lastClick) {
+        lastClick = next;
+        setClickable(next);
+      }
       frame = requestAnimationFrame(tick);
     };
 
-    // Click reaction: pulse a press keyframe on the arrow. Force a reflow so
-    // rapid clicks restart it cleanly.
+    // Press AND HOLD: dip on pointerdown and STAY dipped until the button is
+    // released (or the gesture is cancelled / the window blurs), so holding the
+    // mouse down keeps the cursor pressed instead of bouncing straight back.
     const onDown = () => {
-      rootEl.classList.remove("moveable-cursor--click");
-      void rootEl.offsetWidth;
-      rootEl.classList.add("moveable-cursor--click");
+      if (!reduced) pressTarget = PRESS_SCALE;
     };
-    const onAnimEnd = (e: AnimationEvent) => {
-      if (e.animationName.startsWith("moveable-cursor-press")) {
-        rootEl.classList.remove("moveable-cursor--click");
-      }
+    const onUp = () => {
+      pressTarget = 1;
     };
 
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerdown", onDown, { passive: true });
-    rootEl.addEventListener("animationend", onAnimEnd);
+    window.addEventListener("pointerup", onUp, { passive: true });
+    window.addEventListener("pointercancel", onUp, { passive: true });
+    window.addEventListener("blur", onUp);
     frame = requestAnimationFrame(tick);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerdown", onDown);
-      rootEl.removeEventListener("animationend", onAnimEnd);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("blur", onUp);
       cancelAnimationFrame(frame);
     };
   }, []);
 
+  const showHover = hot || clickable;
+  const src = showHover ? "/Cursor-Hover.svg" : "/Cursor.svg";
+  const w = showHover ? HOVER_W : ART_W;
+  const tipX = showHover ? HOVER_TIP_X : TIP_X;
+  const tipY = showHover ? HOVER_TIP_Y : TIP_Y;
+
   return (
     <div
       ref={root}
-      className={`moveable-cursor${hot ? " moveable-cursor--hot" : ""}`}
+      className={`moveable-cursor${showHover ? " moveable-cursor--clickable" : ""}`}
       aria-hidden
     >
-      {/* Trailing rice grain (behind the tip on motion). */}
-      <span ref={trail} className="moveable-cursor__trail" />
-      {/* Pixel arrow — tip at the local origin (the hotspot). */}
-      <svg
+      <img
         className="moveable-cursor__arrow"
-        viewBox="0 0 11 18"
-        width="14"
-        height="23"
-        aria-hidden
-      >
-        <path
-          d="M0 0 L0 15.2 L3.6 11.8 L6.1 17.6 L8.2 16.6 L5.6 10.9 L10.4 10.9 Z"
-          fill="var(--accent, #e87040)"
-          stroke="#1b1209"
-          strokeWidth="1.1"
-          strokeLinejoin="miter"
-          paintOrder="stroke"
-        />
-      </svg>
+        src={src}
+        width={w}
+        alt=""
+        draggable={false}
+        style={{ left: -tipX, top: -tipY, transformOrigin: `${tipX}px ${tipY}px` }}
+      />
     </div>
   );
 }

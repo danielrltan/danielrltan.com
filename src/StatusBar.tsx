@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useIsMobile } from "./useIsMobile";
 import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
-import { NavSpillMenu } from "./NavSpillMenu";
 import { SectionDial } from "./SectionDial";
+// NavSpillMenu pulls in three.js + @react-three/drei + gsap. Lazy-load it so
+// those deps leave the entry/first-paint bundle; warm the chunk on idle
+// (mounted but CLOSED, so NO WebGL context is created until the user actually
+// opens the menu) so the first open still animates from the closed state.
+const NavSpillMenu = lazy(() =>
+  import("./NavSpillMenu").then((m) => ({ default: m.NavSpillMenu })),
+);
 
 /**
  * Top-right section indicator: Offbit numeral + Geist label + a stepped
@@ -20,6 +26,28 @@ export function StatusBar() {
   // Nav-menu open state: the resting dial is a button that opens the spill
   // menu to jump between sections.
   const [menuOpen, setMenuOpen] = useState(false);
+  // Defer the NavSpillMenu chunk (three/drei/gsap) off the entry bundle. Warm
+  // it on idle so it's mounted-but-closed (no WebGL context until opened) and
+  // the first open animates from the closed state.
+  const [navMounted, setNavMounted] = useState(false);
+  useEffect(() => {
+    if (navMounted) return;
+    const warm = () => setNavMounted(true);
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(warm);
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const tm = window.setTimeout(warm, 1500);
+    return () => window.clearTimeout(tm);
+  }, [navMounted]);
+  // If the user opens the menu before the idle warm fires, mount it now.
+  useEffect(() => {
+    if (menuOpen) setNavMounted(true);
+  }, [menuOpen]);
 
   // Active section = the deepest one whose top has passed 45% of viewport.
   //
@@ -128,11 +156,15 @@ export function StatusBar() {
           transition: "opacity 160ms ease",
         }}
       />
-      <NavSpillMenu
-        open={menuOpen}
-        activeIdx={activeIdx}
-        onClose={() => setMenuOpen(false)}
-      />
+      {navMounted && (
+        <Suspense fallback={null}>
+          <NavSpillMenu
+            open={menuOpen}
+            activeIdx={activeIdx}
+            onClose={() => setMenuOpen(false)}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

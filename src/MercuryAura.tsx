@@ -1,6 +1,7 @@
 import { useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { blobRiceColor, blobBgColor, BLOB_COMPOSITE_GLSL } from "./cursorBlob";
 
 /**
  * CURSOR RICE POOL + VENOM HUG — the spill menu's liquid cursor effect.
@@ -20,8 +21,12 @@ import * as THREE from "three";
  * per-event value).
  */
 
-const RICE_COLOR = "#e87040"; // brand orange — matches the background rice
-const RICE_HOT = "#ff8a3a"; // lit rice inside the pool (brighter, warmer)
+// Rice colour (= --accent) + the backdrop it composites over (= --bg-page) come
+// from the shared cursorBlob module (src/cursorBlob.ts), and the rice is mixed
+// over the backdrop in LINEAR space via the shared blobComposite() — the SAME
+// inputs + SAME math the keypad RiceBlob uses, so the two blobs render the EXACT
+// same colour and can't drift. (Orange over #eef0f3 in linear space, NOT orange
+// alpha-blended over white in sRGB, which read warmer.)
 const GRID_COUNT = 96; // rice density
 const DOT_RADIUS = 0.14; // grain size within a cell
 const POOL_RADIUS = 0.07; // head ball radius (screen-height units)
@@ -44,6 +49,7 @@ const FRAGMENT = /* glsl */ `
   uniform vec2 uAspect;   // (W/H,1) landscape / (1,H/W) portrait
   uniform vec3 uRice;
   uniform vec3 uRiceHot;
+  uniform vec3 uBg;
   uniform float uGrid;
   uniform float uDot;
   uniform float uPoolR;
@@ -68,7 +74,7 @@ const FRAGMENT = /* glsl */ `
     float h = clamp(0.5 + 0.5 * (di - sd) / k, 0.0, 1.0);
     return mix(di, sd, h) - k * h * (1.0 - h);
   }
-
+  ${BLOB_COMPOSITE_GLSL}
   void main() {
     vec2 uv = vec2(vUv.x, 1.0 - vUv.y); // y-down to match the cursor
 
@@ -102,15 +108,31 @@ const FRAGMENT = /* glsl */ `
     float inside = smoothstep(0.006, -0.006, sd);          // 1 inside the pool
     float ring = (1.0 - smoothstep(0.0, 0.009, abs(sd))) * uActive; // membrane
 
-    // Rice: faint everywhere; lit bright where the pool passes over it. A slow
-    // noise drift makes the lit grains shimmer like wet rice.
+    // A slow noise drift makes the grains shimmer like wet rice.
     float drift = 0.78 + 0.22 * noise2(g * 5.0 + vec2(uTime * 0.6, 0.0));
-    float faint = grain * 0.5;
+
+    // RICE VIGNETTE: instead of a uniform field, the rice forms a GRADIENT
+    // concentrated on the OUTSIDE — bright at the edges, fading to a clear
+    // centre — the reverse of the keypad's central glow. The vignette centre
+    // slowly DRIFTS + breathes (low-freq value noise) so the edge glow moves
+    // organically + fluid. The lit cursor pool + membrane ride on top.
+    vec2 vc = vec2(0.5, 0.5) + 0.06 * (vec2(
+      noise2(vec2(uTime * 0.04, 5.3)),
+      noise2(vec2(uTime * 0.04, 19.1))
+    ) * 2.0 - 1.0);
+    float vd = length((uv - vc) * uAspect);
+    float vbreath = 0.85 + 0.15 * noise2(vec2(uTime * 0.05, 41.0));
+    float vig = smoothstep(0.22, 0.95, vd) * vbreath; // 0 centre -> bright edges
+    float fieldA = grain * mix(0.10, 0.62, vig) * (0.7 + 0.3 * drift);
     float lit = grain * inside * uActive * drift;
 
     vec3 col = mix(uRice, uRiceHot, inside);
-    float a = clamp(faint * 0.34 + lit * 0.95 + ring * 0.9, 0.0, 1.0);
-    gl_FragColor = vec4(col, a);
+    float a = clamp(fieldA + lit * 0.95 + ring * 0.9, 0.0, 1.0);
+    // Shared blobComposite(): mix the rice OVER the page tone in LINEAR space,
+    // OPAQUE — the SAME inputs + math as the keypad RiceBlob (src/cursorBlob.ts),
+    // so the two cursor blobs render the identical colour. (Was a transparent
+    // rice the browser alpha-blended over a white scrim in sRGB, reading warmer.)
+    gl_FragColor = vec4(blobComposite(uBg, col, a), 1.0);
     #include <colorspace_fragment>
   }
 `;
@@ -154,8 +176,9 @@ export function MercuryAura({ cursorRef, positionsRef, reduced }: Props) {
       uActive: { value: 0 },
       uTime: { value: 0 },
       uAspect: { value: new THREE.Vector2(1, 1) },
-      uRice: { value: new THREE.Color(RICE_COLOR) },
-      uRiceHot: { value: new THREE.Color(RICE_HOT) },
+      uRice: { value: blobRiceColor() },
+      uRiceHot: { value: blobRiceColor() },
+      uBg: { value: blobBgColor() },
       uGrid: { value: GRID_COUNT },
       uDot: { value: DOT_RADIUS },
       uPoolR: { value: POOL_RADIUS },
@@ -249,7 +272,7 @@ export function MercuryAura({ cursorRef, positionsRef, reduced }: Props) {
       _up.project(camera);
       const rad = Math.abs((1 - _up.y) * 0.5 - cy);
       const dist = Math.hypot((cx - tgt.x) * ax, (cy - tgt.y) * ay);
-      if (dist < rad * 1.3 && dist < bestDist) {
+      if (dist < rad * 1.1 && dist < bestDist) {
         best = i;
         bestDist = dist;
         bx = cx;
@@ -272,8 +295,17 @@ export function MercuryAura({ cursorRef, positionsRef, reduced }: Props) {
         mat.uniforms.uHugRadius.value +=
           (radT - (mat.uniforms.uHugRadius.value as number)) * kc;
       }
+    } else {
+      // Releasing (cursor left every object): let the fading hug follow the
+      // cursor instead of clinging to the object you just left, so it visibly
+      // lets go the instant you move off rather than sitting stuck on the shape.
+      const kr = 1 - Math.exp(-dtc * 10);
+      hugCenter.x += (tgt.x - hugCenter.x) * kr;
+      hugCenter.y += (tgt.y - hugCenter.y) * kr;
     }
-    const hk = 1 - Math.exp(-dtc * (hugTarget > 0 ? 12 : 7));
+    // Release ~2.5× faster than before (7 -> 18) so the hug snaps off the moment
+    // the cursor leaves, instead of lingering for ~0.4s.
+    const hk = 1 - Math.exp(-dtc * (hugTarget > 0 ? 12 : 18));
     mat.uniforms.uHugStrength.value += (hugTarget - curHug) * hk;
   });
 

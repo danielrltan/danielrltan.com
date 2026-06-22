@@ -1,18 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import "./sections.css";
 import "./work-timeline.css";
 import { ScrambleText } from "./ScrambleText";
+import { scrollToSection } from "./Keypad";
 
 gsap.registerPlugin(ScrollTrigger);
 
 interface Stint {
   when: string;
-  /** Display year shown on the ticker (4-digit string). */
   year: string;
   where: string;
-  /** Shorter, all-caps brand line shown above the huge company headline. */
+  /** Short all-caps sector label shown above the company name. */
   brand: string;
   role?: string;
   location?: string;
@@ -27,20 +27,10 @@ const STINTS: Stint[] = [
     when: "May 2026 - Present",
     year: "2026",
     where: "Broadridge",
-    // Sector tag, not the company name again: the headline already says
-    // "Broadridge" at 132px, so the orange eyebrow earns its place as a
-    // chapter label rather than a same-word repeat one line up.
     brand: "Fintech",
     role: "Software Engineer",
     current: true,
-    // Just started: no specifics yet, by request. Keep the entry
-    // honest + forward-looking rather than padding it with detail.
-    pull: {
-      // Caption intentionally empty: the bullet below already says this,
-      // and the duplicate "just started, more to come" read as filler.
-      metric: "Now",
-      caption: "",
-    },
+    pull: { metric: "", caption: "" },
     bullets: [
       "Recently joined as a Software Engineer. More on this work soon.",
     ],
@@ -52,9 +42,6 @@ const STINTS: Stint[] = [
     brand: "VPN Privacy",
     role: "Software Developer Intern",
     location: "Toronto, ON",
-    // Pull metric pulls from the TRIAGE bullet (bullet 3, 90s→20s) rather
-    // than mirroring bullet[0]'s −50% figure, so the oversized hero number
-    // carries an orthogonal insight instead of repeating the first line.
     pull: {
       metric: "90s → 20s",
       caption:
@@ -73,9 +60,6 @@ const STINTS: Stint[] = [
     brand: "Automation",
     role: "Software Developer Intern",
     location: "London, ON",
-    // Pull metric pulls from the verification-automation bullet (33min→5sec,
-    // bullet 2) rather than mirroring bullet[0]'s 600+ launch figure, so the
-    // hero number reports a distinct win from the launch headline.
     pull: {
       metric: "33min → 5s",
       caption:
@@ -88,92 +72,28 @@ const STINTS: Stint[] = [
   },
 ];
 
-// 3 stints × ~0.9vh dwell each + entry/exit padding ≈ 3 viewports.
-const PIN_DURATION_PX = 2600;
-
-// Years for the ticker: 2 padding years either side of the
-// earliest / latest stint year. Stints at 2026/2025/2025 yield a
-// 6-row ticker [2023, 2024, 2025, 2026, 2027, 2028].
-const STINT_YEARS = STINTS.map((s) => parseInt(s.year, 10));
-const MIN_YEAR = Math.min(...STINT_YEARS) - 2;
-const MAX_YEAR = Math.max(...STINT_YEARS) + 2;
-const YEARS: number[] = Array.from(
-  { length: MAX_YEAR - MIN_YEAR + 1 },
-  (_, i) => MIN_YEAR + i,
-);
-// Index within YEARS for each stint's year.
-const STINT_YEAR_INDICES = STINT_YEARS.map((y) => y - MIN_YEAR);
-
-// (Removed HOLD: the mid-window glide is what desynced the ticker.
-// See the active-year invariant below: the ticker now targets the
-// active stint's year-index directly, with no early fractional climb.)
-
 /**
- * Work: "The Ledger". Editorial vertical-pinned timeline.
+ * Work: "The Ledger" — a CLICK-DRIVEN ACCORDION TIMELINE.
  *
- * Signature device: a left-gutter VERTICAL SLIDING YEAR STACK.
- * A height-clipped frame is vertically centred in the gutter, with
- * a mask-image fade on top + bottom. Inside the frame a column of
- * year rows slides up / down on a single CSS var (--ticker-offset).
- * The active year is rendered in accent orange (the primary
- * indicator); a single small orange dot sits in the left gutter as
- * a quiet anchor, clear of the digits. The active year lands
- * geographically at the frame's vertical centre, beside the dot.
+ * Every role is a node on a left spine and is always visible as a header
+ * (dot-matrix year + sector + company + dates). Click any row to drop it open
+ * (role, pull metric, bullets) — a single-open accordion, so opening one closes
+ * the last, and re-clicking the open row collapses it. The whole row is the
+ * button; it lifts a clear colour wash on hover so it unmistakably reads as
+ * pressable. No scroll-pinning or scroll-scrub: the section flows with the page
+ * and you navigate it purely by clicking (the old pinned scrub coupled "which
+ * role is open" to scroll position, which read as unclickable / fighting the
+ * scroll — replaced wholesale per user feedback).
  *
- * Alignment math (load-bearing; do not regress):
- *   .work-ticker-stack {
- *     top: calc(50% - var(--row-h) / 2);
- *     transform: translateY(calc(var(--ticker-offset) * var(--row-h) * -1));
- *   }
- * Anchors row 0's centre at the frame midline, then slides up by
- * N row-heights for offset N. `top: 50% + translateY(-50%)` was
- * wrong because `-50%` is relative to the stack's intrinsic
- * height, which changes the moment row count or row-h changes.
- *
- * Active-year invariant (SHARED INDEX, load-bearing): the orange
- * year and the on-stage entry are driven by ONE index. The scroll
- * window picks the active stint `idx`; BOTH setActiveIndex(idx) and
- * the ticker target = STINT_YEAR_INDICES[idx] use that same idx.
- * The rAF lerp eases currentOffset toward that target for a smooth
- * slide (never binding CSS to raw scroll), but the SNAP TARGET is
- * always the active entry's exact year-index, so Math.round of the
- * settled offset lands on YEARS[STINT_YEAR_INDICES[idx]], i.e. the
- * active entry's year, at every scroll position. A previous HOLD
- * glide advanced the offset fractionally mid-window (target eased
- * idx→idx+1 from a continuous source), which flipped the orange year
- * BEFORE activeIndex crossed the window boundary; that was the
- * desync. Padding years (2024/2026/2028, no entry) are now only
- * ever PASSED THROUGH by the lerp during a stint change, never a
- * resting target.
+ * Motion (Emil / impeccable): panels open on an ease-out height+fade, the
+ * chevron rotates, bullets stagger in. prefers-reduced-motion opens every panel
+ * and drops the transitions for a static, readable résumé.
  */
 export function Work() {
   const sectionRef = useRef<HTMLElement>(null);
-  const stackRef = useRef<HTMLDivElement>(null);
-  const rowElsRef = useRef<HTMLDivElement[]>([]);
-  // Continuous target & current offsets for the rAF lerp. Both are
-  // year-INDEX values (not pixels): fractional during glides.
-  const targetOffsetRef = useRef<number>(STINT_YEAR_INDICES[0] ?? 0);
-  const currentOffsetRef = useRef<number>(STINT_YEAR_INDICES[0] ?? 0);
-  const rafIdRef = useRef<number | null>(null);
-  // Visibility + settle gate for the ticker rAF. When the section is
-  // off-screen AND the lerp has settled, we stop rescheduling to avoid
-  // burning a frame budget on invisible work.
-  // OLD: loop runs unconditionally every frame forever.
-  // NEW: O(0) rAF cost when settled + off-screen; loop restarts on visibility or target change.
-  const isVisibleRef = useRef(false);
-  const rafArmedRef = useRef(false);
-  // Cross-effect ref: lets the ScrollTrigger onUpdate re-arm the rAF
-  // loop when the target offset changes without coupling the two effects.
-  const armLoopRef = useRef<(() => void) | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-  // Track whether the section has been pinned + started: drives the
-  // first-paint reveal so the stage doesn't pop in before the user
-  // arrives at the section.
+  const itemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const [entered, setEntered] = useState(false);
-  // Honour prefers-reduced-motion: when set we skip the pin/scrub +
-  // ticker lerp entirely and let CSS stack every stint as a static,
-  // fully legible list (no cross-fade, no sliding ticker). Read once
-  // at mount; the value is stable for the page's lifetime.
+
   const [reducedMotion] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -181,265 +101,83 @@ export function Work() {
       window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
 
-  // Mobile (< 900px): the editorial spread is laid out STATICALLY, the
-  // same way reduced-motion stacks it: full-width single column, every
-  // stint flowing top-to-bottom, all bullets fully readable. A phone in
-  // portrait can't fit a giant headline + multi-line bullets + pull +
-  // foot inside one ~100svh pinned viewport without clipping (the stage
-  // is overflow:hidden), so on mobile we DROP the pin/scrub + ticker
-  // lerp entirely and let the section grow to content height with native
-  // scroll. The ticker is a wide-gutter motion device that's hidden
-  // below 900px anyway; the dates survive in each stint's meta row.
-  // Tracked with a resize listener so a desktop→narrow resize (and the
-  // 768 breakpoint) cleanly switches modes. The 900px breakpoint EXACTLY
-  // mirrors the CSS `@media (max-width: 900px)` ticker-hide / static-flow
-  // cutoff so the two never disagree at the boundary (a mismatch would
-  // leave the pin running while CSS un-absolutes the stage).
-  const [isMobile, setIsMobile] = useState(
+  // Mobile (<=900px): the narrow accordion already stacks full-width, and the
+  // smooth scrollIntoView nudge on open reads as a jarring page-jerk on a phone
+  // (the row is already in view). Let panels expand in place there; desktop
+  // keeps the scroll-into-view so a lower row's detail isn't left below the
+  // fold. Read once at mount — a viewport-class flip is rare enough that not
+  // re-subscribing is fine, and avoids a listener for a one-line guard.
+  const [isMobile] = useState(
     () =>
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
       window.matchMedia("(max-width: 900px)").matches,
   );
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function")
-      return;
-    const mq = window.matchMedia("(max-width: 900px)");
-    const onChange = () => setIsMobile(mq.matches);
-    // addEventListener('change') is the modern API; both Safari < 14 and
-    // older engines fall back to addListener. Guard for both.
-    if (typeof mq.addEventListener === "function")
-      mq.addEventListener("change", onChange);
-    else mq.addListener(onChange);
-    return () => {
-      if (typeof mq.removeEventListener === "function")
-        mq.removeEventListener("change", onChange);
-      else mq.removeListener(onChange);
-    };
-  }, []);
 
-  // Both reduced-motion AND mobile use the static stacked layout: no pin,
-  // no scrub, no ticker slide, every stint revealed and the résumé CTA
-  // shown. The single derived flag keeps the pin / rAF / reveal gating
-  // in one place so the two paths never diverge.
-  const staticLayout = reducedMotion || isMobile;
+  // Single-open accordion. Current role open first so the section never reads as
+  // a wall of collapsed rows. null = all collapsed.
+  const firstOpen = Math.max(
+    0,
+    STINTS.findIndex((s) => s.current),
+  );
+  const [openIndex, setOpenIndex] = useState<number | null>(firstOpen);
 
-  // Slice the pin's 0..1 progress into per-stint windows. Tiny entry
-  // and exit buffers so the first stint isn't already mid-stage when
-  // the pin engages and the last gets a beat before release.
-  const ENTRY = 0.06;
-  const EXIT = 0.06;
-  const windows = useMemo(() => {
-    const span = 1 - ENTRY - EXIT;
-    const each = span / STINTS.length;
-    return STINTS.map((_, i) => ({
-      start: ENTRY + i * each,
-      end: ENTRY + (i + 1) * each,
-    }));
-  }, []);
-
-  // Per-frame ticker slide. currentOffsetRef lerps toward
-  // targetOffsetRef. Each frame:
-  //   1. Write --ticker-offset on the stack so CSS slides it.
-  //   2. Compute distance from each row to the active offset and
-  //      assign opacity bands so the ACTIVE orange year dominates
-  //      and everything else is a faint suggestion of a continuum:
-  //      active 1.0, ±1 ~0.18, ±2 ~0.04, beyond 0 (also killed by
-  //      the frame's tightened mask fade). Decluttered from the
-  //      previous active/0.32/0.14 ramp which left ±2 clearly
-  //      readable and the stack looking like a list.
-  useEffect(() => {
-    // Under reduced-motion OR mobile the ticker is hidden (CSS) and the
-    // stints are stacked statically: no per-frame slide needed. Bail so
-    // we never spin a rAF loop whose output isn't rendered.
-    if (staticLayout) return;
-
-    // loop is declared with `let` before armLoop so armLoop's body can
-    // reference it at call-time (not definition-time — no hoisting issue).
-    let loop: () => void;
-
-    // Arm/restart the loop. Called when the section becomes visible or
-    // the target changes. Guards against double-scheduling via rafArmedRef.
-    const armLoop = () => {
-      if (rafArmedRef.current) return;
-      rafArmedRef.current = true;
-      rafIdRef.current = requestAnimationFrame(loop);
-    };
-    // Expose so the ScrollTrigger onUpdate (separate useEffect) can wake
-    // the loop when targetOffsetRef changes while the loop is parked.
-    armLoopRef.current = armLoop;
-
-    loop = () => {
-      rafArmedRef.current = false; // consumed; will re-arm if needed
-
-      const cur = currentOffsetRef.current;
-      const tgt = targetOffsetRef.current;
-      const delta = tgt - cur;
-      const settled = Math.abs(delta) < 0.0005;
-      const next = settled ? tgt : cur + delta * 0.11;
-      currentOffsetRef.current = next;
-
-      const off = currentOffsetRef.current;
-      const stack = stackRef.current;
-      if (stack) {
-        stack.style.setProperty("--ticker-offset", off.toFixed(4));
-      }
-
-      // The orange highlight + opacity bands are derived from the SAME
-      // current lerped offset that positions the stack (above), so the
-      // orange year is ALWAYS the row physically at the crosshair, at
-      // every scroll position: they can never drift apart. The active
-      // row is the one nearest the marker: round(offset). Using round
-      // (rather than `d < 0.5`) guarantees EXACTLY one active row even
-      // at the precise midpoint between two years (offset = N.5), where
-      // a strict `< 0.5` test would briefly leave no row orange.
-      const els = rowElsRef.current;
-      const activeRow = Math.round(off);
-      for (let i = 0; i < els.length; i++) {
-        const el = els[i];
-        if (!el) continue;
-        const d = Math.abs(i - off);
-        const isActive = i === activeRow;
-        if (isActive) el.classList.add("is-active");
-        else el.classList.remove("is-active");
-        let opacity: number;
-        if (d < 0.5) {
-          opacity = 1; // active band: orange year dominates
-        } else if (d < 1.5) {
-          // ±1: ghost hint. Ramps 0.18 (adjacent) → 0.05 (toward ±2)
-          // so the neighbour is faintly legible but clearly recessive.
-          opacity = 0.05 + (1.5 - d) * 0.13;
-        } else if (d < 2.5) {
-          // ±2: nearly gone. Ramps 0.04 → 0; the mask fade finishes
-          // the job so these never read as a "2023 / 2027" list.
-          opacity = (2.5 - d) * 0.04;
-        } else {
-          opacity = 0;
-        }
-        el.style.opacity = opacity.toFixed(3);
-      }
-
-      // Early-out: stop rescheduling when settled AND off-screen.
-      // The loop is re-armed by the ScrollTrigger onToggle/onUpdate
-      // (target change) and the IntersectionObserver (visibility regain).
-      // OLD: unconditional reschedule every frame.
-      // NEW: zero rAF cost when lerp has settled and section is not visible.
-      if (settled && !isVisibleRef.current) {
-        rafArmedRef.current = false;
-        return; // do NOT reschedule
-      }
-
-      rafArmedRef.current = true;
-      rafIdRef.current = requestAnimationFrame(loop);
-    };
-
-    // Re-arm when section enters viewport so the ticker wakes up.
-    const visObs = new IntersectionObserver(
-      ([entry]) => {
-        isVisibleRef.current = entry!.isIntersecting;
-        if (entry!.isIntersecting) armLoop();
-      },
-      { threshold: 0 },
-    );
-    const sectionEl = sectionRef.current;
-    if (sectionEl) visObs.observe(sectionEl);
-
-    isVisibleRef.current = false;
-    armLoop(); // initial arm so the first frame paints correctly
-
-    return () => {
-      visObs.disconnect();
-      armLoopRef.current = null;
-      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
-      rafArmedRef.current = false;
-    };
-  }, [staticLayout]);
-
+  // Entrance reveal once the section scrolls into view (replaces the old GSAP
+  // pin's onEnter). One-shot, and a no-op default-visible under reduced motion.
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
-
-    // Static layout (reduced-motion OR mobile): no pin, no scrub. CSS
-    // lays every stint out as a static stack (all visible, all on-stage).
-    // Mark entered so the .is-on-stage reveal classes resolve to visible
-    // and the résumé CTA shows. The section reads top-to-bottom like a
-    // résumé. On mobile this also means native momentum scroll through
-    // the full work history with no clipped bullets.
-    if (staticLayout) {
+    if (reducedMotion || typeof IntersectionObserver === "undefined") {
       setEntered(true);
       return;
     }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setEntered(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "0px 0px -18% 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [reducedMotion]);
 
+  // DESKTOP GUIDED TIMELINE: pin the section and roll the scroll THROUGH the
+  // timeline — each entry auto-opens in turn and the vertical spine fills with
+  // accent (--work-fill 0..1) so you can see yourself traversing down it. A
+  // click jumps the SCROLL to that entry's band (handleActivate), so the click
+  // and the scrub agree instead of fighting (the reason the old pin was pulled).
+  // Skipped on mobile / reduced-motion: those keep the plain click-accordion.
+  const stRef = useRef<ScrollTrigger | null>(null);
+  const pinPxRef = useRef(0);
+  useEffect(() => {
+    if (isMobile || reducedMotion) return;
+    const el = sectionRef.current;
+    if (!el) return;
+    const N = STINTS.length;
+    // ~0.62 viewport of scroll per entry: enough dwell to read each before the
+    // next opens, short enough that the pin never feels like a scroll-trap.
+    const pinPx = Math.round(N * (window.innerHeight || 800) * 0.62);
+    pinPxRef.current = pinPx;
+    el.style.setProperty("--work-fill", "0");
     const st = ScrollTrigger.create({
       trigger: el,
       start: "top top",
-      end: `+=${PIN_DURATION_PX}`,
+      end: `+=${pinPx}`,
       pin: true,
       pinSpacing: true,
-      // Rate-limit: scrub:1 (~1s catch-up lerp) instead of scrub:true
-      // (instant 1:1 with scroll) so the timeline reveal can't be flicked
-      // past in one gesture.
-      scrub: 1,
-      anticipatePin: 1,
-      onEnter: () => setEntered(true),
-      onEnterBack: () => setEntered(true),
       onUpdate: (self) => {
         const p = self.progress;
-
-        // Handoff: keep the ledger fully opaque through the end of the
-        // pin. The old "exit dissolve" faded it to 0 over the last 10%,
-        // but Other's beat-A content doesn't fade in until ITS pin
-        // engages ~900px (one viewport) later — so the cross-dissolve had
-        // nothing to dissolve INTO and the seam read as ~1.3 viewports of
-        // blank background. Holding the content lets Work physically
-        // scroll up out of frame while Other slides in beneath it: a
-        // normal, seamless vertical handoff with no empty gap.
-        el.style.setProperty("--work-exit", "1");
-
-        // Locate the active stint by which scroll window `p` falls in.
-        // Pre-entry collapses to stint 0; past the last window stays on
-        // the final stint. This single `idx` is the shared source of
-        // truth for BOTH the on-stage entry and the ticker year.
-        let idx = 0;
-        for (let i = 0; i < windows.length; i++) {
-          const w = windows[i]!;
-          if (p < w.start) {
-            idx = 0;
-            break;
-          }
-          if (p >= w.start && p <= w.end) {
-            idx = i;
-            break;
-          }
-          if (i === windows.length - 1 && p > w.end) {
-            idx = windows.length - 1;
-          }
-        }
-        setActiveIndex(idx);
-
-        // SHARED INDEX (load-bearing): the ticker targets the SAME `idx`
-        // that drives the on-stage entry: its exact year-index, not a
-        // continuous mid-window glide. So the snap target advances in
-        // lockstep with activeIndex (both flip together at the window
-        // boundary), and the rAF lerp below settles on exactly this
-        // year: Math.round(offset) === STINT_YEAR_INDICES[idx]. The
-        // orange year therefore always matches the entry at the
-        // crosshair. The lerp still glides smoothly THROUGH any padding
-        // years between two stints (e.g. 2025 → 2026 → 2027), but only
-        // ever RESTS on a stint year. A prior HOLD glide fed the target
-        // from a continuous within-window fraction, flipping the year
-        // before activeIndex crossed the boundary; that was the desync.
-        targetOffsetRef.current = STINT_YEAR_INDICES[idx] ?? 0;
-        // Re-arm the rAF loop if it was parked (settled + off-screen).
-        armLoopRef.current?.();
+        const idx = Math.min(N - 1, Math.max(0, Math.floor(p * N)));
+        setOpenIndex(idx);
+        // Fill leads the active node a touch so the spine reads "ahead of" the
+        // open row rather than lagging it.
+        el.style.setProperty("--work-fill", Math.min(1, p + 0.5 / N).toFixed(3));
       },
     });
-
-    // Park the ticker on the first stint's year at mount.
-    const startOff = STINT_YEAR_INDICES[0] ?? 0;
-    targetOffsetRef.current = startOff;
-    currentOffsetRef.current = startOff;
-
+    stRef.current = st;
     const html = document.documentElement;
     let lastLoading = html.classList.contains("loading-active");
     const obs = new MutationObserver(() => {
@@ -448,220 +186,171 @@ export function Work() {
       lastLoading = now;
     });
     obs.observe(html, { attributes: true, attributeFilter: ["class"] });
-    if (!lastLoading) {
-      requestAnimationFrame(() => ScrollTrigger.refresh());
-    }
-
+    if (!lastLoading) requestAnimationFrame(() => ScrollTrigger.refresh());
     return () => {
       obs.disconnect();
       st.kill();
+      stRef.current = null;
     };
-  }, [windows, staticLayout]);
+    // Re-create when the breakpoint flips so the pin is added/torn down to match.
+  }, [isMobile, reducedMotion]);
 
-  // Helper to register a year-row DOM element by its index in YEARS.
-  const setRowEl = (i: number) => (el: HTMLDivElement | null) => {
-    if (el) rowElsRef.current[i] = el;
+  // Open a row. On the desktop guided timeline this JUMPS the scroll to that
+  // entry's band (the pin's onUpdate then opens it + advances the fill, so the
+  // click and the scroll never disagree). Mobile / reduced-motion just toggle
+  // open in place (no pin, no scroll-jack).
+  const handleActivate = (i: number) => {
+    if (i === openIndex && (isMobile || reducedMotion)) return;
+    if (isMobile || reducedMotion) {
+      setOpenIndex(i);
+      return;
+    }
+    const st = stRef.current;
+    if (!st) {
+      setOpenIndex(i);
+      return;
+    }
+    const N = STINTS.length;
+    scrollToSection(st.start + ((i + 0.5) / N) * pinPxRef.current);
   };
+
+  const isOpen = (i: number) => reducedMotion || i === openIndex;
 
   return (
     <section
       ref={sectionRef}
       aria-label="Work experience timeline"
-      className={`portfolio-section portfolio-work${entered ? " is-entered" : ""}${reducedMotion ? " is-reduced-motion" : ""}${staticLayout ? " is-static-layout" : ""}`}
+      className={`portfolio-section portfolio-work${entered ? " is-entered" : ""}${reducedMotion ? " is-reduced-motion" : ""}`}
     >
       <div className="work-ledger">
         <header className="work-ledger-head">
-          <div className="work-ledger-head-left">
-            <span className="work-ledger-num">03</span>
-            <span className="work-ledger-index">03 / 06 · Work</span>
-          </div>
-          <div className="work-ledger-head-right">
+          <div className="work-ledger-head-text">
+            <div className="work-ledger-head-left">
+              <span className="work-ledger-num">03</span>
+              <span className="work-ledger-index">03 / 06 · Work</span>
+            </div>
             <h2 className="work-ledger-title">
               <ScrambleText text="Experience" />
             </h2>
           </div>
+
+          {/* Résumé CTA — relocated out of the awkward floating top-right corner
+              into the header flow, and given a real accent treatment (orange
+              keyline + arrow at rest, fills solid orange on hover) so it actually
+              reads as the primary action of the section instead of disappearing
+              into the chrome. */}
+          <a
+            href="/resume/Daniel_Tan_Resume.pdf"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Download Daniel Tan's full résumé (PDF, opens in a new tab)"
+            className="work-resume"
+          >
+            <span className="work-resume-label">Full résumé</span>
+            <span className="work-resume-arrow" aria-hidden>
+              ↗
+            </span>
+          </a>
         </header>
 
-        {/* Full résumé: pinned to the top-right of the whole ledger frame
-            (absolute, so it's out of the grid flow) and always visible
-            while the Work section is on screen — not gated to one stint. */}
-        <a
-          href="/resume/Daniel_Tan_Resume.pdf"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Download Daniel Tan's full résumé (PDF, opens in a new tab)"
-          className="work-resume is-revealed"
-        >
-          <span className="work-resume-label">Full résumé</span>
-          <span className="work-resume-arrow" aria-hidden>↗</span>
-        </a>
+        <ol className="work-acc">
+          {STINTS.map((s, i) => {
+            const open = isOpen(i);
+            const panelId = `work-panel-${i}`;
+            return (
+              <li
+                key={i}
+                ref={(el) => {
+                  itemRefs.current[i] = el;
+                }}
+                className={`work-acc-item${open ? " is-open" : ""}${s.current ? " is-current" : ""}${openIndex != null && i < openIndex ? " is-past" : ""}`}
+              >
+                <button
+                  type="button"
+                  className="work-acc-head"
+                  aria-expanded={open}
+                  aria-controls={panelId}
+                  onClick={() => handleActivate(i)}
+                >
+                  <span className="work-acc-node" aria-hidden>
+                    <span className="work-acc-year">{s.year}</span>
+                  </span>
+                  <span className="work-acc-headline">
+                    <span className="work-acc-brand">
+                      <span className="work-acc-brand-text">{s.brand}</span>
+                      {s.current && (
+                        <span className="work-acc-current">Currently</span>
+                      )}
+                    </span>
+                    <span className="work-acc-company">{s.where}</span>
+                  </span>
+                  <span className="work-acc-side">
+                    <span className="work-acc-when">{s.when}</span>
+                    {/* Plain chevron — the misleading "button-in-a-circle" ring
+                        is gone (it read as the only clickable thing while the row
+                        itself is the control). It rotates 180° on open and goes
+                        accent on row-hover. */}
+                    <span className="work-acc-chevron" aria-hidden>
+                      <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                        <path
+                          d="M6 9l5 5 5-5"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="square"
+                        />
+                      </svg>
+                    </span>
+                  </span>
+                </button>
 
-        <div className="work-ledger-body">
-          <aside className="work-ticker" aria-hidden>
-            {/* Year STACK ticker: height-clipped frame with a
-                mask-image fade on top + bottom. Inside, an absolute
-                column of year rows slides vertically via the
-                --ticker-offset CSS var on the stack. The active
-                year lands at the frame's vertical centre and is
-                rendered in accent orange (the indicator); a single
-                small orange dot anchors the left gutter. */}
-            <div className="work-ticker-frame">
-              <div className="work-ticker-stack" ref={stackRef}>
-                {YEARS.map((y, i) => (
-                  // Each row contains ONLY the year glyph. Decoration
-                  // (the crosshair line + date-range caption) was
-                  // removed: it cluttered / overlapped the digits.
-                  //
-                  // The `is-active` class + per-row opacity are owned
-                  // EXCLUSIVELY by the rAF loop, which derives them from
-                  // the CURRENT lerped --ticker-offset (the same value
-                  // that positions the stack). The static className must
-                  // NOT seed `is-active` here: React re-renders on every
-                  // setActiveIndex during scroll, and a hardcoded
-                  // `is-active` would let reconciliation overwrite the
-                  // rAF's per-frame class back to a stale row (the first
-                  // stint's year), desyncing the orange highlight from
-                  // the year physically at the crosshair. Single source
-                  // of truth = the lerped offset, written per frame.
-                  <div
-                    key={`yr-${y}`}
-                    ref={setRowEl(i)}
-                    className="work-ticker-row"
-                  >
-                    <span className="work-ticker-year">{y}</span>
+                <div id={panelId} className="work-acc-panel" role="region">
+                  <div className="work-acc-panel-inner">
+                    <div className="work-acc-meta">
+                      {s.role && <span className="work-acc-role">{s.role}</span>}
+                      {s.location && (
+                        <span className="work-acc-locgroup">
+                          <span className="work-acc-sep" aria-hidden>
+                            /
+                          </span>
+                          {s.location}
+                        </span>
+                      )}
+                    </div>
+
+                    {s.pull.metric && (
+                      <div className="work-acc-pull">
+                        <div className="work-acc-pull-metric">
+                          {s.pull.metric}
+                        </div>
+                        {s.pull.caption && (
+                          <p className="work-acc-pull-caption">
+                            {s.pull.caption}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <ul className="work-acc-bullets">
+                      {s.bullets.map((b, j) => (
+                        <li
+                          key={j}
+                          className="work-acc-bullet"
+                          style={{ ["--bullet-i" as string]: j }}
+                        >
+                          <span className="work-acc-bullet-num">
+                            {String(j + 1).padStart(2, "0")}
+                          </span>
+                          <span className="work-acc-bullet-text">{b}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                ))}
-              </div>
-
-              {/* (Removed the gutter marker dot: decorative status dots
-                  are the canonical vibe-coded tell. The active year
-                  rendered in accent orange IS the indicator; it needs
-                  no anchor.) */}
-            </div>
-          </aside>
-
-          <div className="work-stage">
-            {/* Semantic source of truth: an ORDERED LIST of every stint,
-                always present in the DOM and the accessibility tree
-                regardless of which one the scroll has revealed. Screen
-                readers + crawlers read all three (role, company, dates,
-                bullets); the scroll pin only governs visual presentation.
-                Previously each <article> was aria-hidden unless active,
-                which hid two of three jobs from assistive tech. */}
-            <ol className="work-stint-list">
-              {STINTS.map((s, i) => (
-                <WorkStintSpread
-                  key={i}
-                  stint={s}
-                  index={i}
-                  isActive={staticLayout || i === activeIndex}
-                  isPast={!staticLayout && i < activeIndex}
-                />
-              ))}
-            </ol>
-          </div>
-        </div>
-
-        {/* (Removed the scroll progress bar + its foot — it cut a line across
-            the stint text. The ticker + the on-stage entry already convey
-            position.) */}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       </div>
     </section>
-  );
-}
-
-interface WorkStintSpreadProps {
-  stint: Stint;
-  index: number;
-  isActive: boolean;
-  isPast: boolean;
-}
-
-/**
- * One stint's editorial spread, rendered as a list item (the parent is
- * a semantic <ol>) layered absolutely inside .work-stage for pure
- * cross-fade + 24px-slide transitions. Bullet reveal is gated by the
- * .is-active class only: CSS-staggered so the per-tick path stays free
- * of React.
- *
- * a11y: the spread is ALWAYS in the accessibility tree (no aria-hidden
- * toggle). Non-active stints are merely visually offset (opacity 0 /
- * pointer-events none) but remain readable by screen readers and
- * indexable by crawlers: the section's full work history is never
- * gated behind scroll position.
- */
-function WorkStintSpread({
-  stint,
-  isActive,
-  isPast,
-}: WorkStintSpreadProps) {
-  const stage = isActive || isPast;
-  return (
-    <li
-      className={`work-stint${isActive ? " is-active" : ""}${isPast ? " is-past" : ""}${stage ? " is-on-stage" : ""}`}
-    >
-      {/* Mobile timeline rail marker: dot-matrix year pinned to the
-          left-gutter rail (display:none on desktop, where the sliding
-          ticker owns the year). aria-hidden: the meta row already
-          carries the full date range for AT. */}
-      <span className="work-stint-year-marker" aria-hidden="true">
-        {stint.year}
-      </span>
-
-      {/* No decorative dots in the sector eyebrow or the Currently
-          badge: colored status dots next to labels are the canonical
-          vibe-coded tell (user call). The accent color + solid badge
-          carry the state on their own. */}
-      <div className="work-stint-brand">
-        <span className="work-stint-brand-text">{stint.brand}</span>
-        {stint.current && (
-          <span className="work-stint-current">Currently</span>
-        )}
-      </div>
-
-      <h3 className="work-stint-headline">
-        {stint.where}
-      </h3>
-
-      {/* "/" separators, not "•": two bullets per line is a dot chain
-          (the vibe-coded tell), and "/" is the eyebrow voice sitewide. */}
-      <div className="work-stint-meta">
-        {stint.role && <span className="work-stint-role">{stint.role}</span>}
-        {stint.location && (
-          <>
-            <span className="work-stint-sep" aria-hidden>
-              /
-            </span>
-            <span className="work-stint-location">{stint.location}</span>
-          </>
-        )}
-        <span className="work-stint-sep" aria-hidden>
-          /
-        </span>
-        <span className="work-stint-when">{stint.when}</span>
-      </div>
-
-      <div className="work-stint-pull">
-        <div className="work-stint-pull-metric">{stint.pull.metric}</div>
-        {stint.pull.caption && (
-          <p className="work-stint-pull-caption">{stint.pull.caption}</p>
-        )}
-      </div>
-
-      <ul className="work-stint-bullets">
-        {stint.bullets.map((b, j) => (
-          <li
-            key={j}
-            className="work-stint-bullet"
-            style={{ ["--bullet-i" as string]: j }}
-          >
-            <span className="work-stint-bullet-num">
-              {String(j + 1).padStart(2, "0")}
-            </span>
-            <span className="work-stint-bullet-text">{b}</span>
-          </li>
-        ))}
-      </ul>
-    </li>
   );
 }

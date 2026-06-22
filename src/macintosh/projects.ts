@@ -39,7 +39,7 @@ export const MAC_PROJECTS: MacProject[] = [
     tags: ["Python", "FastAPI", "Semantic Search", "Multimodal", "React"],
     liveHref: "https://devpost.com/software/cognetech",
     image: "/images/projects/cognetech.jpg",
-    color: "#e87040",
+    color: "#ff4f00",
   },
   {
     id: "revamp",
@@ -127,7 +127,7 @@ export const SKILL_LOGOS: SkillLogo[] = [
   { label: "React",      cat: "LIB",   color: "#61DAFB", radius: 3.00, yOffset:  0.42 },
   { label: "TypeScript", cat: "LANG",  color: "#3178C6", radius: 2.90, yOffset: -0.42 },
   { label: "Three.js",   cat: "3D",    color: "#0d0e10", radius: 3.00, yOffset:  0.42 },
-  { label: "R3F",        cat: "3D",    color: "#e87040", radius: 2.90, yOffset: -0.42 },
+  { label: "R3F",        cat: "3D",    color: "#ff4f00", radius: 2.90, yOffset: -0.42 },
   { label: "Python",     cat: "LANG",  color: "#FFD43B", radius: 3.00, yOffset:  0.42 },
   { label: "FastAPI",    cat: "API",   color: "#009688", radius: 2.90, yOffset: -0.42 },
   { label: "GSAP",       cat: "LIB",   color: "#88CE02", radius: 3.00, yOffset:  0.42 },

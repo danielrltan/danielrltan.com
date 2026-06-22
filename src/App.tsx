@@ -1,17 +1,6 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
-import type { RootState } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
-import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import * as THREE from "three";
-import {
-  END_POS,
-  END_FOV,
-  END_LOOK_AT,
-  ORBIT_MAX_DISTANCE,
-} from "./IntroController";
-import { GroundPlane } from "./GroundPlane";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { MoveableCursor } from "./MoveableCursor";
+import { PanCursor } from "./PanCursor";
 import { JumpToTop } from "./JumpToTop";
 import { RoomHUD } from "./RoomHUD";
 import { track } from "./analytics";
@@ -20,197 +9,157 @@ import { track } from "./analytics";
 const SignatureCapture = lazy(() =>
   import("./SignatureCapture").then((m) => ({ default: m.SignatureCapture })),
 );
-// Room is lazy so its GLB-loading chunk streams in just after the hero
-// paints (the room itself still gates on the GLB download, which
-// index.html preloads). The room is now a static baked diorama - no
-// physics, so the heavy rapier WASM payload is gone entirely.
-const Room = lazy(() => import("./Room").then((m) => ({ default: m.Room })));
 import { AssemblyProvider } from "./loading";
+import { BootLoader } from "./loading/BootLoader";
 import { HeroSignature } from "./hero/HeroSignature";
-import { ScrollWireframeRoom } from "./loading/ScrollWireframeRoom";
-import { ScrollCamera } from "./ScrollCamera";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { useIsMobile } from "./useIsMobile";
 import { StatusBar } from "./StatusBar";
 
-// Mobile hero canvas fades over scroll-pixels relative to viewport
-// height so total page height changes don't shift the window.
-const MOBILE_FADE_START_VH = 0.55;
-const MOBILE_FADE_END_VH = 1.0;
+/*
+ * The live R3F room (a 27 MB GLB rendered every frame) was replaced by a single
+ * static render of the room (public/render.png) — far cheaper, and the room was
+ * only ever a static backdrop during the hero→About beat anyway. All the 3D
+ * room machinery (Room, GroundPlane, ScrollCamera, IntroController, the
+ * ScrollWireframeRoom assembly, OrbitControls, the room frameloop gate, the
+ * fake contact shadow) was deleted. The render fades in where the 3D room used
+ * to appear and out into the Projects section, driven by the same
+ * --canvas-opacity scroll choreography.
+ */
 
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-// Hero wrapper opacity: held high through the disassembly so the
-// inner transform pipeline (mask-erode, ring contract, scan-band)
-// drives the visible motion; the wrapper only fades after the
-// disassembly has done its work. Quiet final fade 0.85→1.05vh.
-const HERO_FADE_START_VH = 0.85;
-const HERO_FADE_END_VH = 1.05;
-// Disassembly transition window: the hero composition decomposes
-// (mask-erode + scale-recede on wordmark, contract + dissolve on ring)
-// from 0.30vh to ~0.95vh, then a thin orange scan-band sweeps the
-// viewport from 0.85vh→1.05vh at the handoff to the wireframe beat.
-// Decoupled from --hero-opacity so the wrapper can hold opacity:1
-// while the inner transforms do the work. Pure CSS, zero per-frame JS.
-const HERO_DISSOLVE_START_VH = 0.30;
-const HERO_DISSOLVE_END_VH = 1.00;
-const ROOM_FADE_IN_START_VH = 1.50;
-const ROOM_FADE_IN_END_VH = 1.58;
-const ROOM_FADE_OUT_START_VH = 2.80;
-const ROOM_FADE_OUT_END_VH = 2.95;
-const WIREFRAME_VISIBLE_START_VH = 0.88;
-const WIREFRAME_VISIBLE_END_VH = 1.64;
-const ABOUT_PROGRESS_START_VH = 0.9;
-const ABOUT_PROGRESS_END_VH = 2.20;
+// Hero wrapper opacity: held FULL through the pixel-zoom so the composition is
+// SEEN zooming + pixelating, then the wrapper dissolves it just as the dive
+// completes and the next section rises to meet it. Pulled earlier (was
+// 0.85/1.05) so the dissolve tracks the now-compressed dive instead of lingering
+// invisibly under the risen section.
+// The opaque hero holds while the next section rises BEHIND it (hidden), then
+// dissolves only AFTER that section has filled the viewport (~1.0vh, the hero
+// spacer is 100vh), so the grey section is never seen sliding up as a wall — the
+// hero just pixel-zooms and dissolves to reveal the already-arrived content.
+const HERO_FADE_START_VH = 0.92;
+const HERO_FADE_END_VH = 1.12;
+// Pixel-zoom dive window: the composition scales up + steps through the SVG
+// mosaic from 0.30vh → 0.75vh. Compressed (was 1.00vh) because the next section
+// covers on RAW scroll while this dive is rAF-EASED (it lags); at 1.00vh the
+// deep-pixelation climax (+ chromatic tick) landed only after the section had
+// already risen over it. Finishing by 0.75vh lands the climax while the hero is
+// still on top.
+const HERO_DISSOLVE_START_VH = 0.3;
+const HERO_DISSOLVE_END_VH = 0.75;
+// The static room RENDER occupies the beat the live 3D room used to: it rises
+// as the hero dissolves (no blank gap where the wireframe build used to sit) and
+// holds through About, then fades out into the Projects/Mac section.
+const RENDER_FADE_IN_START_VH = 0.95;
+const RENDER_FADE_IN_END_VH = 1.55;
+const RENDER_FADE_OUT_START_VH = 2.8;
+const RENDER_FADE_OUT_END_VH = 2.95;
 // Content opacity ramp window (page scroll fraction).
 const CONTENT_FADE_START = 0.07;
 const CONTENT_FADE_END = 0.105;
 
-// Rate-limit constant for the scroll-driven reveal signals. The raw
-// targets below are bound directly to window.scrollY, so a fast flick
-// would otherwise teleport the hero dissolve / room fade / wireframe
-// build straight to their end state — the user never SEES the animation.
-// We ease each eased signal toward its raw target at this fixed
-// exponential rate so the SPEED is capped (thresholds, windows, and
-// sequence are untouched). ~2.5 → ≈400ms to settle, matching the feel
-// of GSAP `scrub: 1`. Tunable.
+// Rate-limit for the scroll-driven reveal signals so a fast flick can't
+// teleport the hero dissolve / render fade straight to their end state. Each
+// eased signal chases its raw target at this fixed exponential rate (~400ms to
+// settle, matching GSAP `scrub: 1`). Thresholds/windows/sequence are untouched.
 const PROGRESS_EASE_RATE = 2.5;
-// The room canvas FADE-OUT (handing off to the Kit/Mac section) eases at a
-// STEEPER rate than the shared reveal rate above. The shared rate's gentle
-// exponential tail near zero left the room lingering as a faint, slowly-
-// dissolving "ghost" over the section behind it (~1.5s to read as gone),
-// which looked messy. A faster downward rate + a snap-to-zero floor makes
-// the room leave cleanly once it starts to go. The fade-IN (room reveal
-// during About) keeps the gentle shared rate, so nothing pops in.
-const CANVAS_FADE_OUT_RATE = 6;
-// Below this eased opacity a fade-out snaps straight to 0 instead of
-// crawling down the exponential's asymptote (where the room is still
-// faintly visible but reads as "stuck" dissolving). Also means the room
-// is fully gone before its canvas frameloop sleeps, so the frozen last
-// frame is never seen.
-const CANVAS_FADE_OUT_SNAP = 0.015;
-// Clamp per-frame dt so a long idle / tab-switch (where rAF stops
-// firing) doesn't produce one giant catch-up jump on the next tick.
+// The render FADE-OUT (handing off to the Projects section) eases at a STEEPER
+// rate than the shared reveal rate, with a snap-to-zero floor, so it leaves
+// cleanly instead of lingering as a faint dissolving ghost over the section.
+const RENDER_FADE_OUT_RATE = 6;
+const RENDER_FADE_OUT_SNAP = 0.015;
+// Clamp per-frame dt so a long idle / tab-switch doesn't produce one giant
+// catch-up jump on the next tick.
 const MAX_TICK_DT = 0.05;
-
-// Canvas camera config. END_POS/END_FOV never change, so hoist to
-// module scope to avoid a per-render object allocation. Far 300
-// accommodates the near-ortho camera distance (~173 from origin) +
-// the wireframe cover dome (radius 20 around camera) + room extent.
-const CAMERA_CONFIG = {
-  position: [END_POS.x, END_POS.y, END_POS.z] as [number, number, number],
-  fov: END_FOV,
-  near: 1,
-  far: 300,
-};
+// Stepped pixelation buckets for the hero dive (SVG mosaic #hero-px-1..5).
+// Front-loaded (was [0.08, 0.26, 0.44, 0.62, 0.8]) so the chunky #hero-px-3/4/5
+// mosaic lands while the hero is still opaque and uncovered, not at the very end
+// when the next section has already risen over it.
+const HERO_PX_STEPS = [0.05, 0.18, 0.34, 0.52, 0.72];
 
 /**
- * Single continuous rAF loop. Each frame it recomputes the raw
- * scroll-derived targets and eases the reveal signals toward them at a
- * fixed rate (PROGRESS_EASE_RATE) so a fast flick can't teleport through
- * the reveals — only the SPEED is capped; thresholds/windows/sequence are
- * unchanged. Writes ALL derived fade/progress values to CSS variables on
- * documentElement AND to refs. R3F consumers read the refs in their
- * per-frame loops; DOM elements bind opacity to `var(--*-opacity)`.
- * App.tsx never re-renders on scroll. The prior version had five
- * setState-backed hooks reconciling the whole Canvas tree per scroll frame.
- *
- * The loop is continuous (not scroll-coalesced) on purpose: the eased
- * values must keep catching up to their targets for ~400ms after the user
- * stops scrolling, which a scroll-only listener could not do.
+ * Single continuous rAF loop. Each frame it recomputes the raw scroll-derived
+ * targets and eases the reveal signals toward them at a fixed rate so a fast
+ * flick can't teleport through the reveals — only the SPEED is capped. Writes
+ * all derived fade/progress values to CSS variables on documentElement; DOM
+ * layers bind opacity to `var(--*-opacity)`, so App never re-renders on scroll.
  */
-function installScrollChoreography(): {
-  aboutProgressRef: React.MutableRefObject<number>;
-  scrollProgressRef: React.MutableRefObject<number>;
-} {
-  const aboutProgressRef: React.MutableRefObject<number> = { current: 0 };
-  const scrollProgressRef: React.MutableRefObject<number> = { current: 0 };
-
-  if (typeof window === "undefined") {
-    return { aboutProgressRef, scrollProgressRef };
-  }
+function installScrollChoreography(): void {
+  if (typeof window === "undefined") return;
 
   const root = document.documentElement;
-  // 768 matches useIsMobile's breakpoint, so the canvas fade + the
-  // pointer-events gate below cover exactly the devices on which
-  // RoomPhysics is paused (was 720, leaving 721-768px widths with a
-  // hit-testable but physics-dead room canvas).
   const isMobileQuery = window.matchMedia("(max-width: 768px)");
 
-  // Raw scroll-derived targets. computeTargets() reproduces the exact
-  // math/thresholds the old update() used (no easing applied here);
-  // tick() then rate-limits each eased signal toward these.
+  // PERF: cache layout reads (scrollHeight/innerHeight) — they change on
+  // resize/content-mount, NOT on scroll. Reading scrollHeight every frame forces
+  // a synchronous reflow, costly with the scaled + SVG-filtered hero subtree.
+  let vhCache = window.innerHeight || 1;
+  let scrollMax = Math.max(1, root.scrollHeight - vhCache);
+  const recomputeLayout = () => {
+    vhCache = window.innerHeight || 1;
+    scrollMax = Math.max(1, root.scrollHeight - vhCache);
+  };
+
+  // PERF: write a CSS custom property only when its value actually changed, so we
+  // don't invalidate style on the scaled + filtered hero subtree every frame.
+  const lastVar: Record<string, string> = {};
+  const setVar = (k: string, v: string) => {
+    if (lastVar[k] === v) return;
+    lastVar[k] = v;
+    root.style.setProperty(k, v);
+  };
+
+  // HI-DPR / browser-zoom escape hatch: the hero's SVG feMorphology filters
+  // software-rasterize at DEVICE pixels (cost ~DPR²), so zoom + scroll tanks weak
+  // GPUs. data-hero-lite drops those url() filters (CSS keeps the cheap stepped
+  // contrast + the scale, so the pixel-zoom dive still reads). Browser zoom fires
+  // a resize, so we re-check devicePixelRatio there.
+  // Latched once frames run slow during scroll (adaptive degrade — see loop()).
+  let perfLocked = false;
+  let slowFrames = 0;
+  const updateHeroLite = () => {
+    if (perfLocked || (window.devicePixelRatio || 1) > 1.4)
+      root.setAttribute("data-hero-lite", "");
+    else root.removeAttribute("data-hero-lite");
+  };
+  updateHeroLite();
+  let lastDiving = false;
+
   type Targets = {
     heroOpacity: number;
     heroToAbout: number;
-    finalCanvasOpacity: number; // mobile fade folded into canvas composite
-    aboutProgress: number;
+    renderOpacity: number;
     contentOpacity: number;
-    scrollProgress: number; // raw — ScrollCamera damps internally
     isMobile: boolean;
   };
 
   const computeTargets = (): Targets => {
-    const vh = window.innerHeight || 1;
+    const vh = vhCache;
     const ratio = window.scrollY / vh;
-    const scrollMax = Math.max(
-      1,
-      document.documentElement.scrollHeight - window.innerHeight,
-    );
     const scrollProgress = clamp01(window.scrollY / scrollMax);
 
-    // Hero opacity (3D signature): 1 at top, fades to 0 as user
-    // scrolls past first viewport.
     const heroFade = clamp01(
-      (ratio - HERO_FADE_START_VH) /
-        (HERO_FADE_END_VH - HERO_FADE_START_VH),
+      (ratio - HERO_FADE_START_VH) / (HERO_FADE_END_VH - HERO_FADE_START_VH),
     );
     const heroOpacity = 1 - heroFade;
 
-    // Disassembly progress (0..1): drives the wordmark mask-erode,
-    // ring contraction, and scan-band sweep. Linear across the
-    // dissolve window; CSS does the easing per-element via
-    // calc() pipelines tuned to feel staggered (wordmark front-loaded
-    // 0.0→0.7, ring tightens 0.4→0.85, scan-band 0.78→1.0).
     const heroToAbout = clamp01(
       (ratio - HERO_DISSOLVE_START_VH) /
         (HERO_DISSOLVE_END_VH - HERO_DISSOLVE_START_VH),
     );
 
-    // Room fade window: visible only during About.
     const fadeIn = clamp01(
-      (ratio - ROOM_FADE_IN_START_VH) /
-        (ROOM_FADE_IN_END_VH - ROOM_FADE_IN_START_VH),
+      (ratio - RENDER_FADE_IN_START_VH) /
+        (RENDER_FADE_IN_END_VH - RENDER_FADE_IN_START_VH),
     );
     const fadeOut = clamp01(
-      (ratio - ROOM_FADE_OUT_START_VH) /
-        (ROOM_FADE_OUT_END_VH - ROOM_FADE_OUT_START_VH),
+      (ratio - RENDER_FADE_OUT_START_VH) /
+        (RENDER_FADE_OUT_END_VH - RENDER_FADE_OUT_START_VH),
     );
-    const roomOpacity = fadeIn * (1 - fadeOut);
-
-    // Wireframe canvas-visibility window: keeps the canvas
-    // wrapper opaque during wireframe-assemble beat (where
-    // roomOpacity itself is still 0).
-    const wireframeOn =
-      ratio >= WIREFRAME_VISIBLE_START_VH && ratio <= WIREFRAME_VISIBLE_END_VH
-        ? 1
-        : 0;
-    const canvasOpacity = Math.max(roomOpacity, wireframeOn);
-
-    // Mobile hero canvas fade: 0 in hero, ramps to 1 after.
-    const mobileFade = clamp01(
-      (ratio - MOBILE_FADE_START_VH) /
-        (MOBILE_FADE_END_VH - MOBILE_FADE_START_VH),
-    );
-    const mobileCanvasOpacity = 1 - mobileFade;
-
-    // About progress (consumed by ScrollWireframeRoom per frame).
-    const aboutSpan = ABOUT_PROGRESS_END_VH - ABOUT_PROGRESS_START_VH;
-    const aboutProgress = clamp01(
-      (ratio - ABOUT_PROGRESS_START_VH) / aboutSpan,
-    );
+    const renderOpacity = fadeIn * (1 - fadeOut);
 
     const contentOpacity = clamp01(
       (scrollProgress - CONTENT_FADE_START) /
@@ -218,44 +167,21 @@ function installScrollChoreography(): {
     );
 
     const isMobile = isMobileQuery.matches;
-    const finalCanvasOpacity =
-      (isMobile ? mobileCanvasOpacity : 1) * canvasOpacity;
-
-    return {
-      heroOpacity,
-      heroToAbout,
-      finalCanvasOpacity,
-      aboutProgress,
-      contentOpacity,
-      scrollProgress,
-      isMobile,
-    };
+    return { heroOpacity, heroToAbout, renderOpacity, contentOpacity, isMobile };
   };
 
-  // Previously-eased values for the eased signals. Seeded from the first
-  // target so there is no ease-in flash on initial load / refresh-at-offset.
+  // Seed from the first target so there's no ease-in flash on load / refresh-at-offset.
   const seed = computeTargets();
   const prevEased = {
     heroOpacity: seed.heroOpacity,
     heroToAbout: seed.heroToAbout,
-    finalCanvasOpacity: seed.finalCanvasOpacity,
-    aboutProgress: seed.aboutProgress,
+    renderOpacity: seed.renderOpacity,
     contentOpacity: seed.contentOpacity,
   };
 
-  // Frame-rate-independent exponential ease toward a target.
   const ease = (prev: number, target: number, dt: number) =>
     prev + (target - prev) * (1 - Math.exp(-dt * PROGRESS_EASE_RATE));
 
-  // Stepped pixelation bucket for the hero dive. Maps the eased
-  // hero→about progress onto the SVG mosaic filters defined in
-  // HeroSignature (#hero-px-1..5, cells 4→32px): the hero's rendered
-  // pixels resample into progressively chunkier blocks as the zoom
-  // deepens. Bucket 0 = no filter (resting hero pays zero filter cost).
-  // SVG filter parameters can't be driven by CSS vars, hence the
-  // attribute steps instead of a continuous ramp — the quantised jumps
-  // read as authentic pixel-art degradation under the smooth scale.
-  const HERO_PX_STEPS = [0.08, 0.26, 0.44, 0.62, 0.8];
   let lastHeroPx = -1;
   const applyHeroPx = (p: number) => {
     let bucket = 0;
@@ -268,114 +194,121 @@ function installScrollChoreography(): {
     else root.setAttribute("data-hero-px", String(bucket));
   };
 
-  // Largest remaining gap between an eased signal and its target after the
-  // most recent tick. The loop uses it to know when easing has settled so it
-  // can stop ticking (and stop reading layout) until the next scroll/resize.
   let convergenceDelta = 1;
 
   const tick = (dt: number) => {
     const t = computeTargets();
 
-    // scrollProgress stays RAW — ScrollCamera already damps internally,
-    // so easing here would double-damp the camera.
-    scrollProgressRef.current = t.scrollProgress;
-
     const heroOpacity = ease(prevEased.heroOpacity, t.heroOpacity, dt);
     const heroToAbout = ease(prevEased.heroToAbout, t.heroToAbout, dt);
-    // Canvas opacity: gentle shared rate on the way IN (anti-teleport on the
-    // room reveal), steeper rate + snap-to-zero on the way OUT so the room
-    // doesn't ghost over the Kit section. See CANVAS_FADE_OUT_RATE.
-    const canvasFalling = t.finalCanvasOpacity < prevEased.finalCanvasOpacity;
-    let finalCanvasOpacity =
-      prevEased.finalCanvasOpacity +
-      (t.finalCanvasOpacity - prevEased.finalCanvasOpacity) *
+    // Render fade: gentle shared rate IN (anti-teleport on reveal), steeper rate
+    // + snap-to-zero OUT so the render doesn't ghost over the Projects section.
+    const falling = t.renderOpacity < prevEased.renderOpacity;
+    let renderOpacity =
+      prevEased.renderOpacity +
+      (t.renderOpacity - prevEased.renderOpacity) *
         (1 -
           Math.exp(
-            -dt * (canvasFalling ? CANVAS_FADE_OUT_RATE : PROGRESS_EASE_RATE),
+            -dt * (falling ? RENDER_FADE_OUT_RATE : PROGRESS_EASE_RATE),
           ));
-    if (t.finalCanvasOpacity === 0 && finalCanvasOpacity < CANVAS_FADE_OUT_SNAP) {
-      finalCanvasOpacity = 0;
+    if (t.renderOpacity === 0 && renderOpacity < RENDER_FADE_OUT_SNAP) {
+      renderOpacity = 0;
     }
-    const aboutProgress = ease(prevEased.aboutProgress, t.aboutProgress, dt);
     const contentOpacity = ease(prevEased.contentOpacity, t.contentOpacity, dt);
 
     prevEased.heroOpacity = heroOpacity;
     prevEased.heroToAbout = heroToAbout;
-    prevEased.finalCanvasOpacity = finalCanvasOpacity;
-    prevEased.aboutProgress = aboutProgress;
+    prevEased.renderOpacity = renderOpacity;
     prevEased.contentOpacity = contentOpacity;
 
-    aboutProgressRef.current = aboutProgress;
-
-    // Pointer-events stays a hard threshold but is derived from the
-    // EASED canvas opacity so it flips in step with the visible fade.
-    // MOBILE: the room canvas is NEVER hit-testable. RoomPhysics is
-    // paused on phones (no drag/throw to receive), but the wrapper
-    // still flipped to `auto` while the wireframe beat was visible —
-    // and since the canvas spans the full fixed viewport with
-    // touch-action:none + OrbitControls' one-finger rotate, every
-    // swipe in that scroll window was swallowed and the page read as
-    // completely stuck. Sections (<main>) are pointer-events:none
-    // pass-throughs, so there was nothing above it to save the touch.
-    const canvasInteractive =
-      t.isMobile || finalCanvasOpacity < 0.05 ? "none" : "auto";
-
-    root.style.setProperty("--hero-opacity", heroOpacity.toFixed(3));
-    root.style.setProperty("--hero-to-about", heroToAbout.toFixed(3));
-    // Hero hit-testability follows its visibility. The wordmark + bottom
-    // chips re-enable pointer-events inside the none'd hero layer (for
-    // the inhale hover / scroll button), but <main> is ALSO a
-    // pointer-events:none pass-through — so once the hero faded out,
-    // its invisible wordmark kept catching pointers anywhere a section
-    // below didn't explicitly opt in (found via a dead trophy-wall
-    // hover that resolved to .hero-mega-wordmark).
-    root.style.setProperty(
+    setVar("--hero-opacity", heroOpacity.toFixed(3));
+    setVar("--hero-to-about", heroToAbout.toFixed(3));
+    // Stop the (z-11, near-full-viewport) hero wordmark from swallowing clicks
+    // the INSTANT the dive begins — NOT when its opacity fade finishes. The
+    // opacity fade runs late (HERO_FADE_START/END 0.92→1.12vh) while the About
+    // pin already sits under it at ratio ~1.0, so a fade-gated value left the
+    // still-semi-visible wordmark stealing clicks from the top ~100px of About
+    // (its upper Reach links were dead). heroToAbout>0.004 latches through the
+    // rest of the page (it saturates at 1 past the hero), which is exactly what
+    // we want here: once you've started diving, the hero is never the intended
+    // click target again.
+    setVar(
       "--hero-pointer-events",
-      heroOpacity < 0.05 ? "none" : "auto",
+      heroToAbout > 0.004 || heroOpacity < 0.05 ? "none" : "auto",
     );
     applyHeroPx(heroToAbout);
-    root.style.setProperty("--canvas-opacity", finalCanvasOpacity.toFixed(3));
-    root.style.setProperty("--canvas-pointer-events", canvasInteractive);
-    root.style.setProperty(
-      "--content-opacity",
-      t.isMobile ? "1" : contentOpacity.toFixed(3),
-    );
+    // ⚠️ LATCH SEMANTICS — read before adding a consumer of data-hero-diving /
+    // data-hero-px / data-hero-lite. heroToAbout = clamp01((ratio-0.3)/0.45)
+    // SATURATES at 1 for the WHOLE page below ~0.75vh and only clears if you
+    // scroll back to the very top. So data-hero-diving is effectively "on for the
+    // rest of the page after the hero," NOT a momentary "currently diving" pulse
+    // (data-hero-px latches at "5", data-hero-lite latches permanently). Every
+    // current consumer WANTS that (drop the hero's own keyline/filter/pointer
+    // events for good once you've left it) — but a consumer that reads these
+    // expecting "only during the brief dive" will silently disable its feature
+    // for the rest of the page (this already bit MoveableCursor's spark). If you
+    // ever need a true dive-only signal, derive it under a NEW attribute as
+    // `heroToAbout > 0.004 && heroToAbout < 0.999` so the two can't be confused.
+    // Drop the wordmark keyline filter the instant the dive begins (any DPR) — it
+    // re-rasterizes every scroll frame and is imperceptible mid-dive.
+    const diving = heroToAbout > 0.004;
+    if (diving !== lastDiving) {
+      lastDiving = diving;
+      if (diving) root.setAttribute("data-hero-diving", "");
+      else root.removeAttribute("data-hero-diving");
+    }
+    // The render image rides --canvas-opacity (the same var the room canvas
+    // used). It's purely decorative, so it never receives pointer events.
+    setVar("--canvas-opacity", renderOpacity.toFixed(3));
+    setVar("--canvas-pointer-events", "none");
+    setVar("--content-opacity", t.isMobile ? "1" : contentOpacity.toFixed(3));
 
     convergenceDelta = Math.max(
       Math.abs(t.heroOpacity - heroOpacity),
       Math.abs(t.heroToAbout - heroToAbout),
-      Math.abs(t.finalCanvasOpacity - finalCanvasOpacity),
-      Math.abs(t.aboutProgress - aboutProgress),
+      Math.abs(t.renderOpacity - renderOpacity),
       Math.abs(t.contentOpacity - contentOpacity),
     );
   };
 
-  // Seed the CSS vars/refs from the initial target with dt large enough
-  // to land exactly on it (no ease-in on first paint).
+  // Seed CSS vars from the initial target with dt large enough to land on it.
   tick(MAX_TICK_DT);
 
-  // Drive tick() from a rAF loop that EASES toward the target, but lets it
-  // SLEEP once the eased values have settled AND no scroll/resize happened
-  // recently — so we are NOT recomputing targets + reading layout
-  // (scrollHeight) every frame for the whole page lifetime. A passive
-  // scroll/resize listener wakes it; it then keeps ticking for SETTLE_MS
-  // after the last input AND until the ease has converged, so the reveal
-  // finishes catching up after the user stops scrolling (the whole point of
-  // the rate-limit) before the loop idles again.
-  const SETTLE_MS = 650; // comfortably longer than the ~400ms ease
-  const CONVERGE_EPS = 0.0004; // below one /1000 CSS-var step
+  // Drive tick() from a rAF loop that EASES toward the target, then SLEEPS once
+  // settled AND no scroll/resize happened recently (so we don't read layout
+  // every frame for the page lifetime). A passive scroll/resize listener wakes
+  // it; it keeps ticking for SETTLE_MS after the last input AND until converged.
+  const SETTLE_MS = 650;
+  const CONVERGE_EPS = 0.0004;
   let lastTs = performance.now();
   let lastInput = lastTs;
   let running = false;
 
   const loop = (ts: number) => {
-    const dt = Math.min(MAX_TICK_DT, (ts - lastTs) / 1000);
+    const rawDt = (ts - lastTs) / 1000;
+    const dt = Math.min(MAX_TICK_DT, rawDt);
     lastTs = ts;
     tick(dt);
-    if (performance.now() - lastInput < SETTLE_MS || convergenceDelta > CONVERGE_EPS) {
+    // Adaptive degrade: if frames run consistently slow (>~18fps) during active
+    // scroll, latch the lite path (drop the expensive SVG dive filters) for the
+    // rest of the session — fixes weak laptops at any DPR, not just zoom.
+    if (!perfLocked && performance.now() - lastInput < SETTLE_MS) {
+      if (rawDt > 0.055) {
+        if (++slowFrames >= 8) {
+          perfLocked = true;
+          root.setAttribute("data-hero-lite", "");
+        }
+      } else if (slowFrames > 0) {
+        slowFrames--;
+      }
+    }
+    if (
+      performance.now() - lastInput < SETTLE_MS ||
+      convergenceDelta > CONVERGE_EPS
+    ) {
       requestAnimationFrame(loop);
     } else {
-      running = false; // settled + idle: nothing reads layout until next input
+      running = false;
     }
   };
   const wake = () => {
@@ -386,10 +319,18 @@ function installScrollChoreography(): {
       requestAnimationFrame(loop);
     }
   };
+  const onResize = () => {
+    recomputeLayout();
+    updateHeroLite();
+    wake();
+  };
   window.addEventListener("scroll", wake, { passive: true });
-  window.addEventListener("resize", wake, { passive: true });
-
-  return { aboutProgressRef, scrollProgressRef };
+  window.addEventListener("resize", onResize, { passive: true });
+  // Page-height changes (content mount, loader lift, font swap) refresh the
+  // cached scrollMax without per-frame scrollHeight reads.
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => recomputeLayout()).observe(document.body);
+  }
 }
 
 export default function App() {
@@ -404,61 +345,84 @@ export default function App() {
     );
   }
 
-  const sceneReadyRef = useRef(false);
-  const controlsRef = useRef<OrbitControlsImpl | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const [transitionStarted, setTransitionStarted] = useState(false);
-  const [sceneReady, setSceneReady] = useState(false);
-  // Set once Room finishes loading (post-Suspense). Drives the signature
-  // replay independently of the intro tilt; the signature should play
-  // automatically when the room appears, not wait for a user gesture.
-  const [roomLoaded, setRoomLoaded] = useState(false);
+  // `ready` flips once the loading screen lifts (html.loading-active removed).
+  // It gates the custom cursor, the HUD reveal, and the idle warm-up so none
+  // appear over the loader.
+  const [ready, setReady] = useState(false);
+  // The HUD (dial + jump-to-top) reveals once ready AND the user has scrolled
+  // past the hero, so it never clutters the opening signature.
+  const [hudVisible, setHudVisible] = useState(false);
   const [moveableHover, setMoveableHover] = useState(false);
   const isMobile = useIsMobile();
 
-  const scrollChoreoRef = useRef<ReturnType<typeof installScrollChoreography> | null>(null);
-  if (scrollChoreoRef.current === null) {
-    scrollChoreoRef.current = installScrollChoreography();
+  const choreoInstalled = useRef(false);
+  if (!choreoInstalled.current) {
+    choreoInstalled.current = true;
+    installScrollChoreography();
   }
-  const aboutProgressRef = scrollChoreoRef.current.aboutProgressRef;
-  const scrollProgressRef = scrollChoreoRef.current.scrollProgressRef;
 
-  const startTransition = useCallback(() => {
-    if (transitionStarted) return;
-    setTransitionStarted(true);
-    track("intro_started");
-  }, [transitionStarted]);
+  // Lenis smooth scroll is owned by src/portfolio/Keypad.tsx via a module-scope
+  // singleton (initializing a second here would have two engines fighting).
 
-  // Lenis smooth scroll is owned by src/portfolio/Keypad.tsx via a
-  // module-scope singleton (initializing a second one here would have
-  // two scroll engines fighting over window.scrollY).
-
-  const completeTransition = useCallback(() => {
-    sceneReadyRef.current = true;
-    setSceneReady(true);
-    track("room_entered");
+  // Mark ready when the loading screen lifts. (loading-active is owned by
+  // AssemblyProvider — see useAssemblyProgress; many sections also key
+  // ScrollTrigger.refresh off its removal.)
+  useEffect(() => {
+    const html = document.documentElement;
+    if (!html.classList.contains("loading-active")) {
+      setReady(true);
+      return;
+    }
+    const obs = new MutationObserver(() => {
+      if (!html.classList.contains("loading-active")) {
+        setReady(true);
+        obs.disconnect();
+      }
+    });
+    obs.observe(html, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
   }, []);
 
-  /* The intro camera dolly was removed (camera starts at END pose), so
-   * "transition started" completes immediately. Kept as an effect so
-   * sceneReady still flips one tick after the triggering scroll, which
-   * is when OrbitControls + ScrollCamera mount. */
+  // Reveal the HUD once ready and the user scrolls past ~0.75vh (off the hero).
   useEffect(() => {
-    if (transitionStarted) completeTransition();
-  }, [transitionStarted, completeTransition]);
+    if (!ready || hudVisible) return;
+    const check = () => {
+      const vhRatio = window.scrollY / Math.max(1, window.innerHeight);
+      if (vhRatio >= 0.75) {
+        setHudVisible(true);
+        track("room_entered");
+      }
+    };
+    const onScroll = () => requestAnimationFrame(check);
+    check();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [ready, hudVisible]);
 
-  /* Keypad canvas dispatches a window `keypad-cursor-hover` CustomEvent
-   * and we mirror it into shared moveableHover state (drives the custom
-   * cursor's hot ring). This is the only thing left that flips it now
-   * that the room is non-interactive. */
+  /* Keypad canvas dispatches `keypad-cursor-hover`; mirror it into shared
+   * moveableHover state (drives the custom cursor's hot ring). */
   useEffect(() => {
     const onKeypadHover = (e: Event) => {
       const ev = e as CustomEvent<{ hot: boolean }>;
       setMoveableHover(!!ev.detail?.hot);
     };
+    // DECOUPLING / teardown contract: the keypad emits hot:true on R3F
+    // pointerOver and hot:false on pointerOut — but R3F fires NO pointerOut when
+    // the keypad CANVAS UNMOUNTS (mount-on-approach tears it down as it scrolls
+    // out of view). So a hover that ends by scrolling away would latch the spark
+    // cursor ON for the rest of the page. Self-correct: any scroll or window
+    // blur clears the mirror. setMoveableHover(false) is a no-op re-render when
+    // already false (React bails on an equal value), and a genuine cap hover
+    // re-emits hot:true on the next pointer move.
+    const clearHot = () => setMoveableHover(false);
     window.addEventListener("keypad-cursor-hover", onKeypadHover);
-    return () =>
+    window.addEventListener("scroll", clearHot, { passive: true });
+    window.addEventListener("blur", clearHot);
+    return () => {
       window.removeEventListener("keypad-cursor-hover", onKeypadHover);
+      window.removeEventListener("scroll", clearHot);
+      window.removeEventListener("blur", clearHot);
+    };
   }, []);
 
   /* Disable the browser context menu site-wide (no right-click). */
@@ -468,34 +432,65 @@ export default function App() {
     return () => window.removeEventListener("contextmenu", onContextMenu);
   }, []);
 
-  /* First meaningful scroll (after the room is loaded and past
-   * loading-active) triggers the intro. Gated on scrollY crossing
-   * 0.75vh so the intro dolly begins when the user is actually
-   * looking at the room, not at scrollY ≈ 0 where the canvas is
-   * still faded out. */
+  /* Keep hover alive WHILE SCROLLING. The browser only re-fires pointer events
+   * (and JS hover detection — R3F raycasts, etc.) on real pointer MOVEMENT, so
+   * while the page scrolled under a stationary mouse, hover effects froze until
+   * you stopped (user-flagged). On each scroll frame we re-dispatch a
+   * pointermove at the LAST pointer position on whatever element is now under it,
+   * so R3F + JS pointer handlers re-evaluate against the content that scrolled
+   * beneath the cursor. Same coords => no parallax/cursor jump, and a pointermove
+   * never triggers scroll, so there's no loop. (The custom cursor re-hit-tests
+   * its spark per frame on its own; see MoveableCursor.) rAF-throttled. */
   useEffect(() => {
-    if (transitionStarted) return;
-    const check = () => {
-      if (transitionStarted) return;
-      if (document.documentElement.classList.contains("loading-active")) return;
-      if (!roomLoaded) return;
-      const vhRatio = window.scrollY / Math.max(1, window.innerHeight);
-      if (vhRatio >= 0.75) startTransition();
+    let lastX = -1;
+    let lastY = -1;
+    let queued = false;
+    let raf = 0;
+    const onMove = (e: PointerEvent) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
     };
-    const onScroll = () => requestAnimationFrame(check);
-    check();
+    const fire = () => {
+      queued = false;
+      if (lastX < 0) return;
+      // PERF: skip while the hero is on screen — its ring/wordmark hover effects
+      // are decorative, and a per-scroll-frame elementFromPoint + bubbling
+      // pointermove fan-out (re-firing the ring + wordmark handlers, each with
+      // their own layout reads) is real cost on the exact laggy frames. Only
+      // re-hit-test hover for the sections BELOW the hero.
+      if (window.scrollY < (window.innerHeight || 1) * 1.1) return;
+      const el = document.elementFromPoint(lastX, lastY);
+      if (!el) return;
+      el.dispatchEvent(
+        new PointerEvent("pointermove", {
+          clientX: lastX,
+          clientY: lastY,
+          bubbles: true,
+          cancelable: true,
+          pointerType: "mouse",
+        }),
+      );
+    };
+    const onScroll = () => {
+      if (queued) return;
+      queued = true;
+      raf = requestAnimationFrame(fire);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [transitionStarted, startTransition, roomLoaded]);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
 
   /* Warm the lazy section-scene chunks (Macintosh / Hobbies / Keypad) during
-   * idle time once the room is loaded, so they're cached well before the user
-   * scrolls down to them. Without this prefetch the React.lazy split would
-   * risk a blank scene on a fast first scroll-past. These import specifiers
-   * resolve to the same modules the section wrappers lazy-load, so Rollup
-   * serves one shared chunk per scene (no duplicate fetch). */
+   * idle time once the loader is done, so they're cached before the user
+   * scrolls to them. (Gated on `ready` so these loads don't keep drei's
+   * useProgress active during the loading screen.) */
   useEffect(() => {
-    if (!roomLoaded) return;
+    if (!ready) return;
     const warm = () => {
       void import("./macintosh/MacintoshScene");
       void import("./other/HobbiesScene");
@@ -509,42 +504,9 @@ export default function App() {
       const id = w.requestIdleCallback(warm);
       return () => w.cancelIdleCallback?.(id);
     }
-    const t = setTimeout(warm, 1500);
-    return () => clearTimeout(t);
-  }, [roomLoaded]);
-
-  // RoomLoadedSignal's effect depends on onLoaded; a new function each
-  // render re-runs the effect and re-calls setRoomLoaded after it is
-  // already true. setMoveableHover is a plain useState setter (stable).
-  const handleRoomLoaded = useCallback(() => setRoomLoaded(true), []);
-
-  // Avoid a per-render allocation of the WebGL config.
-  const glConfig = useMemo(
-    () => ({
-      antialias:
-        typeof window !== "undefined" ? window.devicePixelRatio < 1.5 : true,
-      alpha: true,
-      // NO tone mapping: the baked room atlases already have AgX baked
-      // in; re-tonemapping would wash them out. (The room renders unlit.)
-      toneMapping: THREE.NoToneMapping,
-      powerPreference: "high-performance" as const,
-      // Z-fighting fix: many nearly-coplanar surfaces (mirror against
-      // wall, cat on bed) under the iso camera need more depth precision
-      // than the default 24-bit buffer provides. GroundPlane's
-      // ShaderMaterial mirrors the logdepthbuf chunks so its sort order
-      // stays consistent.
-      logarithmicDepthBuffer: true,
-    }),
-    []
-  );
-
-  // onCreated fires once; extracted for reference hygiene. Body is
-  // verbatim from the inline arrow to avoid any behavior change.
-  const handleCanvasCreated = useCallback(({ gl, camera }: RootState) => {
-    gl.outputColorSpace = THREE.SRGBColorSpace;
-    cameraRef.current = camera as THREE.PerspectiveCamera;
-    camera.lookAt(END_LOOK_AT);
-  }, []);
+    const tm = setTimeout(warm, 1500);
+    return () => clearTimeout(tm);
+  }, [ready]);
 
   return (
     <AssemblyProvider>
@@ -557,9 +519,14 @@ export default function App() {
         }}
         onPointerLeave={() => setMoveableHover(false)}
       >
-        {/* Hero signature: fixed full viewport. Sits between the room
-            canvas (z 0) and the HUD (z 9999). Opacity driven by
-            --hero-opacity from the consolidated scroll listener. */}
+        {/* Stylized loading overlay: pixel meter + VT323 readout on the orange
+            field. Runs 0→100 / READY, lifts, then unmounts (at loaderDone) so
+            the hero signature draws onto the bare orange scrim beneath. */}
+        <BootLoader />
+
+        {/* Hero signature: fixed full viewport, between the render layer (z 0)
+            and the HUD. Opacity driven by --hero-opacity from the scroll
+            choreography (no CSS transition — it's already eased per-frame). */}
         <div
           className="scroll-layer--hero"
           style={{
@@ -569,16 +536,23 @@ export default function App() {
             width: "100vw",
             height: "100vh",
             pointerEvents: "none",
-            // NO opacity transition here: --hero-opacity is already
-            // eased per-frame by the scroll choreography; a CSS
-            // transition on top continuously re-targets 200ms behind
-            // the eased value (double smoothing), which read as
-            // lag/stutter when reversing scroll direction at the hero.
-            zIndex: 2,
+            // ABOVE the content (main is z-10) so the hero is a full-screen
+            // OPAQUE field (see .scroll-layer--hero background in index.css) that
+            // the next section rises BEHIND — then the hero pixel-zooms and
+            // DISSOLVES (--hero-opacity) to reveal it. Previously z-2 (below
+            // content), so the opaque About section slid up OVER the hero like a
+            // wall instead of the hero dissolving away. Stays below the HUD (z-40)
+            // and cursors (z-10000); pointer-events:none + it fades to 0, so it
+            // never blocks interaction once you're past the hero.
+            zIndex: 11,
           }}
         >
           <HeroSignature />
         </div>
+
+        {/* Static room render (replaces the deleted live 3D room). Fades in
+            where the room used to appear and out into the Projects section via
+            --canvas-opacity. Decorative + pointer-events:none. */}
         <div
           className="scroll-layer--canvas"
           style={{
@@ -590,101 +564,20 @@ export default function App() {
             zIndex: 0,
           }}
         >
-          <Canvas
-            camera={CAMERA_CONFIG}
-            // No real-time shadows: the baked room is unlit
-            // MeshBasicMaterial (can't cast/receive). A fake painted
-            // shadow plane (FakeShadow) grounds it instead.
-            // PERF: cap DPR by device class. Desktop caps at 1.25 (on
-            // 2-3× retina the room canvas was rendering at 1.5×, ~44%
-            // more fragment-shader work for little gain. The room is
-            // matte under iso projection). MOBILE caps at a flat 1.0:
-            // phone GPUs are markedly weaker and this is a multi-WebGL,
-            // GSAP-pinned page, so rendering the always-on room at native
-            // 1× (vs 1.25× on a 3× screen = ~56% fewer fragments) is the
-            // single biggest mobile GPU win and keeps the scroll smooth.
-            // MSAA still on when DPR < 1.5.
-            dpr={isMobile ? [1, 1] : [1, 1.25]}
-            gl={glConfig}
-            onCreated={handleCanvasCreated}
-          >
-            <Suspense fallback={null}>
-                <RoomLoadedSignal onLoaded={handleRoomLoaded} />
-                {/* PERF: the room canvas is only ever visible during the
-                    hero intro + About beat (scroll ratio < ~3vh). Past
-                    that its wrapper opacity is pinned 0, yet R3F's
-                    default frameloop="always" kept rendering the full
-                    Room scene + Rapier physics + OrbitControls +
-                    ScrollWireframeRoom every frame behind the invisible
-                    layer, capping the WHOLE page at ~15fps from About
-                    onward (the Mac/projects section inherited this floor
-                    and then stacked its own canvas on top, which is why
-                    it read as "incredibly laggy"). This gate flips the
-                    room canvas to frameloop="never" once the room has
-                    scrolled out, freeing the budget for the Mac scene.
-                    It re-wakes (and invalidates) the instant the user
-                    scrolls back up. */}
-                <RoomFrameloopGate />
-                <GroundPlane />
-                {/* Fake contact shadow: the baked room is unlit
-                    MeshBasicMaterial and can't cast a real-time shadow,
-                    so a soft elliptical radial-gradient texture on a
-                    plane grounds it instead (no lights). */}
-                <FakeShadow />
-                {/* Static baked diorama. The ScrollWireframeRoom cover
-                    dome handles the wireframe-only beat so there's no
-                    pop-in seam. */}
-                <Room />
-                <ScrollWireframeRoom progressRef={aboutProgressRef} />
-                {sceneReady && (
-                  <>
-                    <OrbitControls
-                      ref={controlsRef}
-                      makeDefault
-                      target={[END_LOOK_AT.x, END_LOOK_AT.y, END_LOOK_AT.z]}
-                      minDistance={1.2}
-                      maxDistance={ORBIT_MAX_DISTANCE}
-                      minPolarAngle={Math.PI * 0.1}
-                      maxPolarAngle={Math.PI * 0.49}
-                      enableDamping
-                      dampingFactor={0.05}
-                      rotateSpeed={0.36}
-                      panSpeed={1.0}
-                      mouseButtons={{
-                        MIDDLE: THREE.MOUSE.ROTATE,
-                        RIGHT: THREE.MOUSE.PAN,
-                      }}
-                      touches={{
-                        TWO: THREE.TOUCH.DOLLY_PAN,
-                      }}
-                      enableZoom={false}
-                      zoomToCursor={false}
-                      enablePan
-                    />
-                    <ScrollCamera
-                      cameraRef={cameraRef}
-                      controlsRef={controlsRef}
-                      progressRef={scrollProgressRef}
-                    />
-                  </>
-                )}
-              </Suspense>
-          </Canvas>
+          <img className="room-render" src="/render.webp" alt="" draggable={false} />
         </div>
 
         {/* Orange ring + dot cursor with parallax trail. */}
-        {roomLoaded && !isMobile && <MoveableCursor hot={moveableHover} />}
+        {ready && !isMobile && <MoveableCursor hot={moveableHover} />}
+        {/* Middle-button pan / autoscroll cursor. */}
+        {ready && !isMobile && <PanCursor />}
 
         <PortfolioSections />
 
         <RoomHUD visible={true} />
 
-        {/* TE-spec-sheet flourishes: only after the room loads.
-            StatusBar (section + pixel scroll meter) and JumpToTop
-            render on every breakpoint. (The right-edge ScrollRail was
-            removed in the pixel retrofuturism pass: it duplicated the
-            StatusBar's progress readout.) */}
-        {sceneReady && (
+        {/* Section indicator (dial) + jump-to-top, once past the hero. */}
+        {hudVisible && (
           <>
             <StatusBar />
             <JumpToTop />
@@ -692,139 +585,5 @@ export default function App() {
         )}
       </div>
     </AssemblyProvider>
-  );
-}
-
-/** Renders nothing; just calls onLoaded once it mounts. Because it's a
- *  child of <Suspense> alongside <Room>, it only mounts after the GLB
- *  has streamed in and Room's useGLTF has resolved, which is what we
- *  want for "the room is on screen now, play the signature." */
-function RoomLoadedSignal({ onLoaded }: { onLoaded: () => void }) {
-  useEffect(() => {
-    onLoaded();
-  }, [onLoaded]);
-  return null;
-}
-
-// Scroll ratio (scrollY / innerHeight) past which the room is fully
-// faded out and never seen again on the way down. ROOM_FADE_OUT_END_VH
-// is 2.95; the +0.25vh margin keeps the room live just past the end of
-// its fade-out so the final faded frames still render, then the loop
-// quiets for every section below (Mac, Work, Other, …).
-const ROOM_SLEEP_RATIO = ROOM_FADE_OUT_END_VH + 0.25;
-
-/**
- * PERF gate for the always-on room canvas. Watches the scroll ratio via
- * a passive listener (no per-frame work of its own) and, once the room
- * has scrolled fully out (past the About beat), puts the whole room
- * pipeline to sleep:
- *
- *   1. `setFrameloop("never")` halts R3F's automatic render loop.
- *   2. `onSleepChange(true)` pauses Rapier <Physics>. This step is what
- *      makes (1) stick. A running Rapier sim calls `invalidate()` every
- *      frame, which re-renders the canvas even under "never"/"demand".
- *      Pausing it removes the only continuous invalidator, so the loop
- *      genuinely idles.
- *
- * Together they stop the room scene draw (~150 draw calls/frame), the
- * physics step, OrbitControls damping, and the ScrollCamera /
- * ScrollWireframeRoom useFrames while the user is on Mac / Work / Other.
- * That recovers the budget the Mac/projects section was starved of. On
- * the wake edge it restores "always", invalidates one frame, and
- * un-pauses physics so scrolling back up resumes seamlessly.
- */
-function RoomFrameloopGate() {
-  const setFrameloop = useThree((s) => s.setFrameloop);
-  const invalidate = useThree((s) => s.invalidate);
-  useEffect(() => {
-    let asleep = false;
-    let raf = 0;
-    const apply = () => {
-      const ratio = window.scrollY / Math.max(1, window.innerHeight);
-      const shouldSleep = ratio > ROOM_SLEEP_RATIO;
-      if (shouldSleep && !asleep) {
-        asleep = true;
-        setFrameloop("never");
-      } else if (!shouldSleep && asleep) {
-        asleep = false;
-        setFrameloop("always");
-        // Two frames on wake: a static MeshBasicMaterial scene needs one
-        // paint, and a second on the next rAF guards against a blank
-        // frame if the resize/layout hasn't settled.
-        invalidate();
-        requestAnimationFrame(() => invalidate());
-      }
-    };
-    const onScroll = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(apply);
-    };
-    apply();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [setFrameloop, invalidate]);
-  return null;
-}
-
-/**
- * Fake contact shadow for the static baked room. The baked meshes are
- * unlit MeshBasicMaterial (they neither cast nor receive real-time
- * shadows), so this is a generated soft elliptical dark radial-gradient
- * texture on a plane just under the room at floor height - no lights,
- * cheap, fully controllable. Positioned so the fixed iso camera sees it
- * grounding the room toward the viewer.
- */
-function FakeShadow() {
-  const texture = useMemo(() => {
-    const SIZE = 256;
-    const canvas = document.createElement("canvas");
-    canvas.width = SIZE;
-    canvas.height = SIZE;
-    const ctx = canvas.getContext("2d")!;
-    const g = ctx.createRadialGradient(
-      SIZE / 2,
-      SIZE / 2,
-      0,
-      SIZE / 2,
-      SIZE / 2,
-      SIZE / 2,
-    );
-    g.addColorStop(0, "rgba(13,14,16,0.6)");
-    g.addColorStop(0.55, "rgba(13,14,16,0.45)");
-    g.addColorStop(0.82, "rgba(13,14,16,0.16)");
-    g.addColorStop(1, "rgba(13,14,16,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, SIZE, SIZE);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
-  }, []);
-
-  useEffect(() => () => texture.dispose(), [texture]);
-
-  // Centered under the room footprint (room AABB center x=-0.02, z=-0.17;
-  // size 4.7 x 5.1, floor at y~0) but sized LARGER (7 x 7.5) so the soft
-  // penumbra spills past the room's opaque carpet onto the bare dotted
-  // ground, reading as a contact shadow grounding the room. y just above
-  // the GroundPlane (y=0). Owner fine-tunes position/size/opacity.
-  return (
-    <mesh
-      position={[-0.02, 0.012, -0.17]}
-      rotation={[-Math.PI / 2, 0, 0]}
-      renderOrder={1}
-    >
-      <planeGeometry args={[7, 7.5]} />
-      <meshBasicMaterial
-        map={texture}
-        transparent
-        depthWrite={false}
-        toneMapped={false}
-      />
-    </mesh>
   );
 }

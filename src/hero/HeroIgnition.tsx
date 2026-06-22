@@ -25,7 +25,7 @@ export function HeroIgnition() {
     const parent = cv.parentElement;
     if (!ctx || !parent) return;
 
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
     const CELL = 14;
     const FONT = 15;
     const RAMP = " .:-=+*oc#%@&"; // sparse → dense (matches the ring ramp)
@@ -108,6 +108,13 @@ export function HeroIgnition() {
       }
       const life = t / DUR;
       if (INTRO_FREEZE == null && life >= 1) { ctx.clearRect(0, 0, W, H); return; } // done — stop the loop
+      // PERF: the blast is a load-in flourish, invisible under the dive mosaic
+      // once you scroll. Stop the thousands-of-fillText loop the instant the user
+      // scrolls so it never overlaps (and tanks) the scroll dive.
+      if (INTRO_FREEZE == null && window.scrollY > (window.innerHeight || 1) * 0.1) {
+        ctx.clearRect(0, 0, W, H);
+        return;
+      }
 
       ctx.clearRect(0, 0, W, H);
       ctx.font = `600 ${FONT}px "Geist Mono","Geist",monospace`;
@@ -152,8 +159,8 @@ export function HeroIgnition() {
           const gi = Math.min(RAMP.length - 1, Math.max(1, Math.floor(inten * (RAMP.length - 1) + 0.001)));
           let col: string;
           if (inten > 0.82) col = `rgba(255,${Math.round(225 - 60 * (1 - inten))},200,1)`;
-          else if (inten > 0.45) col = `rgba(232,112,64,${(0.85 + 0.15 * inten).toFixed(2)})`;
-          else col = `rgba(232,112,64,${(0.35 + 0.5 * inten).toFixed(2)})`;
+          else if (inten > 0.45) col = `rgba(255,79,0,${(0.85 + 0.15 * inten).toFixed(2)})`;
+          else col = `rgba(255,79,0,${(0.35 + 0.5 * inten).toFixed(2)})`;
           ctx.fillStyle = col;
           ctx.fillText(RAMP[gi]!, px, py);
         }
@@ -166,7 +173,7 @@ export function HeroIgnition() {
         const dlife = Math.max(0, 1 - (life - 0.15) / 0.85) * gA;
         if (dlife <= 0) continue;
         const rr = dr * easeOut(Math.min(1, life / 0.22)); // flung out fast, then drift
-        ctx.fillStyle = `rgba(232,112,64,${(0.7 * dlife).toFixed(2)})`;
+        ctx.fillStyle = `rgba(255,79,0,${(0.7 * dlife).toFixed(2)})`;
         ctx.fillText(RAMP[2 + (i % 4)]!, cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
       }
 

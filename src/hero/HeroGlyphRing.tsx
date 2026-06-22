@@ -181,6 +181,10 @@ const POST_FRAG = /* glsl */ `
   uniform vec3 uLitOrange;
   uniform vec3 uHotOrange;
   uniform vec3 uPaletteDir;
+  #define TRAIL_N 24
+  uniform vec3 uTrail[TRAIL_N]; // recent cursor positions: xy = vUv, z = age 0..1
+  uniform float uAspect;        // canvas w/h, keeps the paint blob round
+  uniform float uTrailActive;   // 0 when no live trail -> skip the loop entirely
   varying vec2 vUv;
 
   // Recursive 2x2 -> 4x4 ordered (Bayer) matrix from cell coords.
@@ -247,6 +251,33 @@ const POST_FRAG = /* glsl */ `
     vec4 s = texture2D(uScene, (cell + 0.5) / uGrid);
     float dith = bayer4(cell);
 
+    // CURSOR PAINT (crisp + ORGANIC, per-CELL): the recent points are summed as
+    // soft metaball kernels so they FUSE into one flowing shape (not separate
+    // circles), and the iso-threshold is warped by drifting noise so the
+    // boundary is an irregular blob — never a clean circle. A HARD per-cell
+    // threshold keeps the pixel edges sharp (no fuzzy glow); the tail shrinks +
+    // vanishes as the points age out.
+    // PERF: skip ALL trail work when the cursor isn't actively trailing
+    // (uTrailActive 0). Otherwise this 24-iteration metaball loop + noise runs
+    // on every fragment of the big fullscreen quad EVERY frame — including idle
+    // scroll frames, which is pure waste.
+    float paint = 0.0;
+    if (uTrailActive > 0.5) {
+      vec2 cellCenter = (cell + 0.5) / uGrid;
+      float field = 0.0;
+      for (int i = 0; i < TRAIL_N; i++) {
+        float age = uTrail[i].z;
+        if (age <= 0.001) continue;
+        vec2 dv = (cellCenter - uTrail[i].xy) * vec2(uAspect, 1.0);
+        // Smaller kernel -> ~60% smaller blob.
+        field += age * 0.00032 / (dot(dv, dv) + 0.00032);
+      }
+      float warp = vnoise(cellCenter * 32.0 + uTime * vec2(0.30, -0.22)) - 0.5;
+      // Short per-cell smoothstep band: eases the edge so it's not razor-hard,
+      // but stays tight — no return to a fuzzy glow.
+      paint = smoothstep(0.42, 0.78, field + warp * 0.42);
+    }
+
     // INVERTED figure-ground (user direction): the FIELD is the bold
     // orange element; the RING reads as white carved through it.
     vec3 col;
@@ -265,7 +296,9 @@ const POST_FRAG = /* glsl */ `
       // white body instead of cutting a hard seam.
       // Soft wide threshold so the sheen fades gently into orange around
       // the ring (no hard patch edge), body stays light metal.
-      float refl = smoothstep(0.50, 0.82, lum);
+      // Higher threshold => only the brightest specular facets flip to orange,
+      // so the ring stays mostly WHITE (user: "a lot more of the whites").
+      float refl = smoothstep(0.78, 0.97, lum);
       if (refl > dith) {
         float idx = clamp(
           floor(lum * uTileCount + (dith - 0.5)),
@@ -275,7 +308,7 @@ const POST_FRAG = /* glsl */ `
         float mask = tileMask(idx, cellUv);
         col = mix(uBase, uLitOrange, tq);
         col = mix(col, uHotOrange, smoothstep(0.92, 1.0, lum) * 0.7);
-        a = mask * 0.96;
+        a = mask;
       } else {
         // WHITE BODY: inverted density (darker facets fill with
         // near-white tiles, brighter ones blank toward the page).
@@ -286,8 +319,11 @@ const POST_FRAG = /* glsl */ `
           uTileCount - 1.0
         );
         float mask = tileMask(idx, cellUv);
+        // Ring symbols fully opaque (was 0.92) so the ring reads BRIGHTER than
+        // the now-darkened field — the figure-ground separation the user wants.
         col = mix(uRingShadow, uRingLit, tq);
-        a = mask * 0.92;
+        col = mix(col, vec3(1.0), paint * 0.4); // trail glows across the ring too
+        a = mask;
       }
     } else {
       // INVERTED figure-ground: orange field BASE, lighter-orange symbol
@@ -317,10 +353,15 @@ const POST_FRAG = /* glsl */ `
       // staying a smooth function of position (not a random salad).
       float sym = n * 0.7 + vnoise(cell * 0.06 + uTime * vec2(0.02, -0.013)) * 0.3;
       float lit = smoothstep(0.10, 0.90, sym);
-      float fIdx = 2.0 + lit * (uTileCount - 3.0);
+      // Paint thickens the glyphs along the swept path (denser symbols).
+      float fIdx = 2.0 + lit * (uTileCount - 3.0) + paint * 4.0;
       float idx = clamp(floor(fIdx + (dith - 0.5)), 2.0, uTileCount - 1.0);
       float mask = tileMask(idx, cellUv);
       col = mix(uFieldBase, uFieldBlob, mask);
+      // Paint snaps the swept tiles' GLYPHS to white (crisp symbols); the gap
+      // barely lifts — clear brightening, not a white haze.
+      vec3 litCol = mix(mix(col, vec3(1.0), 0.10), vec3(1.0), mask);
+      col = mix(col, litCol, paint);
       a = 1.0;
     }
 
@@ -332,8 +373,14 @@ const POST_FRAG = /* glsl */ `
   }
 `;
 
+// Cursor paint trail: ring-buffer size (KEEP IN SYNC with `#define TRAIL_N` in
+// POST_FRAG above) + seconds for a painted point to fully fade. Sized to hold a
+// subdivided fast-flick as one continuous trail.
+const TRAIL_N = 24;
+const TRAIL_LIFE = 0.6;
+
 export function HeroGlyphRing({
-  color = "#e87040",
+  color = "#ff4f00",
   spinDuration = 26,
 }: Props) {
   return (
@@ -353,7 +400,10 @@ export function HeroGlyphRing({
           preserveDrawingBuffer: false,
         }}
         camera={{ position: [0, 0, 6.2], fov: 22, near: 0.1, far: 100 }}
-        dpr={IS_SMALL_SCREEN ? 1 : [1, 2]}
+        // DPR capped at 1.5 (was 2): pass 2 re-quantizes to a ~10px tile grid,
+        // so supersampling past 1.5 buys almost nothing visually but costs ~1.8x
+        // the fragments of DPR 1.5 — a real tax on weak integrated GPUs.
+        dpr={IS_SMALL_SCREEN ? 1 : [1, 1.25]}
         // We own the render via a priority-1 useFrame (two manual passes).
         frameloop="always"
         style={{
@@ -388,6 +438,10 @@ function RingScene({
   const tiltGroupRef = useRef<THREE.Group>(null);
   const torusRef = useRef<THREE.Mesh>(null);
   const lastTRef = useRef(performance.now() / 1000);
+  // Throttle the two-pass render to ~30fps (see useFrame). The ring is a slow
+  // 26s spin, so 30 vs 60 is imperceptible and ~halves the GPU cost of the
+  // RT + fullscreen-post pipeline on weak integrated GPUs.
+  const lastRenderRef = useRef(0);
   // Entrance: timestamp (s) the ring's reveal began, or null until the hero
   // first reveals (loading scrim lifts). Drives the crossfade-in + the
   // face-on -> tilt-back rotation. Runs once.
@@ -402,6 +456,15 @@ function RingScene({
   const reducedMotion =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Spin scale: hold still under reduced-motion; gentle on touch (continuous
+  // motion on a phone is wasted battery + the ring needn't keep spinning there);
+  // full on desktop.
+  const spinScale = reducedMotion
+    ? 0
+    : typeof window !== "undefined" &&
+        window.matchMedia("(hover: none), (pointer: coarse)").matches
+      ? 0.45
+      : 1;
   // DEV: ?introFreeze=<seconds> freezes the entrance at a fixed elapsed time
   // and bypasses the load gate, for screenshotting specific reveal moments.
   const INTRO_FREEZE = (() => {
@@ -417,14 +480,28 @@ function RingScene({
   // passes entirely (zero GPU work) via this ref; a passive scroll
   // listener flips it, no per-frame layout reads.
   const offscreenRef = useRef(false);
+  // Timestamp (ms) of the last scroll — used to PAUSE the 2-pass render during
+  // active NON-DIVE scroll (during the dive the ring must keep rendering so the
+  // tile-grid coarsening animates).
+  const lastScrollRef = useRef(0);
+  // Base tile grid (cols, rows) derived from the canvas size. The hero->about
+  // dive coarsens DOWN from this so the ASCII pixels enlarge + the field's
+  // resolution degrades as you zoom through the type (the user-loved look).
+  const baseGridRef = useRef<THREE.Vector2 | null>(null);
   useEffect(() => {
-    const OFFSCREEN_VH = 1.2;
+    // Cull only AFTER the dive has fully faded (--hero-opacity ends ~1.12vh): the
+    // ring now coarsens its pixels right through the dive, so culling at 0.85vh
+    // (the old value) would pop the chunky field out before the fade finished.
+    // Past 1.15vh the composition is fully transparent, so there's nothing to
+    // show — reclaim the GPU there.
+    const OFFSCREEN_VH = 1.15;
     let raf = 0;
     const apply = () => {
       const ratio = window.scrollY / Math.max(1, window.innerHeight);
       offscreenRef.current = ratio >= OFFSCREEN_VH;
     };
     const onScroll = () => {
+      lastScrollRef.current = performance.now();
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(apply);
     };
@@ -446,6 +523,14 @@ function RingScene({
   const mouseSmoothedRef = useRef(new THREE.Vector2(2, 2));
   const mouseStrengthTargetRef = useRef(0);
   const mouseStrengthSmoothedRef = useRef(0);
+  // Cursor paint trail: a decaying ring buffer of recent cursor positions
+  // (x, y in vUv space, age 0..1), fed to the post pass to brighten swept tiles.
+  const trailRef = useRef(new Float32Array(TRAIL_N * 3));
+  const trailHeadRef = useRef(0);
+  const trailLastRef = useRef({ x: -2, y: -2 });
+  // Lightly-smoothed head position (NDC) so the trail feels fluid, not snapped
+  // hard onto the cursor — but a snappy lerp so it barely lags.
+  const trailHeadSmRef = useRef(new THREE.Vector2(2, 2));
 
   // ---------------------------------------------------------------
   // Pipeline objects: ring material, render target, post scene. All
@@ -495,10 +580,10 @@ function RingScene({
         uTime: { value: 0 },
         uBase: { value: new THREE.Color(color) },
         // Inverted field: the brand accent orange as the BASE (same
-        // #e87040 used everywhere, per user), with a VERY light orange
+        // #ff4f00 used everywhere, per user), with a VERY light orange
         // blob haze dithered over it.
-        uFieldBase: { value: new THREE.Color(color) },
-        uFieldBlob: { value: new THREE.Color("#ffe7d4") },
+        uFieldBase: { value: new THREE.Color("#ff4f00") },
+        uFieldBlob: { value: new THREE.Color("#ff7a3c") },
         // Ring tints stay a hair off pure white: the ring body reads
         // WHITE; the volumetric shading comes from tile DENSITY, the
         // tint only whispers warmth on shadow faces.
@@ -506,9 +591,13 @@ function RingScene({
         uRingLit: { value: new THREE.Color("#ffffff") },
         // Orange reflection bands on the lit/specular facets (the v1
         // treatment, layered back onto the white body per user call).
-        uLitOrange: { value: new THREE.Color("#c2480f") },
-        uHotOrange: { value: new THREE.Color("#ff7a30") },
+        uLitOrange: { value: new THREE.Color("#c23d00") },
+        uHotOrange: { value: new THREE.Color("#ff6a2a") },
         uPaletteDir: { value: keyDir.clone() },
+        // Cursor paint trail (mutated in place each frame; uploaded every render).
+        uTrail: { value: trailRef.current },
+        uAspect: { value: 1 },
+        uTrailActive: { value: 0 },
       },
       // Premultiplied output written raw into the alpha canvas.
       blending: THREE.NoBlending,
@@ -537,6 +626,10 @@ function RingScene({
     const gh = Math.max(4, Math.round(size.height / CELL_PX));
     pipeline.rt.setSize(gw, gh);
     (pipeline.postMaterial.uniforms.uGrid!.value as THREE.Vector2).set(gw, gh);
+    baseGridRef.current = new THREE.Vector2(gw, gh);
+    // Aspect keeps the round cursor-paint blob round (vUv x is squashed wide).
+    pipeline.postMaterial.uniforms.uAspect!.value =
+      size.width / Math.max(1, size.height);
   }, [size.width, size.height, pipeline]);
 
   // ---------------------------------------------------------------
@@ -601,7 +694,38 @@ function RingScene({
       return;
     }
 
+    // Eased dive progress (0..1), read from the --hero-to-about inline CSS var
+    // App.tsx writes each frame. Inline-style read = cheap (no computed style /
+    // layout). Drives the pixel-enlarge below AND gates the scroll-pause.
+    const diveRaw = document.documentElement.style.getPropertyValue(
+      "--hero-to-about",
+    );
+    const dive = diveRaw ? Math.max(0, Math.min(1, parseFloat(diveRaw) || 0)) : 0;
+
+    // PERF: pause the 2-pass render during ACTIVE scroll — but ONLY when NOT
+    // diving. During the hero->about dive the ring MUST keep rendering: its tile
+    // grid coarsens as the dive deepens so the ASCII pixels enlarge and the
+    // field's resolution degrades (the effect the user loves), which only
+    // animates if the post pass runs every frame. Outside the dive the slow 26s
+    // spin is imperceptible, so the scroll-event pause still frees the GPU.
+    // (The earlier data-hero-diving HARD freeze that lived here FROZE the ring
+    // mid-dive — user: "freezing everything" — and is gone. The dive's cost is
+    // the cheap 2-pass shader, not the long-removed main-thread SVG mosaic, so
+    // rendering through it is fine.)
+    if (
+      dive <= 0.001 &&
+      entranceStartRef.current !== null &&
+      performance.now() - lastScrollRef.current < 140
+    ) {
+      lastTRef.current = performance.now() / 1000;
+      return;
+    }
+
     const now = performance.now() / 1000;
+    // ~24fps cap (was 30): the ring is a slow 26s spin, imperceptible at 24, and
+    // every skipped frame saves the whole RT + fullscreen-post pipeline.
+    if (now - lastRenderRef.current < 1 / 24) return;
+    lastRenderRef.current = now;
     const dt = Math.min(0.05, now - lastTRef.current);
     lastTRef.current = now;
 
@@ -651,8 +775,9 @@ function RingScene({
     if (tg) tg.rotation.set(tiltT * TILT_X, 0, tiltT * TILT_Z);
     gl.domElement.style.opacity = ringOpacity.toFixed(3);
 
-    // Spin on the torus's local Y axis.
-    const spinPerSec = (Math.PI * 2) / spinDuration;
+    // Spin on the torus's local Y axis (scaled down on touch, stilled under
+    // reduced-motion).
+    const spinPerSec = ((Math.PI * 2) / spinDuration) * spinScale;
     torus.rotation.y += spinPerSec * dt;
 
     // Viscous cursor lerp (frame-rate independent).
@@ -670,6 +795,88 @@ function RingScene({
     u.uTime!.value = now;
     // Drift the abstract orange haze in the post field (slow morph).
     pipeline.postMaterial.uniforms.uTime!.value = now;
+
+    // PIXEL-ZOOM (user-loved): coarsen the tile grid as the dive deepens, so the
+    // ASCII cells grow bigger and bigger and the field's resolution visibly
+    // degrades as you zoom through it (then the wrapper fades). GPU-cheap — it's
+    // only the post grid uniform: the render target keeps its resolution and
+    // pass 2 just samples it more sparsely into chunkier cells. dive 0 = base
+    // grid (no change); dive 1 = ~8x bigger cells. Replaces the old per-frame
+    // main-thread SVG feMorphology mosaic (the real lag source), which stays
+    // gone, so this is the cheap way back to the look.
+    const bg = baseGridRef.current;
+    if (bg) {
+      const coarse = 1 - dive * 0.88; // 1 -> 0.12
+      (pipeline.postMaterial.uniforms.uGrid!.value as THREE.Vector2).set(
+        Math.max(3, Math.round(bg.x * coarse)),
+        Math.max(3, Math.round(bg.y * coarse)),
+      );
+    }
+
+    // CURSOR PAINT TRAIL: decay every point, then lay fresh points along the
+    // cursor's movement this frame. The head reads from the RAW cursor (no
+    // smoothing) so it sits AT the cursor — reactive, not lagged — and the trail
+    // behind it comes from older points fading. Each frame's move is subdivided
+    // so a fast flick lays a CONTINUOUS trail (points spaced within the metaball
+    // fuse distance) instead of detached blobs. Skipped under reduced motion.
+    if (!reducedMotion) {
+      const trail = trailRef.current;
+      const decay = dt / TRAIL_LIFE;
+      let active = false;
+      for (let i = 0; i < TRAIL_N; i++) {
+        let a = trail[i * 3 + 2]!;
+        if (a > 0) {
+          a = Math.max(0, a - decay);
+          trail[i * 3 + 2] = a;
+        }
+        if (a > 0.001) active = true;
+      }
+      if (mouseStrengthSmoothedRef.current > 0.05) {
+        const sm = trailHeadSmRef.current;
+        const last = trailLastRef.current;
+        if (last.x < -1) {
+          // (re)entry: snap the smoothed head to the cursor so the trail doesn't
+          // streak in from the offscreen sentinel.
+          sm.set(mouseTargetRef.current.x, mouseTargetRef.current.y);
+        } else {
+          // Light, SNAPPY smoothing (settles in ~2-3 frames): fluid but barely
+          // lagged — much less than the old cursor smoothing.
+          const k = 1 - Math.exp(-dt * 26);
+          sm.x += (mouseTargetRef.current.x - sm.x) * k;
+          sm.y += (mouseTargetRef.current.y - sm.y) * k;
+        }
+        const tx = sm.x * 0.5 + 0.5;
+        const ty = sm.y * 0.5 + 0.5;
+        if (last.x < -1) {
+          last.x = tx;
+          last.y = ty;
+        }
+        const dx = tx - last.x;
+        const dy = ty - last.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 0.0015) {
+          // ~0.03 spacing fuses under the metaball kernel; cap so a teleport
+          // (e.g. re-entry) doesn't streak edge-to-edge.
+          const segs = Math.min(16, Math.max(1, Math.ceil(dist / 0.03)));
+          for (let k = 1; k <= segs; k++) {
+            const f = k / segs;
+            const h = trailHeadRef.current;
+            trail[h * 3] = last.x + dx * f;
+            trail[h * 3 + 1] = last.y + dy * f;
+            trail[h * 3 + 2] = 1;
+            trailHeadRef.current = (h + 1) % TRAIL_N;
+          }
+          last.x = tx;
+          last.y = ty;
+          active = true;
+        }
+      } else {
+        // Cursor gone: re-init on next entry so we don't streak in from afar.
+        trailLastRef.current.x = -2;
+      }
+      // Gate the per-fragment trail loop off when there's nothing to draw.
+      pipeline.postMaterial.uniforms.uTrailActive!.value = active ? 1 : 0;
+    }
 
     wasOffscreenRef.current = false;
 
