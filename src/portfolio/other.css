@@ -170,15 +170,15 @@
               transform var(--t-med) var(--ease-entrance);
 }
 /* Two-digit section number in the dot face on the shared --hdr-num scale:
-   the SAME number size as Work "03" / Photos "05". Solid ink (it sits at
-   the top edge, clear of the centred reel below). */
+   now a SMALL tag (same tiny number size as Work "03" / Photos "05").
+   Solid ink (it sits at the top edge, clear of the centred reel below). */
 .other-section-num {
-  font-family: var(--font-dot);
+  font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  color: var(--ink);
+  color: var(--hdr-num-color, #b8431a);
 }
 
 /* Title: "Some interests." OffBit pixel display (sitewide big-title
@@ -190,18 +190,22 @@
 .portfolio-other .other-title {
   grid-column: 1;
   grid-row: 2;
-  /* Very little padding under the big number. */
+  /* Very little padding under the small number tag. */
   margin: 2px 0 0;
-  /* OffBit pixel display on the shared --hdr-title scale — SAME wordmark
-     size as every other section. UPPERCASE, 0.9 line-height, tight
-     tracking. */
-  font-family: var(--font-pixel);
+  /* OffBit pixel display on the shared GIANT --hdr-title scale — SAME
+     wordmark size as every other section. UPPERCASE, 0.9 line-height,
+     tight tracking. "SOME INTERESTS" wraps to stacked huge lines
+     (editorial) and never forces horizontal scroll. */
+  font-family: var(--font-dot);
   font-weight: 700;
-  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+  font-size: var(--hdr-title, clamp(48px, 13vw, 190px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  text-transform: uppercase;
-  color: var(--ink);
+  text-transform: none;
+  color: var(--hdr-ink, #241e1a);
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
   opacity: var(--head-title, 1);
   transform: translateY(calc((1 - var(--head-title, 1)) * 22px));
   /* Title is the slowest reveal so it lands last + most deliberately. */
@@ -225,18 +229,19 @@
 }
 
 /* Short-viewport guard: this section is pinned full-bleed with the 3D reel
-   filling the centre. On short screens the big shared-scale header (number
-   + wordmark) would push down over the reel hero, so ease BOTH down here
-   (matched to each other, still one system). Mirrors Work's guard. Desktop
-   widths only — the ≤768 mobile block already sets its own header sizes. */
+   filling the centre. On short screens the GIANT shared-scale wordmark
+   would push down over the centred reel hero, so ease the title back here
+   (it stays large for impact but yields room); the number stays the tiny
+   tag. Mirrors Work's guard. Desktop widths only — the ≤768 mobile block
+   already sets its own header sizes. */
 @media (max-height: 780px) and (min-width: 769px) {
   .other-section-num,
   .other-gallery-num {
-    font-size: clamp(56px, 6vw, 88px);
+    font-size: clamp(13px, 1.4vw, 20px);
   }
   .portfolio-other .other-title,
   .portfolio-other .other-gallery-title {
-    font-size: clamp(36px, 4.4vw, 72px);
+    font-size: clamp(40px, 7vw, 96px);
   }
 }
 
@@ -521,31 +526,36 @@
   transition: opacity var(--t-med) var(--ease-entrance),
               transform var(--t-med) var(--ease-entrance);
 }
-/* Big section numeral on the shared --hdr-num scale: 04 reads at the SAME
-   size as every other section's number. (The "/ Photo reel" tag + its
-   label/divider wrappers were removed — vibe-coded caption clutter.) */
+/* Small section-number tag on the shared --hdr-num scale: 04 reads at the
+   SAME tiny size as every other section's number. (The "/ Photo reel" tag
+   + its label/divider wrappers were removed — vibe-coded caption clutter.) */
 .other-gallery-num {
-  font-family: var(--font-dot);
+  font-family: var(--font-pixel);
   font-weight: 700;
-  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  color: var(--ink);
+  color: var(--hdr-num-color, #b8431a);
 }
 /* Scoped for the same specificity reason as .other-title above. */
 .portfolio-other .other-gallery-title {
   grid-column: 1;
   grid-row: 2;
-  /* Very little padding under the big number. */
+  /* Very little padding under the small number tag. */
   margin: 2px 0 0;
-  /* OffBit pixel display on the shared --hdr-title scale. UPPERCASE. */
-  font-family: var(--font-pixel);
+  /* OffBit pixel display on the shared GIANT --hdr-title scale. UPPERCASE.
+     "RECENTS" is a single 7-glyph word that fits the 1fr stage at full
+     size; break-word guards narrower frames. */
+  font-family: var(--font-dot);
   font-weight: 700;
-  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+  font-size: var(--hdr-title, clamp(48px, 13vw, 190px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  text-transform: uppercase;
-  color: var(--ink);
+  text-transform: none;
+  color: var(--hdr-ink, #241e1a);
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
   opacity: var(--gh-title, 1);
   transform: translateY(calc((1 - var(--gh-title, 1)) * 22px));
   transition: opacity var(--t-slow) var(--ease-entrance),
@@ -730,18 +740,19 @@
     row-gap: 6px;
   }
   .other-eyebrow { grid-column: 1; grid-row: 1; }
-  /* Mobile: ease the number down to sit just above the title and keep the
-     stacked header compact over the reel. Number + title share a matched
-     mobile size band so the pair still reads as one system. */
+  /* Mobile: the tiny "04" tag sits just above the GIANT wordmark over the
+     reel. The title gets a phone ceiling so "SOME INTERESTS" (wrapping to
+     stacked lines) stays large without forcing horizontal scroll; the
+     number stays the tag (flipped hierarchy holds on phones). */
   .other-section-num {
-    font-size: clamp(46px, 14vw, 72px);
+    font-size: clamp(13px, 3.4vw, 18px);
   }
   .portfolio-other .other-title  {
     grid-column: 1;
     grid-row: 2;
-    /* Very little padding under the number. */
+    /* Very little padding under the number tag. */
     margin-top: 2px;
-    font-size: clamp(40px, 12vw, 64px);
+    font-size: clamp(44px, 15vw, 84px);
   }
   .other-sub {
     grid-column: 1;
@@ -840,14 +851,14 @@
   }
   .other-gallery-eyebrow { grid-column: 1; grid-row: 1; }
   .other-gallery-num {
-    font-size: clamp(46px, 14vw, 72px);
+    font-size: clamp(13px, 3.4vw, 18px);
   }
   .portfolio-other .other-gallery-title  {
     grid-column: 1;
     grid-row: 2;
-    /* Very little padding under the number. */
+    /* Very little padding under the number tag. */
     margin-top: 2px;
-    font-size: clamp(40px, 12vw, 64px);
+    font-size: clamp(44px, 15vw, 84px);
   }
   .other-gallery-sub {
     grid-column: 1;

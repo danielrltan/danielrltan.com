@@ -22,10 +22,13 @@
   position: absolute;
   bottom: 6vh;
   left: 6vw;
+  right: 6vw;
   display: flex;
-  align-items: baseline;
-  /* Very little padding between number and wordmark per the spec. */
-  gap: var(--space-3, 12px);
+  /* Tiny "01" tag sits at the TOP-left of the giant wordmark (reference
+     layout), not on its baseline — flex-start, small gap. */
+  align-items: flex-start;
+  /* Very little padding between number tag and wordmark per the spec. */
+  gap: var(--space-2, 8px);
   pointer-events: none;
   z-index: 4;
   opacity: 0;
@@ -39,26 +42,34 @@
   transform: translateY(0);
 }
 /* Two-digit section number in the dot/pixel face on the shared scale —
-   same number voice + size as Work "03", Photos "05", etc. */
+   now a SMALL tag (same tiny number voice + size as Work "03", Photos
+   "05"). A small top nudge floats it level with the wordmark's cap. */
 .about-floating-num {
-  font-family: var(--font-dot, monospace);
-  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  font-family: var(--font-pixel, "Offbit", monospace);
+  font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 0.9;
   color: var(--wrapper-ink, #0d0e10);
+  /* Drop the tiny tag off the very top so it reads as sitting in the
+     upper-left shoulder of the giant wordmark. */
+  margin-top: 0.35em;
 }
 .about-floating-label {
   /* OffBit pixel display (sitewide big-title voice). UPPERCASE, weight
-     700, tight 0.01em tracking + 0.9 line-height, on the shared
-     --hdr-title scale. Pixel glyphs collide under negative tracking. */
-  font-family: var(--font-pixel, "Offbit", monospace);
-  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+     700, tight 0.01em tracking + 0.9 line-height, on the shared GIANT
+     --hdr-title scale. Pixel glyphs collide under negative tracking.
+     min-width:0 + break-word let "ABOUT" never force horizontal scroll. */
+  font-family: var(--font-dot, monospace);
+  font-size: var(--hdr-title, clamp(48px, 13vw, 190px));
   font-weight: 700;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.01em;
   line-height: 0.9;
   color: var(--wrapper-ink, #0d0e10);
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 /* Desktop kills the big dot marker for the same reason the mobile rule
@@ -439,15 +450,18 @@
     gap: var(--space-2, 8px);
     z-index: 5;
   }
-  /* Portrait header: the shared scale's vw term + the desktop max would
-     overpower the narrow card, so ease the pair down here (still ONE
-     system — number + wordmark share this mobile clamp so they stay the
-     same size as each other). Floor 40px clears horizontal scroll at
-     360px even for the full "ABOUT" + "01" pair. */
-  .about-floating-num,
+  /* Portrait header: the giant wordmark eases down on the narrow card so
+     "ABOUT" never forces horizontal scroll, while the number stays the
+     tiny tag (the flipped hierarchy holds at every width). The desktop
+     --hdr-title max (190px) would overpower a phone, so cap it here. */
   .about-floating-label {
-    font-size: clamp(40px, 13vw, 64px);
+    font-size: clamp(48px, 17vw, 92px);
     line-height: 0.95;
+  }
+  .about-floating-num {
+    /* Small tag, scaled with the wordmark but kept tiny beside it. */
+    font-size: clamp(13px, 3vw, 18px);
+    margin-top: 0.4em;
   }
 
   /* The big dot marker ("01") duplicates the wordmark's "01" and eats
@@ -538,9 +552,11 @@
     left: 18px;
     right: 18px;
   }
-  .about-floating-num,
   .about-floating-label {
-    font-size: clamp(36px, 12vw, 56px);
+    font-size: clamp(44px, 15vw, 72px);
+  }
+  .about-floating-num {
+    font-size: clamp(12px, 3vw, 16px);
   }
   /* Scoped to match the ≤720px `.portfolio-about .about-lede` rule's
      specificity (0,2,0); the bare `.about-lede` selector (0,1,0) lost to

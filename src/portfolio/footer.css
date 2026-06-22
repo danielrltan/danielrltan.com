@@ -37,14 +37,17 @@
    anchoring the band rather than competing with the live links, with the
    accent ↑ glyph pointing back up the page. */
 .footer-marker {
-  font-family: var(--font-dot);
+  /* Number → solid pixel face (numbers are pixel now, headers are dotted). */
+  font-family: var(--font-pixel);
   font-weight: 700;
-  /* Shared corner-header number scale (--hdr-num): the closing "06"
-     reads at the SAME size as every section's number. Ghosted to
-     --ink-faint below since it's a watermark on the dark band, and there
-     is no section wordmark in the footer's colophon layout (see task
-     note) — the number is the lone header element here. */
-  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  /* EXCEPTION to the shared --hdr-num tag scale: every other section pairs
+     a tiny number tag with a GIANT wordmark, but the footer's colophon has
+     NO wordmark — the "06" is the lone header anchor here. Shrinking it to
+     the 13-22px tag would leave a lost, broken-looking mark on the closing
+     band, so the footer keeps the BIG numeral (the previous shared-header
+     size) as a standalone watermark. Ghosted to --ink-faint below since
+     it's a watermark on the dark band. */
+  font-size: clamp(72px, 8.5vw, 128px);
   line-height: 0.9;
   letter-spacing: 0.01em;
   /* Ghosted on the dark band: full --ink here would shout; a faint ink

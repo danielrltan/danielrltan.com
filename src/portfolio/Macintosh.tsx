@@ -57,7 +57,7 @@ function usePrefersReducedMotion() {
 // pin, the nearest-beat snap still settles every rest on a composed
 // pose — while shaving ~13% off every beat's scroll cost (entry beat
 // ~1360 → ~1190px).
-const PIN_DURATION_PX = 5400;
+const PIN_DURATION_PX = 5800;
 
 // ?tune=mac skips the pin so OrbitControls inside MacintoshScene can
 // drive the camera freely for re-framing.
@@ -255,7 +255,11 @@ export function Macintosh() {
       // velocity drops, so a deliberate sustained scroll plays the
       // full cinematic and carries on through the release.
       snap: {
-        snapTo: [0, 0.22, 0.55, 0.9],
+        // Land/settle beats. The final stop is the fully-landed, zoomed,
+        // booted CRT at 0.85 (was 0.9); it then dwells at full size until the
+        // exit-vanish window (0.95) so a gentle scroll settles back onto the
+        // readable Mac instead of sliding straight past it.
+        snapTo: [0, 0.22, 0.55, 0.85],
         duration: { min: 0.3, max: 0.8 },
         delay: 0.04,
         ease: "power2.inOut",
@@ -449,7 +453,7 @@ export function Macintosh() {
         <span className="section-marker">02</span>
         <span className="section-index">02 / 06 &middot; Stack + Projects</span>
         <h2>
-          <ScrambleText text="The kit" />
+          <ScrambleText text="Projects" />
         </h2>
       </div>
       {/* Detail region. The open project is drawn into the CRT <canvas>

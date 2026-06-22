@@ -70,9 +70,9 @@
     clamp(36px, 5vh, 60px);
   box-sizing: border-box;
   display: grid;
-  /* header → body → foot. Header + foot are intrinsic; the body
-     (ticker + stage) takes the remaining height. */
-  grid-template-rows: auto 1fr auto;
+  /* header → body. Header is intrinsic; the body (ticker + stage) takes the
+     rest. (Progress-bar foot removed — it cut a line across the stint text.) */
+  grid-template-rows: auto 1fr;
   gap: clamp(18px, 3vh, 36px);
 }
 
@@ -80,8 +80,12 @@
 
 .work-ledger-head {
   display: grid;
-  grid-template-columns: minmax(180px, 22%) 1fr;
-  gap: clamp(24px, 4vw, 56px);
+  /* Number column shrunk to content (was minmax(180px,22%), sized for a
+     big numeral): the "03" is now a tiny tag, so an auto/min column keeps
+     it flush-left without leaving a big empty gap, and the title's 1fr
+     stage takes the freed width to run GIANT. */
+  grid-template-columns: minmax(max-content, auto) 1fr;
+  gap: clamp(20px, 2.4vw, 36px);
   align-items: end;
   /* Hairline divider: quiet editorial rule under the header. */
   padding-bottom: clamp(14px, 2vh, 24px);
@@ -94,15 +98,15 @@
   gap: 4px;
 }
 .work-ledger-num {
-  font-family: var(--font-dot);
+  font-family: var(--font-pixel);
   font-weight: 700;
-  /* Big bold section numeral on the shared corner-header scale
-     (--hdr-num): the "03" now reads at the SAME size as every other
-     section's number (was a slightly bespoke clamp that ran small). */
-  font-size: var(--hdr-num, clamp(72px, 8.5vw, 128px));
+  /* Small section-number tag on the shared corner-header scale
+     (--hdr-num): the "03" is now a tiny tag beside the giant EXPERIENCE
+     wordmark (reference: tiny number + huge title). */
+  font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   line-height: 0.9;
   letter-spacing: 0.01em;
-  color: var(--ink);
+  color: var(--hdr-num-color, #b8431a);
   user-select: none;
 }
 .work-ledger-index {
@@ -110,7 +114,7 @@
   font-size: var(--fs-mono);
   letter-spacing: 0.24em;
   text-transform: uppercase;
-  color: var(--ink-muted);
+  color: var(--hdr-eyebrow, #6c6660);
   font-weight: 500;
 }
 
@@ -124,35 +128,42 @@
    number + wordmark header. The "03" numeral + the EXPERIENCE wordmark
    are the whole header now.) */
 .work-ledger-title {
-  /* OffBit pixel display on the shared corner-header scale (--hdr-title):
-     EXPERIENCE now reads at the SAME size as every other section's
-     wordmark (was running small — the size the user flagged). UPPERCASE,
-     0.9 line-height, tight tracking, anchored top-left. */
-  font-family: var(--font-pixel);
+  /* OffBit pixel display, GIANT. "EXPERIENCE" is a single 10-glyph word
+     that cannot wrap, and this is a PINNED ledger whose 1fr stage must
+     not be clipped, so the title rides a local step just under the shared
+     190px max — big enough to span most of the ledger width yet bounded
+     so the long single word never overflows the frame at any width.
+     UPPERCASE, 0.9 line-height, tight tracking, anchored top-left. */
+  font-family: var(--font-dot);
   font-weight: 700;
-  font-size: var(--hdr-title, clamp(44px, 6vw, 104px));
+  font-size: clamp(48px, 11vw, 150px);
   line-height: 0.9;
   letter-spacing: 0.01em;
-  text-transform: uppercase;
-  color: var(--ink);
+  text-transform: none;
+  color: var(--hdr-ink, #241e1a);
   margin: 0;
+  /* Single word; keep it from forcing horizontal scroll if a narrower
+     frame ever clamps the 1fr track below the word's intrinsic width. */
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 /* (Removed dead .work-ledger-title-em: the title is plain "Experience."
    with no <em>; the rule was an orphaned italic. No italics anywhere
    in this section.) */
 
 /* Short-viewport guard: the ledger is a pinned grid (auto header / 1fr
-   stage / auto foot). On short screens the bigger shared-scale header
-   would eat the stage and clip the stint content, so ease BOTH the number
-   and the wordmark back down here (number + title stay matched to each
-   other, just smaller, so the system still reads cohesive on short
-   screens). Overrides the shared --hdr-* clamps locally. */
+   stage / auto foot). On short screens the GIANT header would eat the 1fr
+   stage and clip the stint content, so ease the wordmark down here while
+   keeping it the section's hero (the number stays the tiny tag). The title
+   still runs large for impact but yields enough height back to the stage
+   that the headline + bullets never clip. */
 @media (max-height: 780px) and (min-width: 901px) {
   .work-ledger-num {
-    font-size: clamp(56px, 6vw, 88px);
+    font-size: clamp(13px, 1.4vw, 20px);
   }
   .work-ledger-title {
-    font-size: clamp(36px, 4.4vw, 72px);
+    font-size: clamp(40px, 7vw, 100px);
   }
 }
 
@@ -722,18 +733,23 @@
   }
   .work-ledger-head-left {
     flex-direction: row;
-    align-items: baseline;
-    gap: 12px;
+    /* Tiny "03" tag sits at the wordmark's top shoulder (reference), not
+       on its baseline, now that the title dwarfs it. */
+    align-items: flex-start;
+    gap: 8px;
   }
-  /* Mobile static stack: num + title sit baseline-aligned in a row. Ease
-     both down off the shared scale (matched to each other) so the pair
-     fits the narrow head without forcing horizontal scroll, while still
-     reading as the same number + wordmark system. */
+  /* Mobile static stack: the tiny "03" tag sits beside the GIANT
+     EXPERIENCE wordmark. The single 10-glyph word can't wrap, so the
+     title is capped to a phone-safe large step that never forces
+     horizontal scroll at 360px (12.5vw floor → ~45px at 360px, ~10 glyphs
+     in the pixel face fit the 320px content width). The number stays the
+     tag. align-items shifts to flex-start (set below) so the tag sits at
+     the wordmark's top shoulder, not on the descender baseline. */
   .work-ledger-num {
-    font-size: clamp(52px, 15vw, 84px);
+    font-size: clamp(13px, 3.6vw, 18px);
   }
   .work-ledger-title {
-    font-size: clamp(40px, 12vw, 68px);
+    font-size: clamp(44px, 12.5vw, 76px);
   }
 
   /* Body collapses to a single full-width column; drop the ticker

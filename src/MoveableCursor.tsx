@@ -5,112 +5,93 @@ interface Props {
   hot: boolean;
 }
 
-// Parallax tuning: drift the center dot in the direction of motion so a
-// fast flick has trail; small jitter from a steady hand stays at center.
-const TRAIL_STRENGTH = 5;
-const TRAIL_MAX_PX = 5;
-const SPRING = 0.16;
-const TARGET_DECAY = 0;
-
 /**
- * White ring + dot cursor for the *room* zone only. Visibility is
- * controlled by the parent. This component is unmounted entirely when
- * the desk view is active (so the OS gets the native system cursor).
- * No per-event DOM-target detection here; that approach was fragile
- * against drei's `<Html>` portal restructuring.
+ * Custom site pointer: a sharp PIXEL-STYLE ARROW in the accent orange with a
+ * dark keyline (the site hides the OS cursor with `cursor: none`). A small
+ * "rice grain" trails behind the tip on fast movement — the site's
+ * rice/pixel motif — and springs back to the tip when the pointer rests.
+ * The arrow presses in on click and grows + glows over interactive room
+ * meshes (`hot`). Mounted at the App level so it's the cursor everywhere; the
+ * keypad and jump-menu layer their own in-canvas cursor treatments on top.
+ *
+ * Replaces the previous plain ring+dot. The arrow's TIP is the hotspot, so
+ * the root element is a 0×0 anchor placed exactly at the pointer and the SVG
+ * is drawn with its tip at the local origin.
  */
+const TRAIL_SPRING = 0.22; // how fast the grain catches up to the tip
+const TRAIL_MAX_PX = 16; // clamp the lag so the grain never flies off
+
 export function MoveableCursor({ hot }: Props) {
   const root = useRef<HTMLDivElement>(null);
-  const dotShift = useRef<HTMLSpanElement>(null);
+  const trail = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     const rootEl = root.current;
-    const shiftEl = dotShift.current;
-    if (!rootEl || !shiftEl) return;
+    const trailEl = trail.current;
+    if (!rootEl || !trailEl) return;
 
-    let lastX = 0;
-    let lastY = 0;
-    let targetX = 0;
-    let targetY = 0;
-    let curX = 0;
-    let curY = 0;
-    let frame = 0;
-    // Hide the cursor until we have a real pointer position. Without
-    // this the element sits at the viewport's (0, 0) origin (top-left
-    // corner) on mount, since the transform isn't set until the first
-    // pointermove. On reload-without-moving that "ghost" cursor in
-    // the corner is the first thing the user sees.
+    let px = 0;
+    let py = 0; // live pointer
+    let tx = 0;
+    let ty = 0; // trailing grain (springs toward the pointer)
     let revealed = false;
+    let frame = 0;
+    // Hidden until the first real pointer position so it doesn't ghost at
+    // the viewport origin on load (same guard as the old cursor).
     rootEl.style.opacity = "0";
 
     const onMove = (e: PointerEvent) => {
-      rootEl.style.transform = `translate3d(${e.clientX}px,${e.clientY}px,0) translate(-50%,-50%)`;
+      px = e.clientX;
+      py = e.clientY;
+      rootEl.style.transform = `translate3d(${px}px,${py}px,0)`;
       if (!revealed) {
         revealed = true;
         rootEl.style.opacity = "1";
-        // Seed lastX/Y from this first event so the parallax dx/dy
-        // doesn't compute against (0, 0) on the next move and yank
-        // the dot across the screen.
-        lastX = e.clientX;
-        lastY = e.clientY;
-        return;
+        tx = px;
+        ty = py; // seed the grain at the tip so it doesn't streak in from (0,0)
       }
-      const dx = e.clientX - lastX;
-      const dy = e.clientY - lastY;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      const tx = Math.max(
-        -TRAIL_MAX_PX,
-        Math.min(TRAIL_MAX_PX, dx * TRAIL_STRENGTH),
-      );
-      const ty = Math.max(
-        -TRAIL_MAX_PX,
-        Math.min(TRAIL_MAX_PX, dy * TRAIL_STRENGTH),
-      );
-      targetX = tx;
-      targetY = ty;
     };
 
     const tick = () => {
-      curX += (targetX - curX) * SPRING;
-      curY += (targetY - curY) * SPRING;
-      targetX *= TARGET_DECAY;
-      targetY *= TARGET_DECAY;
-      shiftEl.style.setProperty("--dot-x", `${curX.toFixed(2)}px`);
-      shiftEl.style.setProperty("--dot-y", `${curY.toFixed(2)}px`);
+      // Spring the grain toward the pointer; the lag (grain − pointer) points
+      // opposite the travel direction, i.e. BEHIND the arrow tip.
+      tx += (px - tx) * TRAIL_SPRING;
+      ty += (py - ty) * TRAIL_SPRING;
+      let ox = tx - px;
+      let oy = ty - py;
+      const len = Math.hypot(ox, oy);
+      if (len > TRAIL_MAX_PX) {
+        const k = TRAIL_MAX_PX / len;
+        ox *= k;
+        oy *= k;
+      }
+      trailEl.style.setProperty("--trail-x", `${ox.toFixed(2)}px`);
+      trailEl.style.setProperty("--trail-y", `${oy.toFixed(2)}px`);
+      // Fade the grain in with the lag amount so it only shows while moving.
+      trailEl.style.opacity = Math.min(1, len / TRAIL_MAX_PX).toFixed(3);
       frame = requestAnimationFrame(tick);
     };
 
-    // Click reaction: adds .moveable-cursor--click for ~180ms on
-    // any pointer-down. The class drives a CSS keyframe that
-    // pulses the ring (briefly shrinks then settles) so the cursor
-    // visibly reacts to clicks instead of just staying expanded.
-    const onPointerDown = () => {
+    // Click reaction: pulse a press keyframe on the arrow. Force a reflow so
+    // rapid clicks restart it cleanly.
+    const onDown = () => {
       rootEl.classList.remove("moveable-cursor--click");
-      // Force a reflow so the keyframe restarts cleanly on rapid
-      // back-to-back clicks (otherwise the animation only plays
-      // once until the class is fully removed).
       void rootEl.offsetWidth;
       rootEl.classList.add("moveable-cursor--click");
     };
-    const onPointerUp = () => {
-      // Let the keyframe finish; animationend cleans the class up.
-    };
     const onAnimEnd = (e: AnimationEvent) => {
-      if (e.animationName === "moveable-cursor-click") {
+      if (e.animationName.startsWith("moveable-cursor-press")) {
         rootEl.classList.remove("moveable-cursor--click");
       }
     };
 
     window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerdown", onPointerDown, { passive: true });
-    window.addEventListener("pointerup", onPointerUp, { passive: true });
+    window.addEventListener("pointerdown", onDown, { passive: true });
     rootEl.addEventListener("animationend", onAnimEnd);
     frame = requestAnimationFrame(tick);
     return () => {
       window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointerdown", onDown);
       rootEl.removeEventListener("animationend", onAnimEnd);
       cancelAnimationFrame(frame);
     };
@@ -122,10 +103,25 @@ export function MoveableCursor({ hot }: Props) {
       className={`moveable-cursor${hot ? " moveable-cursor--hot" : ""}`}
       aria-hidden
     >
-      <span className="moveable-cursor__ring" />
-      <span ref={dotShift} className="moveable-cursor__dot-shift">
-        <span className="moveable-cursor__dot" />
-      </span>
+      {/* Trailing rice grain (behind the tip on motion). */}
+      <span ref={trail} className="moveable-cursor__trail" />
+      {/* Pixel arrow — tip at the local origin (the hotspot). */}
+      <svg
+        className="moveable-cursor__arrow"
+        viewBox="0 0 11 18"
+        width="14"
+        height="23"
+        aria-hidden
+      >
+        <path
+          d="M0 0 L0 15.2 L3.6 11.8 L6.1 17.6 L8.2 16.6 L5.6 10.9 L10.4 10.9 Z"
+          fill="var(--accent, #e87040)"
+          stroke="#1b1209"
+          strokeWidth="1.1"
+          strokeLinejoin="miter"
+          paintOrder="stroke"
+        />
+      </svg>
     </div>
   );
 }

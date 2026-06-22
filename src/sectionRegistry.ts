@@ -13,15 +13,33 @@ export interface SectionEntry {
   label: string;
   /** Selector to identify the section in the DOM. */
   selector: string;
+  /**
+   * For multi-BEAT pinned sections: the id of the section's GSAP pin
+   * ScrollTrigger plus a 0..1 progress to land on. When set, a jump to this
+   * section scrolls to that fraction of the pin instead of the section's top,
+   * so it lands on a specific beat rather than the section's opening beat.
+   * Play uses this to reach the "Some interests" 3D reel (Beat B) instead of
+   * dumping the viewer on the "Recents" photo beat (Beat A) at the top.
+   */
+  pinId?: string;
+  jumpProgress?: number;
 }
 
 export const SECTION_REGISTRY: SectionEntry[] = [
   { number: "00", label: "Hero", selector: ".portfolio-section--hero" },
   { number: "01", label: "About", selector: ".portfolio-section:not([class*='--'])" },
-  { number: "02", label: "Stack", selector: ".portfolio-mac" },
+  { number: "02", label: "Projects", selector: ".portfolio-mac" },
   { number: "03", label: "Work", selector: ".portfolio-work" },
-  { number: "04", label: "Play", selector: ".portfolio-other" },
-  { number: "05", label: "Moments", selector: ".portfolio-bp" },
+  {
+    number: "04",
+    label: "Play",
+    selector: ".portfolio-other",
+    // Land on Beat B (the "Some interests" 3D hobby reel) — header landed,
+    // first hobby focused — not the section top (the "Recents" photo beat).
+    pinId: "other-pin",
+    jumpProgress: 0.44,
+  },
+  { number: "05", label: "Honors", selector: ".portfolio-bp" },
   { number: "06", label: "Contact", selector: ".keypad-section" },
 ];
 

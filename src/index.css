@@ -138,6 +138,7 @@
   /* -- Accent (orange: only chromatic colour in UI) ---------------- */
   --accent: #e87040;
   --accent-hot: #ff6a2a;
+  --accent-deep: #b8431a;            /* deeper orange — readable as large display text (~4.2:1 on --bg-page) */
   --accent-tint: rgba(232, 112, 64, 0.10);
   --accent-soft: rgba(232, 112, 64, 0.12);  /* legacy alias */
   /* Accent darkened toward ink for SMALL text that must pass WCAG AA.
@@ -456,80 +457,75 @@ html.loading-active .scroll-rail {
   display: none !important;
 }
 
-/* Custom pointer (see MoveableCursor.tsx). JS toggles opacity for the
-   room/OS cursor-mode swap. */
+/* Custom pointer (see MoveableCursor.tsx): a sharp PIXEL ARROW in the accent
+   orange with a dark keyline, plus a small rice-grain that trails on motion.
+   JS places the 0×0 root at the pointer (the arrow's tip is the hotspot) and
+   toggles opacity for the reveal / room cursor-mode swap. */
 .moveable-cursor {
   position: fixed;
   left: 0;
   top: 0;
   z-index: 10000;
-  width: 30px;
-  height: 30px;
+  width: 0;
+  height: 0;
   pointer-events: none;
   will-change: transform, opacity;
   transition: opacity 0.18s ease;
 }
 
-.moveable-cursor__ring {
+/* The arrow: tip pinned to the local origin (= the pointer). Scale/press
+   anchor at the tip so the hotspot never drifts. */
+.moveable-cursor__arrow {
   position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 1.5px solid var(--accent);
-  /* Custom overshoot for interactive cursor focus state (0.22s for snappy feel) — intentionally distinct from --ease-soft/--ease-out */
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  /* Snappy overshoot on the hot/grow reaction — intentionally distinct. */
   transition:
-    transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
-    opacity 0.2s ease;
+    transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1),
+    filter 0.18s ease;
+  filter: drop-shadow(0 1px 1px rgba(20, 12, 6, 0.28));
 }
 
-/* Wrapper is parallax-shifted by JS via --dot-x/--dot-y; the inner
-   dot's own scale for the hot state doesn't fight with the translate. */
-.moveable-cursor__dot-shift {
+/* Trailing rice grain: a small orange pixel that lags BEHIND the tip on fast
+   motion (offset + opacity written by JS), springing back when at rest. */
+.moveable-cursor__trail {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 3.5px;
-  height: 3.5px;
-  margin: -1.75px 0 0 -1.75px;
-  transform: translate(var(--dot-x, 0px), var(--dot-y, 0px));
-  will-change: transform;
+  left: 0;
+  top: 0;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  background: var(--accent, #e87040);
+  box-shadow: 0 0 0 1px rgba(27, 18, 9, 0.5);
+  transform: translate(var(--trail-x, 0px), var(--trail-y, 0px));
+  opacity: 0;
+  will-change: transform, opacity;
 }
 
-.moveable-cursor__dot {
-  display: block; /* span is inline by default; w/h would be ignored */
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: var(--accent);
-  transition:
-    transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
-    opacity 0.2s ease;
+/* Over interactive room meshes: the arrow grows + warms. */
+.moveable-cursor--hot .moveable-cursor__arrow {
+  transform: scale(1.28);
+  filter: drop-shadow(0 0 5px rgba(232, 112, 64, 0.6));
 }
 
-.moveable-cursor--hot .moveable-cursor__ring {
-  transform: scale(1.55);
-  opacity: 1;
+/* Click: a quick press-in of the arrow (separate keyframe while hot so it
+   presses from the grown baseline). */
+.moveable-cursor--click .moveable-cursor__arrow {
+  animation: moveable-cursor-press 200ms cubic-bezier(0.2, 0.7, 0.3, 1.2);
 }
-
-.moveable-cursor--hot .moveable-cursor__dot {
-  transform: scale(1);
-  opacity: 1;
+.moveable-cursor--hot.moveable-cursor--click .moveable-cursor__arrow {
+  animation: moveable-cursor-press-hot 200ms cubic-bezier(0.2, 0.7, 0.3, 1.2);
 }
-
-.moveable-cursor--click .moveable-cursor__ring {
-  animation: moveable-cursor-click 220ms cubic-bezier(0.2, 0.7, 0.3, 1.2);
-}
-.moveable-cursor--click .moveable-cursor__dot {
-  animation: moveable-cursor-click-dot 220ms cubic-bezier(0.2, 0.7, 0.3, 1.2);
-}
-@keyframes moveable-cursor-click {
+@keyframes moveable-cursor-press {
   0%   { transform: scale(1); }
-  35%  { transform: scale(0.78); opacity: 1; }
+  35%  { transform: scale(0.8); }
   100% { transform: scale(1); }
 }
-@keyframes moveable-cursor-click-dot {
-  0%   { transform: scale(1); opacity: 1; }
-  35%  { transform: scale(1.35); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+@keyframes moveable-cursor-press-hot {
+  0%   { transform: scale(1.28); }
+  35%  { transform: scale(1.02); }
+  100% { transform: scale(1.28); }
 }
 
 /* Glass HUD buttons: hover/active reactivity for inline-styled
