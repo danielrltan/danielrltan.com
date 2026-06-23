@@ -88,8 +88,7 @@ const TONE_COLOR: Record<Tone, string> = {
  * applies only to the abstract placeholder objects.
  */
 // `rot` (radians, XYZ Euler) is the object's authored REST orientation. The
-// gentle sway + hover parallax oscillate AROUND it. Dialed in via the ?tune=other
-// tuner (src/other/HobbiesTuner.tsx); paste its "Copy desktop LAYOUT" output here.
+// gentle sway + hover parallax oscillate AROUND it.
 export interface HobbyLayoutEntry {
   pos: [number, number, number];
   scale: number;
@@ -162,8 +161,7 @@ function PlaceholderMesh({ kind, size }: { kind: PlaceholderKind; size: number }
 /**
  * Normalize a loaded GLB scene to the cluster's base size + candy gloss, so
  * every prop reads at a consistent footprint no matter how it was modelled.
- * Returns a CLONE (never mutates the cached PRELOADED scene). Shared by the live
- * HobbyMesh and the ?tune=other tuner so tuned scale matches what ships.
+ * Returns a CLONE (never mutates the cached PRELOADED scene).
  */
 export function normalizeHobbyScene(scene: THREE.Group): THREE.Group {
   const cloned = scene.clone(true);
@@ -239,39 +237,6 @@ function startPreload() {
   pump();
 }
 startPreload();
-
-/**
- * Subscribe to the module-scope GLB preload and return the loaded scene per
- * hobby id (null until each arrives). Used by the live scene's tiles AND the
- * ?tune=other tuner.
- */
-export function useHobbyScenes(): Record<string, THREE.Group | null> {
-  const [loaded, setLoaded] = useState<Record<string, THREE.Group | null>>(() => {
-    const init: Record<string, THREE.Group | null> = {};
-    for (const h of HOBBIES) {
-      const entry = PRELOADED[h.id];
-      if (entry && entry.loaded) init[h.id] = entry.scene;
-    }
-    return init;
-  });
-  useEffect(() => {
-    const unsubs: Array<() => void> = [];
-    HOBBIES.forEach((h) => {
-      const entry = PRELOADED[h.id];
-      if (!entry) return;
-      if (entry.loaded) {
-        setLoaded((p) => (h.id in p ? p : { ...p, [h.id]: entry.scene }));
-        return;
-      }
-      const cb = (s: THREE.Group | null) =>
-        setLoaded((p) => ({ ...p, [h.id]: s }));
-      entry.listeners.add(cb);
-      unsubs.push(() => entry.listeners.delete(cb));
-    });
-    return () => unsubs.forEach((u) => u());
-  }, []);
-  return loaded;
-}
 
 /** Per-body deterministic params: same id → same rest pose + drift + sway. */
 interface BodyAnim {
@@ -546,29 +511,25 @@ function HobbyMesh({
   );
 }
 
-// Camera framing: fixed, looking at the cluster centre. The cluster is wider
-// than tall; we fit both half-extents against the frame and take whichever axis
-// is binding (height on desktop, width on portrait). FILL < 1 leaves a margin
-// so nothing is cut off; the per-body containment clamp (below) is the hard
-// guarantee that no object ever crosses the visible edge.
-export const CLUSTER_HALF_W = 3.06;
-export const CLUSTER_HALF_H = 1.82;
+// Camera framing. Desktop is handled by desktopFraming() below (parks the cluster
+// low, reserving a top band for the wordmark). Mobile portrait uses the half-extents
+// + camDistanceForAspect() with the constants below. The per-body containment clamp
+// (further down) is the hard guarantee that no object ever crosses the visible edge.
 // MOBILE PORTRAIT cluster — a TALL 2-column arrangement so the 10 objects FILL a
 // phone's portrait screen. The landscape spread above, framed to fit its WIDTH,
 // pulls the camera far back on a narrow viewport (small cluster + dead air); a
 // tall cluster lets the camera frame the HEIGHT and fill the screen. `pos` is
 // the portrait home; optional `scale`/`rot` override the desktop LAYOUT values
 // for mobile (omit to inherit). Selected at <=768px via the reactive `mobile`
-// flag in SceneInner. Dialed in via ?tune=other (mobile mode); paste its
-// "Copy mobile POS_PORTRAIT" output here.
+// flag in SceneInner.
 export interface HobbyPortraitEntry {
   pos: [number, number, number];
   scale?: number;
   rot?: [number, number, number];
 }
 export const POS_PORTRAIT: Record<string, HobbyPortraitEntry> = {
-  // Dialed in via ?tune=other (mobile mode). scale/rot are emitted only when they
-  // differ from the desktop LAYOUT; pos is the portrait home slot.
+  // scale/rot are set only where they differ from the desktop LAYOUT; pos is the
+  // portrait home slot.
   belt:     { pos: [ 0.78, -2.52,  0.04], scale: 1.29, rot: [-0.69, -1.01, -2.06] },
   piano:    { pos: [ 0.94,  1.67, -0.02], scale: 1.24, rot: [ 0.61, -0.31,  0.07] },
   pc:       { pos: [ 0.33,  0.81,  0.05], scale: 1.67, rot: [-0.29, -0.27, -0.07] },
@@ -606,11 +567,6 @@ export const CLUSTER_HALF_H_PORTRAIT = 3.1;
 // objects (+ their static labels) clears the big "Some interests" wordmark that
 // floats over the top of the section.
 export const CAM_LOOK_Y_PORTRAIT = 0.5;
-// Look ABOVE the cluster centre so the whole spread sits in the LOWER part of
-// the frame, leaving clear space up top for the giant "Some interests"
-// wordmark (objects under the title read as messy / unreviewed). Eased back
-// from 0.42 so the lowest objects (the cone) keep clearance at the BOTTOM too.
-export const CAM_LOOK_Y = 0.34;
 const CAM_HEIGHT_OFFSET = 0.0;
 export const VFOV_DEG = 36;
 const VFOV_RAD = (VFOV_DEG * Math.PI) / 180;
@@ -641,9 +597,9 @@ export function camDistanceForAspect(
 // not enough for the wordmark — so reserving the band shrinks the cluster a touch
 // and small side margins appear. That's the cost of giving the title clean space.
 //
-// The cluster bounds are DERIVED from the tuned LAYOUT (+ a per-object visual
-// pad), so re-tuning the positions reframes the camera automatically — there is
-// no hand-maintained half-extent to drift out of sync with the ?tune=other tool.
+// The cluster bounds are DERIVED from the LAYOUT (+ a per-object visual pad), so
+// editing the positions reframes the camera automatically — there is no
+// hand-maintained half-extent to drift out of sync with the layout.
 const _LAYOUT_XABS = Object.values(LAYOUT).map((l) => Math.abs(l.pos[0]));
 const _LAYOUT_Y = Object.values(LAYOUT).map((l) => l.pos[1]);
 const CLUSTER_PAD = 0.55; // object visual allowance beyond its home centre
@@ -840,9 +796,9 @@ function SceneInner({
     }
 
     // ---- Containment: keep every body inside the visible frame ----
-    // The (frame - radius - margin) box is the hard safety net, but the tuned
-    // home slots (dialed in via ?tune=other) deliberately fill the frame EDGE-TO-
-    // EDGE with big props, so several homes sit OUTSIDE that naive box. Clamping
+    // The (frame - radius - margin) box is the hard safety net, but the LAYOUT
+    // home slots deliberately fill the frame EDGE-TO-EDGE with big props, so
+    // several homes sit OUTSIDE that naive box. Clamping
     // to it would yank those objects inward and bunch the cluster (the left-side
     // pile-up + vertical squash the user saw). So each body's limit is the UNION
     // of the safety box and its OWN tuned home extent: a body may always rest at
@@ -1039,9 +995,6 @@ export const HobbiesScene = memo(function HobbiesScene({
           antialias: true,
           alpha: true,
           powerPreference: "high-performance",
-          preserveDrawingBuffer:
-            typeof window !== "undefined" &&
-            new URLSearchParams(window.location.search).get("tune") === "other",
         }}
         frameloop="demand"
         onCreated={({ invalidate }) => {

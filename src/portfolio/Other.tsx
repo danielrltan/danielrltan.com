@@ -9,10 +9,6 @@ import { ScrambleText } from "./ScrambleText";
 const HobbiesScene = lazy(() =>
   import("../other/HobbiesScene").then((m) => ({ default: m.HobbiesScene })),
 );
-// DISPOSABLE dev tuner (?tune=other): lazy so it never ships in the normal
-// bundle. Delete this import + the TUNE_MODE branch below when orientations are
-// final — the tuned LAYOUT/POS_PORTRAIT values are the only thing that stays.
-const HobbiesTuner = lazy(() => import("../other/HobbiesTuner"));
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -59,10 +55,6 @@ const HOBBIES: Hobby[] = [
 // so HobbiesScene's memo/prop-equality is not defeated every render.
 const HOBBY_IDS = HOBBIES.map((h) => h.id);
 
-const TUNE_MODE =
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("tune") === "other";
-
 // prefers-reduced-motion: skip the entrance scrub and reveal the header
 // statically with the 3D cluster live (the scene parks itself static too). Read
 // once at mount; stable for the page lifetime.
@@ -108,15 +100,9 @@ export function Other() {
   // Gates the heavy 3D render loop: flipped true as the section approaches so
   // the scene doesn't render at full rate while far off-screen. setState with
   // an unchanged value bails, so calling it per tick is free.
-  const [live, setLive] = useState(TUNE_MODE);
+  const [live, setLive] = useState(false);
 
   useEffect(() => {
-    if (TUNE_MODE) {
-      applyHead(headerRef.current, 1);
-      setLive(true);
-      return;
-    }
-
     // prefers-reduced-motion: no scrub. Header up, scene live (static cluster).
     if (PREFERS_REDUCED_MOTION) {
       applyHead(headerRef.current, 1);
@@ -180,15 +166,6 @@ export function Other() {
     };
   }, []);
 
-  // TUNE_MODE: scroll the section into view for the verification harness.
-  useEffect(() => {
-    if (!TUNE_MODE) return;
-    const snap = () => sectionRef.current?.scrollIntoView({ block: "start" });
-    setTimeout(snap, 100);
-    window.addEventListener("resize", snap);
-    return () => window.removeEventListener("resize", snap);
-  }, []);
-
   return (
     <section
       ref={sectionRef}
@@ -222,11 +199,9 @@ export function Other() {
         className="other-header"
         style={
           {
-            // Hide the editorial wordmark while tuning so it doesn't overlay the tool.
-            display: TUNE_MODE ? "none" : undefined,
             // Initial state only; applyHead writes these imperatively after mount.
-            "--head-eye": TUNE_MODE || PREFERS_REDUCED_MOTION ? "1" : "0",
-            "--head-title": TUNE_MODE || PREFERS_REDUCED_MOTION ? "1" : "0",
+            "--head-eye": PREFERS_REDUCED_MOTION ? "1" : "0",
+            "--head-title": PREFERS_REDUCED_MOTION ? "1" : "0",
           } as React.CSSProperties
         }
       >
@@ -244,13 +219,9 @@ export function Other() {
           a framed box. aria-hidden: decorative; the sr-only list above is the
           accessible equivalent. */}
       <div className="other-scene-wrap" aria-hidden="true">
-        {(sceneMounted || TUNE_MODE) && (
+        {sceneMounted && (
           <Suspense fallback={null}>
-            {TUNE_MODE ? (
-              <HobbiesTuner />
-            ) : (
-              <HobbiesScene hobbyIds={HOBBY_IDS} live={live} />
-            )}
+            <HobbiesScene hobbyIds={HOBBY_IDS} live={live} />
           </Suspense>
         )}
       </div>
