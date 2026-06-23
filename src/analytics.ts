@@ -3,10 +3,11 @@
  * the umami script has loaded (and safe under ad-blockers / DNT). The
  * function silently no-ops when the global is missing.
  *
- * Naming convention: `noun_verb` past-tense for state changes
- * (`room_entered`, `os_opened`), and `noun_clicked` for explicit
- * actions (`contact_clicked`). Keep this list pruned: Umami's free
- * tier and the dashboard both reward a small, meaningful event set.
+ * Naming convention: a small set of meaningful event NAMES, each carrying
+ * `data` props for the specifics (e.g. one `outbound_link` event with
+ * `{ url, context }` rather than a separate event per link). This keeps the
+ * Umami dashboard readable while still covering every interaction — the names
+ * are the columns, the data props are the breakdowns.
  */
 
 declare global {
@@ -22,7 +23,27 @@ declare global {
 export type AnalyticsEvent =
   | "intro_started" // user first scroll triggers the intro
   | "room_entered" // intro completes, scene is interactive
-  | "room_reset"; // R key resets the room
+  | "room_reset" // R key resets the room
+  // Navigation
+  | "section_view" // a section scrolled into view — { section }
+  | "nav_open" // channel/spill menu opened — { via }
+  | "nav_close" // channel/spill menu closed — { via }
+  | "nav_jump" // jumped to a section — { section, source }
+  | "jump_to_top" // jump-to-top control
+  // Projects (Macintosh)
+  | "project_open" // opened a project detail — { project }
+  | "project_close" // closed a project detail — { via }
+  | "project_link" // clicked a project's live/repo link — { project, type }
+  // Work
+  | "work_expand" // expanded a work role — { role }
+  // Play / Hobbies
+  | "hobby_focus" // focused a hobby object (first time) — { hobby }
+  // Contact / Keypad
+  | "keypad_press" // pressed a 3D keypad cap — { key }
+  // Outbound / conversions (used site-wide)
+  | "outbound_link" // external link — { url, context }
+  | "contact_email" // mailto click — { context }
+  | "resume_download"; // résumé/CV download — { context }
 
 export function track(
   event: AnalyticsEvent,

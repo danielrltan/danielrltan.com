@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUp } from "lucide-react";
+import { track } from "./analytics";
 
 /** Persistent jump-to-top pill, bottom-right. Visible after the hero. */
 const SHOW_AT_PROGRESS = 0.08;
@@ -41,7 +42,10 @@ export function JumpToTop() {
       type="button"
       className="hud-btn"
       aria-label="Jump to top"
-      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      onClick={() => {
+        track("jump_to_top");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }}
       style={{
         position: "fixed",
         // Safe-area aware bottom-right so the button clears the home

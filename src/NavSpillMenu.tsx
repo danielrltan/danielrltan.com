@@ -631,9 +631,11 @@ interface Props {
   open: boolean;
   activeIdx: number;
   onClose: () => void;
+  /** Fired when a section is chosen from the menu (for analytics). */
+  onJump?: (label: string) => void;
 }
 
-export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
+export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
   // MOBILE / touch branch: the WebGL spill ring is hover-driven (enlarge + aim
   // cue ride on an every-frame screen-space proximity test against the cursor),
   // so on a phone its 8 crowded objects are nearly untappable. On coarse
@@ -736,6 +738,7 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
   }, [mounted, onClose]);
 
   const select = (i: number) => {
+    onJump?.(SECTION_REGISTRY[i]?.label ?? "");
     const opts = reduced ? { immediate: true } : { duration: 1.1 };
     // Beat-aware jump: if the section parks a sub-beat (Play → the "Some
     // interests" reel inside the Other pin), scroll to that fraction of the

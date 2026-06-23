@@ -4,6 +4,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import "./sections.css";
 import "./about.css";
 import { ScrambleText } from "./ScrambleText";
+import { track } from "../analytics";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -294,6 +295,12 @@ export function About() {
                     href="https://www.broadridge.com"
                     target="_blank"
                     rel="noreferrer"
+                    onClick={() =>
+                      track("outbound_link", {
+                        url: "broadridge",
+                        context: "about",
+                      })
+                    }
                   >
                     Broadridge
                   </a>
@@ -346,7 +353,11 @@ export function About() {
               <dt className="label">Reach</dt>
               <dd className="c-info-body">
                 <span className="reach-primary">
-                  <a className="mail" href="mailto:hello@danielrltan.com">
+                  <a
+                    className="mail"
+                    href="mailto:hello@danielrltan.com"
+                    onClick={() => track("contact_email", { context: "about" })}
+                  >
                     hello@<span className="accent">danielrltan</span>.com
                   </a>
                   <span className="hint">Replies &lt; 24h</span>
@@ -354,7 +365,20 @@ export function About() {
                 {/* Not buttons: a comms "switchboard" — each channel is a row an
                     orange bar wipes across on hover, with the handle + an
                     external mark. Ties into the site's channel-dial language. */}
-                <ul className="reach-channels" aria-label="Find Daniel elsewhere">
+                <ul
+                  className="reach-channels"
+                  aria-label="Find Daniel elsewhere"
+                  onClick={(e) => {
+                    const a = (e.target as HTMLElement).closest("a");
+                    if (!a) return;
+                    const name =
+                      a
+                        .querySelector(".ch-name")
+                        ?.textContent?.trim()
+                        .toLowerCase() ?? "link";
+                    track("outbound_link", { url: name, context: "about" });
+                  }}
+                >
                   <li className="ch">
                     <a
                       href="https://github.com/danielrltan"

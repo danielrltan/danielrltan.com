@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useIsMobile } from "./useIsMobile";
 import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
 import { SectionDial } from "./SectionDial";
+import { track } from "./analytics";
 // NavSpillMenu pulls in three.js + @react-three/drei + gsap. Lazy-load it so
 // those deps leave the entry/first-paint bundle; warm the chunk on idle
 // (mounted but CLOSED, so NO WebGL context is created until the user actually
@@ -76,6 +77,7 @@ export function StatusBar() {
       if (bestIdx !== lastIdx) {
         lastIdx = bestIdx;
         setActiveIdx(bestIdx);
+        track("section_view", { section: SECTION_REGISTRY[bestIdx]?.label });
       }
     };
     // Keep measuring for ~1.3s after the last scroll/resize. A scroll fires
@@ -123,11 +125,29 @@ export function StatusBar() {
       )
         return;
       e.preventDefault();
+      menuViaRef.current = "hotkey";
       setMenuOpen((o) => !o);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Log menu open/close exactly once per real state change. Tracking lives in an
+  // effect (not inside the setState updater — that double-fires under StrictMode
+  // and is an impure updater). `menuViaRef` records how the last toggle fired.
+  const menuViaRef = useRef("dial");
+  const menuFirstRef = useRef(true);
+  useEffect(() => {
+    if (menuFirstRef.current) {
+      menuFirstRef.current = false;
+      return;
+    }
+    track(menuOpen ? "nav_open" : "nav_close", { via: menuViaRef.current });
+  }, [menuOpen]);
+  const toggleMenu = (via: string) => {
+    menuViaRef.current = via;
+    setMenuOpen((o) => !o);
+  };
 
   const active = SECTION_REGISTRY[activeIdx] ?? SECTION_REGISTRY[0]!;
   const cardAria = `Open section menu. Current: ${active.number} ${active.label}`;
@@ -143,7 +163,7 @@ export function StatusBar() {
       <SectionDial
         activeIdx={activeIdx}
         menuOpen={menuOpen}
-        onToggle={() => setMenuOpen((o) => !o)}
+        onToggle={() => toggleMenu("dial")}
         cardAria={cardAria}
         isMobile={isMobile}
         style={{
@@ -161,7 +181,11 @@ export function StatusBar() {
           <NavSpillMenu
             open={menuOpen}
             activeIdx={activeIdx}
-            onClose={() => setMenuOpen(false)}
+            onClose={() => {
+              menuViaRef.current = "menu";
+              setMenuOpen(false);
+            }}
+            onJump={(label) => track("nav_jump", { section: label, source: "menu" })}
           />
         </Suspense>
       )}

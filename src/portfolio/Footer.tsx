@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { FooterSignature } from "./FooterSignature";
+import { track } from "../analytics";
 import "./footer.css";
 
 interface JumpLink {
@@ -159,6 +160,16 @@ export function Footer() {
                     rel={isMail ? undefined : "noreferrer noopener"}
                     aria-label={l.aria}
                     className="footer-link"
+                    onClick={() => {
+                      if (isMail) track("contact_email", { context: "footer" });
+                      else if (l.href.endsWith(".pdf"))
+                        track("resume_download", { context: "footer" });
+                      else
+                        track("outbound_link", {
+                          url: l.label.toLowerCase(),
+                          context: "footer",
+                        });
+                    }}
                     // --i drives the CSS reveal stagger (i × --stagger).
                     style={{ "--i": i } as CSSProperties}
                   >
@@ -183,7 +194,10 @@ export function Footer() {
                   type="button"
                   className="footer-link"
                   aria-label={`Jump to ${l.label}`}
-                  onClick={() => handleJumpClick(l.selector)}
+                  onClick={() => {
+                    track("nav_jump", { section: l.label, source: "footer" });
+                    handleJumpClick(l.selector);
+                  }}
                   // --i drives the CSS reveal stagger (i × --stagger).
                   style={{ "--i": i } as CSSProperties}
                 >

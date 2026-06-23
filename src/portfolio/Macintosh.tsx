@@ -15,6 +15,7 @@ const MacintoshScene = lazy(() =>
 );
 import { TechStackTicker } from "../macintosh/TechStackTicker";
 import { MAC_PROJECTS, liveLinkLabel, type MacProject } from "../macintosh/projects";
+import { track } from "../analytics";
 import { useMacNarrow } from "../macintosh/useMacNarrow";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 
@@ -158,6 +159,7 @@ export function Macintosh() {
   // the project. Used by BOTH the sr-only buttons and (via the prop)
   // the 3D tile raycast.
   const openProject = (p: MacProject) => {
+    track("project_open", { project: p.title });
     openerFocusRef.current = document.activeElement as HTMLElement | null;
     setSelected(p);
     // NARROW: the detail renders ON the CRT, which sits ABOVE the tap
@@ -183,6 +185,7 @@ export function Macintosh() {
   // that jolts the pin → the reported open/ESC jitter. preventScroll
   // restores focus without moving the scroll position.
   const closeProject = () => {
+    if (selected) track("project_close", { project: selected.title });
     setSelected(null);
     setScreenRect(null);
     const prev = openerFocusRef.current;
@@ -486,6 +489,12 @@ export function Macintosh() {
                         href={p.liveHref}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={() =>
+                          track("project_link", {
+                            project: p.title,
+                            type: "live",
+                          })
+                        }
                       >
                         {liveLinkLabel(p.liveHref)}{" "}
                         <span aria-hidden="true">→</span>
@@ -497,6 +506,12 @@ export function Macintosh() {
                         href={p.repoHref}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={() =>
+                          track("project_link", {
+                            project: p.title,
+                            type: "repo",
+                          })
+                        }
                       >
                         Source <span aria-hidden="true">→</span>
                       </a>
@@ -587,6 +602,12 @@ export function Macintosh() {
                 href={selected.liveHref}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() =>
+                  track("project_link", {
+                    project: selected.title,
+                    type: "live",
+                  })
+                }
               >
                 {liveLinkLabel(selected.liveHref)} <span aria-hidden="true">→</span>
               </a>
@@ -597,6 +618,12 @@ export function Macintosh() {
                 href={selected.repoHref}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() =>
+                  track("project_link", {
+                    project: selected.title,
+                    type: "repo",
+                  })
+                }
               >
                 Source <span aria-hidden="true">→</span>
               </a>
@@ -666,6 +693,12 @@ export function Macintosh() {
                 href={(selected.liveHref || selected.repoHref)!}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() =>
+                  track("project_link", {
+                    project: selected.title,
+                    type: selected.liveHref ? "live" : "repo",
+                  })
+                }
               >
                 {selected.liveHref ? liveLinkLabel(selected.liveHref) : "Source"}
               </a>

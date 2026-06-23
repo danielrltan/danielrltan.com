@@ -5,6 +5,7 @@ import "./sections.css";
 import "./work-timeline.css";
 import { ScrambleText } from "./ScrambleText";
 import { scrollToSection } from "./Keypad";
+import { track } from "../analytics";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -245,6 +246,7 @@ export function Work() {
             rel="noreferrer"
             aria-label="Download Daniel Tan's full résumé (PDF, opens in a new tab)"
             className="work-resume"
+            onClick={() => track("resume_download", { context: "work" })}
           >
             <span className="work-resume-label">Full résumé</span>
             <span className="work-resume-arrow" aria-hidden>
@@ -270,7 +272,10 @@ export function Work() {
                   className="work-acc-head"
                   aria-expanded={open}
                   aria-controls={panelId}
-                  onClick={() => handleActivate(i)}
+                  onClick={() => {
+                    if (!open) track("work_expand", { role: s.brand });
+                    handleActivate(i);
+                  }}
                 >
                   <span className="work-acc-node" aria-hidden>
                     <span className="work-acc-year">{s.year}</span>

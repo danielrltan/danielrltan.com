@@ -9,6 +9,7 @@ const KeypadScene = lazy(() =>
   import("../keypad/KeypadScene").then((m) => ({ default: m.KeypadScene })),
 );
 import { useIsMobile } from "../useIsMobile";
+import { track } from "../analytics";
 import "./keypad.css";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -423,6 +424,12 @@ export function Keypad() {
               target="_blank"
               rel="noreferrer"
               aria-label={`${s.aria}: opens in a new tab`}
+              onClick={() =>
+                track("outbound_link", {
+                  url: s.label.toLowerCase(),
+                  context: "contact",
+                })
+              }
             >
               {s.label}
             </a>

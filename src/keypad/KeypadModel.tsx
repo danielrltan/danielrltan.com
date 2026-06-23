@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useGLTF } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { track } from "../analytics";
 
 /**
  * Loads /keypad.glb and wires up four social keycaps + the spinnable
@@ -492,6 +493,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     emitInteract(1.0);
     const url = SOCIAL_URLS[name];
     if (!url) return;
+    track("keypad_press", { key: name });
     window.open(url, "_blank", "noopener,noreferrer");
   };
   const handleDialEnter = (e: any) => {

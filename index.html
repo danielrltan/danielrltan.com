@@ -144,34 +144,19 @@
         z-index: 9999;
         background: #ff4f00;
         color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         font-family: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
         -webkit-font-smoothing: antialiased;
       }
-      #boot-screen .bs-status {
-        position: absolute;
-        top: 28px;
-        left: 6vw;
-        display: inline-flex;
-        align-items: baseline;
-        gap: 10px;
-        font-size: 9.5px;
-        letter-spacing: 0.26em;
-        text-transform: uppercase;
-      }
-      #boot-screen .bs-status b { font-weight: 600; color: rgba(255, 255, 255, 0.72); }
-      #boot-screen .bs-status span { font-weight: 500; color: #ffffff; }
-      #boot-screen .bs-caption {
-        position: absolute;
-        bottom: 28px;
-        left: 6vw;
-        font-size: 11px;
-        letter-spacing: 0.22em;
-        text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.82);
-      }
-      @media (max-width: 768px) {
-        #boot-screen .bs-status,
-        #boot-screen .bs-caption { left: 4vw; }
+      /* Mirrors the live <BootLoader>: one big pixel number, centred, so the
+         React hand-off has no jump (the static 0 just starts climbing). */
+      #boot-screen .bs-count {
+        font-family: "VT323", monospace;
+        font-size: clamp(120px, 26vw, 340px);
+        line-height: 0.8;
+        letter-spacing: 0.01em;
       }
       /* Crawler-only fallback. Hidden from sighted users (the canvas covers
          everything) but indexable. Web-filter crawlers and search engines
@@ -191,8 +176,7 @@
   </head>
   <body>
     <div id="boot-screen" aria-hidden="true">
-      <div class="bs-status"><b>SYS</b><span>BOOT</span></div>
-      <div class="bs-caption">LOADING</div>
+      <div class="bs-count">0</div>
     </div>
     <div id="root"></div>
 

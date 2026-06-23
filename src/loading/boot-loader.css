@@ -1,191 +1,44 @@
-/* Live boot loader: "SIGNAL ACQUIRE" — an ASCII TRANSMISSION FIELD on the
-   International Orange scrim. A small 2D canvas churns the site's ASCII
-   vocabulary like an incoming signal and locks it in from the floor up (faint
-   orange noise → bright ordered white) as the load completes. A CRT scanline
-   veil + a hairline boot readout carry the retro-terminal voice. White ink only,
-   so the field matches the scrim beneath and the hand-off to the signature draw
-   stays seamless. transform / opacity-only outro. */
+/* Live boot loader: ONE big pixel number climbing on the International Orange
+   scrim, nothing else. White ink only, so the hand-off to the hero signature
+   draw on the same orange field stays seamless. transform/opacity-only outro. */
 .boot-loader {
   position: fixed;
   inset: 0;
   z-index: 9000;
   background: var(--accent, #ff4f00);
   color: #ffffff;
-  font-family: var(--font-body, "Geist", sans-serif);
   -webkit-font-smoothing: antialiased;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   transition:
-    opacity 380ms var(--ease-soft, ease),
-    transform 380ms var(--ease-soft, ease);
+    opacity 420ms var(--ease-soft, ease),
+    transform 420ms var(--ease-soft, ease);
   will-change: opacity, transform;
 }
 .boot-loader.is-complete {
   opacity: 0;
-  transform: translate3d(0, -1.6vh, 0) scale(0.99);
+  transform: translate3d(0, -1.4vh, 0);
   pointer-events: none;
 }
 
-/* ── CRT veil: hairline scanlines + a slow brightness flicker ──────────── */
-.boot-scan {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.07) 0,
-    rgba(0, 0, 0, 0.07) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-  mix-blend-mode: multiply;
-  animation: boot-flicker 5.5s steps(1, end) infinite;
-}
-@keyframes boot-flicker {
-  0%, 7%, 9%, 51%, 53%, 100% { opacity: 1; }
-  8% { opacity: 0.72; }
-  52% { opacity: 0.84; }
-}
-
-/* ── Centred stack: transmission window, readout ──────────────────────── */
-.boot-loader__center {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(20px, 3.4vh, 34px);
-  padding: 24px;
-  box-sizing: border-box;
-}
-
-/* The transmission window — the ASCII canvas, framed like a small screen
-   carved into the orange field (hairline keyline + a faint inner vignette so it
-   reads as a contained signal, without breaking the all-orange hand-off). */
-.boot-screen {
-  position: relative;
-  width: clamp(260px, 44vw, 460px);
-  aspect-ratio: 16 / 9;
-  max-height: 46vh;
-}
-.boot-ascii {
-  display: block;
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-}
-.boot-screen__frame {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  /* Hairline keyline + a soft inward vignette = the "screen" read. */
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
-    inset 0 0 44px rgba(140, 38, 0, 0.4);
-}
-
-/* ── Readout: word, stepped pixel meter, percentage ───────────────────── */
-.boot-loader__readout {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(12px, 1.8vh, 18px);
-}
-/* "LOADING" / "READY" in the OffBit pixel face (sitewide display voice). */
-.boot-loader__word {
-  font-family: var(--font-pixel, "Offbit", monospace);
-  font-weight: 700;
-  font-size: clamp(24px, 3vw, 32px);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+/* The climbing count — the only element. Sitewide pixel display face. */
+.boot-loader__count {
+  font-family: "VT323", var(--font-pixel, "Offbit", monospace);
+  font-size: clamp(120px, 26vw, 340px);
+  line-height: 0.8;
+  letter-spacing: 0.01em;
   color: #ffffff;
-  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Stepped pixel meter: discrete square cells fill left→right. Block motion to
-   match the site's quantized pixel-tick language (no smooth bar). */
-.boot-loader__meter {
-  display: flex;
-  gap: 3px;
-  align-items: center;
-}
-.boot-cell {
-  width: clamp(6px, 0.7vw, 9px);
-  height: clamp(12px, 1.5vw, 17px);
-  background: rgba(255, 255, 255, 0.2);
-  /* Hard step as each cell turns on — reads as a hardware loading meter. */
-  transition: background 90ms steps(1, end), box-shadow 90ms steps(1, end);
-}
-.boot-cell.is-on {
-  background: #ffffff;
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.55);
-}
-
-/* Big live percentage in the segment/terminal face. */
-.boot-loader__pct {
-  font-family: "VT323", var(--font-body, sans-serif), monospace;
-  font-size: clamp(40px, 5vw, 56px);
-  line-height: 0.9;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.92);
-  display: inline-flex;
-  align-items: baseline;
-  gap: 2px;
-}
-.boot-loader__pct span {
-  font-size: 0.55em;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-/* Top-left status key — mirrors the hero meta-chip voice. */
-.boot-loader__status {
-  position: absolute;
-  top: 28px;
-  left: 6vw;
-  z-index: 2;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 10px;
-  font-family: var(--font-mono, "Geist", sans-serif);
-  font-size: 9.5px;
-  letter-spacing: 0.26em;
-  text-transform: uppercase;
-}
-.boot-loader__status b {
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.72);
-}
-.boot-loader__status span {
-  font-weight: 500;
-  color: #ffffff;
-}
-
-@media (max-width: 768px) {
-  .boot-loader__status {
-    left: 4vw;
-  }
-  .boot-screen {
-    width: min(82vw, 360px);
-  }
-}
-
-/* Reduced motion: the field is drawn once (mostly resolved, no churn), the
-   scanline flicker holds steady, and the outro lift is dropped. The percentage
-   still counts. */
+/* Reduced motion: the count snaps to target; the outro lift is dropped. */
 @media (prefers-reduced-motion: reduce) {
   .boot-loader {
     transition: none !important;
   }
   .boot-loader.is-complete {
     transform: none;
-  }
-  .boot-scan {
-    animation: none;
-  }
-  .boot-cell {
-    transition: none;
   }
 }

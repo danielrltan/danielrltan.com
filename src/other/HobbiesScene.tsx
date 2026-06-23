@@ -3,6 +3,11 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber"
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { track } from "../analytics";
+
+// First-focus-per-page guard for hobby_focus analytics (module scope persists
+// across the scene's mount-on-approach remounts, so each interest fires once).
+const SEEN_HOBBIES = new Set<string>();
 
 /**
  * Hobbies scene: BOLD CLUSTER, floating-in-space edition.
@@ -440,6 +445,12 @@ function HobbyMesh({
     e.stopPropagation();
     hoveredIndexRef.current = index;
     document.body.style.cursor = "pointer";
+    // Count each interest's FIRST focus per page load (module-level Set), so the
+    // hover doesn't spam the same event every frame the cursor sits on it.
+    if (!SEEN_HOBBIES.has(hobby.id)) {
+      SEEN_HOBBIES.add(hobby.id);
+      track("hobby_focus", { hobby: hobby.label });
+    }
   };
   const onPointerOut = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
