@@ -120,7 +120,12 @@ export function MoveableCursor({ hot }: Props) {
     // Press AND HOLD: dip on pointerdown and STAY dipped until the button is
     // released (or the gesture is cancelled / the window blurs), so holding the
     // mouse down keeps the cursor pressed instead of bouncing straight back.
-    const onDown = () => {
+    const onDown = (e: PointerEvent) => {
+      // Only the LEFT button (0) is a real click. Right-click (2) is disabled
+      // site-wide (App.tsx suppresses the context menu) and middle-click (1)
+      // drives the pan cursor — so don't play the press dip for either, or the
+      // cursor would animate an action that can't happen.
+      if (e.button !== 0) return;
       if (!reduced) pressTarget = PRESS_SCALE;
     };
     const onUp = () => {
