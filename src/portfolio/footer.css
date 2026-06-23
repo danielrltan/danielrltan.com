@@ -15,7 +15,7 @@
      section norm) and bottom is a lighter 48px — heavier top, lighter
      terminal bottom so the footer reads as the page's closing band
      rather than another full-height section. Deliberate, not drift. */
-  padding: 96px 6vw 48px;
+  padding: 72px 6vw 44px;
   margin-top: 0;
   z-index: 5;
   /* CRITICAL: the parent <main> sets pointer-events:none so the 3D
@@ -53,7 +53,7 @@
   /* Ghosted on the dark band: full --ink here would shout; a faint ink
      reads as a watermark anchoring the corner. */
   color: var(--ink-faint);
-  margin: 0 0 var(--space-6) 0;
+  margin: 0 0 var(--space-5) 0;
   display: inline-flex;
   align-items: baseline;
   gap: var(--space-3);
@@ -77,7 +77,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr 1.4fr;
   gap: var(--space-7);
-  margin-bottom: 96px;
+  margin-bottom: 40px;
 }
 
 .footer-col-label {
@@ -95,15 +95,12 @@
   font-weight: 600;
 }
 
-/* All three columns top-align now: the signature moved OUT to a
-   full-width sign-off band below the grid (see .footer-signoff), so
-   the Elsewhere column is a plain top-aligned column like the others
-   and the headers + rows line up across all three. */
-
-/* Sign-off signature band: full-width, left-aligned, sits below the
-   aligned grid as the closing gesture above the copyright row. */
-.footer-signoff {
-  margin-bottom: 64px;
+/* All three column HEADERS + rows still top-align (the signature lives BELOW
+   the Elsewhere links, not above the header, so it never pushes the rows out of
+   line). The signature fills the space under the 4 Elsewhere links so the left
+   column runs to roughly the taller Index column's length. */
+.footer-elsewhere-sign {
+  margin-top: var(--space-5);
   max-width: 100%;
   overflow: hidden;
 }
@@ -111,7 +108,7 @@
 .footer-nav {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 2px;
 }
 
 .footer-link {
@@ -120,7 +117,7 @@
   gap: var(--space-4);
   /* Slight horizontal padding so the focus ring + hover offset have
      breathing room and the hit target is comfortable. */
-  padding: 6px 6px;
+  padding: 3px 6px;
   margin-left: -6px;
   background: transparent;
   border: 0;
@@ -294,11 +291,10 @@
     gap: 40px;
     margin-bottom: var(--space-7);
   }
-  .footer-signoff {
-    /* #38: the signature band shrinks to 84px on phones; pull the gap below
-       it in to ~24px so the shorter mark doesn't float over a wide void
-       above the copyright row. */
-    margin-bottom: 24px;
+  .footer-elsewhere-sign {
+    /* On stacked phones the signature sits under the Elsewhere links; a small
+       top gap keeps it tied to the column without a wide void. */
+    margin-top: var(--space-4);
   }
 
   /* TOUCH TARGETS (#20): on desktop the jump-link buttons + elsewhere links

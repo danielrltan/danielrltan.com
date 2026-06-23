@@ -181,6 +181,12 @@ export function Footer() {
                 );
               })}
             </nav>
+            {/* Signature sign-off tucked UNDER the Elsewhere links, so the left
+                column runs to roughly the Index column's length instead of
+                floating in a long band below the whole grid. */}
+            <div className="footer-elsewhere-sign" aria-hidden="true">
+              <FooterSignature height={110} brushRadius={4} />
+            </div>
           </div>
 
           <div className="footer-col">
@@ -244,15 +250,6 @@ export function Footer() {
               </div>
             </dl>
           </div>
-        </div>
-
-        {/* Sign-off signature: replays the captured gesture when the
-            footer scrolls into view. Moved OUT of the Elsewhere column
-            (where it pushed that column's rows out of line with the
-            other two) to a full-width sign-off band below the aligned
-            grid, so the three column headers + rows line up. */}
-        <div className="footer-signoff">
-          <FooterSignature height={120} />
         </div>
 
         {/* Bottom: copyright + sign-off */}

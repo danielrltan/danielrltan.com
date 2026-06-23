@@ -428,23 +428,13 @@ function HobbyMesh({
     }
   });
 
-  // Teardown contract: this tile writes document.body.style.cursor='pointer' on
-  // hover and only clears it on its own pointerOut — but R3F fires NO pointerOut
-  // when the Hobbies CANVAS UNMOUNTS (mount-on-approach tears it down as it
-  // scrolls out of view), which strands body.cursor='pointer' and sticks the
-  // spark cursor on the next section. Clear it on unmount.
-  useEffect(
-    () => () => {
-      if (document.body.style.cursor === "pointer")
-        document.body.style.cursor = "";
-    },
-    [],
-  );
-
   const onPointerOver = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     hoveredIndexRef.current = index;
-    document.body.style.cursor = "pointer";
+    // NB: do NOT set body cursor to "pointer" here. The interests are hover-only
+    // (they reveal a label), not clickable — and the custom cursor shows its
+    // "clickable" spark variant whenever body cursor is "pointer", which falsely
+    // signals these are clickable. Keep the plain arrow on hover.
     // Count each interest's FIRST focus per page load (module-level Set), so the
     // hover doesn't spam the same event every frame the cursor sits on it.
     if (!SEEN_HOBBIES.has(hobby.id)) {
@@ -454,7 +444,6 @@ function HobbyMesh({
   };
   const onPointerOut = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    document.body.style.cursor = "";
     // Touch fires over->out in quick succession on a tap; keep the tapped
     // label up until another object is tapped or empty space is hit
     // (onPointerMissed clears it). Pointer devices clear on hover-out.
