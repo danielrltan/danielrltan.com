@@ -9,6 +9,10 @@ import { ScrambleText } from "./ScrambleText";
 const HobbiesScene = lazy(() =>
   import("../other/HobbiesScene").then((m) => ({ default: m.HobbiesScene })),
 );
+// DISPOSABLE dev tuner (?tune=other): lazy so it never ships in the normal
+// bundle. Delete this import + the TUNE_MODE branch below when orientations are
+// final — the tuned LAYOUT/POS_PORTRAIT values are the only thing that stays.
+const HobbiesTuner = lazy(() => import("../other/HobbiesTuner"));
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -39,14 +43,14 @@ interface Hobby {
 }
 
 const HOBBIES: Hobby[] = [
-  { id: "belt",     label: "Taekwondo",   caption: "twelve years on the mat, the discipline of a quiet bow before noise." },
+  { id: "belt",     label: "Kickboxing",  caption: "gloves up, the discipline of throwing a clean combination and taking the hit." },
   { id: "piano",    label: "Piano",       caption: "an hour at the keys before anyone else is up." },
   { id: "pc",       label: "Workstation", caption: "the desk is the workshop is the lab is the rabbit hole." },
   { id: "shoe",     label: "Fashion",     caption: "a fit is a sentence. Punctuation matters." },
   { id: "keyboard", label: "Keyboards",   caption: "tactile under the fingers, loud in the room. on purpose." },
   { id: "cursor",   label: "Design",      caption: "obsession over the line weight no one will ever notice." },
   { id: "car",      label: "Cars",        caption: "spool, whistle, dump: the soundtrack of a good morning." },
-  { id: "yarn",     label: "Crocheting",  caption: "a stitch a row a panel, a slow proof that hands still work." },
+  { id: "yarn",     label: "3D Modelling", caption: "started with the Blender donut, stayed for the topology." },
   { id: "luggage",  label: "Travel",      caption: "the carry-on is packed by Thursday for a Saturday I haven't booked." },
   { id: "ski",      label: "Skiing",      caption: "blue light, edges biting, the mountain quiet under it all." },
 ];
@@ -93,6 +97,10 @@ export function Other() {
   // Unlike Mac/Keypad, there's no UI laid OVER it to fight, so it's kept on mobile.
   const sceneMounted = useSectionCanvasMount(sectionRef, {
     disableOnMobile: false,
+    // Mount the cluster canvas further ahead (2.75 vs the 1.75 default) so the
+    // lazy chunk + GLBs are resolved well before arrival — on a quick scroll-in
+    // the section was blanking/popping while it loaded (user-flagged).
+    mountVh: 2.75,
   });
   // Header reveal is written straight to CSS vars via applyHead (no per-tick
   // setState). headerRef points at the editorial corner header.
@@ -214,6 +222,8 @@ export function Other() {
         className="other-header"
         style={
           {
+            // Hide the editorial wordmark while tuning so it doesn't overlay the tool.
+            display: TUNE_MODE ? "none" : undefined,
             // Initial state only; applyHead writes these imperatively after mount.
             "--head-eye": TUNE_MODE || PREFERS_REDUCED_MOTION ? "1" : "0",
             "--head-title": TUNE_MODE || PREFERS_REDUCED_MOTION ? "1" : "0",
@@ -234,9 +244,13 @@ export function Other() {
           a framed box. aria-hidden: decorative; the sr-only list above is the
           accessible equivalent. */}
       <div className="other-scene-wrap" aria-hidden="true">
-        {sceneMounted && (
+        {(sceneMounted || TUNE_MODE) && (
           <Suspense fallback={null}>
-            <HobbiesScene hobbyIds={HOBBY_IDS} live={live} />
+            {TUNE_MODE ? (
+              <HobbiesTuner />
+            ) : (
+              <HobbiesScene hobbyIds={HOBBY_IDS} live={live} />
+            )}
           </Suspense>
         )}
       </div>

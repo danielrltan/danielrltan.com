@@ -514,8 +514,11 @@
     flex-direction: column;
     align-items: stretch;
     /* Restore normal section breathing room (the desktop pin path
-       zeroes this out via the 100vh stage). */
-    padding: 96px 0 64px;
+       zeroes this out via the 100vh stage). 64px top+bottom matches the
+       shared mobile section rhythm so the About→Mac→Work gaps stay even
+       (was 96/64, which made the About→Mac gap read larger than its
+       neighbours). */
+    padding: 64px 0;
   }
 
   /* Header is a normal in-flow block at the TOP: full content width,
@@ -791,12 +794,12 @@
     transition: background-color var(--t-fast) ease;
   }
   .mac-acc-panel .mac-acc-link:active {
-    background: var(--accent-hot, #ff6a2a);
+    background: var(--accent-hot, #ff4f00);
     opacity: 1;
   }
   @media (hover: hover) {
     .mac-acc-panel .mac-acc-link:hover {
-      background: var(--accent-hot, #ff6a2a);
+      background: var(--accent-hot, #ff4f00);
       opacity: 1;
     }
   }
@@ -946,11 +949,11 @@
     transition: background-color var(--t-fast) ease;
   }
   .mac-detail-a11y[data-narrow="true"] .mac-detail-link:active {
-    background: var(--accent-hot, #ff6a2a);
+    background: var(--accent-hot, #ff4f00);
   }
   @media (hover: hover) {
     .mac-detail-a11y[data-narrow="true"] .mac-detail-link:hover {
-      background: var(--accent-hot, #ff6a2a);
+      background: var(--accent-hot, #ff4f00);
     }
   }
   .mac-detail-a11y[data-narrow="true"] .mac-detail-link:focus-visible {

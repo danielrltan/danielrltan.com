@@ -27,14 +27,14 @@ gsap.registerPlugin(ScrollTrigger);
 
 // Placeholder photo vocabulary (moved here from Other.tsx with the trains).
 const TRAIN_PHOTOS = [
-  { color: "#2a1f1a", label: "Taekwondo" },
+  { color: "#2a1f1a", label: "Kickboxing" },
   { color: "#1a1714", label: "Piano" },
   { color: "#262120", label: "Keys" },
   { color: "#5a3a1f", label: "Cars" },
   { color: "#a8c4d0", label: "Skiing" },
   { color: "#ff4f00", label: "Design" },
   { color: "#3d4a52", label: "Travel" },
-  { color: "#c08c6c", label: "Crocheting" },
+  { color: "#c08c6c", label: "3D Modelling" },
   { color: "#3a2418", label: "Fashion" },
   { color: "#d4a574", label: "Coffee" },
   { color: "#7a4f30", label: "Photography" },

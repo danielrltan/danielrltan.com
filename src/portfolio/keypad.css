@@ -155,9 +155,11 @@
     flex-direction: column;
     gap: var(--space-5);
     /* Generous top/bottom rhythm so it reads as a real closing section,
-       not a cramped footer lead-in. Honour the home-indicator / notch. */
-    padding: var(--space-7) max(var(--space-4), env(safe-area-inset-left, 0px))
-      calc(var(--space-7) + env(safe-area-inset-bottom, 0px))
+       not a cramped footer lead-in. 64px (--space-8) matches the shared
+       mobile section rhythm so this closing section spaces like the rest.
+       Honour the home-indicator / notch. */
+    padding: var(--space-8) max(var(--space-4), env(safe-area-inset-left, 0px))
+      calc(var(--space-8) + env(safe-area-inset-bottom, 0px))
       max(var(--space-4), env(safe-area-inset-right, 0px));
     box-sizing: border-box;
     /* Nothing here should ever push horizontal scroll on a 360px phone. */

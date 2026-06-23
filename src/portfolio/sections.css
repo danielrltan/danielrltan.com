@@ -190,8 +190,14 @@
 }
 
 @media (max-width: 768px) {
+  /* One consistent inter-section rhythm on mobile. Was 88px; trimmed to 64px
+     because the flow sections (About, Honours) stack this base padding ON TOP
+     of their own inner-wrapper padding, which compounded into the uneven
+     "huge gaps" between sections (owner). 64px keeps clear separation without
+     the void. Pinned sections (Play, Recents) absorb this under their own
+     min-height + HUD-cleared headers, so they're unaffected. */
   .portfolio-section {
-    padding: 88px 0;
+    padding: 64px 0;
   }
   .portfolio-section--hero {
     padding: 0;

@@ -11,7 +11,7 @@
 
 :root {
   --navx-accent: #ff4f00;
-  --navx-accent-hot: #ff6a2a;
+  --navx-accent-hot: #ff4f00;
   --navx-accent-deep: #c23d00;
   --navx-ink: #0d0e10;
 }
@@ -56,13 +56,16 @@
   transform: translateY(-1px);
 }
 
-/* Orange number block: the drum aperture. */
+/* Orange number block: the drum aperture. International Orange at rest
+   (--navx-accent #ff4f00), NOT the lighter --navx-accent-hot sibling — the
+   resting brand block must be the true int'l orange, matching the grid dots
+   below and the rest of the site's accent. (Hover/active still go hot/deep.) */
 .snc-dial-numblock {
   position: relative;
   display: flex;
   align-items: stretch;
   width: 50px;
-  background: var(--navx-accent-hot);
+  background: var(--navx-accent);
 }
 /* Aperture: clips the drum; perspective gives the faces real depth. */
 .snc-dial-window {
@@ -829,4 +832,18 @@
 .navx-spill-label:hover,
 .navx-spill-label[data-armed="true"] {
   transform: scale(1.4);
+}
+/* MOBILE / touch ring: the menu ring now renders on phones too (squashed into a
+   vertical ellipse). Long labels ("Stack + Projects", "Off the clock") at the
+   side slots would run off the narrow screen as one nowrap line, so allow them
+   to WRAP within a max-width and centre — single-word labels stay one line. A
+   slightly smaller face + thinner stroke keeps them dense + tappable. */
+@media (max-width: 768px) {
+  .navx-spill-label {
+    white-space: normal;
+    max-width: 170px;
+    text-align: center;
+    font-size: 36px;
+    -webkit-text-stroke: 4px var(--navx-ink);
+  }
 }

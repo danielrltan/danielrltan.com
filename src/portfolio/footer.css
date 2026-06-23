@@ -144,7 +144,9 @@
     opacity var(--t-med) var(--ease-entrance);
 }
 .footer-link:hover {
-  color: var(--accent-hot);
+  /* International Orange (--accent #ff4f00), not the lighter --accent-hot
+     sibling — the résumé + footer links hover to the true brand orange. */
+  color: var(--accent);
   /* Editorial nudge toward the glyph: purely transform, no layout
      shift, and disabled under prefers-reduced-motion (global block). */
   transform: translateX(3px);
@@ -173,7 +175,7 @@
 }
 .footer-link:hover .footer-link-num,
 .footer-link:focus-visible .footer-link-num {
-  color: var(--accent-hot);
+  color: var(--accent);
 }
 
 /* Scroll-in reveal: Footer.tsx adds .footer-revealed once the band

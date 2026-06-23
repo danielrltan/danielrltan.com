@@ -25,19 +25,20 @@ export interface SectionEntry {
   jumpProgress?: number;
 }
 
+// Canonical section labels — the owner's short names for the index, used by the
+// dial readout AND the spill menu (both read this registry). Keep these EXACT;
+// do NOT expand them to the longer section-eyebrow phrasings.
 export const SECTION_REGISTRY: SectionEntry[] = [
   { number: "00", label: "Hero", selector: ".portfolio-section--hero" },
   { number: "01", label: "About", selector: ".portfolio-section:not([class*='--'])" },
   { number: "02", label: "Projects", selector: ".portfolio-mac" },
   { number: "03", label: "Work", selector: ".portfolio-work" },
-  // Play is now interests-only — the "Recents" photos moved out into their own
-  // Photos section (below), so a jump lands on the section top, which is the
-  // 3D hobby reel itself (no more Beat A to skip past).
+  // Play is interests-only — the "Recents" photos moved out into their own
+  // Photos section (below), so a jump lands on the section top (the 3D hobby
+  // reel itself), no Beat A to skip past.
   { number: "04", label: "Play", selector: ".portfolio-other" },
-  { number: "05", label: "Honors", selector: ".portfolio-bp" },
-  // Recents: the photo trains, extracted from Play into a standalone section
-  // sitting between Honors and Contact. (Labelled "Recents" to match the
-  // section's own header, the footer index, and the jump-menu object.)
+  { number: "05", label: "Honours", selector: ".portfolio-bp" },
+  // Recents: the photo trains, a standalone section between Honours and Contact.
   { number: "06", label: "Recents", selector: ".portfolio-photos" },
   { number: "07", label: "Contact", selector: ".keypad-section" },
 ];

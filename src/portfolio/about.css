@@ -183,7 +183,7 @@
   width: 100%;
 }
 
-/* ----- shared card chrome (glassmorphism) ----- */
+/* ----- shared card chrome (flat spec-sheet surface) ----- */
 .card {
   position: relative;
   /* Reset the UA margin: the dl-based cards (Currently/Studying/…) ship with
@@ -195,14 +195,15 @@
      gap. With 1fr rows this resolves cleanly — unlike the old auto/minmax rows
      where 100% didn't resolve and cards floated short. */
   height: 100%;
-  background: rgba(255, 255, 255, 0.58);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  /* Solid white spec-sheet surface (was translucent glass + blur + a
+     two-layer soft drop shadow). Every other card on the site is solid
+     --bg-surface with a 1px hairline and a flat ground; the glass + cheap
+     elevation shadow here was the one outlier (user: drop shadows "look
+     cheap"). De-glassed + flattened to match. The floating room keeps its
+     own intentional drop-shadow (see .about-room) to sell its depth. */
+  background: var(--bg-surface);
   border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
   border-radius: 0;
-  box-shadow:
-    0 18px 40px -18px rgba(13, 14, 16, 0.28),
-    0 4px 12px -6px rgba(13, 14, 16, 0.18);
   overflow: hidden;
   /* Per-cell reveal: starts slightly down + transparent, rises into place
      when its progress threshold trips (.is-revealed from About.tsx). */
@@ -231,17 +232,9 @@
   opacity: 1;
   transform: none;
 }
-/* Faint white top edge on every glass card. */
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 0;
-  pointer-events: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.7);
-  -webkit-mask: linear-gradient(#000, transparent 42%);
-  mask: linear-gradient(#000, transparent 42%);
-}
+/* (Removed the glass top-edge sheen ::before — a white highlight on the old
+   translucent glass. On the solid white surface it's invisible/pointless, so
+   it's dropped for a clean flat card.) */
 .card .pad {
   position: relative;
   z-index: 2;
@@ -428,7 +421,10 @@
    edges. They reach UNDER the render cell so the room art clips them.
    ---------------------------------------------------------------------- */
 .behind {
-  background: rgba(255, 255, 255, 0.72);
+  /* Behind-room cards match the flat solid surface too (were more-opaque
+     glass). The room PNG occludes their inner edges by alpha, so no
+     translucency is needed to read the layering. */
+  background: var(--bg-surface);
 }
 
 /* ----------------------------------------------------------------------

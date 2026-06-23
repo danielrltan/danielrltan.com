@@ -40,7 +40,7 @@ interface SignatureJSON {
   events: { type: "down" | "move" | "up"; t: number; nx: number; ny: number }[];
 }
 
-const PAINT_COLOR = "255, 120, 66"; // matches BlinkingCat / lamp glow
+const PAINT_COLOR = "255, 79, 0"; // International Orange (--accent #ff4f00)
 const STAMP_ALPHA = 0.45;
 const BASE_RADIUS = 28; // smaller capture brush so detail isn't lost at this scale
 
@@ -271,7 +271,7 @@ export function SignatureCapture() {
         }}
       >
         <div>
-          <div style={{ color: "#ff7842", fontWeight: 600, marginBottom: 6 }}>
+          <div style={{ color: "#ff4f00", fontWeight: 600, marginBottom: 6 }}>
             signature capture
           </div>
           <div style={{ opacity: 0.6 }}>
@@ -305,7 +305,7 @@ export function SignatureCapture() {
           type="button"
           onClick={copy}
           disabled={eventCount < 2}
-          style={btnStyle("#ff7842", "#161311", eventCount < 2)}
+          style={btnStyle("#ff4f00", "#161311", eventCount < 2)}
         >
           {copied ? "copied" : "copy json"}
         </button>
@@ -313,7 +313,7 @@ export function SignatureCapture() {
           type="button"
           onClick={download}
           disabled={eventCount < 2}
-          style={btnStyle("#ff7842", "#161311", eventCount < 2)}
+          style={btnStyle("#ff4f00", "#161311", eventCount < 2)}
         >
           download signature.json
         </button>

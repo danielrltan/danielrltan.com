@@ -13,6 +13,7 @@ import { AssemblyProvider } from "./loading";
 import { BootLoader } from "./loading/BootLoader";
 import { HeroSignature } from "./hero/HeroSignature";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
+import { scrollToSection } from "./portfolio/Keypad";
 import { useIsMobile } from "./useIsMobile";
 import { StatusBar } from "./StatusBar";
 
@@ -31,17 +32,28 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-// Hero wrapper opacity: held FULL through the pixel-zoom so the composition is
-// SEEN zooming + pixelating, then the wrapper dissolves it just as the dive
-// completes and the next section rises to meet it. Pulled earlier (was
-// 0.85/1.05) so the dissolve tracks the now-compressed dive instead of lingering
-// invisibly under the risen section.
-// The opaque hero holds while the next section rises BEHIND it (hidden), then
-// dissolves only AFTER that section has filled the viewport (~1.0vh, the hero
-// spacer is 100vh), so the grey section is never seen sliding up as a wall — the
-// hero just pixel-zooms and dissolves to reveal the already-arrived content.
-const HERO_FADE_START_VH = 0.92;
-const HERO_FADE_END_VH = 1.12;
+// Hero wrapper opacity is a TIME-BASED one-shot fade, NOT a scroll-position ramp.
+// The composition is held FULL through the pixel-zoom (so the zoom is SEEN), then
+// dissolves once About has fully arrived.
+//
+// Why time-based and not a scroll-linked window: a scroll-POSITION ramp means any
+// scroll range where the opacity is partial is a range you can REST in — and since
+// the hero sits over a fully-risen About there, you see it ghosted/garbled over the
+// section (the "fadeaway bleeds too much into About, can't see things at first"
+// bug). But collapsing that window to a near-cut to kill the bleed removed the
+// transition entirely — the hero just SNAPPED away after the zoom.
+//
+// The fix is a binary TARGET (hero fully SHOWN below the hide threshold, fully
+// HIDDEN above it) that tick() eases toward over ~330ms. Crossing About's arrival
+// therefore fades the hero out over a fixed ~330ms that COMPLETES on its own no
+// matter where you stop scrolling — so there's no partial state to rest in (no
+// bleed) AND it's a smooth dissolve after the zoom (no snap). Scroll back up past
+// the show threshold fades it back in the same way. Hysteresis (hide at 1.0vh =
+// About's top at the viewport top, since the hero spacer is 100vh; show again only
+// below 0.96vh) stops it flickering if you jitter right at the boundary.
+const HERO_HIDE_VH = 1.0;
+const HERO_SHOW_VH = 0.96;
+const HERO_FADE_RATE = 9; // exp ease rate → ~330ms dissolve, independent of scroll speed
 // Pixel-zoom dive window: the composition scales up + steps through the SVG
 // mosaic from 0.30vh → 0.75vh. Compressed (was 1.00vh) because the next section
 // covers on RAW scroll while this dive is rAF-EASED (it lags); at 1.00vh the
@@ -79,6 +91,107 @@ const MAX_TICK_DT = 0.05;
 // mosaic lands while the hero is still opaque and uncovered, not at the very end
 // when the next section has already risen over it.
 const HERO_PX_STEPS = [0.05, 0.18, 0.34, 0.52, 0.72];
+
+// ── Hero → About "settle to the top" ─────────────────────────────────────────
+// The bug this fixes: the pixel-zoom dive + the opacity fade are driven by
+// CONTINUED downward scroll, so scroll momentum carries you PAST About's header
+// before the fade resolves — you can't tune your way out of it because the cause
+// is scroll-POSITION coupling, not fade timing. The fix arrests the scroll
+// exactly at About's top when you decelerate while leaving the hero, so the
+// transition resolves IN PLACE there instead of racing past the header.
+//
+// About's flow-top == ONE viewport (Hero.tsx is a bare 100vh spacer), so the
+// landing target is simply window.innerHeight — no layout measurement. The
+// settle routes through the existing Lenis-synced scrollToSection() (Keypad.tsx)
+// so it can't be lerped back and stays in sync with GSAP ScrollTrigger / the
+// downstream pins. The dive (--hero-to-about) and fade (--hero-opacity) math are
+// left completely untouched: once Lenis parks scrollY at 1.0vh, ratio stops
+// climbing and the existing time-based fade completes where it sits.
+//
+// It is a ONE-SHOT, fired only on scroll-end (debounced) while DESCENDING inside
+// a commit band, re-armed only after you clearly leave that band. No scroll-lock
+// — Lenis cancels a non-locked tween on any fresh wheel/touch, so a deliberate
+// read-scroll always wins (it never jails you). Reduced-motion jumps instantly.
+const HERO_SETTLE_BAND_LO = 0.55; // fire only once the dive is well underway
+const HERO_SETTLE_BAND_HI = 1.1; // ...and before About's header has scrolled off
+const HERO_SETTLE_DURATION = 0.5; // desktop Lenis tween, seconds
+const HERO_SETTLE_IDLE_MS = 90; // scroll-quiesced debounce == "scroll ended"
+// Mobile: Lenis runs syncTouch:false (native momentum), so a tween can't arrest
+// an active fling — only nudge AFTER the fling ends, and only a small near-miss,
+// never a big yank.
+const HERO_SETTLE_MOBILE_LO = 0.84;
+const HERO_SETTLE_MOBILE_HI = 1.1;
+const HERO_SETTLE_MOBILE_DURATION = 0.35;
+const HERO_SETTLE_MOBILE_IDLE_MS = 130;
+// Re-arm the one-shot only after clearly leaving the band (back above the hero,
+// or committed down into About's body) so it never re-fires mid-band.
+const HERO_SETTLE_REARM_LO = 0.4;
+const HERO_SETTLE_REARM_HI = 1.3;
+
+/**
+ * Installs the hero→About settle. SEPARATE from installScrollChoreography's rAF
+ * loop (that loop must stay a pure per-frame reader/writer of scroll-derived CSS
+ * vars); this is an event-driven, debounced one-shot that only ever issues a
+ * single scrollTo. Idempotent install is the caller's responsibility.
+ */
+function installHeroSettle(): void {
+  if (typeof window === "undefined") return;
+
+  let vh = window.innerHeight || 1;
+  const mobileQuery = window.matchMedia("(max-width: 768px)");
+  const reduceQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  let lastY = window.scrollY;
+  let lastDir = 1; // 1 = descending, -1 = ascending
+  // Seed the one-shot from the load position: a refresh-at-offset already inside
+  // the band must NOT fire a surprise snap on the user's first scroll.
+  let settledOnce = window.scrollY / vh >= HERO_SETTLE_BAND_LO;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const settle = () => {
+    if (settledOnce || lastDir < 0) return; // one-shot spent, or ascending
+    const ratio = window.scrollY / vh;
+    const mobile = mobileQuery.matches;
+    const lo = mobile ? HERO_SETTLE_MOBILE_LO : HERO_SETTLE_BAND_LO;
+    const hi = mobile ? HERO_SETTLE_MOBILE_HI : HERO_SETTLE_BAND_HI;
+    if (ratio < lo || ratio > hi) return; // outside the commit band
+    settledOnce = true; // latch regardless of whether we actually move
+    if (Math.abs(window.scrollY - vh) <= 2) return; // already at About-top
+    if (reduceQuery.matches) {
+      scrollToSection(vh, { immediate: true });
+    } else {
+      scrollToSection(vh, {
+        duration: mobile ? HERO_SETTLE_MOBILE_DURATION : HERO_SETTLE_DURATION,
+      });
+    }
+  };
+
+  const onScroll = () => {
+    const y = window.scrollY;
+    if (y !== lastY) lastDir = y > lastY ? 1 : -1;
+    lastY = y;
+    const ratio = y / vh;
+    if (ratio < HERO_SETTLE_REARM_LO || ratio > HERO_SETTLE_REARM_HI) {
+      settledOnce = false; // re-arm only once clearly out of the band
+    }
+    // Fire on scroll-END: each event resets the idle timer; it only resolves
+    // once the wheel/Lenis ease (or a touch fling) has quiesced.
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
+    idleTimer = setTimeout(
+      settle,
+      mobileQuery.matches ? HERO_SETTLE_MOBILE_IDLE_MS : HERO_SETTLE_IDLE_MS,
+    );
+  };
+
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener(
+    "resize",
+    () => {
+      vh = window.innerHeight || 1;
+    },
+    { passive: true },
+  );
+}
 
 /**
  * Single continuous rAF loop. Each frame it recomputes the raw scroll-derived
@@ -127,6 +240,11 @@ function installScrollChoreography(): void {
   };
   updateHeroLite();
   let lastDiving = false;
+  // Hero shown/hidden LATCH (hysteresis) driving the time-based opacity fade.
+  // Seeded from the current scroll so a refresh-at-offset past the hero starts
+  // hidden (no fade-in flash on load). computeTargets() flips it across the
+  // hide/show thresholds; tick() eases the real opacity toward heroShown?1:0.
+  let heroShown = window.scrollY / vhCache < HERO_HIDE_VH;
 
   type Targets = {
     heroOpacity: number;
@@ -141,10 +259,14 @@ function installScrollChoreography(): void {
     const ratio = window.scrollY / vh;
     const scrollProgress = clamp01(window.scrollY / scrollMax);
 
-    const heroFade = clamp01(
-      (ratio - HERO_FADE_START_VH) / (HERO_FADE_END_VH - HERO_FADE_START_VH),
-    );
-    const heroOpacity = 1 - heroFade;
+    // BINARY opacity target with hysteresis: fade OUT once About has fully arrived
+    // (ratio >= hide), fade back IN only after scrolling back up past the lower
+    // show threshold. tick() eases toward this over ~330ms, so the fade is a
+    // time-based dissolve that always completes — never a rest-able partial state
+    // (no bleed) and never a scroll-linked snap.
+    if (heroShown && ratio >= HERO_HIDE_VH) heroShown = false;
+    else if (!heroShown && ratio < HERO_SHOW_VH) heroShown = true;
+    const heroOpacity = heroShown ? 1 : 0;
 
     const heroToAbout = clamp01(
       (ratio - HERO_DISSOLVE_START_VH) /
@@ -199,7 +321,17 @@ function installScrollChoreography(): void {
   const tick = (dt: number) => {
     const t = computeTargets();
 
-    const heroOpacity = ease(prevEased.heroOpacity, t.heroOpacity, dt);
+    // Hero opacity: ease toward the BINARY target (1 shown / 0 hidden) at a fixed
+    // rate so crossing About's arrival plays a ~330ms time-based dissolve that
+    // completes on its own — a smooth fade after the zoom, with no scroll range to
+    // rest in half-faded (no bleed). Snap to the endpoints so it fully clears
+    // (pointer-events + no lingering 0.004 ghost) and fully arrives.
+    let heroOpacity =
+      prevEased.heroOpacity +
+      (t.heroOpacity - prevEased.heroOpacity) *
+        (1 - Math.exp(-dt * HERO_FADE_RATE));
+    if (t.heroOpacity === 0 && heroOpacity < 0.01) heroOpacity = 0;
+    else if (t.heroOpacity === 1 && heroOpacity > 0.99) heroOpacity = 1;
     const heroToAbout = ease(prevEased.heroToAbout, t.heroToAbout, dt);
     // Render fade: gentle shared rate IN (anti-teleport on reveal), steeper rate
     // + snap-to-zero OUT so the render doesn't ghost over the Projects section.
@@ -359,6 +491,10 @@ export default function App() {
   if (!choreoInstalled.current) {
     choreoInstalled.current = true;
     installScrollChoreography();
+    // Arrest the scroll at About's top when you decelerate leaving the hero, so
+    // the pixel-zoom fade resolves in place instead of momentum sailing past the
+    // header (see installHeroSettle). Separate from the rAF choreography above.
+    installHeroSettle();
   }
 
   // Lenis smooth scroll is owned by src/portfolio/Keypad.tsx via a module-scope
@@ -497,14 +633,18 @@ export default function App() {
       void import("./keypad/KeypadScene");
     };
     const w = window as unknown as {
-      requestIdleCallback?: (cb: () => void) => number;
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
       cancelIdleCallback?: (id: number) => void;
     };
     if (typeof w.requestIdleCallback === "function") {
-      const id = w.requestIdleCallback(warm);
+      // timeout GUARANTEES warm() runs within 1.2s even if the main thread stays
+      // busy. Without it, requestIdleCallback can be starved indefinitely, so the
+      // hobbies GLB preload (kicked off when its module first imports) starts late
+      // and the section blanks/pops while still loading on arrival (user-flagged).
+      const id = w.requestIdleCallback(warm, { timeout: 1200 });
       return () => w.cancelIdleCallback?.(id);
     }
-    const tm = setTimeout(warm, 1500);
+    const tm = setTimeout(warm, 600);
     return () => clearTimeout(tm);
   }, [ready]);
 
@@ -574,7 +714,10 @@ export default function App() {
 
         <PortfolioSections />
 
-        <RoomHUD visible={true} />
+        {/* Brand mark (signature). Gated on hudVisible so it reveals AFTER the
+            hero (the hero already carries the big signature wordmark, and a
+            small mark over the orange field read as redundant + unreadable). */}
+        <RoomHUD visible={hudVisible} />
 
         {/* Section indicator (dial) + jump-to-top, once past the hero. */}
         {hudVisible && (

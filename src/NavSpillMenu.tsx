@@ -130,16 +130,16 @@ const CLUSTER_CENTER = new THREE.Vector3(0, 0, 0);
 const _c = new THREE.Vector3();
 const _up = new THREE.Vector3();
 // Thematic low-poly object per section (index matches SECTION_REGISTRY):
-// Hero=house, About=?, Projects=Mac, Work=briefcase, Play=▶, Honors=trophy,
-// Photos=camera, Contact=paper plane. Each is a chunky shape the label sits on.
+// Hero=house, About=?, Projects=Mac, Work=briefcase, Play=▶, Honours=trophy,
+// Recents=camera, Contact=paper plane. Each is a chunky shape the label sits on.
 const SPECS: Spec[] = [
   { geom: houseGeom, size: 0.95, spin: [0, 0, 0] }, // 00 Hero
   { geom: questionGeom, size: 0.95, spin: [0, 0, 0] }, // 01 About
   { geom: macGeom, size: 0.95, spin: [0, 0, 0] }, // 02 Projects
   { geom: briefcaseGeom, size: 0.95, spin: [0, 0, 0] }, // 03 Work
   { geom: playGeom, size: 0.95, spin: [0, 0, 0] }, // 04 Play
-  { geom: trophyGeom, size: 0.95, spin: [0, 0, 0] }, // 05 Honors (trophy wall)
-  { geom: cameraGeom, size: 0.95, spin: [0, 0, 0] }, // 06 Photos
+  { geom: trophyGeom, size: 0.95, spin: [0, 0, 0] }, // 05 Honours (trophy wall)
+  { geom: cameraGeom, size: 0.95, spin: [0, 0, 0] }, // 06 Recents
   { geom: planeGeom, size: 0.95, spin: [0, 0, 0] }, // 07 Contact
 ];
 // A CLOCKWISE ring centred on screen with index 0 (Hero) at top-centre
@@ -176,8 +176,8 @@ const SPILL_LEAD_MS = 340;
 const DRIFT_KICK = -1.1; // initial angular velocity (rad/s); negative = clockwise, matching the open sweep
 const DRIFT_DECAY = 9; // 1/s velocity decay → coasts to rest in one direction, no recoil
 
-// Jump-menu label overrides (keyed by section number). Empty now that the
-// registry itself carries the friendly labels (Projects, Honors, ...).
+// Jump-menu label overrides (keyed by section number). Empty — the registry
+// carries the canonical labels (Projects, Play, Honours, ...) directly.
 const MENU_LABELS: Record<string, string> = {};
 
 function SpillObject({
@@ -192,6 +192,9 @@ function SpillObject({
   closing,
   closeMsRef,
   pointer,
+  labelDistance,
+  ringScaleX,
+  objScale,
 }: {
   index: number;
   label: string;
@@ -204,6 +207,9 @@ function SpillObject({
   closing: boolean;
   closeMsRef: React.MutableRefObject<number>;
   pointer: React.MutableRefObject<{ x: number; y: number }>;
+  labelDistance: number;
+  ringScaleX: number;
+  objScale: number;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
@@ -229,10 +235,14 @@ function SpillObject({
     geometry.computeBoundingSphere();
     return (geometry.boundingSphere?.radius ?? 1) * 1.5;
   }, [geometry]);
-  const target = useMemo(
-    () => ringTarget(index, SECTION_REGISTRY.length),
-    [index],
-  );
+  // Resting ring slot. X is squashed by ringScaleX so portrait phones get a
+  // VERTICAL ELLIPSE (side labels stay on-screen); the object itself is NOT
+  // scaled, so the shapes stay round — only their positions move inward.
+  const target = useMemo(() => {
+    const t = ringTarget(index, SECTION_REGISTRY.length);
+    t.x *= ringScaleX;
+    return t;
+  }, [index, ringScaleX]);
   // Every icon launches from — and retracts back to — the SAME single point
   // (SPILL_ORIGIN), so the spill reads as one cohesive burst from the centre
   // rather than each appearing out of a different spot. A per-object signed arc
@@ -354,7 +364,7 @@ function SpillObject({
     // Scale: SHRINK -> full (so each emerges small) * hover lift * breathing.
     const hoverMul = armRef.current ? 1.54 : 1.0;
     const breath = 1 + Math.sin(tNow * 1.15 + index * 1.7) * 0.035 * idle;
-    const targetScale = spec.size * clamp01(p) * hoverMul * breath;
+    const targetScale = spec.size * objScale * clamp01(p) * hoverMul * breath;
     scaleRef.current += (targetScale - scaleRef.current) * (1 - Math.exp(-dtc * 14));
     m.scale.setScalar(scaleRef.current);
 
@@ -431,7 +441,7 @@ function SpillObject({
         </mesh>
       </group>
       {/* Label sits ON the object (white text, no card). */}
-      <Html center position={[0, 0, 0]} distanceFactor={6} zIndexRange={[40, 0]}>
+      <Html center position={[0, 0, 0]} distanceFactor={labelDistance} zIndexRange={[40, 0]}>
         <button
           ref={labelRef}
           className="navx-spill-label"
@@ -464,6 +474,9 @@ function SpillField({
   positionsRef,
   closing,
   closeMsRef,
+  labelDistance,
+  ringScaleX,
+  objScale,
 }: {
   activeIdx: number;
   armed: number;
@@ -476,6 +489,15 @@ function SpillField({
   positionsRef: React.MutableRefObject<AuraTarget[]>;
   closing: boolean;
   closeMsRef: React.MutableRefObject<number>;
+  /** drei <Html> distanceFactor for the labels — larger on mobile so the
+   *  pulled-back ring's labels stay a comfortable tap size. */
+  labelDistance: number;
+  /** Horizontal squash of the whole ring (1 = circle; <1 = vertical ellipse
+   *  for portrait phones so the side labels don't run off the edges). */
+  ringScaleX: number;
+  /** Per-object size multiplier (shrinks the shapes on mobile so the squashed
+   *  ring doesn't merge into one blob). */
+  objScale: number;
 }) {
   const fieldRef = useRef<THREE.Group>(null);
   const { camera, size } = useThree();
@@ -596,6 +618,9 @@ function SpillField({
           closing={closing}
           closeMsRef={closeMsRef}
           pointer={pointer}
+          labelDistance={labelDistance}
+          ringScaleX={ringScaleX}
+          objScale={objScale}
         />
       ))}
     </group>
@@ -733,41 +758,30 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
 
   if (!mounted) return null;
 
-  // ── MOBILE / touch: simple accessible list overlay (no WebGL ring) ──────
-  if (isMobile) {
-    return (
-      <div
-        className="navx-spill-root navx-spill-root--list"
-        data-open={shown ? "true" : "false"}
-      >
-        <div className="navx-spill-scrim" onClick={onClose} aria-hidden />
-        <button
-          className="navx-close"
-          onClick={onClose}
-          aria-label="Close section menu"
-        />
-        <nav className="navx-list" aria-label="Jump to section">
-          {SECTION_REGISTRY.map((s, i) => (
-            <button
-              key={s.number}
-              type="button"
-              className="navx-list-row navx-shard"
-              data-active={i === activeIdx ? "true" : "false"}
-              onClick={() => select(i)}
-            >
-              <span className="navx-list-num navx-num">{s.number}</span>
-              <span className="navx-list-label navx-label">
-                {MENU_LABELS[s.number] ?? s.label}
-              </span>
-              {i === activeIdx && (
-                <span className="navx-list-here navx-tag">HERE</span>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
-    );
-  }
+  // The 3D spill ring is now the menu on EVERY viewport (the old flat mobile
+  // list was replaced at the owner's request). On a phone the ring's labels are
+  // real drei <Html> <button>s (tappable + keyboard/AT-reachable), the camera
+  // pulls back + the FOV widens so the whole ring fits a portrait screen, and
+  // the labels render larger (distanceFactor) so they stay comfortable tap
+  // targets. The hover-enlarge cue simply doesn't fire on touch (no hover) —
+  // tapping a label still jumps + closes.
+  // Camera distance/FOV: desktop unchanged (z=10, fov=40). Mobile pulls back
+  // (z=14) and widens (fov=46) so radius-2.25 ring + card margins clear a
+  // narrow portrait viewport. Labels scale UP (distanceFactor 9 vs 6) to
+  // counter the pull-back so they read + tap at a comfortable size.
+  const camZ = isMobile ? 13 : 10;
+  const camFov = isMobile ? 46 : 40;
+  const labelDistance = isMobile ? 8 : 6;
+  // Portrait phones are tall + narrow, so the ring is squashed into a gentle
+  // vertical ellipse (X compressed, Y kept) — otherwise the 3 + 9 o'clock
+  // labels run off the side edges. Now that the labels are short (Projects /
+  // Play / Honours / Contact), the squash can be light (0.7), which spreads the
+  // objects out so they don't crowd/overlap each other. Desktop = true circle.
+  const ringScaleX = isMobile ? 0.7 : 1;
+  // Shrink the objects a touch on mobile so the squashed ring's shapes read as
+  // DISTINCT pieces instead of merging into one orange blob at the crowded
+  // bottom of the ellipse. Desktop keeps full-size objects.
+  const objScale = isMobile ? 0.82 : 1;
 
   return (
     <div className="navx-spill-root" data-open={shown ? "true" : "false"}>
@@ -778,41 +792,42 @@ export function NavSpillMenu({ open, activeIdx, onClose }: Props) {
         aria-label="Close section menu"
       />
       <div className="navx-spill-stage">
-        {/* The 3D ring is DESKTOP-ONLY. On touch (<=768px) we already early-return
-            the accessible list overlay above, so this branch never renders on a
-            phone — but the canvas is hover-driven (every-frame proximity test) and
-            a wasted/at-risk WebGL context on mobile, so we also gate the <Canvas>
-            on !isMobile as a hard belt-and-braces guard: it can NEVER spin up a
-            WebGL context on a phone even if this branch is ever reached. Desktop
-            (isMobile=false) is unaffected. */}
-        {!isMobile && (
-          <Canvas
-            className="navx-spill-canvas"
-            camera={{ position: [0, 0, 10], fov: 40 }}
-            dpr={[1, 2]}
-            gl={{ alpha: true, antialias: true }}
-            onPointerMissed={onClose}
-          >
-            <MercuryAura
-              cursorRef={cursor}
-              positionsRef={positionsRef}
-              reduced={reduced}
-            />
-            <SpillField
-              activeIdx={activeIdx}
-              armed={armed}
-              setArmed={setArmed}
-              startMs={startMsRef.current}
-              reduced={reduced}
-              pointer={pointer}
-              cursor={cursor}
-              select={select}
-              positionsRef={positionsRef}
-              closing={!open}
-              closeMsRef={closeMsRef}
-            />
-          </Canvas>
-        )}
+        {/* The 3D spill ring is the menu on ALL viewports now. It's an
+            ON-DEMAND overlay (the canvas only mounts while the menu is open and
+            tears down on close), so it's exempt from the "no persistent section
+            WebGL on phones" rule — it never runs in the background. The camera +
+            FOV + label scale adapt for mobile (see camZ/camFov/labelDistance
+            above) so the ring fits a portrait phone and its labels stay
+            tappable. */}
+        <Canvas
+          className="navx-spill-canvas"
+          camera={{ position: [0, 0, camZ], fov: camFov }}
+          dpr={[1, 2]}
+          gl={{ alpha: true, antialias: true }}
+          onPointerMissed={onClose}
+        >
+          <MercuryAura
+            cursorRef={cursor}
+            positionsRef={positionsRef}
+            reduced={reduced}
+          />
+          <SpillField
+            activeIdx={activeIdx}
+            armed={armed}
+            setArmed={setArmed}
+            startMs={startMsRef.current}
+            reduced={reduced}
+            pointer={pointer}
+            cursor={cursor}
+            select={select}
+            positionsRef={positionsRef}
+            closing={!open}
+            closeMsRef={closeMsRef}
+            labelDistance={labelDistance}
+            ringScaleX={ringScaleX}
+            objScale={objScale}
+          />
+        </Canvas>
       </div>
     </div>
   );

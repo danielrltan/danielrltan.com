@@ -32,21 +32,26 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
  * materials with a gloss boost so the whole cluster reads as one candy set.
  */
 
-interface Hobby {
+export interface Hobby {
   id: string;
   file: string;
   label: string;
 }
 
-const HOBBIES: Hobby[] = [
-  { id: "belt",     file: "belt.glb",     label: "Taekwondo"   },
+// NOTE: `id` is an opaque, STABLE key (drives LAYOUT / POS_PORTRAIT lookups +
+// the parent roster-sync check). It deliberately does NOT have to match `file`.
+// Three slots were re-modelled from new .blend drops: belt→glove.glb (relabelled
+// Kickboxing), shoe→boot.glb (Fashion), yarn→donut.glb (3D Modelling — the
+// Blender donut). Keeping the ids avoids churning the layout maps below.
+export const HOBBIES: Hobby[] = [
+  { id: "belt",     file: "glove.glb",    label: "Kickboxing"  },
   { id: "piano",    file: "piano.glb",    label: "Piano"       },
-  { id: "pc",       file: "pc.glb",       label: "Workstation" },
-  { id: "shoe",     file: "shoe.glb",     label: "Fashion"     },
+  { id: "pc",       file: "gpu.glb",      label: "Workstation" },
+  { id: "shoe",     file: "boot.glb",     label: "Fashion"     },
   { id: "keyboard", file: "keyboard.glb", label: "Keyboards"   },
   { id: "cursor",   file: "cursor.glb",   label: "Design"      },
   { id: "car",      file: "car.glb",      label: "Cars"        },
-  { id: "yarn",     file: "yarn.glb",     label: "Crocheting"  },
+  { id: "yarn",     file: "donut.glb",    label: "3D Modelling" },
   { id: "luggage",  file: "luggage.glb",  label: "Travel"      },
   { id: "ski",      file: "ski.glb",      label: "Skiing"      },
 ];
@@ -82,28 +87,28 @@ const TONE_COLOR: Record<Tone, string> = {
  * beyond the visual size so neighbours hold a clear gap as they drift. `tone`
  * applies only to the abstract placeholder objects.
  */
-const LAYOUT: Record<
-  string,
-  {
-    pos: [number, number, number];
-    scale: number;
-    radius: number;
-    placeholder: PlaceholderKind;
-    tone: Tone;
-  }
-> = {
-  // upper band
-  piano:    { pos: [-2.42,  0.64,  0.04], scale: 1.00, radius: 0.66, placeholder: "box",          tone: "ink"    },
-  yarn:     { pos: [-1.28,  0.96, -0.02], scale: 0.82, radius: 0.54, placeholder: "sphere",       tone: "steel"  },
-  pc:       { pos: [ 0.06,  0.52,  0.06], scale: 1.16, radius: 0.74, placeholder: "icosahedron",  tone: "orange" },
-  keyboard: { pos: [ 1.34,  0.80,  0.00], scale: 1.04, radius: 0.62, placeholder: "torus",        tone: "ink"    },
-  luggage:  { pos: [ 2.44,  0.68,  0.02], scale: 0.96, radius: 0.62, placeholder: "tetrahedron",  tone: "ink"    },
-  // lower band
-  belt:     { pos: [-2.30, -0.72, -0.02], scale: 0.98, radius: 0.64, placeholder: "dodecahedron", tone: "orange" },
-  ski:      { pos: [-1.22, -0.42,  0.04], scale: 1.04, radius: 0.62, placeholder: "ring",         tone: "steel"  },
-  cursor:   { pos: [-0.08, -0.96,  0.02], scale: 0.88, radius: 0.56, placeholder: "octahedron",   tone: "orange" },
-  shoe:     { pos: [ 1.10, -0.86,  0.04], scale: 0.92, radius: 0.58, placeholder: "cone",         tone: "steel"  },
-  car:      { pos: [ 2.34, -0.40, -0.02], scale: 1.00, radius: 0.62, placeholder: "cylinder",     tone: "steel"  },
+// `rot` (radians, XYZ Euler) is the object's authored REST orientation. The
+// gentle sway + hover parallax oscillate AROUND it. Dialed in via the ?tune=other
+// tuner (src/other/HobbiesTuner.tsx); paste its "Copy desktop LAYOUT" output here.
+export interface HobbyLayoutEntry {
+  pos: [number, number, number];
+  scale: number;
+  rot: [number, number, number];
+  radius: number;
+  placeholder: PlaceholderKind;
+  tone: Tone;
+}
+export const LAYOUT: Record<string, HobbyLayoutEntry> = {
+  belt:     { pos: [-2.94,  0.31, -0.02], scale: 1.50, rot: [-0.85, -0.65, -3.10], radius: 0.64, placeholder: "dodecahedron", tone: "orange" },
+  piano:    { pos: [-2.49,  1.42,  0.04], scale: 1.31, rot: [ 0.57, -0.03, -0.04], radius: 0.66, placeholder: "box",          tone: "ink"    },
+  pc:       { pos: [-0.17,  1.33,  0.11], scale: 2.03, rot: [-0.32, -0.27, -0.14], radius: 0.74, placeholder: "icosahedron",  tone: "orange" },
+  shoe:     { pos: [ 1.43,  0.42,  0.04], scale: 1.90, rot: [ 0.48, -0.79,  0.07], radius: 0.58, placeholder: "cone",         tone: "steel"  },
+  keyboard: { pos: [ 0.07, -0.88,  0.00], scale: 1.80, rot: [ 0.61,  0.07, -0.29], radius: 0.62, placeholder: "torus",        tone: "ink"    },
+  cursor:   { pos: [-2.43, -0.56,  0.02], scale: 1.57, rot: [-0.53,  0.10, -0.61], radius: 0.56, placeholder: "octahedron",   tone: "orange" },
+  car:      { pos: [ 2.74, -0.78, -0.02], scale: 2.42, rot: [ 0.33,  0.24,  0.07], radius: 0.62, placeholder: "cylinder",     tone: "steel"  },
+  yarn:     { pos: [-0.24,  0.61, -0.04], scale: 1.71, rot: [ 0.80, -0.09,  0.04], radius: 0.54, placeholder: "sphere",       tone: "steel"  },
+  luggage:  { pos: [ 3.00,  0.92,  0.02], scale: 1.98, rot: [ 0.04,  0.40,  0.19], radius: 0.62, placeholder: "tetrahedron",  tone: "ink"    },
+  ski:      { pos: [-1.44, -0.06,  0.04], scale: 2.76, rot: [-0.31, -0.35,  0.13], radius: 0.62, placeholder: "ring",         tone: "steel"  },
 };
 
 // Gentle front-facing sway amplitudes (radians) — a slow breathing rotation so
@@ -154,6 +159,40 @@ function PlaceholderMesh({ kind, size }: { kind: PlaceholderKind; size: number }
   }
 }
 
+/**
+ * Normalize a loaded GLB scene to the cluster's base size + candy gloss, so
+ * every prop reads at a consistent footprint no matter how it was modelled.
+ * Returns a CLONE (never mutates the cached PRELOADED scene). Shared by the live
+ * HobbyMesh and the ?tune=other tuner so tuned scale matches what ships.
+ */
+export function normalizeHobbyScene(scene: THREE.Group): THREE.Group {
+  const cloned = scene.clone(true);
+  const box = new THREE.Box3().setFromObject(cloned);
+  const sphere = new THREE.Sphere();
+  box.getBoundingSphere(sphere);
+  const targetRadius = 0.62;
+  const k = sphere.radius > 0 ? targetRadius / sphere.radius : 1;
+  cloned.scale.setScalar(k);
+  const center = box.getCenter(new THREE.Vector3()).multiplyScalar(k);
+  cloned.position.sub(center);
+  cloned.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+    if (!mat) return;
+    const boost = (m: THREE.Material) => {
+      const sm = m as THREE.MeshStandardMaterial;
+      if (sm.isMeshStandardMaterial) {
+        sm.roughness = Math.min(sm.roughness ?? 0.5, 0.34);
+        sm.envMapIntensity = Math.max(sm.envMapIntensity ?? 1, 1.1);
+        sm.needsUpdate = true;
+      }
+    };
+    if (Array.isArray(mat)) mat.forEach(boost);
+    else boost(mat);
+  });
+  return cloned;
+}
+
 // ----------------------------------------------------------------------
 // Module-scope GLB preload (App.tsx also idle-prefetches the module).
 // Concurrency capped at 3 so the loads don't starve first-paint assets.
@@ -200,6 +239,39 @@ function startPreload() {
   pump();
 }
 startPreload();
+
+/**
+ * Subscribe to the module-scope GLB preload and return the loaded scene per
+ * hobby id (null until each arrives). Used by the live scene's tiles AND the
+ * ?tune=other tuner.
+ */
+export function useHobbyScenes(): Record<string, THREE.Group | null> {
+  const [loaded, setLoaded] = useState<Record<string, THREE.Group | null>>(() => {
+    const init: Record<string, THREE.Group | null> = {};
+    for (const h of HOBBIES) {
+      const entry = PRELOADED[h.id];
+      if (entry && entry.loaded) init[h.id] = entry.scene;
+    }
+    return init;
+  });
+  useEffect(() => {
+    const unsubs: Array<() => void> = [];
+    HOBBIES.forEach((h) => {
+      const entry = PRELOADED[h.id];
+      if (!entry) return;
+      if (entry.loaded) {
+        setLoaded((p) => (h.id in p ? p : { ...p, [h.id]: entry.scene }));
+        return;
+      }
+      const cb = (s: THREE.Group | null) =>
+        setLoaded((p) => ({ ...p, [h.id]: s }));
+      entry.listeners.add(cb);
+      unsubs.push(() => entry.listeners.delete(cb));
+    });
+    return () => unsubs.forEach((u) => u());
+  }, []);
+  return loaded;
+}
 
 /** Per-body deterministic params: same id → same rest pose + drift + sway. */
 interface BodyAnim {
@@ -304,40 +376,20 @@ function HobbyMesh({
   const tiltRef = useRef({ x: 0, y: 0 });
 
   const layout = LAYOUT[hobby.id]!;
+  // Effective rest transform (rot + scale) for the active arrangement; mobile
+  // inherits desktop unless POS_PORTRAIT overrides. Position is owned by the
+  // parent solver group (drift), so only rot + scale are read here.
+  const tr = useMemo(() => resolveTransform(hobby.id, mobile), [hobby.id, mobile]);
   const anim = useMemo(() => makeAnim(hobby.id), [hobby.id]);
   const toneColor = useMemo(() => TONE_COLOR[layout.tone], [layout.tone]);
 
   // Normalize GLB scale so every prop reads at a consistent base size, plus a
   // gloss boost so the real props sit in the same candy-glossy family as the
   // placeholders (never recolours the authored materials).
-  const normalizedScene = useMemo(() => {
-    if (!scene) return null;
-    const cloned = scene.clone(true);
-    const box = new THREE.Box3().setFromObject(cloned);
-    const sphere = new THREE.Sphere();
-    box.getBoundingSphere(sphere);
-    const targetRadius = 0.62;
-    const k = sphere.radius > 0 ? targetRadius / sphere.radius : 1;
-    cloned.scale.setScalar(k);
-    const center = box.getCenter(new THREE.Vector3()).multiplyScalar(k);
-    cloned.position.sub(center);
-    cloned.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
-      if (!mat) return;
-      const boost = (m: THREE.Material) => {
-        const sm = m as THREE.MeshStandardMaterial;
-        if (sm.isMeshStandardMaterial) {
-          sm.roughness = Math.min(sm.roughness ?? 0.5, 0.34);
-          sm.envMapIntensity = Math.max(sm.envMapIntensity ?? 1, 1.1);
-          sm.needsUpdate = true;
-        }
-      };
-      if (Array.isArray(mat)) mat.forEach(boost);
-      else boost(mat);
-    });
-    return cloned;
-  }, [scene]);
+  const normalizedScene = useMemo(
+    () => (scene ? normalizeHobbyScene(scene) : null),
+    [scene],
+  );
 
   useFrame((state, dt) => {
     const g = rotRef.current;
@@ -354,7 +406,7 @@ function HobbyMesh({
     // Rotation: gentle front-facing sway, damped as the object focuses, plus
     // the keypad face-tracking parallax that turns it toward the cursor while
     // hovered.
-    const rr = anim.restRot;
+    const rr = tr.rot;
     if (PREFERS_REDUCED_MOTION) {
       g.rotation.set(rr[0], rr[1], rr[2]);
     } else {
@@ -382,7 +434,7 @@ function HobbyMesh({
     }
 
     // Scale lift on focus.
-    const s = layout.scale * (1 + (HOVER_SCALE - 1) * hw);
+    const s = tr.scale * (1 + (HOVER_SCALE - 1) * hw);
     g.scale.setScalar(s);
 
     // Placeholder emissive hover glow.
@@ -499,52 +551,74 @@ function HobbyMesh({
 // is binding (height on desktop, width on portrait). FILL < 1 leaves a margin
 // so nothing is cut off; the per-body containment clamp (below) is the hard
 // guarantee that no object ever crosses the visible edge.
-const CLUSTER_HALF_W = 3.06;
-const CLUSTER_HALF_H = 1.82;
+export const CLUSTER_HALF_W = 3.06;
+export const CLUSTER_HALF_H = 1.82;
 // MOBILE PORTRAIT cluster — a TALL 2-column arrangement so the 10 objects FILL a
 // phone's portrait screen. The landscape spread above, framed to fit its WIDTH,
 // pulls the camera far back on a narrow viewport (small cluster + dead air); a
-// tall cluster lets the camera frame the HEIGHT and fill the screen. Positions
-// only — scale / radius / placeholder / tone stay from LAYOUT. Selected at
-// <=768px via the reactive `mobile` flag in SceneInner.
-const POS_PORTRAIT: Record<string, [number, number, number]> = {
-  // 2 cols x 5 rows. LABEL-AWARE: never two LONG names in the same row (their
-  // static labels would collide), and the long one alternates sides row to row.
-  // row 1 — CROCHETING (long) L | PIANO (short) R
-  yarn:     [-0.60,  2.48,  0.03],
-  piano:    [ 0.62,  2.50, -0.02],
-  // row 2 — SKIING (short) L | WORKSTATION (long) R
-  ski:      [-0.62,  1.22,  0.03],
-  pc:       [ 0.56,  1.25,  0.05],
-  // row 3 — KEYBOARDS (long) L | DESIGN (short) R
-  keyboard: [-0.58,  0.00,  0.00],
-  cursor:   [ 0.60, -0.04, -0.02],
-  // row 4 — TRAVEL (med) L | TAEKWONDO (long) R
-  luggage:  [-0.62, -1.22,  0.00],
-  belt:     [ 0.58, -1.25,  0.04],
-  // row 5 — FASHION (med) L | CARS (short) R
-  shoe:     [-0.62, -2.48,  0.03],
-  car:      [ 0.64, -2.50, -0.02],
+// tall cluster lets the camera frame the HEIGHT and fill the screen. `pos` is
+// the portrait home; optional `scale`/`rot` override the desktop LAYOUT values
+// for mobile (omit to inherit). Selected at <=768px via the reactive `mobile`
+// flag in SceneInner. Dialed in via ?tune=other (mobile mode); paste its
+// "Copy mobile POS_PORTRAIT" output here.
+export interface HobbyPortraitEntry {
+  pos: [number, number, number];
+  scale?: number;
+  rot?: [number, number, number];
+}
+export const POS_PORTRAIT: Record<string, HobbyPortraitEntry> = {
+  // Dialed in via ?tune=other (mobile mode). scale/rot are emitted only when they
+  // differ from the desktop LAYOUT; pos is the portrait home slot.
+  belt:     { pos: [ 0.78, -2.52,  0.04], scale: 1.29, rot: [-0.69, -1.01, -2.06] },
+  piano:    { pos: [ 0.94,  1.67, -0.02], scale: 1.24, rot: [ 0.61, -0.31,  0.07] },
+  pc:       { pos: [ 0.33,  0.81,  0.05], scale: 1.67, rot: [-0.29, -0.27, -0.07] },
+  shoe:     { pos: [ 0.66, -1.20,  0.03], scale: 1.48, rot: [-0.35,  0.82,  0.38] },
+  keyboard: { pos: [-0.71, -0.28,  0.00], scale: 1.32, rot: [ 0.68, -0.07,  0.28] },
+  cursor:   { pos: [ 1.06,  0.11, -0.02], scale: 1.16, rot: [-0.17,  0.09, -0.65] },
+  car:      { pos: [-0.75, -2.61, -0.02], scale: 1.45, rot: [ 3.01,  0.45, -3.00] },
+  yarn:     { pos: [-0.41,  1.71,  0.03], scale: 1.11, rot: [ 0.69,  0.27, -0.08] },
+  luggage:  { pos: [-0.81, -1.47,  0.00], scale: 1.41, rot: [-0.38,  0.51,  0.25] },
+  ski:      { pos: [-1.08,  0.81,  0.03], scale: 1.57, rot: [-0.21,  0.28,  0.37] },
 };
-const CLUSTER_HALF_W_PORTRAIT = 1.4;
-const CLUSTER_HALF_H_PORTRAIT = 3.1;
+
+/** Resolve an object's effective transform for the active arrangement.
+ *  Mobile inherits desktop scale/rot unless POS_PORTRAIT overrides them. */
+export interface ResolvedTransform {
+  pos: [number, number, number];
+  scale: number;
+  rot: [number, number, number];
+}
+export function resolveTransform(id: string, mobile: boolean): ResolvedTransform {
+  const L = LAYOUT[id]!;
+  if (mobile) {
+    const P = POS_PORTRAIT[id];
+    return {
+      pos: P?.pos ?? L.pos,
+      scale: P?.scale ?? L.scale,
+      rot: P?.rot ?? L.rot,
+    };
+  }
+  return { pos: L.pos, scale: L.scale, rot: L.rot };
+}
+export const CLUSTER_HALF_W_PORTRAIT = 1.4;
+export const CLUSTER_HALF_H_PORTRAIT = 3.1;
 // Look ABOVE centre so the cluster sits LOWER in the frame — the top row of
 // objects (+ their static labels) clears the big "Some interests" wordmark that
 // floats over the top of the section.
-const CAM_LOOK_Y_PORTRAIT = 0.5;
+export const CAM_LOOK_Y_PORTRAIT = 0.5;
 // Look ABOVE the cluster centre so the whole spread sits in the LOWER part of
 // the frame, leaving clear space up top for the giant "Some interests"
 // wordmark (objects under the title read as messy / unreviewed). Eased back
 // from 0.42 so the lowest objects (the cone) keep clearance at the BOTTOM too.
-const CAM_LOOK_Y = 0.34;
+export const CAM_LOOK_Y = 0.34;
 const CAM_HEIGHT_OFFSET = 0.0;
-const VFOV_DEG = 36;
+export const VFOV_DEG = 36;
 const VFOV_RAD = (VFOV_DEG * Math.PI) / 180;
 const HALF_VFOV_TAN = Math.tan(VFOV_RAD / 2);
 // Eased from 0.92 so the cluster sits a touch smaller with clear margin top AND
 // bottom (the hovered bottom object was clipping the bottom edge).
 const FILL_FRACTION = 0.86;
-function camDistanceForAspect(
+export function camDistanceForAspect(
   aspect: number,
   halfW: number,
   halfH: number,
@@ -553,6 +627,55 @@ function camDistanceForAspect(
   const distForHeight = halfH / (FILL_FRACTION * HALF_VFOV_TAN);
   const distForWidth = halfW / (FILL_FRACTION * HALF_VFOV_TAN * a);
   return Math.max(distForHeight, distForWidth);
+}
+
+// ---------------------------------------------------------------------------
+// DESKTOP framing: fit the cluster into the LOWER part of the viewport, leaving
+// a clear band at the TOP for the giant "Some interests" wordmark. The header
+// floats over the section (pointer-events:none) and was crashing straight through
+// the top-row objects (piano / GPU) — user-flagged. We keep the cluster as wide
+// as possible but map its HEIGHT into [TOP_RESERVE .. 1 - BOTTOM_MARGIN] of the
+// frame, then look ABOVE the cluster centre so the freed space lands up top.
+//
+// At a ~16:9 aspect, width-binding alone only frees ~0.2 frame-heights of slack —
+// not enough for the wordmark — so reserving the band shrinks the cluster a touch
+// and small side margins appear. That's the cost of giving the title clean space.
+//
+// The cluster bounds are DERIVED from the tuned LAYOUT (+ a per-object visual
+// pad), so re-tuning the positions reframes the camera automatically — there is
+// no hand-maintained half-extent to drift out of sync with the ?tune=other tool.
+const _LAYOUT_XABS = Object.values(LAYOUT).map((l) => Math.abs(l.pos[0]));
+const _LAYOUT_Y = Object.values(LAYOUT).map((l) => l.pos[1]);
+const CLUSTER_PAD = 0.55; // object visual allowance beyond its home centre
+const DESK_TOP_Y = Math.max(..._LAYOUT_Y) + CLUSTER_PAD;
+const DESK_BOT_Y = Math.min(..._LAYOUT_Y) - CLUSTER_PAD;
+const DESK_HALF_W = Math.max(..._LAYOUT_XABS) + CLUSTER_PAD;
+// Vertical band the cluster may occupy: top fraction reserved for the wordmark,
+// a small bottom breathing margin. WIDTH_FILL keeps it near edge-to-edge.
+const TOP_RESERVE = 0.3;
+const BOTTOM_MARGIN = 0.04;
+const WIDTH_FILL = 0.99;
+export interface Framing {
+  dist: number;
+  lookY: number;
+}
+export function desktopFraming(aspect: number): Framing {
+  const a = Math.max(0.0001, aspect);
+  const halfHc = (DESK_TOP_Y - DESK_BOT_Y) / 2; // cluster world half-height
+  const centerY = (DESK_TOP_Y + DESK_BOT_Y) / 2; // cluster world centre
+  const visibleFracV = 1 - TOP_RESERVE - BOTTOM_MARGIN;
+  // Distance so the cluster height fills `visibleFracV` of the frame AND its width
+  // fills `WIDTH_FILL` of the frame; take whichever needs MORE distance so neither
+  // axis overflows its budget.
+  const distForHeight = halfHc / (visibleFracV * HALF_VFOV_TAN);
+  const distForWidth = DESK_HALF_W / (WIDTH_FILL * a * HALF_VFOV_TAN);
+  const dist = Math.max(distForHeight, distForWidth);
+  const visHalfH = dist * HALF_VFOV_TAN;
+  // Park the cluster centre at the centre of the reserved band so the slack lands
+  // on TOP (under the wordmark) instead of being split evenly top/bottom.
+  const bandCenterFrac = (TOP_RESERVE + (1 - BOTTOM_MARGIN)) / 2;
+  const lookY = centerY + (bandCenterFrac - 0.5) * 2 * visHalfH;
+  return { dist, lookY };
 }
 
 function SceneInner({
@@ -596,8 +719,8 @@ function SceneInner({
     () =>
       HOBBIES.map((h, i) => {
         const L = LAYOUT[h.id]!;
-        const p = mobile ? POS_PORTRAIT[h.id] ?? L.pos : L.pos;
-        const home = new THREE.Vector3(p[0], p[1], p[2]);
+        const tr = resolveTransform(h.id, mobile);
+        const home = new THREE.Vector3(tr.pos[0], tr.pos[1], tr.pos[2]);
         return {
           id: h.id,
           index: i,
@@ -605,7 +728,7 @@ function SceneInner({
           pos: home.clone(),
           vel: new THREE.Vector3(),
           radius: L.radius,
-          scale: L.scale,
+          scale: tr.scale,
           anim: makeAnim(h.id),
         };
       }),
@@ -621,11 +744,22 @@ function SceneInner({
     // ---- Camera: fixed framing of the whole cluster ----
     const aspect = state.size.height > 0 ? state.size.width / state.size.height : 1;
     // Portrait phones frame the TALL cluster (fills the screen); desktop/tablet
-    // frame the landscape spread.
-    const halfW = mobile ? CLUSTER_HALF_W_PORTRAIT : CLUSTER_HALF_W;
-    const halfH = mobile ? CLUSTER_HALF_H_PORTRAIT : CLUSTER_HALF_H;
-    const lookY = mobile ? CAM_LOOK_Y_PORTRAIT : CAM_LOOK_Y;
-    const dist = camDistanceForAspect(aspect, halfW, halfH);
+    // frame the landscape spread into the LOWER part of the frame, leaving a clear
+    // top band for the wordmark (desktopFraming).
+    let lookY: number;
+    let dist: number;
+    if (mobile) {
+      lookY = CAM_LOOK_Y_PORTRAIT;
+      dist = camDistanceForAspect(
+        aspect,
+        CLUSTER_HALF_W_PORTRAIT,
+        CLUSTER_HALF_H_PORTRAIT,
+      );
+    } else {
+      const f = desktopFraming(aspect);
+      lookY = f.lookY;
+      dist = f.dist;
+    }
     camera.position.set(0, lookY + CAM_HEIGHT_OFFSET, dist);
     camera.lookAt(0, lookY, 0);
 
@@ -705,19 +839,34 @@ function SceneInner({
       }
     }
 
-    // ---- Containment: keep every body fully inside the visible frame ----
+    // ---- Containment: keep every body inside the visible frame ----
+    // The (frame - radius - margin) box is the hard safety net, but the tuned
+    // home slots (dialed in via ?tune=other) deliberately fill the frame EDGE-TO-
+    // EDGE with big props, so several homes sit OUTSIDE that naive box. Clamping
+    // to it would yank those objects inward and bunch the cluster (the left-side
+    // pile-up + vertical squash the user saw). So each body's limit is the UNION
+    // of the safety box and its OWN tuned home extent: a body may always rest at
+    // its tuned slot, and the clamp only stops DRIFT from carrying it any further
+    // off-frame than that slot already sits. Interior bodies (home well inside the
+    // safety box) are unaffected — they keep the original frame clamp.
+    // The visible frame spans world Y [lookY - visHalfH, lookY + visHalfH] and
+    // world X [-visHalfW, visHalfW]; a body of radius er stays fully inside with
+    // margin when its centre is within (edge - er - EDGE_MARGIN). lookY is now well
+    // off zero (the cluster is parked low so the wordmark gets the top band), so
+    // the band MUST be computed around lookY — a symmetric-about-origin clamp would
+    // be wrong. Each limit is then unioned with the body's tuned home so the clamp
+    // never pulls a body inward of its tuned slot, only stops outward drift.
     for (let i = 0; i < bodies.length; i++) {
       const b = bodies[i]!;
-      // Same clamp whether or not this body is focused, so hovering never snaps
-      // it. The uniform EDGE_MARGIN already leaves room for the hover growth.
+      // Same clamp whether or not this body is focused, so hovering never snaps it.
       const er = b.radius;
-      const limX = Math.max(0, visHalfW - er - EDGE_MARGIN);
-      const limY = Math.max(0, visHalfH - er - EDGE_MARGIN - lookY);
-      const limYNeg = Math.max(0, visHalfH - er - EDGE_MARGIN + lookY);
-      if (b.pos.x > limX) { b.pos.x = limX; if (b.vel.x > 0) b.vel.x *= -0.3; }
-      else if (b.pos.x < -limX) { b.pos.x = -limX; if (b.vel.x < 0) b.vel.x *= -0.3; }
-      if (b.pos.y > limY) { b.pos.y = limY; if (b.vel.y > 0) b.vel.y *= -0.3; }
-      else if (b.pos.y < -limYNeg) { b.pos.y = -limYNeg; if (b.vel.y < 0) b.vel.y *= -0.3; }
+      const sideLim = Math.max(visHalfW - er - EDGE_MARGIN, Math.abs(b.home.x));
+      const topLim = Math.max(lookY + visHalfH - er - EDGE_MARGIN, b.home.y);
+      const botLim = Math.min(lookY - visHalfH + er + EDGE_MARGIN, b.home.y);
+      if (b.pos.x > sideLim) { b.pos.x = sideLim; if (b.vel.x > 0) b.vel.x *= -0.3; }
+      else if (b.pos.x < -sideLim) { b.pos.x = -sideLim; if (b.vel.x < 0) b.vel.x *= -0.3; }
+      if (b.pos.y > topLim) { b.pos.y = topLim; if (b.vel.y > 0) b.vel.y *= -0.3; }
+      else if (b.pos.y < botLim) { b.pos.y = botLim; if (b.vel.y < 0) b.vel.y *= -0.3; }
       posRefs.current[i]?.position.copy(b.pos);
     }
   });
@@ -804,7 +953,17 @@ export const HobbiesScene = memo(function HobbiesScene({
     HOBBIES.forEach((h) => {
       const entry = PRELOADED[h.id];
       if (!entry) return;
-      if (entry.loaded) return;
+      if (entry.loaded) {
+        // Already resolved — possibly in the GAP between this component's initial
+        // state snapshot and this effect running. Returning here (the old code)
+        // left such a GLB neither in the snapshot NOR subscribed, so it was stuck
+        // on its placeholder forever (a fast scroll-to-section right after load
+        // could strand 2-3 props — and showing a placeholder for a GLB that DID
+        // load violates "never fake"). Fold it into state instead. Mirrors the
+        // useHobbyScenes hook's loaded-entry handling.
+        setLoaded((p) => (h.id in p ? p : { ...p, [h.id]: entry.scene }));
+        return;
+      }
       const cb = (scene: THREE.Group | null) => {
         setLoaded((p) => ({ ...p, [h.id]: scene }));
       };

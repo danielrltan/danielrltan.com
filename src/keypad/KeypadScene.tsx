@@ -368,7 +368,7 @@ function TuneHud({
         minWidth: 320,
       }}
     >
-      <div style={{ marginBottom: 6, color: "#ff7e42", letterSpacing: 1 }}>
+      <div style={{ marginBottom: 6, color: "#ff4f00", letterSpacing: 1 }}>
         KEYPAD ORIENTATION TUNER
       </div>
       <div style={{ marginBottom: 8, opacity: 0.9 }}>

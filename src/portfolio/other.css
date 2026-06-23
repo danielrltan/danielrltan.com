@@ -50,24 +50,12 @@
   height: 100vh;
   height: 100svh;
   overflow: hidden;
-  /* Flat page tone, uniform with every other content section. (Was a cool-grey
-     radial vignette + top/bottom seam-fades; removed in the bg-consistency pass
-     — Work above and BitsAndPieces below are both flat #eef0f3, so the edges
-     already match with nothing to patch.) */
+  /* Flat page tone, uniform with every other content section. The faint
+     dot-grid "rice" texture was removed here (owner: it seamed visibly against
+     the flat #eef0f3 of Work above and Honours below — the only two sections
+     still carrying it were Play + Recents). Every content section is now the
+     same flat --bg-page ground, so there is no seam to patch. */
   background-color: var(--bg-page);
-  background-image:
-    /* Flat page tone (background-color above) + the sitewide dot-grid texture.
-       The tonal radial (--bg-page → --bg-elevated → --bg-deep) and its two
-       seam-fade linears were removed: the centre-light / edge-dark vignette
-       drifted this section off the flat #eef0f3 that every other content
-       section uses (bg-consistency pass). The dot grid is kept. */
-    radial-gradient(
-      circle at center,
-      rgba(13, 14, 16, 0.05) 0.5px,
-      transparent 1px
-    );
-  background-size: 5px 5px;
-  background-blend-mode: multiply;
   color: var(--ink);
 }
 
@@ -436,12 +424,9 @@
   padding: var(--space-4);
   color: var(--bg-surface);
   border: 1px solid var(--ink-hairline);
-  /* Card lift: subtle orange-cast bottom shadow consistent with the
-     design system card spec. */
-  box-shadow:
-    0 1px 0 rgba(13, 14, 16, 0.04),
-    0 24px 48px -28px rgba(194, 61, 0, 0.18),
-    0 2px 0 rgba(255, 255, 255, 0.05) inset;
+  /* Flat ground: the soft orange-cast elevation shadow read "cheap" (user) —
+     the photo tile now sits flush on its 1px hairline border, matching the
+     flat spec-sheet card voice used across the rest of the site. */
   overflow: hidden;
 }
 

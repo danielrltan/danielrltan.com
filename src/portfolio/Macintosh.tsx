@@ -516,7 +516,7 @@ export function Macintosh() {
         className={`portfolio-col mac-col${selected ? " is-detail-open" : ""}`}
       >
         <span className="section-marker">02</span>
-        <span className="section-index">02 / 06 &middot; Stack + Projects</span>
+        <span className="section-index">02 / 06 &middot; Projects</span>
         <h2>
           <ScrambleText text="Projects" />
         </h2>

@@ -142,7 +142,7 @@
      --accent-deep is a darkened int'l orange that still clears the
      large-display-text contrast bar on the light bg. */
   --accent: #ff4f00;
-  --accent-hot: #ff6a2a;
+  --accent-hot: #ff4f00;
   --accent-deep: #c23d00;            /* deeper int'l orange — readable as large display text (~4.6:1 on --bg-page) */
   --accent-tint: rgba(255, 79, 0, 0.10);
   --accent-soft: rgba(255, 79, 0, 0.12);  /* legacy alias */

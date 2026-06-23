@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { BlinkingCat } from "./BlinkingCat";
+import { SignatureMark } from "./SignatureMark";
 import { useIsMobile } from "./useIsMobile";
 
 /**
- * Persistent chrome over the room view: just the brand cat (top-left).
- * `visible` fades the whole HUD in/out for desk-view transitions.
+ * Persistent chrome over the room view: the brand mark (top-left) — now
+ * Daniel's signature (the cat mascot was retired). `visible` fades the whole
+ * HUD in/out for desk-view transitions.
  *
  * The reset/audio pills that used to sit bottom-left were removed
  * entirely at the owner's request (they read as stray leftover controls,
@@ -98,21 +99,27 @@ export function RoomHUD({ visible }: Props) {
           position: "absolute",
           top: topOffset,
           left: leftOffset,
-          // Visible chip stays compact; tap target padded to ≥44px on
-          // mobile (touch ergonomics) while desktop keeps the tight chip.
-          width: isMobile ? 44 : chipH,
+          // The signature is WIDE (aspect ~2.6:1), so the mark sizes to its
+          // content (width:auto) rather than a square chip. Height is the tap
+          // target (≥44px on mobile); a little left-aligned padding gives the
+          // gesture air without shifting it off the corner.
+          width: "auto",
           height: isMobile ? 44 : chipH,
+          minWidth: 44,
           display: "inline-flex",
           alignItems: "center",
-          justifyContent: "center",
-          padding: isMobile ? (44 - iconPx) / 2 : (chipH - iconPx) / 2,
-          // Pull the larger tap box back so the cat stays visually at the
-          // ~14px corner instead of shifting inward.
-          margin: isMobile ? `${-(44 - chipH) / 2}px 0 0 ${-(44 - chipH) / 2}px` : 0,
+          justifyContent: "flex-start",
+          padding: "0 6px",
           zIndex: HUD_Z,
           pointerEvents: dodge ? "none" : "auto",
           opacity: dodge ? 0 : 1,
-          color: "var(--ink)",
+          // currentColor drives the signature stroke (SignatureMark uses
+          // stroke="currentColor"). International Orange: the mark only reveals
+          // AFTER the hero (see `visible` in App.tsx), so it always sits over the
+          // light content sections, where orange reads on-brand. (Dark ink was
+          // unreadable on the orange hero, and the hero already carries the big
+          // signature wordmark — so the small mark is hidden there entirely.)
+          color: "var(--accent)",
           textDecoration: "none",
           userSelect: "none",
           transition: "transform 0.18s ease, opacity 0.3s ease",
@@ -127,7 +134,7 @@ export function RoomHUD({ visible }: Props) {
           e.currentTarget.style.transform = "translateY(0)";
         }}
       >
-        <BlinkingCat size={iconPx} />
+        <SignatureMark height={iconPx} />
       </a>
     </div>
   );
