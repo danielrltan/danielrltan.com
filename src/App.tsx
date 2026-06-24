@@ -108,16 +108,24 @@ const HERO_SETTLE_BAND_HI = 1.1; // ...and before About's header has scrolled of
 const HERO_SETTLE_DURATION = 0.5; // desktop Lenis tween, seconds
 const HERO_SETTLE_IDLE_MS = 90; // scroll-quiesced debounce == "scroll ended"
 // Mobile: Lenis runs syncTouch:false (native momentum), so a tween can't arrest
-// an active fling — only nudge AFTER the fling ends, and only a small near-miss,
-// never a big yank.
+// an active fling — it can only pull AFTER the fling's native momentum quiesces.
+// A finger flick out of the hero easily overshoots About's top (1.0vh) into the
+// MIDDLE of the ~1.7vh-tall About column, skipping its opening (owner-flagged).
+// So the upper band reaches ~1.9 (≈ About's midpoint): a flick that lands
+// anywhere in About's top half is pulled back up to About-top so you read it in
+// order from the start. A harder flick PAST the midpoint is left alone (you've
+// committed past the open). Tween lengthened for the bigger pull.
 const HERO_SETTLE_MOBILE_LO = 0.84;
-const HERO_SETTLE_MOBILE_HI = 1.1;
-const HERO_SETTLE_MOBILE_DURATION = 0.35;
+const HERO_SETTLE_MOBILE_HI = 1.9;
+const HERO_SETTLE_MOBILE_DURATION = 0.5;
 const HERO_SETTLE_MOBILE_IDLE_MS = 130;
 // Re-arm the one-shot only after clearly leaving the band (back above the hero,
-// or committed down into About's body) so it never re-fires mid-band.
+// or committed down into About's body) so it never re-fires mid-band. The mobile
+// re-arm sits just ABOVE the (now wide) mobile band so that reading DOWN through
+// About's top half AFTER the first settle can't re-arm and re-fire a yank-to-top.
 const HERO_SETTLE_REARM_LO = 0.4;
 const HERO_SETTLE_REARM_HI = 1.3;
+const HERO_SETTLE_MOBILE_REARM_HI = 1.95;
 
 /**
  * Installs the hero→About settle. SEPARATE from installScrollChoreography's rAF
@@ -162,7 +170,10 @@ function installHeroSettle(): void {
     if (y !== lastY) lastDir = y > lastY ? 1 : -1;
     lastY = y;
     const ratio = y / vh;
-    if (ratio < HERO_SETTLE_REARM_LO || ratio > HERO_SETTLE_REARM_HI) {
+    const rearmHi = mobileQuery.matches
+      ? HERO_SETTLE_MOBILE_REARM_HI
+      : HERO_SETTLE_REARM_HI;
+    if (ratio < HERO_SETTLE_REARM_LO || ratio > rearmHi) {
       settledOnce = false; // re-arm only once clearly out of the band
     }
     // Fire on scroll-END: each event resets the idle timer; it only resolves
