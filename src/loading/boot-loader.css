@@ -12,14 +12,14 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  transition:
-    opacity 420ms var(--ease-soft, ease),
-    transform 420ms var(--ease-soft, ease);
-  will-change: opacity, transform;
+  transition: opacity 420ms var(--ease-soft, ease);
+  will-change: opacity;
 }
 .boot-loader.is-complete {
+  /* Number STAYS PUT — it just fades in place onto the identical orange hero
+     field, no upward lift (the old translate3d(0,-1.4vh,0) "fade up" was
+     owner-flagged). */
   opacity: 0;
-  transform: translate3d(0, -1.4vh, 0);
   pointer-events: none;
 }
 
@@ -33,12 +33,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Reduced motion: the count snaps to target; the outro lift is dropped. */
+/* Reduced motion: the count snaps to target; the fade is instant. */
 @media (prefers-reduced-motion: reduce) {
   .boot-loader {
     transition: none !important;
-  }
-  .boot-loader.is-complete {
-    transform: none;
   }
 }

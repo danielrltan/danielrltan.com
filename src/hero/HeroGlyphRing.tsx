@@ -472,7 +472,7 @@ function RingScene({
   // face-on -> tilt-back rotation. Runs once.
   const entranceStartRef = useRef<number | null>(null);
   const gateMetAtRef = useRef<number | null>(null);
-  const ENTRANCE_DELAY = 0.5; // seconds after the loading screen is gone
+  const ENTRANCE_DELAY = 0; // ring appears the instant the hero reveals (no hold)
   const wasOffscreenRef = useRef(true);
   // Resting orientation (the scene's tilt). The entrance rotates the tilt
   // group from 0 (face-on) to these over the reveal.
@@ -759,9 +759,9 @@ function RingScene({
     const dt = Math.min(0.05, now - lastTRef.current);
     lastTRef.current = now;
 
-    // Kick off the entrance only once the LOADING SCREEN is gone AND
-    // the composition is revealed, plus a beat (ENTRANCE_DELAY), same
-    // gate as the ignition blast.
+    // Mark the ring "revealed" once the LOADING SCREEN is gone AND the
+    // composition is visible (ENTRANCE_DELAY is 0 — no hold). This only gates the
+    // ring off until the hero shows; there's no entrance animation anymore.
     if (INTRO_FREEZE == null) {
       if (entranceStartRef.current === null) {
         const gateMet =
@@ -782,23 +782,12 @@ function RingScene({
       }
     }
 
-    const ss = (a: number, b: number, x: number) => {
-      const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
-      return t * t * (3 - 2 * t);
-    };
-    // Entrance choreography (~1.3s): crossfade in FACE-ON (0-0.35s),
-    // hold a beat, TILT back to the scene lean (0.4-1.1s). Spin stays
-    // at the resting rate throughout.
-    const et =
-      INTRO_FREEZE != null ? INTRO_FREEZE : now - entranceStartRef.current!;
-    let ringOpacity: number, tiltT: number;
-    if (reducedMotion) {
-      ringOpacity = 1;
-      tiltT = 1; // land at rest immediately
-    } else {
-      ringOpacity = ss(0.0, 0.35, et);
-      tiltT = ss(0.4, 1.1, et);
-    }
+    // NO entrance animation: the ring sits at full opacity + its resting tilt the
+    // instant the hero composition reveals (owner: drop the ring
+    // "explosion"/crossfade-in entrance — just have the ring there immediately).
+    // The composition's own is-visible fade is what carries it onto the screen.
+    const ringOpacity = 1;
+    const tiltT = 1;
 
     // Apply orientation + the crossfade opacity (CSS on the canvas).
     const tg = tiltGroupRef.current;

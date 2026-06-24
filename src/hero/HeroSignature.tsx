@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { HeroSignature2D } from "./HeroSignature2D";
-import { HeroIgnition } from "./HeroIgnition";
 // HeroGlyphRing pulls in three.js + @react-three/fiber (the ~1MB `three`
 // chunk). Lazy-load it so that chunk leaves the entry/first-paint path: the
 // orange scrim, loader, and static wordmark paint immediately and the ring
@@ -467,13 +466,6 @@ export function HeroSignature() {
             </Suspense>
           )}
         </div>
-
-        {/* One-shot ASCII blast on load, centred on the ring; the ring then
-            crossfades in over it and tilts into the scene. Sibling of the
-            ring-wrap (not inside it) so it isn't dimmed by the wrap's own
-            fade-in. */}
-        <HeroIgnition />
-
 
         <div className="hero-mega-wordmark" ref={wordmarkRef}>
           {/* Greeting that leads INTO the wordmark below (no repeated name).
