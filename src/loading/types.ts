@@ -56,6 +56,11 @@ export const UNLOCK_FAILSAFE_MS = 5000;
 export const HERO_HOLD_MS = 700;
 export const LOADER_FADE_MS = 560;
 export const REVEAL_FAILSAFE_MS = 2600;
+/** Scroll stays LOCKED this long AFTER the loader has fully faded out (the hero
+ *  is already revealed), so the user can settle into the hero and process it
+ *  before scrolling becomes possible — instead of being "launched abruptly" the
+ *  instant the fade ends (owner-flagged). Tunable beat. */
+export const POST_REVEAL_HOLD_MS = 900;
 /** Max time to keep waiting for STABLE_FRAMES_REQUIRED smooth frames AFTER
  *  assets + the timeline floor are satisfied. The "30 smooth frames" gate
  *  is a reveal-without-jank *preference*; on weak hardware the always-on

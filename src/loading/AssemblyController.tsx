@@ -1,6 +1,10 @@
 import { createContext, useContext, useEffect } from "react";
 import { useAssemblyProgress } from "./useAssemblyProgress";
-import { type AssemblyState, UNLOCK_FAILSAFE_MS } from "./types";
+import {
+  type AssemblyState,
+  POST_REVEAL_HOLD_MS,
+  UNLOCK_FAILSAFE_MS,
+} from "./types";
 
 /**
  * Loading state context. Tracks bytes / timeline / stable frames via
@@ -30,14 +34,25 @@ export function AssemblyProvider({ children }: { children: React.ReactNode }) {
   //
   // Unlocking earlier (on `hero-composed`, while the loader is still fading)
   // would let the user scroll mid-fade-in — which is exactly what we don't want.
+  //
+  // Even once the fade is done we hold the lock a further POST_REVEAL_HOLD_MS so
+  // the hero can be SEEN and processed for a beat before scroll engages, rather
+  // than the user being "launched abruptly" the instant the loader clears.
   useEffect(() => {
-    const unlock = () =>
-      document.documentElement.classList.remove("loading-active");
+    let t = 0;
+    const unlock = () => {
+      t = window.setTimeout(() => {
+        document.documentElement.classList.remove("loading-active");
+      }, POST_REVEAL_HOLD_MS);
+    };
     window.addEventListener("loader-revealed", unlock);
-    // Cleanup only drops the listener — NOT the class. Removing the class
-    // here would lift the scrim during React StrictMode's dev mount→unmount
-    // →mount cycle (main.tsx adds it once and never re-adds).
-    return () => window.removeEventListener("loader-revealed", unlock);
+    // Cleanup drops the listener + the pending timer — NOT the class. Removing
+    // the class here would lift the scrim during React StrictMode's dev
+    // mount→unmount→mount cycle (main.tsx adds it once and never re-adds).
+    return () => {
+      window.removeEventListener("loader-revealed", unlock);
+      if (t) window.clearTimeout(t);
+    };
   }, []);
 
   // Failsafe: never trap a visitor behind the scrim. If the compose signal
