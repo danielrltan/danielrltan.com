@@ -174,24 +174,35 @@ const MAC_GROUP_SCALE = 1.07;
 
 // ── New mac.glb (single-mesh CRT monitor) screen fit ──────────────────────────
 // The GLB is ONE merged mesh whose screen is a baked-texture region (no separate
-// "screen" sub-mesh), so the overlay can't be auto-attached to a face. These are
-// the screen rect MEASURED (via the _macinspect harness) in the loaded clone's
-// local/bbox space: a 23.7 × 17.8 rectangle centered at (0.55, 17.1) on the +Z
-// face (z ≈ 10.8). The CRT picture overlay + the click/back planes are built from
-// these.
-const MAC_SCREEN_RECT = { cx: 0.55, cy: 17.1, cz: 10.85, w: 23.7, h: 17.8 };
-// Canonical seat: the screen face must land at macGroup-local SCREEN_LOCAL_CENTER
-// at SCREEN_LOCAL_H tall, which the detail-zoom framing still assumes. MAC_BODY_*
-// uniformly scale + offset the clone so MAC_SCREEN_RECT maps onto that plane;
-// SCREEN_LOCAL_W is then the screen's local width at the model's true aspect.
+// "screen" sub-mesh), so the overlay can't be auto-attached to a face. All rects
+// below are MEASURED (via the _macinspect harness) in the loaded clone's
+// local/bbox space.
 const SCREEN_LOCAL_H = 0.72;
 const SCREEN_LOCAL_CENTER: [number, number, number] = [0, 1.0, 0.557];
-const MAC_BODY_SCALE = SCREEN_LOCAL_H / MAC_SCREEN_RECT.h;
-const SCREEN_LOCAL_W = MAC_BODY_SCALE * MAC_SCREEN_RECT.w;
+// SEAT reference = the dark-screen GLASS rect: maps onto the canonical macGroup
+// screen plane so the housing keeps its size + framing. MAC_BODY_* uniformly
+// scale + offset the clone so this rect lands at SCREEN_LOCAL_CENTER, 0.72 tall.
+const MAC_SEAT = { cx: 0.55, cy: 17.1, cz: 10.85, h: 17.8 };
+const MAC_BODY_SCALE = SCREEN_LOCAL_H / MAC_SEAT.h;
 const MAC_BODY_POS: [number, number, number] = [
-  SCREEN_LOCAL_CENTER[0] - MAC_BODY_SCALE * MAC_SCREEN_RECT.cx,
-  SCREEN_LOCAL_CENTER[1] - MAC_BODY_SCALE * MAC_SCREEN_RECT.cy,
-  SCREEN_LOCAL_CENTER[2] - MAC_BODY_SCALE * MAC_SCREEN_RECT.cz,
+  SCREEN_LOCAL_CENTER[0] - MAC_BODY_SCALE * MAC_SEAT.cx,
+  SCREEN_LOCAL_CENTER[1] - MAC_BODY_SCALE * MAC_SEAT.cy,
+  SCREEN_LOCAL_CENTER[2] - MAC_BODY_SCALE * MAC_SEAT.cz,
+];
+// CRT PICTURE overlay rect — inset from the glass edges (thin black CRT border),
+// pushed back to the glass bulge (cz), and TILTED to sit flush on the curved +
+// slightly back-leaning face (tuned across dead-on + oblique angles so the
+// picture never floats onto the cream bezel and the bulge never pokes through).
+const MAC_SCREEN_RECT = { cx: 0.55, cy: 16.9, cz: 9.5, w: 21.8, h: 16.2 };
+const MAC_SCREEN_TILT_X = THREE.MathUtils.degToRad(-7);
+// The picture's rect in macGroup-local space — the click/back planes + detail
+// framing track the PICTURE (not the larger glass) so hotspots line up with it.
+const SCREEN_LOCAL_W = MAC_BODY_SCALE * MAC_SCREEN_RECT.w;
+const SCREEN_LOCAL_PIC_H = MAC_BODY_SCALE * MAC_SCREEN_RECT.h;
+const SCREEN_LOCAL_PIC_CENTER: [number, number, number] = [
+  MAC_BODY_SCALE * MAC_SCREEN_RECT.cx + MAC_BODY_POS[0],
+  MAC_BODY_SCALE * MAC_SCREEN_RECT.cy + MAC_BODY_POS[1],
+  MAC_BODY_SCALE * MAC_SCREEN_RECT.cz + MAC_BODY_POS[2],
 ];
 
 // Float pose for BEATs 1-2: a 3/4 product-shot view of the Mac's cube
@@ -948,6 +959,7 @@ function MacBody({
     const overlayMat = makeCrtScreenMaterial(screenTexture);
     const overlay = new THREE.Mesh(overlayGeo, overlayMat);
     overlay.position.set(MAC_SCREEN_RECT.cx, MAC_SCREEN_RECT.cy, MAC_SCREEN_RECT.cz);
+    overlay.rotation.x = MAC_SCREEN_TILT_X; // match the screen's back-lean
     overlay.renderOrder = 999;
     clone.add(overlay);
     screenOverlayRef.current = overlay;
@@ -966,7 +978,13 @@ function MacBody({
         MAC_SCREEN_RECT.cy,
         MAC_SCREEN_RECT.cz,
       ),
-      localNormal: new THREE.Vector3(0, 0, 1),
+      // Outward normal of the back-leaning picture plane (PlaneGeometry's +Z
+      // rotated by MAC_SCREEN_TILT_X about X) so the detail-zoom aims dead-on.
+      localNormal: new THREE.Vector3(
+        0,
+        -Math.sin(MAC_SCREEN_TILT_X),
+        Math.cos(MAC_SCREEN_TILT_X),
+      ),
       aspect: MAC_SCREEN_RECT.w / MAC_SCREEN_RECT.h,
       faceH: MAC_SCREEN_RECT.h,
     };
@@ -1952,7 +1970,7 @@ function ScreenClickPlane({
 
   return (
     <mesh
-      position={[0, 1.0, 0.557]}
+      position={SCREEN_LOCAL_PIC_CENTER}
       onPointerMove={(e) => {
         if (!enabled) return;
         const i = hitTile(e.uv);
@@ -1972,7 +1990,7 @@ function ScreenClickPlane({
         if (i != null) onSelect(projects[i]!);
       }}
     >
-      <planeGeometry args={[SCREEN_LOCAL_W, SCREEN_LOCAL_H]} />
+      <planeGeometry args={[SCREEN_LOCAL_W, SCREEN_LOCAL_PIC_H]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
   );
@@ -2001,7 +2019,7 @@ function ScreenBackPlane({
   }, [enabled]);
   return (
     <mesh
-      position={[0, 1.0, 0.558]}
+      position={SCREEN_LOCAL_PIC_CENTER}
       onPointerOver={() => {
         if (enabled) document.body.style.cursor = "pointer";
       }}
@@ -2014,7 +2032,7 @@ function ScreenBackPlane({
         onBack();
       }}
     >
-      <planeGeometry args={[SCREEN_LOCAL_W, SCREEN_LOCAL_H]} />
+      <planeGeometry args={[SCREEN_LOCAL_W, SCREEN_LOCAL_PIC_H]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
   );
