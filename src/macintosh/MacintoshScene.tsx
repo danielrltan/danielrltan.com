@@ -172,6 +172,28 @@ const PARALLAX_RATE = 4.0;
 // the frame without overflowing the close dolly framing.
 const MAC_GROUP_SCALE = 1.07;
 
+// ── New mac.glb (single-mesh CRT monitor) screen fit ──────────────────────────
+// The GLB is ONE merged mesh whose screen is a baked-texture region (no separate
+// "screen" sub-mesh), so the overlay can't be auto-attached to a face. These are
+// the screen rect MEASURED (via the _macinspect harness) in the loaded clone's
+// local/bbox space: a 23.7 × 17.8 rectangle centered at (0.55, 17.1) on the +Z
+// face (z ≈ 10.8). The CRT picture overlay + the click/back planes are built from
+// these.
+const MAC_SCREEN_RECT = { cx: 0.55, cy: 17.1, cz: 10.85, w: 23.7, h: 17.8 };
+// Canonical seat: the screen face must land at macGroup-local SCREEN_LOCAL_CENTER
+// at SCREEN_LOCAL_H tall, which the detail-zoom framing still assumes. MAC_BODY_*
+// uniformly scale + offset the clone so MAC_SCREEN_RECT maps onto that plane;
+// SCREEN_LOCAL_W is then the screen's local width at the model's true aspect.
+const SCREEN_LOCAL_H = 0.72;
+const SCREEN_LOCAL_CENTER: [number, number, number] = [0, 1.0, 0.557];
+const MAC_BODY_SCALE = SCREEN_LOCAL_H / MAC_SCREEN_RECT.h;
+const SCREEN_LOCAL_W = MAC_BODY_SCALE * MAC_SCREEN_RECT.w;
+const MAC_BODY_POS: [number, number, number] = [
+  SCREEN_LOCAL_CENTER[0] - MAC_BODY_SCALE * MAC_SCREEN_RECT.cx,
+  SCREEN_LOCAL_CENTER[1] - MAC_BODY_SCALE * MAC_SCREEN_RECT.cy,
+  SCREEN_LOCAL_CENTER[2] - MAC_BODY_SCALE * MAC_SCREEN_RECT.cz,
+];
+
 // Float pose for BEATs 1-2: a 3/4 product-shot view of the Mac's cube
 // housing with the SCREEN FACE TIPPED UP toward the viewer/camera.
 //
@@ -303,7 +325,9 @@ const DETAIL_FILL = 0.9;
  * until the overlay is built; consumers must guard.
  */
 interface ScreenInfo {
-  mesh: THREE.Mesh;
+  /** Screen-bearing object (the GLB clone root for the single-mesh monitor);
+   *  consumers read only its live world matrix. */
+  mesh: THREE.Object3D;
   /** The overlay plane mesh; its world matrix gives the face's screen rect. */
   overlay: THREE.Mesh;
   localCenter: THREE.Vector3;
@@ -884,172 +908,67 @@ function MacBody({
 
   useEffect(() => {
     if (!clone) return;
-    let screenMesh: THREE.Mesh | null = null;
-    // Collect all candidate meshes so we can fall back to a size-based
-    // heuristic when name-matching fails. The mac.glb in /public ships
-    // with generic mesh names like Cube_1 / Cube_2 (no "screen" /
-    // "crt"), so the previous name-only lookup never matched; overlay
-    // never attached, CRT stayed black. Selecting the smallest mesh by
-    // bounding-box volume picks the screen subdivision reliably.
-    const candidates: { mesh: THREE.Mesh; volume: number }[] = [];
+    // The new mac.glb is a SINGLE merged mesh (the whole CRT monitor); its
+    // screen is a baked-texture region with no separate sub-mesh, so there is no
+    // face to auto-detect. We light the housing here and build the CRT picture
+    // overlay EXPLICITLY at the measured screen rect below.
     clone.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
+      obj.castShadow = true; // the single body mesh is the contact-shadow caster
+      obj.receiveShadow = false;
       const matSources: THREE.Material[] = Array.isArray(obj.material)
         ? obj.material
         : [obj.material];
-      const matchesByMat = matSources.some((m) => {
-        const n = (m?.name ?? "").toLowerCase();
-        return n.includes("screen") || n.includes("crt");
-      });
-      const objName = obj.name.toLowerCase();
-      if (
-        !screenMesh &&
-        (matchesByMat ||
-          objName.includes("screen") ||
-          objName.includes("crt") ||
-          objName.includes("display"))
-      ) {
-        screenMesh = obj;
-      }
-      // castShadow defaults OFF here; the size-based pass below re-enables
-      // it only on the large meshes that actually form the contact blob.
-      obj.castShadow = false;
-      obj.receiveShadow = false;
-      // Realism pass: the GLB ships a flat grey MeshStandardMaterial (rough
-      // 0.5, no env map) which reads as a Roblox primitive. Give it a
-      // believable warm-plastic Macintosh housing that responds to the
-      // studio IBL — proper roughness + env reflections are what separate a
-      // real object from a flat box. The screen material is overwritten to
-      // black below, so tweaking every standard material here is safe.
       for (const m of matSources) {
         if (m instanceof THREE.MeshStandardMaterial) {
-          m.color.set("#e8e2d4"); // warm classic-Macintosh off-white
-          m.roughness = 0.42;
+          // Keep the GLB's OWN baked texture TRUE (white multiplier). The old
+          // warm #e8e2d4 tint is what made this textured model read yellow; a
+          // neutral multiplier + a low env reflection let the cooled studio
+          // lights set the tone rather than baking warmth into the housing.
+          m.color.set("#ffffff");
+          m.roughness = 0.6;
           m.metalness = 0;
-          m.envMapIntensity = 1.25;
+          m.envMapIntensity = 0.5;
           m.needsUpdate = true;
         }
       }
-      // Record bounding-box volume for the size-based fallback below.
-      obj.geometry.computeBoundingBox();
-      const bb = obj.geometry.boundingBox;
-      if (bb) {
-        const s = new THREE.Vector3();
-        bb.getSize(s);
-        candidates.push({ mesh: obj, volume: s.x * s.y * s.z });
-      }
-    });
-    // Fallback: pick the smallest mesh (by bbox volume) as the screen.
-    // On the current mac.glb this resolves to Cube_2 (the screen
-    // inset). If only one mesh exists, skip overlay creation.
-    if (!screenMesh && candidates.length > 1) {
-      candidates.sort((a, b) => a.volume - b.volume);
-      screenMesh = candidates[0]!.mesh;
-    }
-
-    // PERF: trim the shadow caster set.
-    //   OLD: castShadow=true on EVERY GLB mesh → every sub-part added a
-    //        geometry pass to the shadow-map depth render.
-    //   NEW: only meshes ≥15% of the largest mesh's bbox volume cast. The
-    //        Mac contact shadow is a soft, low-opacity (peak 0.22) blob, so
-    //        only the body shell needs to occlude; tiny detail meshes
-    //        (knobs, screen inset, vents) contribute nothing visible. The
-    //        threshold is conservative — anything chunky still casts.
-    if (candidates.length > 0) {
-      const maxVol = candidates.reduce((m, c) => Math.max(m, c.volume), 0);
-      const castThreshold = maxVol * 0.15;
-      for (const c of candidates) {
-        c.mesh.castShadow = c.volume >= castThreshold;
-      }
-    }
-
-    if (!screenMesh) return;
-    const sm = screenMesh as THREE.Mesh;
-
-    // Paint the GLB screen mesh jet black so it reads as the unlit CRT
-    // housing behind the picture. The picture itself is an overlay
-    // plane attached in front of the dominant screen face; overlay
-    // has clean 0..1 UVs so the canvas texture renders correctly
-    // regardless of the GLB mesh's UV layout (a direct material swap
-    // rendered black).
-    sm.material = new THREE.MeshBasicMaterial({
-      color: "#080808",
-      toneMapped: false,
     });
 
-    sm.geometry.computeBoundingBox();
-    sm.geometry.computeVertexNormals();
-    const box = sm.geometry.boundingBox!;
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-
-    // Dominant face normal: area-weighted normal sum across triangles.
-    const posAttr = sm.geometry.getAttribute("position") as THREE.BufferAttribute;
-    const idxAttr = sm.geometry.getIndex();
-    const a = new THREE.Vector3();
-    const b = new THREE.Vector3();
-    const c = new THREE.Vector3();
-    const ab = new THREE.Vector3();
-    const ac = new THREE.Vector3();
-    const n = new THREE.Vector3();
-    const accum = new THREE.Vector3();
-    const triCount = idxAttr ? idxAttr.count / 3 : posAttr.count / 3;
-    for (let i = 0; i < triCount; i++) {
-      const i0 = idxAttr ? idxAttr.getX(i * 3) : i * 3;
-      const i1 = idxAttr ? idxAttr.getX(i * 3 + 1) : i * 3 + 1;
-      const i2 = idxAttr ? idxAttr.getX(i * 3 + 2) : i * 3 + 2;
-      a.fromBufferAttribute(posAttr, i0);
-      b.fromBufferAttribute(posAttr, i1);
-      c.fromBufferAttribute(posAttr, i2);
-      ab.subVectors(b, a);
-      ac.subVectors(c, a);
-      n.crossVectors(ab, ac);
-      const area = n.length() / 2;
-      accum.add(n.normalize().multiplyScalar(area));
-    }
-    accum.normalize();
-
-    // Overlay sized to the two largest bbox axes.
-    const sortedAxes = [size.x, size.y, size.z].sort((a, b) => b - a);
-    const faceW = sortedAxes[0]!;
-    const faceH = sortedAxes[1]!;
-    const overlayGeo = new THREE.PlaneGeometry(faceW, faceH);
-
-    // Overlay starts FULLY TRANSPARENT (uOpacity=0). The parent useFrame
-    // loop reads pin progress and ramps uOpacity → 1 across the CRT
-    // boot window (THRESHOLDS.bootStart..bootEnd). During the float +
-    // orbit beats the overlay is invisible, so the underlying black
-    // screen mesh ("#080808") reads through as an inert dark CRT face;
-    // i.e. "the Mac is OFF". The screen lights up only when the Mac
-    // lands. The material is the CRT post shader (scanlines / roll /
-    // vignette / flicker) so the picture reads as a live tube.
+    // CRT picture overlay: a plane at the MEASURED screen rect (clone/bbox
+    // space), attached to the clone ROOT so its coordinates are the bbox-space
+    // coords we measured (free of the GLB's nested node transforms). The screen
+    // faces +Z, which PlaneGeometry already does, so no reorientation. The
+    // overlay starts transparent (uOpacity=0) and the parent useFrame ramps it
+    // in across the CRT boot window; until then the GLB's own baked dark screen
+    // reads through as the OFF tube.
+    const overlayGeo = new THREE.PlaneGeometry(
+      MAC_SCREEN_RECT.w,
+      MAC_SCREEN_RECT.h,
+    );
     const overlayMat = makeCrtScreenMaterial(screenTexture);
     const overlay = new THREE.Mesh(overlayGeo, overlayMat);
-    overlay.position.copy(center);
-    const nudge = Math.max(size.length() * 0.01, 0.01);
-    overlay.position.add(accum.clone().multiplyScalar(nudge));
-    overlay.lookAt(overlay.position.clone().add(accum));
+    overlay.position.set(MAC_SCREEN_RECT.cx, MAC_SCREEN_RECT.cy, MAC_SCREEN_RECT.cz);
     overlay.renderOrder = 999;
-    sm.add(overlay);
+    clone.add(overlay);
     screenOverlayRef.current = overlay;
     overlayMatRef.current = overlayMat;
 
-    // Publish the screen face geometry so the detail-zoom camera can aim
-    // dead-on down the LIVE world normal (the GLB seats the CRT face at
-    // an angle, so a fixed straight-down-Z camera renders it keystoned),
-    // AND so the DOM control overlay can project the screen's on-screen
-    // rect to align its hotspots to the painted controls. We store the
-    // LOCAL center + LOCAL outward normal in the screen mesh's object
-    // space; consumers derive world values from the live world matrix.
+    // Publish the screen face geometry (clone-space center + +Z outward normal)
+    // so the detail-zoom camera can aim dead-on down the live world normal and
+    // the DOM overlay can project the screen's on-screen rect. Consumers derive
+    // world values from clone.matrixWorld, so these stay correct through the
+    // float spin/tilt and the descent.
     screenInfoRef.current = {
-      mesh: sm,
+      mesh: clone,
       overlay,
-      localCenter: center.clone(),
-      localNormal: accum.clone(),
-      aspect: faceH > 0 ? faceW / faceH : 780 / 550,
-      faceH,
+      localCenter: new THREE.Vector3(
+        MAC_SCREEN_RECT.cx,
+        MAC_SCREEN_RECT.cy,
+        MAC_SCREEN_RECT.cz,
+      ),
+      localNormal: new THREE.Vector3(0, 0, 1),
+      aspect: MAC_SCREEN_RECT.w / MAC_SCREEN_RECT.h,
+      faceH: MAC_SCREEN_RECT.h,
     };
 
     return () => {
@@ -1091,7 +1010,11 @@ function MacRig({ clone }: { clone: THREE.Group }) {
     g.position.y = t.y;
   });
   return (
-    <group ref={groupRef} scale={[0.21, 0.21, 0.21]} position={[0, 0, 0]}>
+    <group
+      ref={groupRef}
+      scale={[MAC_BODY_SCALE, MAC_BODY_SCALE, MAC_BODY_SCALE]}
+      position={MAC_BODY_POS}
+    >
       <primitive object={clone} />
     </group>
   );
@@ -2049,7 +1972,7 @@ function ScreenClickPlane({
         if (i != null) onSelect(projects[i]!);
       }}
     >
-      <planeGeometry args={[1.02, 0.72]} />
+      <planeGeometry args={[SCREEN_LOCAL_W, SCREEN_LOCAL_H]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
   );
@@ -2091,7 +2014,7 @@ function ScreenBackPlane({
         onBack();
       }}
     >
-      <planeGeometry args={[1.02, 0.72]} />
+      <planeGeometry args={[SCREEN_LOCAL_W, SCREEN_LOCAL_H]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
   );
@@ -2121,6 +2044,9 @@ function Scene({
   // progress to 1 lands it immediately.
   const narrow = useMacNarrow();
   const macGroupRef = useRef<THREE.Group>(null);
+  // Click-to-zoom hitbox: clickable only while the Mac floats; its visibility
+  // (and thus its raycastability) is toggled by pin progress in the useFrame.
+  const zoomHitRef = useRef<THREE.Mesh>(null);
   // Timestamp the retro CRT power-off began (section started exiting), or -1 when
   // not shutting down. Drives the time-based double-blink + collapse on the
   // overlay shader (uPowerOff). Reset when the user scrolls back into the pin.
@@ -2242,6 +2168,10 @@ function Scene({
     // clickable. The mobile experience is "the Mac, landed" with no
     // orbit beat. Desktop reads the live scroll progress as before.
     const p = narrow ? 1 : pinProgressRef.current;
+    // Click-to-zoom target is live only while the Mac is still floating/orbiting
+    // (before it commits to the landing); after that the on-screen tiles own
+    // clicks. Invisible meshes don't raycast, so visibility IS the gate.
+    if (zoomHitRef.current) zoomHitRef.current.visible = !narrow && p < 0.6;
 
     // ── ORBIT ANGLE (drives the LogoOrbit group rotation) ─────────
     // Cards hold their starting positions through BEAT 1, then sweep
@@ -2651,13 +2581,15 @@ function Scene({
           scale={[3, 6, 1]}
           color="#eaf1ff"
         />
-        {/* warm brand rim from behind-right (ties reflections to #ff4f00) */}
+        {/* brand rim from behind-right — kept subtle + less saturated so it
+            ties reflections to the accent WITHOUT washing the cream housing
+            yellow (owner: scene read too yellow). */}
         <Lightformer
           form="rect"
-          intensity={1.6}
+          intensity={0.9}
           position={[4, 1.5, -3]}
           scale={[3, 6, 1]}
-          color="#ff7a36"
+          color="#ffae86"
         />
         {/* soft ground bounce so undersides aren't dead */}
         <Lightformer
@@ -2686,7 +2618,7 @@ function Scene({
         ref={shadowLightRef}
         position={[3, 5, 3]}
         intensity={1.0}
-        color="#fff6ee"
+        color="#ffffff"
         castShadow={false}
         shadow-mapSize-width={narrow ? 1024 : 2048}
         shadow-mapSize-height={narrow ? 1024 : 2048}
@@ -2702,8 +2634,35 @@ function Scene({
       {/* Cool fill (kept low — the IBL does most of the fill now). */}
       <directionalLight position={[-3, 2, 2]} intensity={0.25} color="#eef4ff" />
       {/* Warm brand rim: a crisp orange edge separates the housing from the
-          cool page and ties to the accent. */}
-      <directionalLight position={[-2, 2.5, -4]} intensity={0.55} color="#ff4f00" />
+          cool page and ties to the accent. Intensity dropped (0.55→0.32) so it
+          stays a thin edge instead of spilling warm over the whole housing. */}
+      <directionalLight position={[-2, 2.5, -4]} intensity={0.32} color="#ff4f00" />
+
+      {/* Click-to-zoom: while the Mac floats, the whole Mac is a click target
+          that auto-scrolls the page into the landed/booted CRT — an OPTION on
+          top of normal scrolling so a pointer user can dive straight in without
+          dragging through the pin. Invisible (transparent) hitbox; gated live by
+          pin progress in the useFrame (off once the tiles own clicks). Narrow has
+          no pin, so it never activates there. */}
+      <mesh
+        ref={zoomHitRef}
+        position={[0, MAC_HOVER_Y, 0]}
+        visible={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          document.body.style.cursor = "";
+          window.dispatchEvent(new Event("mac-zoom-request"));
+        }}
+        onPointerOver={() => {
+          document.body.style.cursor = "pointer";
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = "";
+        }}
+      >
+        <boxGeometry args={[2.8, 2.8, 2.8]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
 
       {/* Mac descent group: drives the float→land Y translation.
           Composition (outer → inner):

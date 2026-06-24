@@ -19,6 +19,7 @@ import { MAC_PROJECTS, liveLinkLabel, type MacProject } from "../macintosh/proje
 import { track } from "../analytics";
 import { useMacNarrow } from "../macintosh/useMacNarrow";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
+import { scrollToSection } from "./Keypad";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -296,6 +297,16 @@ export function Macintosh() {
       },
     });
 
+    // Click-to-zoom: the floating Mac dispatches `mac-zoom-request` (see the
+    // 3D hitbox in MacintoshScene). Auto-scroll to the landed/booted CRT — pin
+    // progress ≈ 0.85, the final snap beat — so a pointer user can dive straight
+    // in without dragging through the ~2-viewport pin. Normal scrolling still
+    // works; this is an additive shortcut. st.start/end are the pin's scroll px.
+    const onMacZoom = () => {
+      scrollToSection(st.start + 0.85 * (st.end - st.start), { duration: 1.3 });
+    };
+    window.addEventListener("mac-zoom-request", onMacZoom);
+
     // Reveal the Mac stage right after the room fade-out window in
     // App.tsx (ROOM_FADE_OUT_END_VH) so the two scenes never overlap.
     const stage = el.querySelector(".mac-stage") as HTMLElement | null;
@@ -342,6 +353,7 @@ export function Macintosh() {
     return () => {
       obs.disconnect();
       st.kill();
+      window.removeEventListener("mac-zoom-request", onMacZoom);
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
       cancelAnimationFrame(raf);
