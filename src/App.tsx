@@ -107,25 +107,17 @@ const HERO_SETTLE_BAND_LO = 0.55; // fire only once the dive is well underway
 const HERO_SETTLE_BAND_HI = 1.1; // ...and before About's header has scrolled off
 const HERO_SETTLE_DURATION = 0.5; // desktop Lenis tween, seconds
 const HERO_SETTLE_IDLE_MS = 90; // scroll-quiesced debounce == "scroll ended"
-// Mobile: Lenis runs syncTouch:false (native momentum), so a tween can't arrest
-// an active fling — it can only pull AFTER the fling's native momentum quiesces.
-// A finger flick out of the hero easily overshoots About's top (1.0vh) into the
-// MIDDLE of the ~1.7vh-tall About column, skipping its opening (owner-flagged).
-// So the upper band reaches ~1.9 (≈ About's midpoint): a flick that lands
-// anywhere in About's top half is pulled back up to About-top so you read it in
-// order from the start. A harder flick PAST the midpoint is left alone (you've
-// committed past the open). Tween lengthened for the bigger pull.
-const HERO_SETTLE_MOBILE_LO = 0.84;
-const HERO_SETTLE_MOBILE_HI = 1.9;
-const HERO_SETTLE_MOBILE_DURATION = 0.5;
+// The hero→About settle is DESKTOP-ONLY now: mobile native momentum can't be
+// cleanly arrested and yanking the page to a section top read as janky
+// (owner-flagged). The mobile scroll-end debounce is kept only so the (no-op)
+// settle check is paced the same on touch; the pull itself never fires on mobile
+// (see settle()). The intro instead locks scroll until the hero has faded in, so
+// the user always starts at the top.
 const HERO_SETTLE_MOBILE_IDLE_MS = 130;
 // Re-arm the one-shot only after clearly leaving the band (back above the hero,
-// or committed down into About's body) so it never re-fires mid-band. The mobile
-// re-arm sits just ABOVE the (now wide) mobile band so that reading DOWN through
-// About's top half AFTER the first settle can't re-arm and re-fire a yank-to-top.
+// or committed down into About's body) so it never re-fires mid-band.
 const HERO_SETTLE_REARM_LO = 0.4;
 const HERO_SETTLE_REARM_HI = 1.3;
-const HERO_SETTLE_MOBILE_REARM_HI = 1.95;
 
 /**
  * Installs the hero→About settle. SEPARATE from installScrollChoreography's rAF
@@ -149,19 +141,20 @@ function installHeroSettle(): void {
 
   const settle = () => {
     if (settledOnce || lastDir < 0) return; // one-shot spent, or ascending
+    // NO mobile pull. Native momentum can't be cleanly arrested, and yanking the
+    // page to a section top reads as janky (owner: "ghetto"). Instead the intro
+    // locks scroll until the hero has faded in, so the user always STARTS at the
+    // top; after that mobile scrolls natively with no settle. Desktop keeps the
+    // subtle Lenis-arrested near-miss correction (it can actually arrest a wheel).
+    if (mobileQuery.matches) return;
     const ratio = window.scrollY / vh;
-    const mobile = mobileQuery.matches;
-    const lo = mobile ? HERO_SETTLE_MOBILE_LO : HERO_SETTLE_BAND_LO;
-    const hi = mobile ? HERO_SETTLE_MOBILE_HI : HERO_SETTLE_BAND_HI;
-    if (ratio < lo || ratio > hi) return; // outside the commit band
+    if (ratio < HERO_SETTLE_BAND_LO || ratio > HERO_SETTLE_BAND_HI) return;
     settledOnce = true; // latch regardless of whether we actually move
     if (Math.abs(window.scrollY - vh) <= 2) return; // already at About-top
     if (reduceQuery.matches) {
       scrollToSection(vh, { immediate: true });
     } else {
-      scrollToSection(vh, {
-        duration: mobile ? HERO_SETTLE_MOBILE_DURATION : HERO_SETTLE_DURATION,
-      });
+      scrollToSection(vh, { duration: HERO_SETTLE_DURATION });
     }
   };
 
@@ -170,10 +163,7 @@ function installHeroSettle(): void {
     if (y !== lastY) lastDir = y > lastY ? 1 : -1;
     lastY = y;
     const ratio = y / vh;
-    const rearmHi = mobileQuery.matches
-      ? HERO_SETTLE_MOBILE_REARM_HI
-      : HERO_SETTLE_REARM_HI;
-    if (ratio < HERO_SETTLE_REARM_LO || ratio > rearmHi) {
+    if (ratio < HERO_SETTLE_REARM_LO || ratio > HERO_SETTLE_REARM_HI) {
       settledOnce = false; // re-arm only once clearly out of the band
     }
     // Fire on scroll-END: each event resets the idle timer; it only resolves

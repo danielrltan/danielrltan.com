@@ -22,22 +22,22 @@ export function AssemblyProvider({ children }: { children: React.ReactNode }) {
   const state = useAssemblyProgress();
 
   // The orange loading scrim (html.loading-active, added synchronously in
-  // main.tsx BEFORE React mounts) stays up through the WHOLE opening beat:
-  // loader fill → signature draw → wordmark compose. HeroSignature fires a
-  // `hero-composed` event once the composition settles; that is the unlock.
+  // main.tsx BEFORE React mounts) stays up — and scroll stays LOCKED — through
+  // the WHOLE opening beat: loader fill → "100" hold → the hero composing behind
+  // the scrim → the scrim fading out to reveal it. The BootLoader fires
+  // `loader-revealed` once that fade has run; THAT is the unlock. (Owner: the
+  // user should only be able to scroll once the website has finished fading in.)
   //
-  // Previously the class dropped on a fixed timer after climaxReady. Now
-  // that the signature plays AFTER the loader (not concurrently), that
-  // timer would lift the scrim mid-draw and flash the page behind it —
-  // so the unlock moved to the genuine end of the sequence.
+  // Unlocking earlier (on `hero-composed`, while the loader is still fading)
+  // would let the user scroll mid-fade-in — which is exactly what we don't want.
   useEffect(() => {
     const unlock = () =>
       document.documentElement.classList.remove("loading-active");
-    window.addEventListener("hero-composed", unlock);
+    window.addEventListener("loader-revealed", unlock);
     // Cleanup only drops the listener — NOT the class. Removing the class
     // here would lift the scrim during React StrictMode's dev mount→unmount
     // →mount cycle (main.tsx adds it once and never re-adds).
-    return () => window.removeEventListener("hero-composed", unlock);
+    return () => window.removeEventListener("loader-revealed", unlock);
   }, []);
 
   // Failsafe: never trap a visitor behind the scrim. If the compose signal

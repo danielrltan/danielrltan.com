@@ -764,9 +764,12 @@ function RingScene({
     // ring off until the hero shows; there's no entrance animation anymore.
     if (INTRO_FREEZE == null) {
       if (entranceStartRef.current === null) {
-        const gateMet =
-          document.querySelector(".hero-composition.is-visible") &&
-          !document.documentElement.classList.contains("loading-active");
+        // Render as soon as the composition is visible — even while
+        // `loading-active` is still up — so the ring is fully present BEHIND the
+        // held loader scrim and is there the instant the scrim fades to reveal
+        // the hero (the new crossfade intro). Was also gated on loading-active
+        // being gone, which made the ring pop in AFTER the reveal.
+        const gateMet = !!document.querySelector(".hero-composition.is-visible");
         if (gateMet) {
           if (gateMetAtRef.current === null) gateMetAtRef.current = now;
           if (now - gateMetAtRef.current >= ENTRANCE_DELAY) {

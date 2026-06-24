@@ -50,7 +50,12 @@ const PIXELATE_CELLS = [4, 8, 14, 22, 32];
 
 export function HeroSignature() {
   const [data, setData] = useState<SignatureData | null>(null);
-  const [drawingComplete, setDrawingComplete] = useState(false);
+  // Start "draw complete" so the phase machine does NOT wait on the signature
+  // flourish. In the new intro the hero composes BEHIND the held loader scrim
+  // and is then revealed by a crossfade (the user never sees the draw), so
+  // blocking the compose on a multi-second hand-drawn signature would only
+  // stretch the loader hold. The signature still draws (hidden) + unmounts.
+  const [drawingComplete, setDrawingComplete] = useState(true);
   const [phase, setPhase] = useState<Phase>("drawing");
   const assembly = useAssembly();
   // Static ring fallback on the weakest hardware (or reduced-motion). See the

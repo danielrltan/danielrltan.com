@@ -46,6 +46,16 @@ export const LOADER_OUTRO_MS = 440;
  *  arrives (an unforeseen stall in the compose path) the scrim is lifted
  *  this long after the loader completes so a visitor is never trapped. */
 export const UNLOCK_FAILSAFE_MS = 5000;
+/** Loading INTRO reveal (owner: hold the "100", then fade the loader out to
+ *  reveal the hero that composed BEHIND it — a real crossfade — and keep scroll
+ *  locked until that's done). HERO_HOLD_MS: the minimum the "100" sits on screen
+ *  after it reaches 100 before the reveal can start (it ALSO waits for the
+ *  `hero-composed` signal, whichever is later). LOADER_FADE_MS: the scrim
+ *  fade-out duration (keep in sync with the .boot-loader CSS transition).
+ *  REVEAL_FAILSAFE_MS: reveal anyway if `hero-composed` never arrives. */
+export const HERO_HOLD_MS = 700;
+export const LOADER_FADE_MS = 560;
+export const REVEAL_FAILSAFE_MS = 2600;
 /** Max time to keep waiting for STABLE_FRAMES_REQUIRED smooth frames AFTER
  *  assets + the timeline floor are satisfied. The "30 smooth frames" gate
  *  is a reveal-without-jank *preference*; on weak hardware the always-on
