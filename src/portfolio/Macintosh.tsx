@@ -88,6 +88,10 @@ const PIN_FREEZE: number | null = (() => {
 
 export function Macintosh() {
   const sectionRef = useRef<HTMLElement>(null);
+  // The editorial "Projects" header overlaps the Mac as the camera dollies in;
+  // fade it out across the descent so it's gone by the time the CRT fills the
+  // frame (owner-flagged: it sat over the zoomed screen and read as a glitch).
+  const headerRef = useRef<HTMLDivElement>(null);
   // Mount the Mac <Canvas> only as the section approaches; release the WebGL
   // context once it's well out of view (the weak-GPU freeze fix). The reliable
   // mount-on-approach gate (generous margin + hysteresis) avoids the old IO
@@ -294,6 +298,13 @@ export function Macintosh() {
       },
       onUpdate: (self) => {
         pinProgressRef.current = self.progress;
+        // Fade the "Projects" header out across the descent (0.5 → 0.78) so it
+        // has cleared before the CRT zoom fills the frame.
+        const h = headerRef.current;
+        if (h) {
+          const f = Math.min(1, Math.max(0, (self.progress - 0.5) / 0.28));
+          h.style.opacity = String(1 - f);
+        }
       },
     });
 
@@ -547,6 +558,7 @@ export function Macintosh() {
           floating over the black screen edge in the top-right corner —
           barely legible, read as a glitch (user). */}
       <div
+        ref={headerRef}
         className={`portfolio-col mac-col${selected ? " is-detail-open" : ""}`}
       >
         <span className="section-marker">02</span>

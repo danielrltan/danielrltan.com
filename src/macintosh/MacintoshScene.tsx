@@ -912,6 +912,7 @@ function MacBody({
 }) {
   const { scene } = useGLTF("/mac.glb") as unknown as { scene: THREE.Group };
   const screenOverlayRef = useRef<THREE.Mesh | null>(null);
+  const screenMaskRef = useRef<THREE.Mesh | null>(null);
 
   // Deep clone so each instance has its own material objects; swapping
   // a material on the cached scene wouldn't render via <primitive>.
@@ -965,6 +966,26 @@ function MacBody({
     screenOverlayRef.current = overlay;
     overlayMatRef.current = overlayMat;
 
+    // OFF-SCREEN BACKING: a near-black plane behind the picture, sized to the
+    // GLASS. When the CRT powers off (the picture double-blinks then collapses,
+    // going transparent), this reads through as a dark, inert OFF tube instead
+    // of the model's pale screen material showing white (owner-flagged).
+    // renderOrder 998 keeps it behind the picture (999); depthWrite:false so it
+    // never z-fights the glass it sits just in front of.
+    const maskMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(23.7, 17.8),
+      new THREE.MeshBasicMaterial({
+        color: "#050505",
+        toneMapped: false,
+        depthWrite: false,
+      }),
+    );
+    maskMesh.position.set(MAC_SEAT.cx, MAC_SEAT.cy, MAC_SCREEN_RECT.cz);
+    maskMesh.rotation.x = MAC_SCREEN_TILT_X;
+    maskMesh.renderOrder = 998;
+    clone.add(maskMesh);
+    screenMaskRef.current = maskMesh;
+
     // Publish the screen face geometry (clone-space center + +Z outward normal)
     // so the detail-zoom camera can aim dead-on down the live world normal and
     // the DOM overlay can project the screen's on-screen rect. Consumers derive
@@ -996,6 +1017,13 @@ function MacBody({
         o.geometry.dispose();
         (o.material as THREE.Material).dispose();
       }
+      const mk = screenMaskRef.current;
+      if (mk && mk.parent) {
+        mk.parent.remove(mk);
+        mk.geometry.dispose();
+        (mk.material as THREE.Material).dispose();
+      }
+      screenMaskRef.current = null;
       screenOverlayRef.current = null;
       overlayMatRef.current = null;
       screenInfoRef.current = null;
@@ -1976,6 +2004,7 @@ function ScreenClickPlane({
   return (
     <mesh
       position={SCREEN_LOCAL_PIC_CENTER}
+      rotation={[MAC_SCREEN_TILT_X, 0, 0]}
       onPointerMove={(e) => {
         if (!enabled) return;
         const i = hitTile(e.uv);
@@ -2025,6 +2054,7 @@ function ScreenBackPlane({
   return (
     <mesh
       position={SCREEN_LOCAL_PIC_CENTER}
+      rotation={[MAC_SCREEN_TILT_X, 0, 0]}
       onPointerOver={() => {
         if (enabled) document.body.style.cursor = "pointer";
       }}
@@ -2760,7 +2790,7 @@ function Scene({
       {/* Shadow plate appears only as the Mac lands; fades in via
           ref so the floating beats stay clean (no ghosting). Y is
           a hair below REST_Y so it sits flush beneath the Mac base. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.21, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]} receiveShadow>
         <planeGeometry args={[5, 5]} />
         <shadowMaterial ref={shadowMatRef} opacity={0} transparent />
       </mesh>
