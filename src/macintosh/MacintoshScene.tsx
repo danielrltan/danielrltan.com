@@ -1654,8 +1654,10 @@ function drawAsciiSphere(
   const Lz = lz * linv;
 
   // Circumradius in PIXELS (equal on both axes ⇒ undistorted even though
-  // cells aren't square). 45% smaller than the old sphere per request.
-  const Rpx = Math.min(w, h) * 0.231;
+  // cells aren't square). Sized to read as clearly-CENTERED screen content
+  // (~60% of the screen height) rather than a small stray blob lost in the
+  // black — a centered small sphere read as "off the screen" (owner-flagged).
+  const Rpx = Math.min(w, h) * 0.3;
   const cxPx = w / 2;
   const cyPx = h / 2;
 
@@ -1687,8 +1689,11 @@ function drawAsciiSphere(
     const nl = Math.hypot(nx, ny, nz) || 1;
     nx /= nl; ny /= nl; nz /= nl;
     if (nz <= 0) continue; // back-face: occluded by the front faces anyway
-    // Flat Lambert term, floored so a grazing facet still reads.
-    const L = Math.max(0.12, nx * Lx + ny * Ly + nz * Lz);
+    // Flat Lambert term, floored well above black so the WHOLE front
+    // hemisphere reads as a full orange disc (not a one-sided lit crescent
+    // that looks off-center on the dark tube); the highlight still ramps to
+    // near-white so it keeps its 3D tumble.
+    const L = Math.max(0.32, nx * Lx + ny * Ly + nz * Lz);
 
     // Rasterize the triangle in cell space (edge functions + z-buffer).
     const pa = pj[ia]!, pb = pj[ib]!, pc = pj[ic]!;
