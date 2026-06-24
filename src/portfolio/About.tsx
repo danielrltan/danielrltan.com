@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { requestScrollRefresh } from "./scrollRefresh";
 import "./sections.css";
 import "./about.css";
 import { ScrambleText } from "./ScrambleText";
@@ -12,7 +13,7 @@ gsap.registerPlugin(ScrollTrigger);
  * About: GSAP-pinned BENTO DASHBOARD reveal.
  *
  * The section is an opaque light-grey bento grid (faint dot-grid bg) that
- * "boots up" as the pin scrubs. The isometric room render (/render.png) is
+ * "boots up" as the pin scrubs. The isometric room render (/render.webp) is
  * the feature centerpiece; two info cards sit BEHIND it (the room's
  * transparent margins let them peek through, the room silhouette occludes
  * the rest) and two chips float IN FRONT. As pin progress climbs, each cell
@@ -131,7 +132,7 @@ export function About() {
       // this section no longer contributes a pin spacer.
       const html = document.documentElement;
       if (!html.classList.contains("loading-active")) {
-        requestAnimationFrame(() => ScrollTrigger.refresh());
+        requestScrollRefresh();
       }
       return;
     }
@@ -153,7 +154,7 @@ export function About() {
     let lastLoading = html.classList.contains("loading-active");
     const obs = new MutationObserver(() => {
       const now = html.classList.contains("loading-active");
-      if (lastLoading && !now) ScrollTrigger.refresh();
+      if (lastLoading && !now) requestScrollRefresh();
       lastLoading = now;
     });
     obs.observe(html, { attributes: true, attributeFilter: ["class"] });
@@ -164,7 +165,7 @@ export function About() {
     // every pin below it (Work, Other, Keypad). Without a refresh those
     // pins keep stale positions until some other refresh happens to fire.
     if (!lastLoading) {
-      requestAnimationFrame(() => ScrollTrigger.refresh());
+      requestScrollRefresh();
     }
     return () => {
       obs.disconnect();

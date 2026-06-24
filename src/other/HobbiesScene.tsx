@@ -3,6 +3,8 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber"
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { isLowTier } from "../capabilityTier";
 import { track } from "../analytics";
 
 // First-focus-per-page guard for hobby_focus analytics (module scope persists
@@ -212,6 +214,11 @@ function startPreload() {
   preloadStarted = true;
   if (typeof window === "undefined") return;
   const loader = new GLTFLoader();
+  // The hobby GLBs are meshopt-compressed (EXT_meshopt_compression, see
+  // scripts/optimize-assets.mjs). drei's useGLTF auto-registers the decoder, but
+  // this raw GLTFLoader does NOT — without this the compressed GLBs fail to parse
+  // and the cluster silently never loads. (Decoder is shared + lazily inits.)
+  loader.setMeshoptDecoder(MeshoptDecoder);
   const queue: Array<(typeof HOBBIES)[number]> = [];
   HOBBIES.forEach((h) => {
     PRELOADED[h.id] = { scene: null, loaded: false, listeners: new Set() };
@@ -302,6 +309,14 @@ const HOVER_DAMP_BONUS = 9;   // extra damping on the focused body (holds still)
 // hovered or not, so there is no snap.)
 const EDGE_MARGIN = 0.18;
 
+// Desktop framing nudge (world units). The cluster's big right-side objects (car,
+// luggage) weight the spread visually toward the right, so the group reads
+// off-centre. Looking from a touch +X pulls the WHOLE group left on screen
+// uniformly (no per-body clamp fighting, unlike shifting home slots). Kept ≈ the
+// edge margin so the leftmost body never clips. Desktop only — portrait framing
+// is its own thing. Bump this to push further left.
+const FRAME_SHIFT_X = 0.2;
+
 // PERF: module-scope scratch reused inside the solver / sway writes.
 const _eSway = new THREE.Euler(0, 0, 0, "XYZ");
 const _vTmp = new THREE.Vector3();
@@ -388,9 +403,12 @@ function HobbyMesh({
       const roll =
         Math.sin((t / SWAY_ROLL_PERIOD) * Math.PI * 2 + anim.swayPhaseZ) * SWAY_ROLL * swayDamp;
       // Face-tracking target (only while focused). cursor 0..1, centre 0.5.
+      // Skipped on touch (`mobile`): there's no hovering cursor to track, so the
+      // objects shouldn't tilt toward a phantom pointer.
       const c = cursorRef.current;
-      const cx = hovered && c && c.active ? (c.x - 0.5) * 2 : 0;
-      const cy = hovered && c && c.active ? (c.y - 0.5) * 2 : 0;
+      const track = hovered && !mobile && c && c.active;
+      const cx = track ? (c.x - 0.5) * 2 : 0;
+      const cy = track ? (c.y - 0.5) * 2 : 0;
       const k = 1 - Math.exp(-dt * PARALLAX_LERP_RATE);
       tiltRef.current.x += (-cy * PARALLAX - tiltRef.current.x) * k;
       tiltRef.current.y += (cx * PARALLAX - tiltRef.current.y) * k;
@@ -716,8 +734,9 @@ function SceneInner({
       lookY = f.lookY;
       dist = f.dist;
     }
-    camera.position.set(0, lookY + CAM_HEIGHT_OFFSET, dist);
-    camera.lookAt(0, lookY, 0);
+    const frameX = mobile ? 0 : FRAME_SHIFT_X;
+    camera.position.set(frameX, lookY + CAM_HEIGHT_OFFSET, dist);
+    camera.lookAt(frameX, lookY, 0);
 
     // Visible world half-extents at z=0 (for the containment clamp). Anything
     // kept inside (half - radius - margin) can never be cut off at the edge.
@@ -883,6 +902,9 @@ export const HobbiesScene = memo(function HobbiesScene({
     [],
   );
   const dprCap = useMemo<[number, number]>(() => {
+    // Weak GPU (low tier): no supersampling at all — the cluster's smooth-shaded
+    // props read fine at DPR 1 and the fragment cost is the dominant tax here.
+    if (isLowTier()) return [1, 1];
     const narrow = typeof window !== "undefined" && window.innerWidth <= 768;
     return isTouch || narrow ? [1, 1.25] : [1, 1.5];
   }, [isTouch]);

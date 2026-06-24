@@ -1,7 +1,14 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { initTier } from "./capabilityTier";
 import "./index.css";
+
+// Resolve the device-capability tier ONCE, synchronously, BEFORE React mounts,
+// and write data-tier on <html>. This must run pre-paint so the hero's
+// mount-time branch (live WebGL ring vs. a static baked still) can read it
+// without first importing the heavy three.js chunk on a low-end machine.
+initTier();
 
 // Mark <html> as loading-active BEFORE React mounts. Without this,
 // there's a one-frame window between (a) the inline `#boot-screen`

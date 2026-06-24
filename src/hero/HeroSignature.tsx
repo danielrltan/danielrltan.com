@@ -11,7 +11,22 @@ const HeroGlyphRing = lazy(() =>
 );
 import { type SignatureData } from "./signatureGeometry";
 import { useAssembly } from "../loading";
+import { useTier } from "../capabilityTier";
 import "./hero-composition.css";
+
+// LOW tier (weak GPU/CPU) or an explicit reduced-motion preference get a static,
+// baked still of the ring (public/hero-ring.webp) instead of the live WebGL
+// pipeline. Because this is a MOUNT-TIME branch, the lazy three.js chunk + the
+// 2-pass shader compile + all per-frame GPU work simply never happen there — the
+// single biggest first-screen cost on exactly the hardware that can't afford it.
+// It is a disclosed, brand-identical fallback (the same approach as the mobile
+// DOM section fallbacks), NOT a blank gap. The wordmark renders live on top,
+// exactly as it does over the live ring. Read once at module load (matches the
+// IS_SMALL_SCREEN pattern): the preference doesn't change mid-session.
+const PREFERS_REDUCED_MOTION =
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
  * Hero composition. ASCII ring is the kinetic centerpiece; editorial
@@ -39,6 +54,9 @@ export function HeroSignature() {
   const [drawingComplete, setDrawingComplete] = useState(false);
   const [phase, setPhase] = useState<Phase>("drawing");
   const assembly = useAssembly();
+  // Static ring fallback on the weakest hardware (or reduced-motion). See the
+  // PREFERS_REDUCED_MOTION note above — this keeps three.js off low-end entirely.
+  const staticRing = useTier() === "low" || PREFERS_REDUCED_MOTION;
 
   useEffect(() => {
     let cancelled = false;
@@ -433,9 +451,21 @@ export function HeroSignature() {
         <h1 className="hero-sr-heading">Daniel Tan, Software Engineer</h1>
 
         <div className="hero-ring-wrap" aria-hidden>
-          <Suspense fallback={null}>
-            <HeroGlyphRing color="#ff4f00" spinDuration={26} />
-          </Suspense>
+          {staticRing ? (
+            // Baked still of the ring at rest — no WebGL, no three.js, no shader
+            // compile. fetchPriority high so it paints with the opening beat.
+            <img
+              className="hero-ring-static"
+              src="/hero-ring.webp"
+              alt=""
+              draggable={false}
+              fetchPriority="high"
+            />
+          ) : (
+            <Suspense fallback={null}>
+              <HeroGlyphRing color="#ff4f00" spinDuration={26} />
+            </Suspense>
+          )}
         </div>
 
         {/* One-shot ASCII blast on load, centred on the ring; the ring then

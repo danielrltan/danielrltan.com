@@ -54,6 +54,14 @@ export function MoveableCursor({ hot }: Props) {
     let revealed = false;
     let frame = 0;
     let lastClick = false; // last value pushed to React (setState only on change)
+    // PERF: the loop PARKS when idle instead of re-arming the rAF forever. Every
+    // desktop visitor ran this loop continuously — doing an elementFromPoint() +
+    // closest() forced hit-test EVERY frame even on a perfectly still page. Now
+    // `running` guards re-arm and `dirty` marks a pending clickable hit-test (set
+    // on move + scroll). Once the press spring has settled AND no hit-test is
+    // pending, tick() stops scheduling, so a stationary cursor costs nothing.
+    let running = false;
+    let dirty = true;
 
     const reduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
@@ -81,40 +89,61 @@ export function MoveableCursor({ hot }: Props) {
     const onMove = (e: PointerEvent) => {
       px = e.clientX;
       py = e.clientY;
-      applyTransform();
+      applyTransform(); // follow IMMEDIATELY — never wait on the (parkable) tick
       if (!revealed) {
         revealed = true;
         rootEl.style.opacity = "1";
       }
+      dirty = true; // pointer moved → re-check what's underneath
+      schedule();
     };
 
     const tick = () => {
       // Ease the press scale toward its target: snappy DOWN, softer UP.
       const rate = pressTarget < pressCur ? 0.5 : 0.26;
       pressCur += (pressTarget - pressCur) * rate;
-      if (Math.abs(pressTarget - pressCur) < 0.001) pressCur = pressTarget;
+      let springActive = true;
+      if (Math.abs(pressTarget - pressCur) < 0.001) {
+        pressCur = pressTarget;
+        springActive = false;
+      }
       applyTransform();
 
-      // Re-derive the clickable (spark) state EVERY FRAME from whatever is under
-      // the pointer right now — via elementFromPoint, NOT pointerover/pointerout.
-      // Those only fire on real pointer MOVEMENT, so while the page scrolled
-      // under a stationary mouse the spark got "stuck" (it wouldn't light up over
-      // links/buttons you scrolled onto until you wiggled the mouse). A per-frame
-      // hit-test tracks whatever scrolls beneath the cursor.
-      // Canvases (Mac / Hobbies tiles) also signal via body cursor:pointer (an
-      // inline string read directly; the global `cursor:none !important` only
-      // changes the COMPUTED value).
-      let domClick = false;
-      if (revealed) {
-        const el = document.elementFromPoint(px, py);
-        domClick = !!(el && el.closest && el.closest(CLICKABLE_SEL));
+      // Re-derive the clickable (spark) state from whatever is under the pointer
+      // — via elementFromPoint, NOT pointerover/pointerout (those only fire on
+      // pointer MOVEMENT, so the spark got "stuck" while the page SCROLLED under a
+      // stationary mouse). Run it only when `dirty` (a move or scroll happened),
+      // not every frame — same coverage, none of the idle hit-test storm.
+      // Canvases (Mac / Hobbies tiles) signal via body cursor:pointer (an inline
+      // string; the global `cursor:none !important` only changes the COMPUTED
+      // value), set during their own pointer events, which also mark us dirty.
+      if (dirty) {
+        dirty = false;
+        let domClick = false;
+        if (revealed) {
+          const el = document.elementFromPoint(px, py);
+          domClick = !!(el && el.closest && el.closest(CLICKABLE_SEL));
+        }
+        const next = domClick || document.body.style.cursor === "pointer";
+        if (next !== lastClick) {
+          lastClick = next;
+          setClickable(next);
+        }
       }
-      const next = domClick || document.body.style.cursor === "pointer";
-      if (next !== lastClick) {
-        lastClick = next;
-        setClickable(next);
+
+      // Keep ticking while the spring is animating OR a hit-test is pending; once
+      // both are idle, PARK (stop re-arming) until the next move/scroll/press.
+      if (springActive || dirty) {
+        frame = requestAnimationFrame(tick);
+      } else {
+        running = false;
       }
-      frame = requestAnimationFrame(tick);
+    };
+    const schedule = () => {
+      if (!running) {
+        running = true;
+        frame = requestAnimationFrame(tick);
+      }
     };
 
     // Press AND HOLD: dip on pointerdown and STAY dipped until the button is
@@ -127,22 +156,33 @@ export function MoveableCursor({ hot }: Props) {
       // cursor would animate an action that can't happen.
       if (e.button !== 0) return;
       if (!reduced) pressTarget = PRESS_SCALE;
+      schedule(); // wake the loop to animate the press dip
     };
     const onUp = () => {
       pressTarget = 1;
+      schedule(); // wake the loop to animate the release spring
+    };
+    // Page scrolled under a (possibly stationary) cursor → the content beneath it
+    // changed, so re-check the clickable state. This is the stuck-spark fix that
+    // the old per-frame hit-test covered for free; now it's an explicit wake.
+    const onScroll = () => {
+      dirty = true;
+      schedule();
     };
 
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerdown", onDown, { passive: true });
     window.addEventListener("pointerup", onUp, { passive: true });
     window.addEventListener("pointercancel", onUp, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("blur", onUp);
-    frame = requestAnimationFrame(tick);
+    schedule();
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("scroll", onScroll);
       window.removeEventListener("blur", onUp);
       cancelAnimationFrame(frame);
     };

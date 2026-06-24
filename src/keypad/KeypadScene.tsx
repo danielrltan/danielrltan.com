@@ -11,6 +11,7 @@ import {
   type PulseChannel,
 } from "./RipplePost";
 import { useIsMobile } from "../useIsMobile";
+import { isLowTier } from "../capabilityTier";
 
 // Tuning mode: pass ?tune=keypad in the URL to enable OrbitControls
 // + a live values HUD so you can drag the keypad to the orientation
@@ -279,7 +280,7 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
         // work of DPR 1. The backdrop is a soft gradient + soft grain,
         // supersampling buys almost no perceptible sharpness there, so
         // pin mobile to DPR 1. Desktop keeps [1, 1.5] for crisp caps.
-        dpr={isMobile ? 1 : [1, 1.5]}
+        dpr={isMobile || isLowTier() ? 1 : [1, 1.5]}
         // PERF: demand frame loop. SceneContents.useFrame calls
         // invalidate() while visible, and short-circuits while off-
         // screen so no WebGL submit happens until the user scrolls
@@ -670,7 +671,11 @@ function SceneContents({
           lets R3F's normal auto-render draw the scene straight to the
           canvas. The keypad + static orange wash read the same at phone
           size for far less GPU. */}
-      {!TUNE_MODE && !isMobile && (
+      {!TUNE_MODE && !isMobile && !isLowTier() && (
+        // Weak GPU (low tier) takes the SAME path as mobile: skip the RipplePost
+        // refraction pass entirely (its 4× MSAA FBO round-trip is the keypad's
+        // biggest fill cost) and let R3F auto-render the scene straight to the
+        // canvas. The pulses just stop refracting — a clean, disclosed fallback.
         <RipplePost pulsesRef={pulsesRef} samples={4} />
       )}
       {/* Cool paper-white ambient (no warm/muddy tint). Lifts the shadow side a

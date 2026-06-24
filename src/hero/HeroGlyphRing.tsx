@@ -58,6 +58,15 @@ const IS_SMALL_SCREEN =
   typeof window !== "undefined" &&
   window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
 
+// Browser/OS zoom or HiDPI panel: pass 2's cost scales with canvas PIXELS, so a
+// 1.25→1.0 DPR drop is ~36% fewer fullscreen-post fragments — a real win on the
+// Windows 125/150%-scaled weak laptops the owner is complaining about. It's
+// visually identical here because pass 2 hard-quantizes to ~10px tile cells, so
+// supersampling past 1.0 buys nothing. Read ONCE at module load: reactively
+// changing dpr would resize the Canvas backbuffer mid-session.
+const IS_HI_DPR =
+  typeof window !== "undefined" && (window.devicePixelRatio || 1) > 1.4;
+
 // Tile cell size in CSS px. The grid (and the pass-1 render target)
 // is the container size divided by this. Geometric tiles need a touch
 // more room than text glyphs did to read as shapes.
@@ -367,6 +376,20 @@ const POST_FRAG = /* glsl */ `
 
     gl_FragColor = vec4(col, a);
     #include <colorspace_fragment>
+    // BAKED GRADE: was the CSS filter saturate(1.28) contrast(1.2) on
+    // .hero-glyph-ring (hero-composition.css) — a per-painted-frame compositor
+    // color-matrix over the oversized live canvas for EVERY visitor. Folded in
+    // here at zero added cost. Applied in sRGB-encoded space (AFTER
+    // colorspace_fragment) and BEFORE the premultiply, matching the CSS filter
+    // exactly (CSS grades straight, un-premultiplied colour). saturate == the
+    // luminance-preserving CSS/SVG matrix, which equals mix(luma, c, s) with the
+    // (0.213,0.715,0.072) weights; contrast == (c-0.5)*k+0.5. Order matches CSS.
+    {
+      vec3 graded = gl_FragColor.rgb;
+      graded = mix(vec3(dot(graded, vec3(0.213, 0.715, 0.072))), graded, 1.28);
+      graded = (graded - 0.5) * 1.2 + 0.5;
+      gl_FragColor.rgb = clamp(graded, 0.0, 1.0);
+    }
     // Premultiply for NoBlending onto the alpha canvas (the page bg
     // composites behind; entrance opacity is CSS on the canvas).
     gl_FragColor.rgb *= gl_FragColor.a;
@@ -400,10 +423,12 @@ export function HeroGlyphRing({
           preserveDrawingBuffer: false,
         }}
         camera={{ position: [0, 0, 6.2], fov: 22, near: 0.1, far: 100 }}
-        // DPR capped at 1.5 (was 2): pass 2 re-quantizes to a ~10px tile grid,
-        // so supersampling past 1.5 buys almost nothing visually but costs ~1.8x
-        // the fragments of DPR 1.5 — a real tax on weak integrated GPUs.
-        dpr={IS_SMALL_SCREEN ? 1 : [1, 1.25]}
+        // DPR capped at 1.25 (was 2): pass 2 re-quantizes to a ~10px tile grid,
+        // so supersampling past 1.25 buys almost nothing visually but costs more
+        // fragments — a real tax on weak integrated GPUs. Small screens AND
+        // HiDPI/zoomed displays drop to a flat 1.0 (identical look, ~36% fewer
+        // post-pass fragments).
+        dpr={IS_SMALL_SCREEN || IS_HI_DPR ? 1 : [1, 1.25]}
         // We own the render via a priority-1 useFrame (two manual passes).
         frameloop="always"
         style={{
@@ -641,6 +666,11 @@ function RingScene({
     const canvasEl = gl.domElement;
     const container = canvasEl.parentElement;
     if (!container) return;
+    // Touch / coarse pointer: there's no hovering cursor, so the cursor-driven
+    // ring deformation + paint trail don't apply — skip ALL pointer tracking on
+    // mobile so the ring simply spins (uMouseStrength stays 0 → no bulge, and the
+    // trail's metaball loop never activates). Removes the stray "cursor blobbing".
+    if (IS_SMALL_SCREEN) return;
 
     // PERF: skip the layout read entirely while the ring is scrolled
     // out; the uniforms it feeds aren't rendered then anyway.
@@ -819,7 +849,14 @@ function RingScene({
     // behind it comes from older points fading. Each frame's move is subdivided
     // so a fast flick lays a CONTINUOUS trail (points spaced within the metaball
     // fuse distance) instead of detached blobs. Skipped under reduced motion.
-    if (!reducedMotion) {
+    // LITE / weak-HW path: drop the cursor paint trail entirely so the
+    // 24-iteration metaball loop + value-noise in POST_FRAG never run
+    // (uTrailActive 0). data-hero-lite is set at load on HiDPI and latched on
+    // after sustained slow scroll frames (App.tsx adaptive degrade), so this is
+    // exactly the machines that can least afford the trail's per-fragment spike.
+    // Cheap attribute read (no layout); re-enables live if the flag ever clears.
+    const lite = document.documentElement.hasAttribute("data-hero-lite");
+    if (!reducedMotion && !lite) {
       const trail = trailRef.current;
       const decay = dt / TRAIL_LIFE;
       let active = false;
@@ -876,6 +913,9 @@ function RingScene({
       }
       // Gate the per-fragment trail loop off when there's nothing to draw.
       pipeline.postMaterial.uniforms.uTrailActive!.value = active ? 1 : 0;
+    } else {
+      // Reduced-motion or lite/weak-HW: never run the trail loop.
+      pipeline.postMaterial.uniforms.uTrailActive!.value = 0;
     }
 
     wasOffscreenRef.current = false;

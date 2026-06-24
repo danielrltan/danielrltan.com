@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { requestScrollRefresh } from "./scrollRefresh";
 import "./sections.css";
 // Reuse the photo-train + gallery-header CSS that Beat A used inside Other.
 // (Those classes are global; only the giant title is re-scoped in photos.css.)
@@ -151,12 +152,12 @@ export function Photos() {
     let lastLoading = html.classList.contains("loading-active");
     const obs = new MutationObserver(() => {
       const now = html.classList.contains("loading-active");
-      if (lastLoading && !now) ScrollTrigger.refresh();
+      if (lastLoading && !now) requestScrollRefresh();
       lastLoading = now;
     });
     obs.observe(html, { attributes: true, attributeFilter: ["class"] });
     if (!lastLoading) {
-      requestAnimationFrame(() => ScrollTrigger.refresh());
+      requestScrollRefresh();
     }
 
     return () => {

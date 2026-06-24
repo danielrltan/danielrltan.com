@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { requestScrollRefresh } from "./scrollRefresh";
 import Lenis from "lenis";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 // Lazy: keypad 3D scene (last section before the footer) loads on approach,
@@ -19,17 +20,24 @@ gsap.registerPlugin(ScrollTrigger);
 // mobile DOM contact chips below, so the links can't drift apart. The
 // 3D caps reference the same destinations on desktop.
 const SOCIALS = [
-  { label: "X", aria: "X (Twitter)", href: "https://x.com/danielrltan" },
+  { label: "X", aria: "X (Twitter)", href: "https://x.com/danielrltan", host: "x.com" },
   {
     label: "LinkedIn",
     aria: "LinkedIn",
     href: "https://www.linkedin.com/in/danielrltan",
+    host: "linkedin.com",
   },
-  { label: "GitHub", aria: "GitHub", href: "https://github.com/danielrltan" },
+  {
+    label: "GitHub",
+    aria: "GitHub",
+    href: "https://github.com/danielrltan",
+    host: "github.com",
+  },
   {
     label: "Pinterest",
     aria: "Pinterest",
     href: "https://www.pinterest.com/danielrltan",
+    host: "pinterest.com",
   },
 ] as const;
 
@@ -353,13 +361,13 @@ export function Keypad() {
     const obs = new MutationObserver(() => {
       const nowLoading = html.classList.contains("loading-active");
       if (lastLoadingActive && !nowLoading) {
-        ScrollTrigger.refresh();
+        requestScrollRefresh();
       }
       lastLoadingActive = nowLoading;
     });
     obs.observe(html, { attributes: true, attributeFilter: ["class"] });
     if (!lastLoadingActive) {
-      requestAnimationFrame(() => ScrollTrigger.refresh());
+      requestScrollRefresh();
     }
 
     return () => {
@@ -409,32 +417,76 @@ export function Keypad() {
         )}
       </div>
 
-      {/* MOBILE contact block: the 3D caps are invisible hit-boxes with no
-          touch affordance, so on a phone there is no way to reach the socials.
-          Render REAL, tappable chips (always in the DOM, so they also cover
-          the WebGL-unavailable case). Gated to mobile only — `isMobile` mirrors
-          how Macintosh / the rest of the app branch — so desktop is untouched. */}
+      {/* MOBILE Contact surface. The 3D keypad caps are invisible hit-boxes with
+          no touch affordance, so on a phone THIS real, tappable block IS the
+          Contact section (it also covers the WebGL-unavailable case). Gated to
+          mobile only — desktop keeps the 3D scene + watermark, untouched.
+          The header reuses the shared system: an <h2> inside a .portfolio-section
+          auto-takes the giant pixel wordmark, so "Contact" reads at the SAME
+          scale as every other section's corner header (the one the section was
+          missing). */}
       {isMobile && (
-        <nav className="keypad-contact" aria-label="Find me elsewhere">
-          {SOCIALS.map((s) => (
-            <a
-              key={s.label}
-              className="keypad-contact-chip"
-              href={s.href}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={`${s.aria}: opens in a new tab`}
-              onClick={() =>
-                track("outbound_link", {
-                  url: s.label.toLowerCase(),
-                  context: "contact",
-                })
-              }
-            >
-              {s.label}
-            </a>
-          ))}
-        </nav>
+        <div className="keypad-mobile">
+          <header className="keypad-mhead">
+            <span className="keypad-mnum">07</span>
+            <h2 className="keypad-mtitle">Contact</h2>
+          </header>
+
+          {/* Primary channel: email. The one bold action on the surface. */}
+          <a
+            className="keypad-email"
+            href="mailto:hello@danielrltan.com"
+            onClick={() => track("contact_email", { context: "contact" })}
+          >
+            <span className="keypad-email-k">Email</span>
+            <span className="keypad-email-v">hello@danielrltan.com</span>
+          </a>
+
+          {/* Secondary: the socials, as a flat hairline-divided link list. */}
+          <div className="keypad-elsewhere">
+            <span className="keypad-elsewhere-k">Find me elsewhere</span>
+            <nav className="keypad-contact" aria-label="Find me elsewhere">
+              {SOCIALS.map((s) => (
+                <a
+                  key={s.label}
+                  className="keypad-contact-chip"
+                  href={s.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`${s.aria}: opens in a new tab`}
+                  onClick={() =>
+                    track("outbound_link", {
+                      url: s.label.toLowerCase(),
+                      context: "contact",
+                    })
+                  }
+                >
+                  <span className="keypad-contact-name">{s.label}</span>
+                  <span className="keypad-contact-meta">
+                    <span className="keypad-contact-host">{s.host}</span>
+                    {/* External-link arrow (↗): a real affordance, not
+                        decoration — signals the link opens off-site. */}
+                    <svg
+                      className="keypad-contact-arrow"
+                      width="11"
+                      height="11"
+                      viewBox="0 0 10 10"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M2.6 7.4 L7.4 2.6 M4 2.6 H7.4 V6"
+                        stroke="currentColor"
+                        strokeWidth="1.3"
+                        strokeLinecap="square"
+                      />
+                    </svg>
+                  </span>
+                </a>
+              ))}
+            </nav>
+          </div>
+        </div>
       )}
     </section>
   );

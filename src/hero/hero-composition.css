@@ -225,13 +225,32 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
   width: 100%;
   height: 100%;
   pointer-events: none;
-  /* Resting POP: a saturation + contrast boost on the shader output so the
-     orange tile field reads rich and the white symbols stop washing it out
-     (the same punch the scroll-time contrast ratchet adds, now in the base
-     state). Static colour grade, not motion — kept under reduced-motion too.
-     No scroll-bound TRANSFORM here; the composition root drives the dive and
-     the ring moves with it as one rigid body. */
-  filter: saturate(1.28) contrast(1.2);
+  /* Resting POP: a saturation + contrast boost (the orange tile field reads rich
+     and the white symbols stop washing it out). PERF: the former
+     filter saturate(1.28) contrast(1.2) here ran a compositor colour-matrix over
+     the oversized live canvas on EVERY painted frame for every visitor. It's now
+     BAKED into POST_FRAG in HeroGlyphRing.tsx (sRGB-space, applied pre-premultiply
+     — pixel-identical to the old CSS filter), so no per-frame CSS filter remains.
+     Static colour grade, kept under reduced-motion too. */
+}
+
+/* Static baked ring (low tier / reduced-motion fallback for .hero-glyph-ring).
+   The capture is the VISIBLE viewport crop of the live ring, so it's sized to
+   the viewport (100vw×100vh) and centred inside the 130vw×130vh wrap — matching
+   the live ring's on-screen framing 1:1. It inherits the wrap's 0.7 opacity and
+   rides the composition's dive transform, so the hero→About zoom still reads. */
+.hero-ring-static {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100vw;
+  height: 100vh;
+  transform: translate(-50%, -50%);
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 /* Scroll cue: pixel down-chevron, bottom-centre of the hero, bobbing in
@@ -443,7 +462,10 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
      pixel voice. NO CSS transition on transform — it would re-smooth
      the very steps the quantisation creates. */
   transform-origin: 50% 60%;
-  will-change: transform;
+  /* PERF: no permanent will-change. It pinned a compositor layer per glyph
+     (~9 on the FIRST screen, every visit) for the cursor-inhale — which only
+     runs on desktop HOVER and never on touch, so it was pure VRAM on phones.
+     The inhale's translate3d still GPU-promotes while it's actually animating. */
 }
 
 /* (A CRT scanline fill via background-clip:text lived here briefly;

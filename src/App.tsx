@@ -16,16 +16,19 @@ import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { scrollToSection } from "./portfolio/Keypad";
 import { useIsMobile } from "./useIsMobile";
 import { StatusBar } from "./StatusBar";
+import { isLowTier, demoteTier } from "./capabilityTier";
 
 /*
- * The live R3F room (a 27 MB GLB rendered every frame) was replaced by a single
- * static render of the room (public/render.png) — far cheaper, and the room was
- * only ever a static backdrop during the hero→About beat anyway. All the 3D
- * room machinery (Room, GroundPlane, ScrollCamera, IntroController, the
- * ScrollWireframeRoom assembly, OrbitControls, the room frameloop gate, the
- * fake contact shadow) was deleted. The render fades in where the 3D room used
- * to appear and out into the Projects section, driven by the same
- * --canvas-opacity scroll choreography.
+ * The live R3F room (a 27 MB GLB rendered every frame) is gone. All the 3D room
+ * machinery (Room, GroundPlane, ScrollCamera, IntroController, the
+ * ScrollWireframeRoom assembly, OrbitControls, the room frameloop gate, the fake
+ * contact shadow) was deleted in the seamless-portfolio landing. A static render
+ * (public/render.webp) then briefly stood in as a fixed full-screen backdrop
+ * during the hero→About beat — but it was PROVABLY never visible (an opaque
+ * z≥10 section always covered it across its entire fade window), so that layer +
+ * its --canvas-opacity choreography were removed too. About keeps its own copy
+ * of render.webp inside the bento (.about-room); the hero hands straight off to
+ * the opaque About section below it.
  */
 
 function clamp01(x: number) {
@@ -62,13 +65,6 @@ const HERO_FADE_RATE = 9; // exp ease rate → ~330ms dissolve, independent of s
 // still on top.
 const HERO_DISSOLVE_START_VH = 0.3;
 const HERO_DISSOLVE_END_VH = 0.75;
-// The static room RENDER occupies the beat the live 3D room used to: it rises
-// as the hero dissolves (no blank gap where the wireframe build used to sit) and
-// holds through About, then fades out into the Projects/Mac section.
-const RENDER_FADE_IN_START_VH = 0.95;
-const RENDER_FADE_IN_END_VH = 1.55;
-const RENDER_FADE_OUT_START_VH = 2.8;
-const RENDER_FADE_OUT_END_VH = 2.95;
 // Content opacity ramp window (page scroll fraction).
 const CONTENT_FADE_START = 0.07;
 const CONTENT_FADE_END = 0.105;
@@ -78,11 +74,6 @@ const CONTENT_FADE_END = 0.105;
 // eased signal chases its raw target at this fixed exponential rate (~400ms to
 // settle, matching GSAP `scrub: 1`). Thresholds/windows/sequence are untouched.
 const PROGRESS_EASE_RATE = 2.5;
-// The render FADE-OUT (handing off to the Projects section) eases at a STEEPER
-// rate than the shared reveal rate, with a snap-to-zero floor, so it leaves
-// cleanly instead of lingering as a faint dissolving ghost over the section.
-const RENDER_FADE_OUT_RATE = 6;
-const RENDER_FADE_OUT_SNAP = 0.015;
 // Clamp per-frame dt so a long idle / tab-switch doesn't produce one giant
 // catch-up jump on the next tick.
 const MAX_TICK_DT = 0.05;
@@ -233,8 +224,13 @@ function installScrollChoreography(): void {
   // Latched once frames run slow during scroll (adaptive degrade — see loop()).
   let perfLocked = false;
   let slowFrames = 0;
+  // data-hero-lite drops the cheap resting SVG keyline filter (its only effect)
+  // — invisible on capable hardware, a real save on weak ones. Driven by the
+  // capability tier (low → always lite, so weak DPR=1.0 laptops the DPR-only gate
+  // missed finally pre-drop the software-rasterized feMorphology keyline), plus
+  // the HiDPI/zoom case and the latched slow-frame degrade below.
   const updateHeroLite = () => {
-    if (perfLocked || (window.devicePixelRatio || 1) > 1.4)
+    if (perfLocked || isLowTier() || (window.devicePixelRatio || 1) > 1.4)
       root.setAttribute("data-hero-lite", "");
     else root.removeAttribute("data-hero-lite");
   };
@@ -249,7 +245,6 @@ function installScrollChoreography(): void {
   type Targets = {
     heroOpacity: number;
     heroToAbout: number;
-    renderOpacity: number;
     contentOpacity: number;
     isMobile: boolean;
   };
@@ -273,23 +268,13 @@ function installScrollChoreography(): void {
         (HERO_DISSOLVE_END_VH - HERO_DISSOLVE_START_VH),
     );
 
-    const fadeIn = clamp01(
-      (ratio - RENDER_FADE_IN_START_VH) /
-        (RENDER_FADE_IN_END_VH - RENDER_FADE_IN_START_VH),
-    );
-    const fadeOut = clamp01(
-      (ratio - RENDER_FADE_OUT_START_VH) /
-        (RENDER_FADE_OUT_END_VH - RENDER_FADE_OUT_START_VH),
-    );
-    const renderOpacity = fadeIn * (1 - fadeOut);
-
     const contentOpacity = clamp01(
       (scrollProgress - CONTENT_FADE_START) /
         (CONTENT_FADE_END - CONTENT_FADE_START),
     );
 
     const isMobile = isMobileQuery.matches;
-    return { heroOpacity, heroToAbout, renderOpacity, contentOpacity, isMobile };
+    return { heroOpacity, heroToAbout, contentOpacity, isMobile };
   };
 
   // Seed from the first target so there's no ease-in flash on load / refresh-at-offset.
@@ -297,7 +282,6 @@ function installScrollChoreography(): void {
   const prevEased = {
     heroOpacity: seed.heroOpacity,
     heroToAbout: seed.heroToAbout,
-    renderOpacity: seed.renderOpacity,
     contentOpacity: seed.contentOpacity,
   };
 
@@ -333,24 +317,10 @@ function installScrollChoreography(): void {
     if (t.heroOpacity === 0 && heroOpacity < 0.01) heroOpacity = 0;
     else if (t.heroOpacity === 1 && heroOpacity > 0.99) heroOpacity = 1;
     const heroToAbout = ease(prevEased.heroToAbout, t.heroToAbout, dt);
-    // Render fade: gentle shared rate IN (anti-teleport on reveal), steeper rate
-    // + snap-to-zero OUT so the render doesn't ghost over the Projects section.
-    const falling = t.renderOpacity < prevEased.renderOpacity;
-    let renderOpacity =
-      prevEased.renderOpacity +
-      (t.renderOpacity - prevEased.renderOpacity) *
-        (1 -
-          Math.exp(
-            -dt * (falling ? RENDER_FADE_OUT_RATE : PROGRESS_EASE_RATE),
-          ));
-    if (t.renderOpacity === 0 && renderOpacity < RENDER_FADE_OUT_SNAP) {
-      renderOpacity = 0;
-    }
     const contentOpacity = ease(prevEased.contentOpacity, t.contentOpacity, dt);
 
     prevEased.heroOpacity = heroOpacity;
     prevEased.heroToAbout = heroToAbout;
-    prevEased.renderOpacity = renderOpacity;
     prevEased.contentOpacity = contentOpacity;
 
     setVar("--hero-opacity", heroOpacity.toFixed(3));
@@ -389,16 +359,11 @@ function installScrollChoreography(): void {
       if (diving) root.setAttribute("data-hero-diving", "");
       else root.removeAttribute("data-hero-diving");
     }
-    // The render image rides --canvas-opacity (the same var the room canvas
-    // used). It's purely decorative, so it never receives pointer events.
-    setVar("--canvas-opacity", renderOpacity.toFixed(3));
-    setVar("--canvas-pointer-events", "none");
     setVar("--content-opacity", t.isMobile ? "1" : contentOpacity.toFixed(3));
 
     convergenceDelta = Math.max(
       Math.abs(t.heroOpacity - heroOpacity),
       Math.abs(t.heroToAbout - heroToAbout),
-      Math.abs(t.renderOpacity - renderOpacity),
       Math.abs(t.contentOpacity - contentOpacity),
     );
   };
@@ -429,6 +394,11 @@ function installScrollChoreography(): void {
         if (++slowFrames >= 8) {
           perfLocked = true;
           root.setAttribute("data-hero-lite", "");
+          // Safety net for a machine the static probe rated too high: persist a
+          // ONE-WAY demote (→ standard → low) so the NEXT load drops to the
+          // cheaper static-ring path. We don't yank the live ring mid-session
+          // here (jarring) — data-hero-lite already trims this session's cost.
+          demoteTier();
         }
       } else if (slowFrames > 0) {
         slowFrames--;
@@ -621,16 +591,22 @@ export default function App() {
     };
   }, []);
 
-  /* Warm the lazy section-scene chunks (Macintosh / Hobbies / Keypad) during
-   * idle time once the loader is done, so they're cached before the user
-   * scrolls to them. (Gated on `ready` so these loads don't keep drei's
-   * useProgress active during the loading screen.) */
+  /* Warm the lazy section-scene chunks (Macintosh / Keypad) during idle time
+   * once the loader is done, so they're cached before the user scrolls to them.
+   * Hobbies is intentionally excluded (see warm() below — its preload is heavy
+   * and rides its own on-approach mount instead). Gated on `ready` so these
+   * loads don't keep drei's useProgress active during the loading screen. */
   useEffect(() => {
     if (!ready) return;
     const warm = () => {
       void import("./macintosh/MacintoshScene");
-      void import("./other/HobbiesScene");
       void import("./keypad/KeypadScene");
+      // NOTE: ./other/HobbiesScene is deliberately NOT warmed here. Importing it
+      // runs its module-scope startPreload(), which fetches ~2.3MB of GLBs — and
+      // doing that ~1.2s after load pulled the whole download onto the HERO frame
+      // for every visitor (a real standing cost on weak laptops). Its <Canvas>
+      // already mounts on-approach at mountVh:2.75 (Other.tsx) — ample lead for
+      // the chunk + GLBs to resolve before arrival, so warming here was redundant.
     };
     const w = window as unknown as {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
@@ -639,8 +615,8 @@ export default function App() {
     if (typeof w.requestIdleCallback === "function") {
       // timeout GUARANTEES warm() runs within 1.2s even if the main thread stays
       // busy. Without it, requestIdleCallback can be starved indefinitely, so the
-      // hobbies GLB preload (kicked off when its module first imports) starts late
-      // and the section blanks/pops while still loading on arrival (user-flagged).
+      // Mac/Keypad scene chunks would start compiling late and the section could
+      // pop while still loading on a quick scroll-in.
       const id = w.requestIdleCallback(warm, { timeout: 1200 });
       return () => w.cancelIdleCallback?.(id);
     }
@@ -688,23 +664,6 @@ export default function App() {
           }}
         >
           <HeroSignature />
-        </div>
-
-        {/* Static room render (replaces the deleted live 3D room). Fades in
-            where the room used to appear and out into the Projects section via
-            --canvas-opacity. Decorative + pointer-events:none. */}
-        <div
-          className="scroll-layer--canvas"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100vw",
-            height: "100vh",
-            zIndex: 0,
-          }}
-        >
-          <img className="room-render" src="/render.webp" alt="" draggable={false} />
         </div>
 
         {/* Orange ring + dot cursor with parallax trail. */}

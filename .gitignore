@@ -71,8 +71,10 @@ pnpm-debug.log*
 /intro-freeze/
 /antimetal-ref/
 /.scratch/
-# Pristine GLB backups from optimize-assets.mjs (huge — keep out of git)
+# Pristine GLB backups from optimize-assets.mjs (huge — keep out of git).
+# Recursive: the Hobbies cluster backups live under public/hobbies/.
 public/*.original.glb
+public/**/*.original.glb
 # Raw re-baked room source (~38 MB). The committed/shipped room is the
 # gltf-transform output room-optimized.web.glb (~4 MB); this is the
 # heavy source it's optimized FROM — keep it local, never commit/ship.

@@ -16,9 +16,14 @@
  *   4. Applies meshopt compression: reorder() + quantize() + EXT_meshopt_compression.
  *      Position quantization is conservative (14-bit) to preserve visual fidelity.
  *
- * Loads with zero code changes:
- *   - drei v10 useGLTF auto-registers MeshoptDecoder
+ * Decoder requirements (EXT_meshopt_compression is set REQUIRED):
+ *   - drei v10 useGLTF auto-registers MeshoptDecoder (mac/keypad — not touched here)
+ *   - the Hobbies cluster uses a RAW GLTFLoader, so HobbiesScene.tsx calls
+ *     loader.setMeshoptDecoder(MeshoptDecoder) explicitly. Keep them in sync.
  *   - three's GLTFLoader natively decodes EXT_texture_webp
+ *
+ * Backups: public/<name>.original.glb is gitignored (local-only, for idempotent
+ * re-runs). The pristine pre-compression GLBs also live in git history.
  *
  * Usage: npm run optimize:assets   (or: node scripts/optimize-assets.mjs)
  */
@@ -45,15 +50,23 @@ const PUBLIC_DIR = join(__dirname, '..', 'public');
 
 // --- Per-asset config -------------------------------------------------------
 
-// Only the room is compressed here. It's the heavy asset (~22.6 MB raw)
-// and is viewed at iso distance where 10-bit normal quantization is
-// invisible. keypad.glb / mac.glb are deliberately EXCLUDED: they're
-// tiny (sub-450 KB) AND are close-up hero models whose smooth shading
-// matters — meshopt's normal quantization made the keypad caps read as
-// harsh/high-contrast up close, for a saving not worth having. Leave
-// them uncompressed.
+// The Hobbies cluster GLBs (~2.3 MB total, luggage + gpu are the heavy ones).
+// They're viewed at cluster DISTANCE (the Play reel), so position+normal
+// quantization is invisible — exactly the case meshopt is for. The old room.glb
+// target is gone (the 3D room was retired). keypad.glb / mac.glb stay EXCLUDED:
+// they're close-up hero models whose smooth shading matters — normal
+// quantization made the keypad caps read harsh up close, a saving not worth it.
 const TARGETS = [
-  { name: 'room.glb' },
+  { name: 'hobbies/boot.glb' },
+  { name: 'hobbies/car.glb' },
+  { name: 'hobbies/cursor.glb' },
+  { name: 'hobbies/donut.glb' },
+  { name: 'hobbies/glove.glb' },
+  { name: 'hobbies/gpu.glb' },
+  { name: 'hobbies/keyboard.glb' },
+  { name: 'hobbies/luggage.glb' },
+  { name: 'hobbies/piano.glb' },
+  { name: 'hobbies/ski.glb' },
 ];
 
 // Textures whose longest edge should be clamped to 512px (small props / covers).

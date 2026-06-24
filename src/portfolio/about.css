@@ -10,11 +10,13 @@
    • Only chromatic colour is International Orange (var(--accent)); the
      readable small-text variant is var(--accent-deep). Everything else is
      ink / grey / glass.
-   • Section bg is OPAQUE flat var(--bg-page) on purpose: there is a separate
-     fixed room-render layer BEHIND this section in the app, and the opaque bg
-     is what hides it so ONLY the bento's own render shows. Do NOT make this
-     section transparent. (The old faint dot-grid "rice" was removed so the
-     bento connects seamlessly with the flat Macintosh section below.)
+   • Section bg is OPAQUE flat var(--bg-page) on purpose: it must read as the
+     same flat ground as the Macintosh section below so the two connect with no
+     seam (the faint dot-grid "rice" was removed for the same reason). Do NOT
+     make this section transparent — the hero hands straight off to it, and a
+     transparent About would expose the fixed orange hero field mid-dissolve.
+     (It also used to mask a fixed full-screen room-render layer behind the app;
+     that layer has since been deleted, but the opaque flat ground stays.)
    • Glass cards: translucent white + backdrop-blur, hairline border, a
      faint white top edge, soft shadow, ~18px radius. The FOCUS card is
      near-ink with orange.
@@ -31,10 +33,11 @@
      Broadridge" link — swallowed no clicks at all (same footgun that once
      broke the Work accordion). */
   pointer-events: auto;
-  /* FLAT opaque light-grey ground (no dot-grid). Load-bearing: it hides the
-     fixed room-render layer behind the section so only the bento's render
-     shows. The dot-grid "rice" was removed so this section reads as the same
-     flat var(--bg-page) as the Macintosh section below — seamless, no seam. */
+  /* FLAT opaque light-grey ground (no dot-grid). Load-bearing: must stay opaque
+     so the hero hands off cleanly (no orange hero field bleeding through) and so
+     this section reads as the same flat var(--bg-page) as the Macintosh section
+     below — seamless, no seam. (Formerly also masked a fixed room-render layer
+     behind the app, now deleted; the opaque flat ground stays regardless.) */
   background-color: var(--bg-page, #eef0f3);
 }
 
@@ -405,7 +408,7 @@
   height: 100%;
   object-fit: contain;
   object-position: center 50%;
-  /* Scale the room up so it dominates the feature cell (the render.png carries
+  /* Scale the room up so it dominates the feature cell (render.webp carries
      wide transparent margins, so unscaled it read as a small floating object
      in a big empty column). overflow:visible on the cell lets the transparent
      margin spill harmlessly. */

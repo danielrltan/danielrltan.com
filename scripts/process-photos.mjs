@@ -38,8 +38,12 @@ const INBOX = path.join(ROOT, "photos-inbox");
 const OUT = path.join(ROOT, "public", "photos");
 const MANIFEST = path.join(OUT, "manifest.json");
 
-const MAX_EDGE = 1400; // longest edge in px — crisp on retina, still light
-const QUALITY = 80; // WebP quality
+// Longest edge in px. The reel cards are small squares (height clamp ≤220px,
+// object-fit:cover), so 1400px was ~6× oversized — 36 shots = ~4.9MB that
+// decoded slowly and left blank cards on weak machines. 600px is crisp even at
+// ~2.7× DPR for a 220px card, for ~1/5 the bytes.
+const MAX_EDGE = 600;
+const QUALITY = 74; // WebP quality (plenty for a thumbnail-sized reel card)
 const IMAGE_EXT = new Set([".heic", ".heif", ".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"]);
 const SKIP_EXT = new Set([".mov", ".mp4", ".aae", ".gif", ".pdf"]); // explicitly ignored
 

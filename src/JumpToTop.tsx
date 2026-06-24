@@ -14,25 +14,39 @@ export function JumpToTop() {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     let raf = 0;
-    const update = () => {
+    // PERF: cache the scrollY THRESHOLD at which the button appears, instead of
+    // reading documentElement.scrollHeight (a forced reflow) on every scroll
+    // frame. scrollHeight only changes on resize / content-mount / loader-lift,
+    // so it's recomputed there (resize + a body ResizeObserver), never on scroll.
+    let thresholdY = Infinity;
+    const recompute = () => {
       const max = Math.max(
         1,
         document.documentElement.scrollHeight - window.innerHeight,
       );
-      const progress = Math.max(0, Math.min(1, window.scrollY / max));
-      const next = progress >= SHOW_AT_PROGRESS;
+      thresholdY = SHOW_AT_PROGRESS * max;
+      update();
+    };
+    const update = () => {
+      const next = window.scrollY >= thresholdY; // no layout read
       setVisible((prev) => (prev === next ? prev : next));
     };
     const onScroll = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(update);
     };
-    update();
+    recompute();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
+    window.addEventListener("resize", recompute, { passive: true });
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => recompute());
+      ro.observe(document.body);
+    }
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", recompute);
+      ro?.disconnect();
       cancelAnimationFrame(raf);
     };
   }, []);

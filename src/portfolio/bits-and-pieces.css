@@ -211,7 +211,11 @@
     opacity var(--t-slow) var(--ease-entrance),
     transform var(--t-slow) var(--ease-entrance),
     filter var(--t-med) var(--ease-entrance);
-  will-change: opacity, transform, filter;
+  /* PERF: `filter` is intentionally NOT hinted — a will-change:filter pins a
+     software filter-backed compositor layer per tile PERMANENTLY (VRAM + paint
+     cost on weak GPUs), for a one-time blur-in. opacity/transform are the cheap
+     hints worth keeping, and only until the tile has settled (released below). */
+  will-change: opacity, transform;
 }
 .bp-tile--from-left { --bp-from-x: -28px; }
 .bp-tile--from-right { --bp-from-x: 28px; }
@@ -219,6 +223,8 @@
   opacity: 1;
   filter: blur(0);
   transform: translate3d(0, 0, 0) scale(1);
+  /* Reveal done — drop the compositor hint so the layer is reclaimed. */
+  will-change: auto;
 }
 
 /* The visible card surface. Slightly translucent cool white over a

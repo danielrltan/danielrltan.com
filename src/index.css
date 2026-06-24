@@ -250,14 +250,13 @@
      the per-element pipelines. */
   --hero-opacity: 1;
   --hero-to-about: 0;
-  --canvas-opacity: 0;
-  --canvas-pointer-events: none;
   --content-opacity: 0;
 }
 
-/* Scroll-driven layers (hero signature canvas, room canvas wrapper)
-   consume CSS variables instead of receiving opacity via React state
-   on every scroll frame. Keeps App.tsx from re-rendering on scroll. */
+/* Scroll-driven hero layer consumes a CSS variable instead of receiving opacity
+   via React state on every scroll frame. Keeps App.tsx from re-rendering on
+   scroll. (The old static room-render layer that rode --canvas-opacity here was
+   deleted — it was provably never visible; About keeps its own .about-room.) */
 .scroll-layer--hero {
   opacity: var(--hero-opacity, 1);
   /* Opaque orange field: the hero OWNS the first screen and the next section
@@ -267,44 +266,6 @@
      transparent gaps + covers the page before the ring lazy-loads. */
   background: var(--accent);
 }
-.scroll-layer--canvas {
-  opacity: var(--canvas-opacity, 0);
-  pointer-events: var(--canvas-pointer-events, none);
-}
-/* MOBILE: hide the static room-render backdrop entirely. It's object-fit:contain,
-   so on a portrait phone the landscape room letterboxes into a ~220px band
-   floating mid-screen — it bleeds behind the sections as the "weird image line"
-   the owner flagged. The render is a desktop hero->About flourish; phones get
-   the clean flat page (and a smoother hero->About handoff). */
-@media (max-width: 768px) {
-  .scroll-layer--canvas {
-    display: none;
-  }
-}
-/* Static room render (replaced the live 3D room). Fills the fixed canvas
-   layer; contained + centred so the whole iso room reads, and its transparent
-   background lets the light page show through around it. Layer opacity is
-   driven by --canvas-opacity from the scroll choreography. */
-.room-render {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  object-position: center;
-  user-select: none;
-  -webkit-user-drag: none;
-  pointer-events: none;
-  /* Feather the bottom edge so the room's saturated wood floor-line dissolves
-     into the page instead of surviving as a hard sliver when this layer fades
-     out (--canvas-opacity) into the Projects section. The room is object-fit:
-     contained and fills the layer's full height, so the bottom of the box is
-     the bottom of the room; fading the lowest band softens the floor edge
-     without touching the bed/desk/walls in the centre. */
-  -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent 98%);
-  mask-image: linear-gradient(to bottom, #000 80%, transparent 98%);
-}
-
 * {
   box-sizing: border-box;
 }
@@ -381,8 +342,12 @@ body::before {
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.06;
-  mix-blend-mode: multiply;
+  /* PERF: was mix-blend-mode:multiply, which forces a per-frame backdrop
+     read-back of the whole viewport on the compositor (real cost on weak GPUs,
+     esp. during scroll). The noise is black-on-alpha over a near-white page, so a
+     plain normal-blend at the same low opacity darkens essentially identically —
+     the multiply was imperceptible here. Opacity nudged 0.06→0.05 to match. */
+  opacity: 0.05;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.85 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 

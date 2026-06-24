@@ -194,6 +194,7 @@ function SpillObject({
   pointer,
   labelDistance,
   ringScaleX,
+  ringScaleY,
   objScale,
 }: {
   index: number;
@@ -209,6 +210,7 @@ function SpillObject({
   pointer: React.MutableRefObject<{ x: number; y: number }>;
   labelDistance: number;
   ringScaleX: number;
+  ringScaleY: number;
   objScale: number;
 }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -241,8 +243,9 @@ function SpillObject({
   const target = useMemo(() => {
     const t = ringTarget(index, SECTION_REGISTRY.length);
     t.x *= ringScaleX;
+    t.y *= ringScaleY;
     return t;
-  }, [index, ringScaleX]);
+  }, [index, ringScaleX, ringScaleY]);
   // Every icon launches from — and retracts back to — the SAME single point
   // (SPILL_ORIGIN), so the spill reads as one cohesive burst from the centre
   // rather than each appearing out of a different spot. A per-object signed arc
@@ -476,6 +479,7 @@ function SpillField({
   closeMsRef,
   labelDistance,
   ringScaleX,
+  ringScaleY,
   objScale,
 }: {
   activeIdx: number;
@@ -495,6 +499,9 @@ function SpillField({
   /** Horizontal squash of the whole ring (1 = circle; <1 = vertical ellipse
    *  for portrait phones so the side labels don't run off the edges). */
   ringScaleX: number;
+  /** Vertical stretch of the ring (>1 = taller ellipse on mobile, using the
+   *  portrait viewport's spare height to spread the objects + labels apart). */
+  ringScaleY: number;
   /** Per-object size multiplier (shrinks the shapes on mobile so the squashed
    *  ring doesn't merge into one blob). */
   objScale: number;
@@ -620,6 +627,7 @@ function SpillField({
           pointer={pointer}
           labelDistance={labelDistance}
           ringScaleX={ringScaleX}
+          ringScaleY={ringScaleY}
           objScale={objScale}
         />
       ))}
@@ -728,14 +736,19 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    window.addEventListener("pointermove", onMove, { passive: true });
+    // Touch has no hovering cursor, so the cursor-driven effects don't apply:
+    // skip pointer/parallax tracking entirely on mobile (the ring's icons won't
+    // tilt toward a phantom pointer; the mercury blob isn't rendered there).
+    if (!isMobile) {
+      window.addEventListener("pointermove", onMove, { passive: true });
+    }
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("keydown", onKey);
       document.body.style.cursor = "";
     };
-  }, [mounted, onClose]);
+  }, [mounted, onClose, isMobile]);
 
   const select = (i: number) => {
     onJump?.(SECTION_REGISTRY[i]?.label ?? "");
@@ -768,23 +781,42 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
   // the labels render larger (distanceFactor) so they stay comfortable tap
   // targets. The hover-enlarge cue simply doesn't fire on touch (no hover) —
   // tapping a label still jumps + closes.
+  // NARROW-PORTRAIT FIT. The ring's world geometry is FIXED (radius 2.25,
+  // camera fov/z), so its on-screen size doesn't shrink with the viewport — on a
+  // narrow phone the eight objects + their labels cram into overlap (the "320px
+  // squeeze"). Overlap is a RELATIVE-size problem: pulling the camera back is
+  // scale-invariant and does nothing for it, so the real lever is shrinking the
+  // objects + labels as the viewport narrows. `narrow` ramps 0→1 from a roomy
+  // phone (≥400px, where the binary mobile values already read fine) down to the
+  // tightest (≤320px). Tuned against 320 / 360 / 390 captures.
+  const vw = typeof window !== "undefined" ? window.innerWidth || 390 : 390;
+  const narrow = isMobile ? clamp01((400 - vw) / 80) : 0;
   // Camera distance/FOV: desktop unchanged (z=10, fov=40). Mobile pulls back
-  // (z=14) and widens (fov=46) so radius-2.25 ring + card margins clear a
-  // narrow portrait viewport. Labels scale UP (distanceFactor 9 vs 6) to
-  // counter the pull-back so they read + tap at a comfortable size.
+  // (z=13) and widens (fov=46) so the ring + label margins clear a portrait
+  // viewport.
   const camZ = isMobile ? 13 : 10;
   const camFov = isMobile ? 46 : 40;
-  const labelDistance = isMobile ? 8 : 6;
+  // Labels shrink a touch on the tightest phones so they stop colliding, but
+  // stay a comfortable tap size (distanceFactor 8 on a roomy phone → ~6.4 @320).
+  const labelDistance = isMobile ? 8 - narrow * 1.6 : 6;
   // Portrait phones are tall + narrow, so the ring is squashed into a gentle
-  // vertical ellipse (X compressed, Y kept) — otherwise the 3 + 9 o'clock
-  // labels run off the side edges. Now that the labels are short (Projects /
-  // Play / Honours / Contact), the squash can be light (0.7), which spreads the
-  // objects out so they don't crowd/overlap each other. Desktop = true circle.
-  const ringScaleX = isMobile ? 0.7 : 1;
-  // Shrink the objects a touch on mobile so the squashed ring's shapes read as
-  // DISTINCT pieces instead of merging into one orange blob at the crowded
-  // bottom of the ellipse. Desktop keeps full-size objects.
-  const objScale = isMobile ? 0.82 : 1;
+  // vertical ellipse (X compressed, Y kept) — otherwise the 3 + 9 o'clock labels
+  // run off the side edges. Desktop = true circle.
+  const ringScaleX = isMobile ? 0.72 : 1;
+  // Stretch the ring TALLER on a phone. A portrait viewport has loads of unused
+  // vertical room (the ring fills under half the height), so a vertical ellipse
+  // spreads the eight objects + labels apart — separating the top
+  // (Contact/Hero/About) and bottom (Honours/Play/Work) triads whose labels
+  // otherwise collide. The BOTTOM triad clusters tightest (Play sits at the very
+  // bottom flanked by two long labels), so push the 6-o'clock point well down —
+  // there's ample room below it — to drop Play clear of its flankers. More on
+  // narrow phones. Desktop = 1.
+  const ringScaleY = isMobile ? 1.5 + narrow * 0.18 : 1;
+  // Shrink the objects so the ring's shapes read as DISTINCT pieces instead of
+  // merging into one orange blob — the bottom triad's shapes overlapped even at
+  // full mobile width, so this is dialled down across the board, more as the
+  // phone narrows (0.78 on a roomy phone → ~0.56 @320). Desktop = full size.
+  const objScale = isMobile ? 0.78 - narrow * 0.22 : 1;
 
   return (
     <div className="navx-spill-root" data-open={shown ? "true" : "false"}>
@@ -809,11 +841,15 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
           gl={{ alpha: true, antialias: true }}
           onPointerMissed={onClose}
         >
-          <MercuryAura
-            cursorRef={cursor}
-            positionsRef={positionsRef}
-            reduced={reduced}
-          />
+          {/* Mercury cursor blob is a hover/cursor effect — skip it on touch,
+              where there's no pointer for it to pool toward. */}
+          {!isMobile && (
+            <MercuryAura
+              cursorRef={cursor}
+              positionsRef={positionsRef}
+              reduced={reduced}
+            />
+          )}
           <SpillField
             activeIdx={activeIdx}
             armed={armed}
@@ -828,6 +864,7 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
             closeMsRef={closeMsRef}
             labelDistance={labelDistance}
             ringScaleX={ringScaleX}
+            ringScaleY={ringScaleY}
             objScale={objScale}
           />
         </Canvas>

@@ -67,12 +67,20 @@ export function PanCursor() {
       setDir(0);
       setActive(true);
       html.classList.add("pan-scrolling");
+      // Start the autoscroll loop ONLY now (a pan began). It used to re-arm every
+      // frame for the whole page lifetime doing nothing — pure idle waste.
+      last = performance.now();
+      if (!raf) raf = requestAnimationFrame(tick);
     };
     const exit = () => {
       if (!activeRef.current) return;
       activeRef.current = false;
       setActive(false);
       html.classList.remove("pan-scrolling");
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -134,9 +142,11 @@ export function PanCursor() {
           targetRef.current = window.scrollY;
         }
       }
-      raf = requestAnimationFrame(tick);
+      // Keep looping ONLY while a pan is active; otherwise park. enter() restarts
+      // it on the next middle-click. (No permanent mount-time start anymore.)
+      if (activeRef.current) raf = requestAnimationFrame(tick);
+      else raf = 0;
     };
-    raf = requestAnimationFrame(tick);
 
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);

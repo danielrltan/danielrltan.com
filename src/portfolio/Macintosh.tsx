@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { requestScrollRefresh } from "./scrollRefresh";
 import "./sections.css";
 import "./macintosh.css";
 import { ScrambleText } from "./ScrambleText";
@@ -92,7 +93,13 @@ export function Macintosh() {
   // gate's "scrolled past before it spun up" bug. .mac-stage is position:absolute
   // so mounting/unmounting the canvas never changes layout under the pin. The GLB
   // is module-scope preloaded so a remount on scroll-back is instant.
-  const macMounted = useSectionCanvasMount(sectionRef);
+  // mountVh 3.0 (vs the 1.75 default): mount the Mac scene a full extra viewport
+  // earlier — while the user is still in the pinned About section above it (which
+  // has NO canvas of its own, so this adds no concurrent WebGL context) — so the
+  // CRT textures + scene have time to spin up BEFORE arrival. Without the longer
+  // lead the section read blank/empty on scroll-in (owner-flagged). The scene
+  // chunk is already idle-warmed in App.tsx, so the early mount is cheap.
+  const macMounted = useSectionCanvasMount(sectionRef, { mountVh: 3 });
   const pinProgressRef = useRef(
     TUNE_MODE ? 1 : PIN_FREEZE != null ? PIN_FREEZE : 0,
   );
@@ -324,12 +331,12 @@ export function Macintosh() {
     let lastLoading = html.classList.contains("loading-active");
     const obs = new MutationObserver(() => {
       const now = html.classList.contains("loading-active");
-      if (lastLoading && !now) ScrollTrigger.refresh();
+      if (lastLoading && !now) requestScrollRefresh();
       lastLoading = now;
     });
     obs.observe(html, { attributes: true, attributeFilter: ["class"] });
     if (!lastLoading) {
-      requestAnimationFrame(() => ScrollTrigger.refresh());
+      requestScrollRefresh();
     }
 
     return () => {

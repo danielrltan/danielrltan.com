@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { requestScrollRefresh } from "./scrollRefresh";
 import "./sections.css";
 import "./work-timeline.css";
 import { ScrambleText } from "./ScrambleText";
@@ -183,11 +184,11 @@ export function Work() {
     let lastLoading = html.classList.contains("loading-active");
     const obs = new MutationObserver(() => {
       const now = html.classList.contains("loading-active");
-      if (lastLoading && !now) ScrollTrigger.refresh();
+      if (lastLoading && !now) requestScrollRefresh();
       lastLoading = now;
     });
     obs.observe(html, { attributes: true, attributeFilter: ["class"] });
-    if (!lastLoading) requestAnimationFrame(() => ScrollTrigger.refresh());
+    if (!lastLoading) requestScrollRefresh();
     return () => {
       obs.disconnect();
       st.kill();
