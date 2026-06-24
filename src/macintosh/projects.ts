@@ -60,11 +60,11 @@ export const MAC_PROJECTS: MacProject[] = [
       "This site. Hand-modelled isometric bedroom in Blender, brought to life with React Three Fiber + Rapier physics. Real keyboard typing, mouse cursor following, throwable objects, scroll-driven camera, signature replay.",
     tags: ["React", "TypeScript", "R3F", "Rapier", "GLSL"],
     repoHref: "https://github.com/danielrltan/danielrltan.com",
-    // Self-referential: the site's own hero, captured at the same
-    // 806x537 as the other thumbs. Without an image this row fell back
-    // to the flat color swatch, which read as a broken thumbnail next
-    // to three real screenshots.
-    image: "/images/projects/portfolio.jpg",
+    // Self-referential: the site's own social card (the "Daniel Tan" + orange
+    // 3D-objects thumbnail), derived from public/images/thumbnail.png and
+    // re-encoded to a light webp (1000px, ~65KB) so it doesn't ship the 965KB
+    // OG PNG into the Mac section. Cover-fit into the CRT thumb frame.
+    image: "/images/projects/portfolio.webp",
     color: "#3a2418",
   },
   {
