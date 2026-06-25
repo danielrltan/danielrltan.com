@@ -1944,40 +1944,59 @@ function withAlpha(hex: string, alpha: number): string {
 }
 
 /**
- * Invisible click-catcher plane in 3D space, positioned over the Mac's
- * screen. Raycasts pointer events to tile row/column and dispatches.
+ * Invisible interaction plane over the Mac's CRT screen — ONE plane that owns
+ * BOTH gestures (open a tile, close the detail) so there is exactly one
+ * raycast/click target. The old design used two SEPARATE planes (a tile
+ * ScreenClickPlane + a ScreenBackPlane) that the screen-alignment fix moved to
+ * the SAME transform. Two coincident, handler-bearing meshes at identical depth
+ * gave R3F's click synthesis two equal-distance hits, so the pointerdown vs
+ * pointerup hit target was non-deterministic across frames and clicks were
+ * SWALLOWED (hover survived — pointermove is dispatched to both every frame with
+ * no down/up matching). Collapsing to one plane removes the ambiguity entirely.
+ *
+ * clickEnabled (booted grid + no project open): a tile click opens that project.
+ * backEnabled (a project open + the zoom underway): a click anywhere closes it.
  */
-function ScreenClickPlane({
+function ScreenInteractionPlane({
   projects,
   onSelect,
-  enabled,
+  onBack,
+  clickEnabled,
+  backEnabled,
   onHoverChange,
 }: {
   projects: MacProject[];
   onSelect: (p: MacProject) => void;
-  enabled: boolean;
+  onBack: () => void;
+  clickEnabled: boolean;
+  backEnabled: boolean;
   onHoverChange: (i: number | null) => void;
 }) {
   const cols = 2;
 
-  // Always reset the body cursor we may have set, both on unmount AND
-  // whenever the plane becomes disabled mid-hover. Without this the
-  // pointer could get stuck as a "pointer" cursor: if `enabled` flips
-  // false while the user is hovering a tile (e.g. scrolling back up past
-  // the boot threshold so showDesktop → false), onPointerMove early-
-  // returns and onPointerOut may never fire, leaving the cursor stuck.
+  // Reset the body cursor we may have set: whenever the tile grid goes disabled
+  // mid-hover (e.g. showDesktop flips false on scroll-back so onPointerMove
+  // early-returns and onPointerOut may never fire), AND on unmount (R3F fires NO
+  // pointerOut when the mount-on-approach canvas unmounts, which would otherwise
+  // strand the cursor on the next section).
   useEffect(() => {
-    if (!enabled) {
+    if (!clickEnabled) {
       document.body.style.cursor = "";
       onHoverChange(null);
     }
     return () => {
       document.body.style.cursor = "";
     };
-  }, [enabled, onHoverChange]);
+  }, [clickEnabled, onHoverChange]);
+  useEffect(
+    () => () => {
+      document.body.style.cursor = "";
+    },
+    [],
+  );
 
-  // Map a UV hit on the plane to a tile index (or null when above the
-  // grid / out of range). Shared by hover + click so they never drift.
+  // Map a UV hit on the plane to a tile index (or null above the grid / out of
+  // range). Shared by hover + click so they never drift.
   const hitTile = (uv: THREE.Vector2 | undefined): number | null => {
     if (!uv) return null;
     const v = 1 - uv.y;
@@ -1989,82 +2008,34 @@ function ScreenClickPlane({
     return i < projects.length ? i : null;
   };
 
-  // Teardown contract: this tile mesh writes body.cursor='pointer' on hover and
-  // only clears it on its own pointerOut — but R3F fires NO pointerOut when the
-  // Mac CANVAS UNMOUNTS (mount-on-approach), stranding the spark cursor on the
-  // next section. Clear on unmount (ScreenBackPlane already does this for its
-  // own writer; the tile-grid writer needs its own).
-  useEffect(
-    () => () => {
-      document.body.style.cursor = "";
-    },
-    [],
-  );
-
   return (
     <mesh
       position={SCREEN_LOCAL_PIC_CENTER}
       rotation={[MAC_SCREEN_TILT_X, 0, 0]}
       onPointerMove={(e) => {
-        if (!enabled) return;
-        const i = hitTile(e.uv);
-        onHoverChange(i);
-        // cursor:pointer only over an actual tile; design-system
-        // forbids missing cursor:pointer on clickables AND a misleading
-        // pointer over the dead gutter/header band.
-        document.body.style.cursor = i != null ? "pointer" : "";
+        if (clickEnabled) {
+          const i = hitTile(e.uv);
+          onHoverChange(i);
+          // cursor:pointer only over an actual tile, not the dead gutter/header.
+          document.body.style.cursor = i != null ? "pointer" : "";
+        } else if (backEnabled) {
+          document.body.style.cursor = "pointer";
+        }
       }}
       onPointerOut={() => {
         onHoverChange(null);
         document.body.style.cursor = "";
       }}
       onClick={(e) => {
-        if (!enabled) return;
-        const i = hitTile(e.uv);
-        if (i != null) onSelect(projects[i]!);
-      }}
-    >
-      <planeGeometry args={[SCREEN_LOCAL_W, SCREEN_LOCAL_PIC_H]} />
-      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-    </mesh>
-  );
-}
-
-/**
- * Click-catcher that closes the open project. Sits over the CRT screen
- * while the detail view is showing; a click anywhere on the screen pulls
- * the camera back to the tile grid (the canvas-drawn "VIEW LIVE" button
- * is not itself clickable (the real link lives in the DOM overlay), so
- * this gives the screen a sensible whole-surface "back" gesture). The
- * `enabled` gate keeps it from intercepting until the zoom is underway.
- */
-function ScreenBackPlane({
-  enabled,
-  onBack,
-}: {
-  enabled: boolean;
-  onBack: () => void;
-}) {
-  useEffect(() => {
-    if (!enabled) document.body.style.cursor = "";
-    return () => {
-      document.body.style.cursor = "";
-    };
-  }, [enabled]);
-  return (
-    <mesh
-      position={SCREEN_LOCAL_PIC_CENTER}
-      rotation={[MAC_SCREEN_TILT_X, 0, 0]}
-      onPointerOver={() => {
-        if (enabled) document.body.style.cursor = "pointer";
-      }}
-      onPointerOut={() => {
-        document.body.style.cursor = "";
-      }}
-      onClick={(e) => {
-        if (!enabled) return;
-        e.stopPropagation();
-        onBack();
+        if (clickEnabled) {
+          const i = hitTile(e.uv);
+          if (i != null) onSelect(projects[i]!);
+        } else if (backEnabled) {
+          // stopPropagation only on the BACK gesture (the open branch never
+          // needed it) so the close doesn't bubble to other catchers.
+          e.stopPropagation();
+          onBack();
+        }
       }}
     >
       <planeGeometry args={[SCREEN_LOCAL_W, SCREEN_LOCAL_PIC_H]} />
@@ -2692,21 +2663,28 @@ function Scene({
       <directionalLight position={[-2, 2.5, -4]} intensity={0.32} color="#ff4f00" />
 
       {/* Click-to-zoom: while the Mac floats, the whole Mac is a click target
-          that auto-scrolls the page into the landed/booted CRT — an OPTION on
-          top of normal scrolling so a pointer user can dive straight in without
-          dragging through the pin. Invisible (transparent) hitbox; gated live by
-          pin progress in the useFrame (off once the tiles own clicks). Narrow has
-          no pin, so it never activates there. */}
+          that auto-scrolls into the landed/booted CRT — an OPTION on top of
+          normal scrolling so a pointer user can dive straight in without dragging
+          through the pin. Invisible (opacity-0) hitbox.
+          IMPORTANT: R3F still RAYCASTS an invisible mesh, so `visible=false`
+          does NOT gate its events. The handlers must early-return themselves once
+          the Mac has LANDED (pin ≥ 0.6) or on narrow (no float). Without that
+          gate the hitbox's onClick + stopPropagation ran on every landed tile
+          click and swallowed it before the tile plane (the CRT-tile-click
+          regression). */}
       <mesh
         ref={zoomHitRef}
         position={[0, MAC_HOVER_Y, 0]}
         visible={false}
         onClick={(e) => {
+          // Landed: the on-screen tiles own clicks — do NOT stopPropagation here.
+          if (narrow || pinProgressRef.current >= 0.6) return;
           e.stopPropagation();
           document.body.style.cursor = "";
           window.dispatchEvent(new Event("mac-zoom-request"));
         }}
         onPointerOver={() => {
+          if (narrow || pinProgressRef.current >= 0.6) return;
           document.body.style.cursor = "pointer";
         }}
         onPointerOut={() => {
@@ -2742,25 +2720,19 @@ function Scene({
             />
           </group>
         </group>
-        <ScreenClickPlane
+        {/* ONE interaction plane owns both gestures (a separate click + back
+            plane at the SAME transform made R3F's click non-deterministic).
+            clickEnabled: tile clicks engage only on the booted grid AND while no
+            project is open. backEnabled: once a project fills the CRT (and the
+            zoom is well underway, so an open-click doesn't immediately
+            re-close), a click anywhere on the screen closes it. */}
+        <ScreenInteractionPlane
           projects={projects}
           onSelect={onSelectProject}
-          // Tile clicks engage only on the booted grid AND while no
-          // project is open; when the detail view fills the CRT the
-          // tiles aren't there to click, and the DOM BACK/link overlay
-          // owns interaction. (onCloseProject referenced so the prop is
-          // threaded through for the click-to-go-back affordance below.)
-          enabled={showDesktop && !selected}
-          onHoverChange={setHoverIndex}
-        />
-        {/* Click-to-go-back: while the detail view fills the CRT, the
-            screen plane becomes a BACK target (clicking anywhere on the
-            screen closes the project) so a pointer user isn't forced to
-            hunt for the DOM affordance. Disabled until the zoom is well
-            underway so an open-click doesn't immediately re-close. */}
-        <ScreenBackPlane
-          enabled={!!selected && detailReveal > 0.6}
           onBack={onCloseProject}
+          clickEnabled={showDesktop && !selected}
+          backEnabled={!!selected && detailReveal > 0.6}
+          onHoverChange={setHoverIndex}
         />
       </group>
 
