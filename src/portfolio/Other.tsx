@@ -90,10 +90,13 @@ export function Other() {
   // Unlike Mac/Keypad, there's no UI laid OVER it to fight, so it's kept on mobile.
   const sceneMounted = useSectionCanvasMount(sectionRef, {
     disableOnMobile: false,
-    // Mount the cluster canvas further ahead (2.75 vs the 1.75 default) so the
-    // lazy chunk + GLBs are resolved well before arrival — on a quick scroll-in
-    // the section was blanking/popping while it loaded (user-flagged).
-    mountVh: 2.75,
+    // Mount the cluster canvas well ahead (3.5 vs the 1.75 default) so the lazy
+    // chunk + the ~2.3MB of GLBs — now also eagerly idle-warmed in App.tsx — are
+    // resolved before arrival; on a quick scroll-in the section was
+    // blanking/popping placeholder meshes while it loaded (user-flagged).
+    // unmountVh:5 keeps the release band above the wider mount band.
+    mountVh: 3.5,
+    unmountVh: 5,
   });
   // Header reveal is written straight to CSS vars via applyHead (no per-tick
   // setState). headerRef points at the editorial corner header.

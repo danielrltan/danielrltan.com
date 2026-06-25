@@ -98,13 +98,18 @@ export function Macintosh() {
   // gate's "scrolled past before it spun up" bug. .mac-stage is position:absolute
   // so mounting/unmounting the canvas never changes layout under the pin. The GLB
   // is module-scope preloaded so a remount on scroll-back is instant.
-  // mountVh 3.0 (vs the 1.75 default): mount the Mac scene a full extra viewport
-  // earlier — while the user is still in the pinned About section above it (which
-  // has NO canvas of its own, so this adds no concurrent WebGL context) — so the
-  // CRT textures + scene have time to spin up BEFORE arrival. Without the longer
-  // lead the section read blank/empty on scroll-in (owner-flagged). The scene
-  // chunk is already idle-warmed in App.tsx, so the early mount is cheap.
-  const macMounted = useSectionCanvasMount(sectionRef, { mountVh: 3 });
+  // mountVh 3.5 (vs the 1.75 default): mount the Mac scene a couple extra
+  // viewports earlier — while the user is still in the pinned About section
+  // above it (which has NO canvas of its own, so this adds no concurrent WebGL
+  // context) — so the CRT textures + scene have time to spin up BEFORE arrival.
+  // Without the longer lead the section read blank/empty on scroll-in
+  // (owner-flagged). The scene chunk + mac.glb are eagerly idle-warmed in
+  // App.tsx, so the early mount finds them cached and is cheap. unmountVh:5
+  // keeps the release band above the wider mount band (hysteresis).
+  const macMounted = useSectionCanvasMount(sectionRef, {
+    mountVh: 3.5,
+    unmountVh: 5,
+  });
   const pinProgressRef = useRef(
     TUNE_MODE ? 1 : PIN_FREEZE != null ? PIN_FREEZE : 0,
   );

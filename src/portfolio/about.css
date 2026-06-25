@@ -806,6 +806,53 @@
 }
 
 /* ======================================================================
+   SHORT DESKTOP / LAPTOP HEIGHTS (≥901px wide, ≤900px tall — i.e. every
+   real MacBook usable height: 1440×900 → ~812, 1280×800 → ~720, 1512 14"
+   → ~860 once the browser chrome is subtracted).
+
+   THE BUG: the bento divides the stage into THREE equal 1fr rows. On a short
+   viewport each row compresses below the densest card's intrinsic content
+   height — the Reach card (email + 4 switchboard channel rows ≈ 214px) — and
+   `.card { overflow: hidden }` then CLIPS its bottom channels off the frame
+   (owner: "things get clipped off frames of the bento boxes" on Mac). Measured
+   clip was 13–46px on 1512×860 / 1440×812 / 1280×800 / 1280×720.
+
+   THE FIX: reclaim vertical space (smaller ABOUT wordmark + tighter stage and
+   card insets so every row gets taller) AND compact the Reach switchboard so
+   the four channels clear the shorter row. Desktop MONITORS (≥901px tall) keep
+   the roomier approved layout untouched — this only engages on short screens.
+   ====================================================================== */
+@media (min-width: 901px) and (max-height: 900px) {
+  .about-stage {
+    /* Trim the top/bottom bands so the grid claims the reclaimed height. */
+    padding: clamp(20px, 3vh, 40px) 0 clamp(16px, 2.4vh, 30px);
+    gap: clamp(10px, 1.5vh, 18px);
+  }
+  /* Cap the giant wordmark so the banner stops eating a sixth of a short
+     viewport (frees ~30px straight into the grid rows). */
+  .portfolio-about .about-banner-title {
+    font-size: clamp(38px, 4.8vw, 70px);
+  }
+  /* Tighter card inset → more usable content height in every cell. */
+  .card .pad,
+  .portrait-wrap {
+    padding: clamp(13px, 1.2vw, 19px);
+  }
+  .c-info dt.label {
+    margin-bottom: 9px;
+  }
+  /* Reach is the densest card; compact the switchboard rows so the four
+     channels + the email row clear the (now shorter) row with no clipping. */
+  .c-reach .reach-channels {
+    margin-top: 7px;
+  }
+  .c-reach .ch a {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+}
+
+/* ======================================================================
    MOBILE BUILD-OUT (≤900px): collapse the bento to a single readable
    column. The render becomes a smaller hero at the top; every card stacks
    full-width beneath it. The GSAP pin is SKIPPED on mobile (About.tsx) — the

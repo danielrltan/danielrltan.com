@@ -91,8 +91,8 @@ export function Photos() {
   // section-canvas keystone (which is for the live-WebGL sections, not this DOM
   // rack).
   const trainsMounted = useSectionCanvasMount(sectionRef, {
-    mountVh: 2,
-    unmountVh: 4,
+    mountVh: 3,
+    unmountVh: 4.5,
     disableOnMobile: false,
   });
 

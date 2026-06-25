@@ -351,6 +351,26 @@ interface ScreenInfo {
 
 useGLTF.preload("/mac.glb");
 
+/** Soft radial decal texture (transparent edge) used to GROUND the landed
+ *  monitor: a crisp dark contact shadow directly under the base + a warm
+ *  orange pool of the tube's own emission spilling onto the surface in front
+ *  of it. Lets the Mac read as RESTING on a (suggested) surface instead of
+ *  floating in the cream void, without a desk, a grid, or any "rice" texture. */
+function makeRadialDecal(stops: [number, string][]): THREE.CanvasTexture {
+  const s = 256;
+  const c = document.createElement("canvas");
+  c.width = s;
+  c.height = s;
+  const cx = c.getContext("2d")!;
+  const g = cx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  for (const [at, col] of stops) g.addColorStop(at, col);
+  cx.fillStyle = g;
+  cx.fillRect(0, 0, s, s);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 // Reusable scratch vectors for the per-frame dead-on detail-zoom math
 // (avoids allocating Vector3s every frame in the useFrame loop).
 const _scrCenter = new THREE.Vector3();
@@ -841,13 +861,16 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
         float fieldClock = step(0.5, fract(uTime * 12.0));
         float interlace = 1.0 - 0.03 * abs(odd - fieldClock);
 
-        // APERTURE GRILLE: faint vertical RGB phosphor triads. Pure
-        // chroma texture (no geometry), reads as tube glass up close.
+        // APERTURE GRILLE: faint vertical phosphor triads. Pure chroma
+        // texture (no geometry), reads as tube glass up close. WARM-BIASED:
+        // on a monochrome amber screen a full R/G/B triad injects stray
+        // green/blue shimmer, so the G and (especially) B legs are damped to
+        // keep the grille's flicker inside the orange wedge.
         float gx = uv.x * 320.0 * 6.2832;
         vec3 triad = vec3(
-          0.96 + 0.04 * cos(gx),
-          0.96 + 0.04 * cos(gx + 2.094),
-          0.96 + 0.04 * cos(gx + 4.189)
+          0.97 + 0.05 * cos(gx),
+          0.97 + 0.022 * cos(gx + 2.094),
+          0.97 + 0.010 * cos(gx + 4.189)
         );
 
         // REFRESH BAND: a soft bright bar rolling DOWN the face every
@@ -869,7 +892,7 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
         // PHOSPHOR LIFT: the seams must not crush detail to black — a
         // touch of unmodulated bleed keeps text legible through the
         // raster, like real phosphor glow spilling between rows.
-        outCol += col * 0.10;
+        outCol += col * 0.13;
         // POWER-OFF: the collapsing line/dot glows HOT as the beam pinches,
         // then the dot fades out to black (the classic CRT sleep).
         outCol *= 1.0 + 3.5 * smoothstep(0.0, 0.5, uPowerOff) * (1.0 - smoothstep(0.86, 1.0, uPowerOff));
@@ -1115,17 +1138,143 @@ function useProjectImages(projects: MacProject[]): number {
   return version;
 }
 
-/** Draw an image cover-fit (center-cropped) into a destination rect. */
-function drawImageCover(
+
+/* ─────────────────────────────────────────────────────────────────
+ * TUI BOX FRAME. The single move that reads "terminal" instead of
+ * "window": the screen content sits inside a drawn box rule with a
+ * label knocked into the top edge (Norton-Commander / DOS voice).
+ * Drawn as sharp 1px amber rules + short International-Orange L-brackets
+ * at the corners (not box-drawing glyphs — those risk font tofu on the
+ * tube and won't align to a px grid). `label` is knocked into the top
+ * rule top-left, `rightLabel` top-right, both over a ground-coloured gap
+ * so the rule reads as interrupted by the tab.
+ * ──────────────────────────────────────────────────────────────── */
+function drawTuiFrame(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  opts: { label?: string; rightLabel?: string; labelHot?: boolean } = {},
+) {
+  ctx.save();
+  // Four edges, 1px amber-faint rules, sharp.
+  ctx.strokeStyle = CRT_HAIRLINE;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w) - 1, Math.round(h) - 1);
+  // Orange L-brackets at the corners — the accent that makes the frame
+  // read as a deliberate TUI panel, not a plain box.
+  const arm = Math.round(Math.min(w, h) * 0.035) + 8;
+  const t = 2;
+  ctx.fillStyle = CRT_ACCENT;
+  const corners: [number, number, number, number][] = [
+    [x, y, 1, 1],
+    [x + w, y, -1, 1],
+    [x, y + h, 1, -1],
+    [x + w, y + h, -1, -1],
+  ];
+  for (const [cx, cy, sx, sy] of corners) {
+    ctx.fillRect(sx < 0 ? cx - arm : cx, sy < 0 ? cy - t : cy, arm, t); // horizontal arm
+    ctx.fillRect(sx < 0 ? cx - t : cx, sy < 0 ? cy - arm : cy, t, arm); // vertical arm
+  }
+  // Label notch knocked into the TOP rule (left), over a ground gap.
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  ctx.font = `19px ${PIXEL_FONT}`;
+  if (opts.label) {
+    const text = ` ${opts.label} `;
+    const lw = ctx.measureText(text).width + 14;
+    const lx = x + arm + 12;
+    ctx.fillStyle = CRT_BASE;
+    ctx.fillRect(lx, y - 1, lw, 3); // erase the rule under the tab
+    ctx.fillStyle = opts.labelHot ? CRT_ACCENT : CRT_TEXT;
+    ctx.fillText(text, lx + 6, y + 1);
+  }
+  if (opts.rightLabel) {
+    ctx.textAlign = "right";
+    const text = ` ${opts.rightLabel} `;
+    const lw = ctx.measureText(text).width + 14;
+    const rx = x + w - arm - 12;
+    ctx.fillStyle = CRT_BASE;
+    ctx.fillRect(rx - lw, y - 1, lw, 3);
+    ctx.fillStyle = CRT_TEXT_DIM;
+    ctx.fillText(text, rx - 6, y + 1);
+  }
+  ctx.restore();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * AMBER ORDERED-DITHER. Full-colour project photos are the single
+ * biggest break in the phosphor illusion, so each one is processed into
+ * a 1-bit-feeling amber duotone (Bayer 4×4 ordered dither → a 5-stop
+ * orange ramp) before it is painted — the real pixels, transformed (not
+ * an orange scrim over the photo). Built once per source on first decode
+ * and cached; the chunky CRT-pixel read comes from dithering at a low
+ * working resolution and scaling up with smoothing off.
+ * ──────────────────────────────────────────────────────────────── */
+const amberThumbCache = new Map<string, HTMLCanvasElement>();
+// Bayer 4×4 threshold matrix (values 0..15, normalised /16 at use).
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+// Amber ramp, ground → hot. Dither quantizes luminance onto these stops.
+const AMBER_RAMP: [number, number, number][] = [
+  [10, 8, 6], // CRT_BASE ground
+  [92, 38, 8],
+  [176, 70, 8],
+  [255, 95, 10], // ~CRT_ACCENT
+  [255, 214, 160], // CRT_HOT
+];
+function getAmberThumb(src: string): HTMLCanvasElement | null {
+  const cached = amberThumbCache.get(src);
+  if (cached) return cached;
+  const img = projectImageCache.get(src);
+  if (!imageReady(img)) return null;
+  const LW = 168; // low working res → chunky phosphor pixels when scaled up
+  const ar = img.naturalWidth / img.naturalHeight;
+  const LH = Math.max(1, Math.round(LW / ar));
+  const work = document.createElement("canvas");
+  work.width = LW;
+  work.height = LH;
+  const wctx = work.getContext("2d", { willReadFrequently: true })!;
+  wctx.drawImage(img, 0, 0, LW, LH);
+  const id = wctx.getImageData(0, 0, LW, LH);
+  const d = id.data;
+  const last = AMBER_RAMP.length - 1;
+  for (let yy = 0; yy < LH; yy++) {
+    for (let xx = 0; xx < LW; xx++) {
+      const i = (yy * LW + xx) * 4;
+      // Perceptual luminance, then a small gamma lift so mid-greys read.
+      let lum = (0.299 * d[i]! + 0.587 * d[i + 1]! + 0.114 * d[i + 2]!) / 255;
+      lum = Math.pow(lum, 0.85);
+      const thr = BAYER4[(yy & 3) * 4 + (xx & 3)]! / 16 - 0.5;
+      let level = Math.round(lum * last + thr);
+      level = level < 0 ? 0 : level > last ? last : level;
+      const c = AMBER_RAMP[level]!;
+      d[i] = c[0];
+      d[i + 1] = c[1];
+      d[i + 2] = c[2];
+      d[i + 3] = 255;
+    }
+  }
+  wctx.putImageData(id, 0, 0);
+  amberThumbCache.set(src, work);
+  return work;
+}
+/** Cover-fit an amber-dithered thumbnail into a dest rect, smoothing OFF so
+ *  the dither stays crisp (chunky CRT pixels, never a blurred photo). */
+function drawAmberThumbCover(
+  ctx: CanvasRenderingContext2D,
+  src: string,
   dx: number,
   dy: number,
   dw: number,
   dh: number,
-) {
-  const iw = img.naturalWidth;
-  const ih = img.naturalHeight;
+): boolean {
+  const work = getAmberThumb(src);
+  if (!work) return false;
+  const iw = work.width;
+  const ih = work.height;
   const ir = iw / ih;
   const tr = dw / dh;
   let sx: number, sy: number, sw: number, sh: number;
@@ -1141,17 +1290,19 @@ function drawImageCover(
     sy = (ih - sh) / 2;
   }
   ctx.save();
+  ctx.imageSmoothingEnabled = false;
   ctx.beginPath();
   ctx.rect(dx, dy, dw, dh);
   ctx.clip();
-  ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+  ctx.drawImage(work, sx, sy, sw, sh, dx, dy, dw, dh);
   ctx.restore();
+  return true;
 }
 
 /* ─────────────────────────────────────────────────────────────────
- * CRT canvas painter: boot text + project tile grid. Identical to
- * the prior version; the screen lights up later in the pin window
- * because the boot threshold shifted to 0.72→0.85.
+ * CRT canvas painter: boot log + project DIRECTORY listing. Amber
+ * phosphor TUI; the screen lights up later in the pin window because
+ * the boot threshold shifted to 0.72→0.85.
  * ──────────────────────────────────────────────────────────────── */
 
 function useScreenTexture(
@@ -1173,6 +1324,10 @@ function useScreenTexture(
   // is read from the clock at paint).
   floatActive: boolean,
   floatSpin: number,
+  // Block-cursor blink phase (toggled ~1.9Hz in the Scene tick). Threaded into
+  // the boot/desktop/detail painters so the terminal caret pulses on otherwise
+  // static screens; the repaint cost is one extra texture upload per flip.
+  cursorOn: boolean,
 ): THREE.CanvasTexture {
   // PERF (GPU texture leak fix):
   //   OLD: every dependency change (bootProgress/hoverIndex/detailReveal/...
@@ -1248,11 +1403,11 @@ function useScreenTexture(
   // the swap doesn't flash a blank panel at the very start of the zoom.
   // (drawScreen/drawProjectDetail both fully repaint, so no clear is needed.)
   if (selected && detailReveal > 0.04) {
-    drawProjectDetail(ctx, w, h, selected, detailReveal);
+    drawProjectDetail(ctx, w, h, selected, detailReveal, cursorOn);
   } else if (floatActive) {
     drawAsciiSphere(ctx, w, h, performance.now() / 1000);
   } else {
-    drawScreen(ctx, w, h, projects, bootProgress, hoverIndex);
+    drawScreen(ctx, w, h, projects, bootProgress, hoverIndex, cursorOn);
   }
   // `imageVersion` is referenced so a late thumbnail decode forces a repaint.
   void imageVersion;
@@ -1283,16 +1438,25 @@ function useScreenTexture(
  * open reads as the OS "opening a record", not a hard cut.
  * ──────────────────────────────────────────────────────────────── */
 
-// CRT screen palette (device screen, not the page). Cool-white text on a
-// near-black cool base + the signature orange accent. Mirrors the design
-// tokens adapted for an emissive dark surface.
-const CRT_BASE = "#0a0c10"; // near-black cool CRT ground
-const CRT_BAR = "#11141a"; // slightly lifted title-bar strip
-const CRT_TEXT = "#eef2f7"; // cool near-white, primary text
-const CRT_TEXT_DIM = "rgba(238, 242, 247, 0.66)"; // secondary
-const CRT_HAIRLINE = "rgba(238, 242, 247, 0.16)"; // dividers / chip borders
-const CRT_ACCENT = "#ff4f00"; // signature orange
-const CRT_ACCENT_INK = "#0a0c10"; // ink on an accent fill
+// CRT screen palette — AMBER-PHOSPHOR TERMINAL (not a modern dark-mode window).
+// The old palette built hierarchy with HUE (cool-white #eef2f7 text on cool
+// near-black #0a0c10 + an orange garnish) — which is exactly what made it read
+// as a generic dark-mode OS. A real amber/orange phosphor tube is MONOCHROME:
+// every lit pixel is the same warm hue, and hierarchy comes from INTENSITY
+// (brightness), never a second colour. So: one warm-black ground, one orange
+// family in 4 brightness stops, the saturated #ff4f00 as the accent, and a warm
+// phosphor-white reserved ONLY for the multi-sentence blurb (recruiter
+// legibility — pure orange body over 340 chars on a scanline tube fatigues).
+const CRT_BASE = "#0a0806"; // warm near-black tube ground (was cool #0a0c10)
+const CRT_BAR = "#15100a"; // faintly-lifted frame / header fill
+const CRT_TEXT = "#ff8f44"; // PRIMARY amber phosphor: row names, system text
+const CRT_TEXT_DIM = "#b8631f"; // dim phosphor: meta, breadcrumb base, labels
+const CRT_HAIRLINE = "rgba(255, 96, 30, 0.20)"; // amber frame rules / dividers
+const CRT_HOT = "#ffd6a0"; // hottest phosphor: selected row, cursor, hot edges
+const CRT_ACCENT = "#ff4f00"; // saturated International Orange: fills, rules, CTA
+const CRT_ACCENT_INK = "#0a0806"; // ink knocked out of an accent fill
+const CRT_PAPER = "#f4e6d0"; // warm phosphor-white: the blurb paragraph ONLY
+const CRT_PAPER_DIM = "rgba(244, 230, 208, 0.62)"; // wrapped-blurb tail
 
 // Shared layout fractions (of the canvas w/h) for the controls the DOM
 // overlay must align to. Kept as fractions so the DOM hotspots track the
@@ -1312,38 +1476,22 @@ function drawProjectDetail(
   h: number,
   project: MacProject,
   reveal: number,
+  cursorOn: boolean,
 ) {
   const r = clamp01(reveal);
   const PAD = Math.round(w * CRT_LAYOUT.padFrac);
   const barH = Math.round(h * CRT_LAYOUT.titleBarFrac);
 
-  // Right-hand thumbnail panel (the scraped Devpost gallery image). When
-  // present, the text column narrows to the left of it; otherwise the
-  // text spans the full content width as before. The panel is an
-  // aspect-matched landscape card (the gallery images are 3:2) so the
-  // wordmark-centred artwork shows uncropped.
-  const projImg = project.image ? getProjectImage(project.image) : undefined;
-  const hasImage = imageReady(projImg);
-  // Narrowed 0.34 → 0.28: a tighter, flush-right thumbnail column gives
-  // the text block the dominant share of the panel and introduces the
-  // asymmetric tension the symmetric ~third-column template lacked. The
-  // text column widens to fill the reclaimed space (textMaxW below).
-  const colGap = Math.round(w * 0.045);
-  const imgW = hasImage ? Math.round(w * 0.28) : 0;
-  const imgX = w - PAD - imgW;
-  const textRight = hasImage ? imgX - colGap : w - PAD;
-  const textMaxW = textRight - PAD;
-
   // ── Ground ───────────────────────────────────────────────────────
   ctx.fillStyle = CRT_BASE;
   ctx.fillRect(0, 0, w, h);
 
-  // ── Title bar (slim window chrome) ───────────────────────────────
-  // A flat lifted strip with a SHARP square close control (top-left) and
-  // the file path breadcrumb. No rounded corners, no gloss.
+  // ── Title bar (top strip, ABOVE the framed body) ─────────────────
+  // Carries the BACK control + the breadcrumb. Kept as a strip at the
+  // exact CRT_LAYOUT geometry so the DOM hotspots in Macintosh.tsx stay
+  // aligned to the painted BACK button.
   ctx.fillStyle = CRT_BAR;
   ctx.fillRect(0, 0, w, barH);
-  // Hairline under the bar.
   ctx.strokeStyle = CRT_HAIRLINE;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -1351,17 +1499,15 @@ function drawProjectDetail(
   ctx.lineTo(w, barH + 0.5);
   ctx.stroke();
 
-  // Back control: a retro bordered "← BACK" button, top-left, with a baked
-  // orange phosphor glow. The real DOM hotspot (Macintosh.tsx) sits exactly
-  // over it (same CRT_LAYOUT fractions) and lights a brighter glow on hover.
-  // Replaces the old × box (owner: make the close a back button + hover effect).
+  // BACK control: bordered amber key with a baked phosphor glow. The DOM
+  // hotspot sits exactly over it (same CRT_LAYOUT fractions).
   const backW = Math.round(w * CRT_LAYOUT.backWFrac);
   const backH = Math.round(barH * CRT_LAYOUT.backHFrac);
   const backX = PAD;
   const backY = Math.round((barH - backH) / 2);
   ctx.save();
-  ctx.shadowColor = "rgba(255, 79, 0, 0.45)";
-  ctx.shadowBlur = 9;
+  ctx.shadowColor = "rgba(255, 79, 0, 0.5)";
+  ctx.shadowBlur = 10;
   ctx.strokeStyle = CRT_ACCENT;
   ctx.lineWidth = 1.5;
   ctx.strokeRect(backX + 0.75, backY + 0.75, backW - 1.5, backH - 1.5);
@@ -1370,53 +1516,69 @@ function drawProjectDetail(
   ctx.font = `17px ${PIXEL_FONT}`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
-  drawTracked(ctx, "← BACK", backX + 15, barH / 2 + 1, 2);
+  drawTracked(ctx, "< BACK", backX + 15, barH / 2 + 1, 2);
 
-  // Breadcrumb path: mono system label. Base path dim; the open project id
-  // glows orange like a live phosphor target.
+  // Breadcrumb: a unix path. Base dim, the open project id glows orange
+  // like a live phosphor target, with a blinking caret trailing it.
   const crumbX = backX + backW + 18;
   ctx.font = `16px ${PIXEL_FONT}`;
   ctx.fillStyle = CRT_TEXT_DIM;
-  const crumbBase = "projects.dir / ";
+  const crumbBase = "~/projects/";
   ctx.fillText(crumbBase, crumbX, barH / 2 + 1);
   const crumbBaseW = ctx.measureText(crumbBase).width;
   ctx.save();
-  ctx.shadowColor = "rgba(255, 79, 0, 0.55)";
+  ctx.shadowColor = "rgba(255, 79, 0, 0.6)";
   ctx.shadowBlur = 10;
   ctx.fillStyle = CRT_ACCENT;
   ctx.fillText(project.id, crumbX + crumbBaseW, barH / 2 + 1);
   ctx.restore();
+  if (cursorOn) {
+    const idW = ctx.measureText(project.id).width;
+    ctx.fillStyle = CRT_HOT;
+    ctx.fillRect(crumbX + crumbBaseW + idW + 5, barH / 2 - 8, 9, 16);
+  }
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
 
-  // ── Content panel ────────────────────────────────────────────────
-  // Header wipe: the title bar + title slide/fade in first (reveal
-  // 0 → 0.35), body types in after (0.3 → 0.85). The body finishes typing
-  // a bit BEFORE the dolly fully settles: the open lerp approaches 1
-  // asymptotically, so tying the LAST char to r===1 left every blurb
-  // stranded ~2% short (cut off mid-word). Completing by r≈0.85 guarantees
-  // the full description is shown well before the camera comes to rest.
+  // ── TUI frame around the record body ─────────────────────────────
+  const frameX = Math.round(w * 0.035);
+  const frameTop = barH + Math.round(h * 0.03);
+  const frameW = w - frameX * 2;
+  const frameH = h - frameTop - Math.round(h * 0.04);
+  drawTuiFrame(ctx, frameX, frameTop, frameW, frameH, {
+    label: `${project.id}.rec`,
+  });
+
+  // Reveal windows (unchanged): header/title in first (0→0.35), body types
+  // in after (0.3→0.85, completing before the dolly settles).
   const headReveal = clamp01(r / 0.35);
   const bodyReveal = clamp01((r - 0.3) / 0.55);
 
-  // Reclaim vertical space above the blurb (tighter than before) so the
-  // longest blurb fits without truncation; see fit calc at the blurb below.
-  let y = barH + Math.round(h * 0.045);
+  // Content insets. Content left == PAD (so the painted title/blurb/CTA all
+  // share the CTA's DOM-hotspot left edge); the frame sits a touch outside it.
+  const cX = PAD;
+  const hasImage =
+    !!project.image && imageReady(getProjectImage(project.image));
+  const colGap = Math.round(w * 0.04);
+  const imgW = hasImage ? Math.round(w * 0.27) : 0;
+  const imgRight = frameX + frameW - Math.round(w * 0.025);
+  const imgX = imgRight - imgW;
+  const textRight = hasImage ? imgX - colGap : imgRight;
+  const textMaxW = textRight - cX;
 
-  // Meta line: mono, tracked, dim. The "system info" row.
+  let y = frameTop + Math.round(h * 0.06);
+
+  // Meta line: dim, tracked system info.
   ctx.globalAlpha = headReveal;
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
   ctx.fillStyle = CRT_TEXT_DIM;
   ctx.font = `15px ${PIXEL_FONT}`;
-  drawTracked(ctx, ensureUppercase(project.meta), PAD, y, 1.5);
+  drawTracked(ctx, ensureUppercase(project.meta), cX, y, 1.5);
   y += Math.round(h * 0.05);
 
-  // Title: the HERO moment of the detail view. Bumped 0.058 → 0.07 and
-  // weighted to 700 so it dominates the panel rather than merely reading.
-  // Stays cool-white (the accent lives in the bar beneath) so a long
-  // title never loses legibility. Auto-shrinks so long titles never clip.
-  ctx.fillStyle = CRT_TEXT;
+  // Title: the HERO. Bright amber-orange (NOT white) with a warm two-pass
+  // phosphor bloom so the headline reads as the hottest orange on the tube.
   let titleSize = Math.round(h * 0.07);
   ctx.font = `${titleSize}px ${PIXEL_FONT}`;
   const maxTitleW = textMaxW;
@@ -1424,117 +1586,109 @@ function drawProjectDetail(
     titleSize -= 2;
     ctx.font = `${titleSize}px ${PIXEL_FONT}`;
   }
-  // PHOSPHOR GLOW: a two-pass bloom behind the title — a wide warm-orange halo
-  // then a tighter cool-white core — so the headline blooms like a lit tube
-  // instead of reading as flat ink (owner: more retro-glow vibe). Inherits the
-  // current globalAlpha, so it fades in with the title.
   ctx.save();
-  ctx.shadowColor = "rgba(255, 122, 46, 0.42)";
-  ctx.shadowBlur = Math.round(titleSize * 0.72);
-  ctx.fillText(project.title, PAD, y);
-  ctx.shadowColor = "rgba(212, 228, 248, 0.62)";
-  ctx.shadowBlur = Math.round(titleSize * 0.34);
-  ctx.fillText(project.title, PAD, y);
+  ctx.fillStyle = "#ff8a3d";
+  ctx.shadowColor = "rgba(255, 79, 0, 0.5)";
+  ctx.shadowBlur = Math.round(titleSize * 0.7);
+  ctx.fillText(project.title, cX, y);
+  ctx.shadowColor = "rgba(255, 210, 170, 0.5)";
+  ctx.shadowBlur = Math.round(titleSize * 0.32);
+  ctx.fillText(project.title, cX, y);
   ctx.restore();
   const titleW = Math.min(ctx.measureText(project.title).width, maxTitleW);
   y += Math.round(titleSize * 0.5);
 
-  // Accent bar under the title: a confident orange rule the FULL width of the
-  // title, lit with an orange phosphor glow so the wordmark sits on a glowing
-  // baseline — the signature retro moment of the panel.
+  // Accent rule under the title, full title-width, with orange glow.
   ctx.save();
   ctx.shadowColor = CRT_ACCENT;
   ctx.shadowBlur = 14;
   ctx.fillStyle = CRT_ACCENT;
-  ctx.fillRect(PAD, y, Math.round(titleW), 4);
+  ctx.fillRect(cX, y, Math.round(titleW), 4);
   ctx.restore();
   y += 4;
   ctx.globalAlpha = 1;
 
-  // ── Thumbnail panel (right column) ───────────────────────────────
-  // Aspect-matched landscape card, vertically centred in the content
-  // area, with a hairline frame to match the OS-panel language.
+  // ── Thumbnail (right column): amber ordered-dither + orange corner ticks ──
   if (hasImage) {
     const imgH = Math.round(imgW * (537 / 806));
-    const panelTop = barH + Math.round(h * 0.04);
-    const panelBottom = h - PAD;
+    const panelTop = frameTop + Math.round(h * 0.06);
+    const panelBottom = frameTop + frameH - Math.round(h * 0.05);
     const imgTop = Math.round(panelTop + (panelBottom - panelTop - imgH) / 2);
     ctx.globalAlpha = headReveal;
-    drawImageCover(ctx, projImg, imgX, imgTop, imgW, imgH);
-    // Lit frame: a faint cool-white phosphor glow on the hairline so the
-    // thumbnail reads as part of the glowing display, not a pasted-in card.
-    ctx.save();
-    ctx.shadowColor = "rgba(206, 224, 245, 0.32)";
-    ctx.shadowBlur = 9;
-    ctx.strokeStyle = "rgba(206, 224, 245, 0.34)";
-    ctx.lineWidth = 1.25;
+    const drew = drawAmberThumbCover(ctx, project.image!, imgX, imgTop, imgW, imgH);
+    if (!drew) {
+      ctx.fillStyle = CRT_BAR;
+      ctx.fillRect(imgX, imgTop, imgW, imgH);
+    }
+    ctx.strokeStyle = CRT_HAIRLINE;
+    ctx.lineWidth = 1;
     ctx.strokeRect(imgX + 0.5, imgTop + 0.5, imgW - 1, imgH - 1);
-    ctx.restore();
+    // Orange L-ticks at the corners — frames it as part of the TUI, not a card.
+    ctx.fillStyle = CRT_ACCENT;
+    const tk = 14;
+    const ticks: [number, number, number, number][] = [
+      [imgX, imgTop, 1, 1],
+      [imgX + imgW, imgTop, -1, 1],
+      [imgX, imgTop + imgH, 1, -1],
+      [imgX + imgW, imgTop + imgH, -1, -1],
+    ];
+    for (const [px, py, sx, sy] of ticks) {
+      ctx.fillRect(sx < 0 ? px - tk : px, sy < 0 ? py - 2 : py, tk, 2);
+      ctx.fillRect(sx < 0 ? px - 2 : px, sy < 0 ? py - tk : py, 2, tk);
+    }
     ctx.globalAlpha = 1;
   }
 
-  // ── Footer geometry (button) ──────────────────────────────────────
-  // btnH/btnY are kept on the prior formula so the DOM hotspot overlay
-  // stays aligned to the painted button.
+  // ── Footer geometry (CTA) — kept on the prior formula so the DOM hotspot
+  // overlay stays aligned to the painted button. ──
   const btnH = Math.round(h * 0.085);
   const btnY = h - PAD - btnH;
   const hasLink = !!(project.liveHref || project.repoHref);
 
-  // Pre-measure the tag chips into up to TWO wrapped rows (the narrowed
-  // text column can't fit 5-6 chips on one line). Measured first so the
-  // blurb can be capped to the room above the tag block.
-  const chipFont = `15px ${PIXEL_FONT}`;
-  const chipH = Math.round(h * 0.046);
-  const chipGapX = 7;
-  const chipGapY = 7;
-  ctx.font = chipFont;
-  const tagRows: { label: string; tw: number }[][] = [];
+  // Pre-measure the tags as bracket tokens "[ TAG ]" into up to TWO rows.
+  const tagFont = `15px ${PIXEL_FONT}`;
+  const rowH = Math.round(h * 0.042);
+  const tagGapX = 12;
+  const tagGapY = 8;
+  ctx.font = tagFont;
+  type Tok = { label: string; openW: number; labW: number; tw: number };
+  const tagRows: Tok[][] = [];
   if (project.tags.length > 0) {
-    let rowArr: { label: string; tw: number }[] = [];
+    let rowArr: Tok[] = [];
     let rowW = 0;
     for (const tag of project.tags) {
       const label = ensureUppercase(tag);
-      const tw = Math.round(ctx.measureText(label).width + 20);
+      const openW = ctx.measureText("[ ").width;
+      const labW = ctx.measureText(label).width;
+      const tw = Math.round(openW + labW + ctx.measureText(" ]").width);
       if (rowArr.length && rowW + tw > textMaxW) {
         tagRows.push(rowArr);
         rowArr = [];
         rowW = 0;
-        if (tagRows.length >= 2) break; // cap at 2 rows
+        if (tagRows.length >= 2) break;
       }
-      rowArr.push({ label, tw });
-      rowW += tw + chipGapX;
+      rowArr.push({ label, openW, labW, tw });
+      rowW += tw + tagGapX;
     }
     if (rowArr.length && tagRows.length < 2) tagRows.push(rowArr);
   }
   const numTagRows = tagRows.length;
   const tagBlockBottom = btnY - Math.round(h * 0.035);
   const tagBlockH =
-    numTagRows > 0 ? numTagRows * chipH + (numTagRows - 1) * chipGapY : 0;
+    numTagRows > 0 ? numTagRows * rowH + (numTagRows - 1) * tagGapY : 0;
   const tagBlockTop = tagBlockBottom - tagBlockH;
 
-  // ── Blurb (wrapped, typed-in): Geist body, cool-white dim ────────
-  // FIT: the longest blurb (cognetech, ~340 chars) must NOT truncate. At
-  // h=640, default aspect → textMaxW≈450px. Geist 400 averages ~0.5em/char,
-  // so ~450/(0.5·bodySize) chars/line. bodySize = round(640·0.0225)=14 →
-  // ~64 chars/line → 340/64 ≈ 6 lines (greedy-wrap typically 7). lineH =
-  // round(14·1.34)=19. Blurb starts at by = y + round(640·0.022). With the
-  // tightened gaps above, by ≈ 86+29+32(meta)+37(title·0.58)+20 ≈ 168, and
-  // blurbBottom (above the 2 tag rows) ≈ 405 → ~237px / 19 = 12 lines of
-  // room. 7 lines fits with comfortable headroom.
+  // ── Blurb (wrapped, typed-in): Geist, WARM phosphor-white for reading ──
   ctx.globalAlpha = bodyReveal;
-  ctx.fillStyle = CRT_TEXT_DIM;
+  ctx.fillStyle = CRT_PAPER;
   ctx.textBaseline = "top";
   const by0 = y + Math.round(h * 0.022);
   const blurbBottom = (numTagRows > 0 ? tagBlockTop : btnY) - 12;
   const availH = Math.max(0, blurbBottom - by0);
 
-  // BODY SIZE: a confident, FIXED editorial reading size — shrink ONLY if a
-  // long blurb would otherwise overflow (so it never truncates), never grow
-  // to fill (that ballooned short blurbs to a clumsy size). ~17px on the
-  // 640px canvas reads ~24px once the CRT is dollied to fill the viewport.
   let bodySize = Math.round(h * 0.027); // ~17px @640
   const minBodySize = Math.max(13, Math.round(h * 0.0185));
-  let lineH = Math.round(bodySize * 1.5); // airy, editorial leading
+  let lineH = Math.round(bodySize * 1.5);
   let blurbLines: string[] = [];
   for (;;) {
     ctx.font = `${bodySize}px ${BODY_FONT}`;
@@ -1546,68 +1700,71 @@ function drawProjectDetail(
 
   const charsToShow = Math.floor(bodyReveal * project.blurb.length);
   let shown = 0;
-  // Vertically CENTRE the blurb block within its region so the column reads
-  // as a balanced cluster (meta/title up top, centred body, tags + CTA
-  // anchored low) instead of text crammed under the title with a dead gap.
   const blockH = Math.min(availH, blurbLines.length * lineH);
   let by = by0 + Math.max(0, Math.round((availH - blockH) / 2));
   const blockBottom = by + blockH;
+  // A dim left gutter bar makes the blurb read as quoted record output.
+  if (bodyReveal > 0.02 && blockH > 0) {
+    ctx.fillStyle = CRT_HAIRLINE;
+    ctx.fillRect(cX - 14, by, 2, blockH);
+    ctx.fillStyle = CRT_PAPER;
+  }
   for (let li = 0; li < blurbLines.length; li++) {
     const line = blurbLines[li]!;
-    if (by + lineH > blockBottom + 1) break; // safety (full text also in a11y DOM)
+    if (by + lineH > blockBottom + 1) break;
     const remain = charsToShow - shown;
     if (remain <= 0) break;
-    ctx.fillText(line.slice(0, Math.max(0, remain)), PAD, by);
+    ctx.fillStyle = li === blurbLines.length - 1 ? CRT_PAPER_DIM : CRT_PAPER;
+    ctx.fillText(line.slice(0, Math.max(0, remain)), cX, by);
     shown += line.length + 1;
     by += lineH;
   }
   ctx.globalAlpha = 1;
 
-  // ── Tag chips: flat, SHARP-cornered hairline boxes, up to 2 rows ──
+  // ── Tags: bracket tokens "[ TAG ]" — brackets orange, label dim ──
   if (r > 0.55 && numTagRows > 0) {
     ctx.globalAlpha = clamp01((r - 0.55) / 0.35);
-    ctx.font = chipFont;
+    ctx.font = tagFont;
     ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
     for (let ri = 0; ri < numTagRows; ri++) {
       const rowArr = tagRows[ri]!;
-      const cy = tagBlockTop + ri * (chipH + chipGapY) + chipH / 2;
-      let tx = PAD;
-      for (const chip of rowArr) {
-        ctx.strokeStyle = CRT_HAIRLINE;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(tx, cy - chipH / 2, chip.tw, chipH); // sharp corners
+      const cy = tagBlockTop + ri * (rowH + tagGapY) + rowH / 2;
+      let tx = cX;
+      for (const tok of rowArr) {
+        ctx.fillStyle = CRT_ACCENT;
+        ctx.fillText("[ ", tx, cy);
         ctx.fillStyle = CRT_TEXT_DIM;
-        ctx.textAlign = "center";
-        ctx.fillText(chip.label, tx + chip.tw / 2, cy);
-        ctx.textAlign = "left";
-        tx += chip.tw + chipGapX;
+        ctx.fillText(tok.label, tx + tok.openW, cy);
+        ctx.fillStyle = CRT_ACCENT;
+        ctx.fillText(" ]", tx + tok.openW + tok.labW, cy);
+        tx += tok.tw + tagGapX;
       }
     }
     ctx.globalAlpha = 1;
+    ctx.textBaseline = "alphabetic";
   }
 
-  // ── "View live" button: flat accent fill, SHARP corners ─────────
-  // The visible face of the real DOM <a> positioned over it. Pinned
-  // bottom-left of the content panel.
+  // ── CTA: flat orange key, ink label (uppercase), SHARP, orange bloom ──
+  // Geometry (bx, btnY, btnH) is the DOM-hotspot contract — do not move it.
   if (hasLink) {
-    const label = project.liveHref ? liveLinkLabel(project.liveHref) : "Source";
+    const raw = project.liveHref ? liveLinkLabel(project.liveHref) : "Source";
+    const label = ensureUppercase(raw);
     ctx.font = `19px ${PIXEL_FONT}`;
     ctx.textBaseline = "middle";
     const arrow = "  →";
     const btnW = Math.round(ctx.measureText(label + arrow).width + 40);
     const bx = PAD;
-    // Lit accent key: an orange phosphor bloom behind the flat fill so the
-    // primary CTA glows like a button on the tube. The DOM <a> hotspot over
-    // it brightens this glow on hover.
     ctx.save();
     ctx.shadowColor = CRT_ACCENT;
     ctx.shadowBlur = 16;
     ctx.fillStyle = CRT_ACCENT;
-    ctx.fillRect(bx, btnY, btnW, btnH); // sharp-cornered flat button
+    ctx.fillRect(bx, btnY, btnW, btnH);
     ctx.restore();
     ctx.fillStyle = CRT_ACCENT_INK;
     ctx.textAlign = "left";
     ctx.fillText(label + arrow, bx + 20, btnY + btnH / 2 + 1);
+    ctx.textBaseline = "alphabetic";
   }
 }
 
@@ -1796,6 +1953,14 @@ function drawAsciiSphere(
   }
 }
 
+// Directory-listing geometry shared by drawScreen (paint) and
+// ScreenInteractionPlane (hit-test) so a click always lands on the record row
+// under the cursor. Fractions of the canvas height; v = 1 - uv.y measures DOWN
+// from the top. Rows live between these two v lines (header + shell prompt sit
+// above LIST_ROWS_TOP, the status line sits below LIST_ROWS_BOTTOM).
+const LIST_ROWS_TOP = 0.225;
+const LIST_ROWS_BOTTOM = 0.9;
+
 function drawScreen(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -1803,164 +1968,200 @@ function drawScreen(
   projects: MacProject[],
   bootProgress: number,
   hoverIndex: number | null,
+  cursorOn: boolean,
 ) {
-  // RIGID MODERN-OS desktop, matches drawProjectDetail's language: dark
-  // cool CRT ground, cool-white text, orange accent, SHARP corners.
-  // (Scanlines/vignette/roll live in the screen overlay's CRT shader,
-  // NOT in this canvas: shader effects animate per frame without
-  // re-uploading the texture.)
+  // AMBER-PHOSPHOR TERMINAL. Warm-black ground; the tube's scanlines /
+  // grille / roll / flicker live in the overlay shader (animate per frame
+  // without a texture re-upload), so this canvas paints only the content.
   ctx.fillStyle = CRT_BASE;
   ctx.fillRect(0, 0, w, h);
 
   const showDesktop = bootProgress >= 0.95;
   if (!showDesktop) {
-    // Boot voice: version string, mount line, READY. The "(it works
-    // this time)" quip was cut per user (reads as the machine
-    // apologizing), and the spinning ASCII donut that filled the lower
-    // screen went the same way ("looks really stupid") — the type-in
-    // boot text alone carries the beat.
+    // BOOT — a believable amber POST log, typed in left-to-right. No
+    // apologising voice, no spinning donut (both cut by the owner); the
+    // last line (READY.) is the hottest phosphor and carries a block
+    // cursor that blinks once it lands.
     const lines = [
       "DANIEL_OS v2.6",
-      "mounting projects.dir ... ok",
+      "MEM 640K OK",
+      "MOUNT /projects.dir ... OK",
+      `${projects.length} RECORDS LINKED`,
       "READY.",
     ];
     const totalChars = lines.reduce((s, l) => s + l.length, 0);
     const charsToShow = Math.floor(bootProgress * totalChars * 1.25);
     let remaining = charsToShow;
-    ctx.fillStyle = CRT_ACCENT;
-    ctx.font = `32px ${PIXEL_FONT}`;
+    ctx.font = `30px ${PIXEL_FONT}`;
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
-    let y = 40;
-    for (const line of lines) {
+    const x = Math.round(w * 0.07);
+    let y = Math.round(h * 0.11);
+    let caretX = x;
+    let caretY = y;
+    for (let li = 0; li < lines.length; li++) {
+      const line = lines[li]!;
       if (remaining <= 0) break;
       const take = Math.min(line.length, remaining);
       remaining -= take;
-      ctx.fillText(line.slice(0, take), 40, y);
+      const shown = line.slice(0, take);
+      ctx.fillStyle = li === lines.length - 1 ? CRT_HOT : CRT_ACCENT;
+      ctx.fillText(shown, x, y);
+      caretX = x + ctx.measureText(shown).width;
+      caretY = y;
       y += 42;
+    }
+    // Block cursor trailing the last typed character (blinks via cursorOn).
+    if (cursorOn) {
+      ctx.fillStyle = CRT_HOT;
+      ctx.fillRect(caretX + 5, caretY + 3, 15, 26);
     }
     return;
   }
 
-  // System header strip. Keep its height at ~11.5% of h to match the
-  // ScreenClickPlane hitTile threshold (v < 0.115) so clicks stay accurate.
-  const PAD = Math.round(w * 0.05);
-  const headH = Math.round(h * 0.115);
-  ctx.fillStyle = CRT_BAR;
-  ctx.fillRect(0, 0, w, headH);
-  ctx.strokeStyle = CRT_HAIRLINE;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, headH + 0.5);
-  ctx.lineTo(w, headH + 0.5);
-  ctx.stroke();
+  // ── DESKTOP = a directory LISTING inside a TUI box frame ────────────
+  const frameX = Math.round(w * 0.045);
+  const frameY = Math.round(h * 0.05);
+  const frameW = w - frameX * 2;
+  const frameH = h - frameY * 2;
+  drawTuiFrame(ctx, frameX, frameY, frameW, frameH, {
+    label: "projects.dir",
+    labelHot: true,
+    rightLabel: `${projects.length} REC`,
+  });
 
-  ctx.textBaseline = "middle";
+  const inX = frameX + Math.round(w * 0.03);
+  const inRight = frameX + frameW - Math.round(w * 0.03);
+
+  // Shell prompt under the top rule — sells the terminal.
+  ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
-  ctx.font = `18px ${PIXEL_FONT}`;
-  ctx.fillStyle = CRT_ACCENT;
-  ctx.fillText("projects.dir", PAD, headH / 2 + 1);
-  ctx.textAlign = "right";
+  ctx.font = `17px ${PIXEL_FONT}`;
   ctx.fillStyle = CRT_TEXT_DIM;
-  drawTracked(
-    ctx,
-    `${projects.length} ITEMS`,
-    w - PAD,
-    headH / 2 + 1,
-    1.5,
-    "right",
-  );
-  ctx.textAlign = "left";
+  const shell = "daniel@os:~$ ls projects.dir";
+  const shellY = frameY + Math.round(h * 0.06);
+  ctx.fillText(shell, inX, shellY);
+  if (cursorOn) {
+    const sw = ctx.measureText(shell).width;
+    ctx.fillStyle = CRT_HOT;
+    ctx.fillRect(inX + sw + 7, shellY - 14, 10, 17);
+  }
 
-  // 2-column tile grid filling the area below the header. Sharp corners.
-  const gridTop = headH + Math.round(h * 0.04);
-  const gap = Math.round(w * 0.03);
-  const tileW = (w - PAD * 2 - gap) / 2;
-  const tileH = (h - gridTop - PAD - gap) / 2;
-  const cols = 2;
+  // Rows band (kept in lock-step with LIST_ROWS_TOP/BOTTOM for hit-testing).
+  const rowsTop = Math.round(h * LIST_ROWS_TOP);
+  const rowsBottom = Math.round(h * LIST_ROWS_BOTTOM);
+  const n = projects.length;
+  const rowGap = Math.round(h * 0.018);
+  const rowH = (rowsBottom - rowsTop - rowGap * (n - 1)) / n;
+  const dateColW = Math.round(w * 0.13);
+
   projects.forEach((p, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = PAD + col * (tileW + gap);
-    const y = gridTop + row * (tileH + gap);
+    const ry = rowsTop + i * (rowH + rowGap);
     const hovered = hoverIndex === i;
 
-    // Tile face: the real Devpost thumbnail (cover-fit) when decoded,
-    // with a dark scrim toward the bottom so the meta + title stay
-    // legible over any artwork. Falls back to a subtle hue wash before
-    // the image loads / when a project has no thumbnail.
-    const img = p.image ? getProjectImage(p.image) : undefined;
-    if (imageReady(img)) {
-      drawImageCover(ctx, img, x, y, tileW, tileH);
-      const scrim = ctx.createLinearGradient(x, y, x, y + tileH);
-      scrim.addColorStop(0, "rgba(10, 12, 16, 0.04)");
-      scrim.addColorStop(0.5, "rgba(10, 12, 16, 0.20)");
-      scrim.addColorStop(1, "rgba(10, 12, 16, 0.88)");
-      ctx.fillStyle = scrim;
-      ctx.fillRect(x, y, tileW, tileH);
-      if (hovered) {
-        ctx.fillStyle = "rgba(238, 242, 247, 0.08)";
-        ctx.fillRect(x, y, tileW, tileH);
-      }
-    } else {
-      const grad = ctx.createLinearGradient(x, y, x, y + tileH);
-      grad.addColorStop(0, withAlpha(p.color, hovered ? 0.42 : 0.26));
-      grad.addColorStop(1, withAlpha(p.color, hovered ? 0.12 : 0.06));
-      ctx.fillStyle = grad;
-      ctx.fillRect(x, y, tileW, tileH);
+    // Selection: a row wash + a solid orange left bar (the canonical TUI
+    // cursor landing), instant — no transition, brutalist.
+    if (hovered) {
+      ctx.fillStyle = "rgba(255, 79, 0, 0.10)";
+      ctx.fillRect(frameX + 2, ry, frameW - 4, rowH);
+      ctx.fillStyle = CRT_ACCENT;
+      ctx.fillRect(frameX + 2, ry, 4, rowH);
+    }
+
+    // Index.
+    const indent = hovered ? 12 : 0;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.font = `${Math.round(rowH * 0.32)}px ${PIXEL_FONT}`;
+    ctx.fillStyle = hovered ? CRT_ACCENT : CRT_TEXT_DIM;
+    const idx = String(i + 1).padStart(2, "0");
+    const idxX = inX + indent;
+    ctx.fillText(idx, idxX, ry + rowH / 2);
+    const idxW = ctx.measureText(idx).width;
+
+    // Amber-dithered thumbnail (1-bit phosphor read of the real artwork).
+    const thumbH = Math.round(rowH * 0.74);
+    const thumbW = Math.round(thumbH * 1.5);
+    const thumbX = idxX + idxW + 18;
+    const thumbY = ry + Math.round((rowH - thumbH) / 2);
+    const drew = p.image
+      ? drawAmberThumbCover(ctx, p.image, thumbX, thumbY, thumbW, thumbH)
+      : false;
+    if (!drew) {
+      ctx.fillStyle = CRT_BAR;
+      ctx.fillRect(thumbX, thumbY, thumbW, thumbH);
     }
     ctx.strokeStyle = hovered ? CRT_ACCENT : CRT_HAIRLINE;
-    ctx.lineWidth = hovered ? 2 : 1;
-    ctx.strokeRect(
-      x + ctx.lineWidth / 2,
-      y + ctx.lineWidth / 2,
-      tileW - ctx.lineWidth,
-      tileH - ctx.lineWidth,
-    );
+    ctx.lineWidth = 1;
+    ctx.strokeRect(thumbX + 0.5, thumbY + 0.5, thumbW - 1, thumbH - 1);
 
+    // Date, right-aligned (top of the text block).
+    const date = ensureUppercase(p.meta.split(" · ")[0]!);
+    ctx.textAlign = "right";
+    ctx.textBaseline = "alphabetic";
+    ctx.font = `${Math.round(rowH * 0.2)}px ${PIXEL_FONT}`;
+    ctx.fillStyle = hovered ? CRT_TEXT : CRT_TEXT_DIM;
+    ctx.fillText(date, inRight, ry + rowH * 0.46);
+
+    // Name (auto-shrunk to clear the date column) + stack line below it.
+    const tx = thumbX + thumbW + 22;
+    const nameMaxW = inRight - dateColW - tx;
+    let nameSize = Math.round(rowH * 0.42);
+    ctx.font = `${nameSize}px ${PIXEL_FONT}`;
+    while (ctx.measureText(p.title).width > nameMaxW && nameSize > 16) {
+      nameSize -= 2;
+      ctx.font = `${nameSize}px ${PIXEL_FONT}`;
+    }
+    ctx.textAlign = "left";
+    ctx.fillStyle = hovered ? CRT_HOT : CRT_TEXT;
+    ctx.fillText(p.title, tx, ry + rowH * 0.46);
+
+    const stackRaw = p.meta.split(" · ")[1] ?? "";
+    if (stackRaw) {
+      const stackMaxW = inRight - tx - (hovered ? Math.round(w * 0.1) : 0);
+      let stackSize = Math.round(rowH * 0.2);
+      ctx.font = `${stackSize}px ${PIXEL_FONT}`;
+      let stack = ensureUppercase(stackRaw);
+      while (ctx.measureText(stack).width > stackMaxW && stackSize > 11) {
+        stackSize -= 1;
+        ctx.font = `${stackSize}px ${PIXEL_FONT}`;
+      }
+      ctx.fillStyle = hovered ? CRT_TEXT : CRT_TEXT_DIM;
+      ctx.fillText(stack, tx, ry + rowH * 0.78);
+    }
+
+    // OPEN affordance on the selected row: flat accent token, lower-right.
     if (hovered) {
-      // "OPEN" affordance: flat accent tab, top-right, sharp corners.
-      ctx.font = `14px ${PIXEL_FONT}`;
-      const hintText = "OPEN ↵";
-      const hintW = ctx.measureText(hintText).width + 18;
-      const hintH = Math.round(tileH * 0.13);
-      const hintX = x + tileW - 14 - hintW;
-      const hintY = y + 14;
+      ctx.font = `${Math.round(rowH * 0.2)}px ${PIXEL_FONT}`;
+      const openText = "OPEN ↵";
+      const ow = ctx.measureText(openText).width + 22;
+      const oh = Math.round(rowH * 0.3);
+      const ox = inRight - ow;
+      const oy = ry + rowH - oh - Math.round(rowH * 0.1);
       ctx.fillStyle = CRT_ACCENT;
-      ctx.fillRect(hintX, hintY, hintW, hintH);
+      ctx.fillRect(ox, oy, ow, oh);
       ctx.fillStyle = CRT_ACCENT_INK;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(hintText, hintX + hintW / 2, hintY + hintH / 2 + 1);
-      ctx.textAlign = "left";
+      ctx.fillText(openText, ox + ow / 2, oy + oh / 2 + 1);
     }
 
-    // Tile meta (mono) + title (Geist), bottom-left.
+    ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
-    ctx.fillStyle = CRT_TEXT_DIM;
-    ctx.font = `15px ${PIXEL_FONT}`;
-    drawTracked(
-      ctx,
-      ensureUppercase(p.meta.split(" · ")[0]!),
-      x + 18,
-      y + tileH - 44,
-      1.2,
-    );
-    ctx.fillStyle = CRT_TEXT;
-    ctx.font = `26px ${PIXEL_FONT}`;
-    ctx.fillText(p.title, x + 18, y + tileH - 18);
   });
-}
 
-/** Parse a #rrggbb hex into an `rgba()` string at the given alpha. */
-function withAlpha(hex: string, alpha: number): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return `rgba(255, 79, 0, ${alpha})`;
-  const n = parseInt(m[1]!, 16);
-  const rr = (n >> 16) & 255;
-  const gg = (n >> 8) & 255;
-  const bb = n & 255;
-  return `rgba(${rr}, ${gg}, ${bb}, ${alpha})`;
+  // Status line knocked into the bottom rule.
+  ctx.font = `15px ${PIXEL_FONT}`;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  const statusY = frameY + frameH;
+  const status = "SELECT A RECORD   /   ↵ OPEN";
+  const statusW = ctx.measureText(status).width + 16;
+  ctx.fillStyle = CRT_BASE;
+  ctx.fillRect(inX, statusY - 2, statusW, 4);
+  ctx.fillStyle = CRT_TEXT_DIM;
+  ctx.fillText(status, inX + 6, statusY + 1);
+  ctx.textBaseline = "alphabetic";
 }
 
 /**
@@ -1988,8 +2189,6 @@ function ScreenInteractionPlane({
   clickEnabled: boolean;
   onHoverChange: (i: number | null) => void;
 }) {
-  const cols = 2;
-
   // Reset the body cursor we may have set: whenever the tile grid goes disabled
   // mid-hover (e.g. showDesktop flips false on scroll-back so onPointerMove
   // early-returns and onPointerOut may never fire), AND on unmount (R3F fires NO
@@ -2011,17 +2210,17 @@ function ScreenInteractionPlane({
     [],
   );
 
-  // Map a UV hit on the plane to a tile index (or null above the grid / out of
-  // range). Shared by hover + click so they never drift.
+  // Map a UV hit on the plane to a record-row index (or null above the first
+  // row / below the last). Uses the SAME LIST_ROWS_TOP/BOTTOM band the painter
+  // lays the rows into (v = 1 - uv.y measures down from the top), so the click
+  // target always tracks the row under the cursor. Shared by hover + click.
   const hitTile = (uv: THREE.Vector2 | undefined): number | null => {
     if (!uv) return null;
     const v = 1 - uv.y;
-    if (v < 0.115) return null;
-    const tileV = (v - 0.115) / 0.885;
-    const row = tileV < 0.5 ? 0 : 1;
-    const col = uv.x < 0.5 ? 0 : 1;
-    const i = row * cols + col;
-    return i < projects.length ? i : null;
+    if (v < LIST_ROWS_TOP || v > LIST_ROWS_BOTTOM) return null;
+    const t = (v - LIST_ROWS_TOP) / (LIST_ROWS_BOTTOM - LIST_ROWS_TOP);
+    const i = Math.floor(t * projects.length);
+    return i >= 0 && i < projects.length ? i : null;
   };
 
   return (
@@ -2090,6 +2289,13 @@ function Scene({
   const macTiltRef = useRef<THREE.Group>(null);
   const macSpinRef = useRef<THREE.Group>(null);
   const shadowMatRef = useRef<THREE.ShadowMaterial>(null);
+  // Grounding (the float-monitor fix): a light shelf the Mac rests on, a thin
+  // orange dock edge along its front, a contact shadow, and the screen's
+  // orange emission pool — all ramped in with the landing (float beats clean).
+  const contactMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const poolMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const shelfMatRef = useRef<THREE.MeshStandardMaterial>(null);
+  const edgeMatRef = useRef<THREE.MeshBasicMaterial>(null);
   // Handle to the shadow-casting key light so the useFrame loop can
   // toggle its shadow map render off until the contact shadow ramps in.
   const shadowLightRef = useRef<THREE.DirectionalLight>(null);
@@ -2125,6 +2331,9 @@ function Scene({
   // Float-beat screensaver gate + animation tick (see useScreenTexture).
   const [floatActive, setFloatActive] = useState(false);
   const [floatSpin, setFloatSpin] = useState(0);
+  // Block-cursor blink phase (terminal caret). Toggled ~1.9Hz in the tick
+  // block; one extra texture upload per flip on otherwise-static screens.
+  const [cursorOn, setCursorOn] = useState(true);
   const lastTickRef = useRef(0);
   // Separate, slower throttle for the float-beat screensaver (ASCII sphere): a
   // CanvasTexture rebuild + GPU re-upload + React reconcile at 30Hz was wasted
@@ -2143,6 +2352,34 @@ function Scene({
     return () => window.removeEventListener("pointermove", onMove);
   }, []);
 
+  // Ground-decal textures, built once (disposed on unmount): a crisp dark
+  // contact shadow and the screen's warm orange emission pool.
+  const contactTex = useMemo(
+    () =>
+      makeRadialDecal([
+        [0, "rgba(8, 5, 2, 0.95)"],
+        [0.5, "rgba(8, 5, 2, 0.5)"],
+        [1, "rgba(8, 5, 2, 0)"],
+      ]),
+    [],
+  );
+  const poolTex = useMemo(
+    () =>
+      makeRadialDecal([
+        [0, "rgba(255, 92, 24, 0.5)"],
+        [0.45, "rgba(255, 70, 12, 0.16)"],
+        [1, "rgba(255, 70, 12, 0)"],
+      ]),
+    [],
+  );
+  useEffect(
+    () => () => {
+      contactTex.dispose();
+      poolTex.dispose();
+    },
+    [contactTex, poolTex],
+  );
+
   // Preload the project thumbnails; the version bumps as each decodes so
   // the CanvasTexture rebuilds and the artwork paints in.
   const imageVersion = useProjectImages(projects);
@@ -2157,6 +2394,7 @@ function Scene({
     screenAspect,
     floatActive,
     floatSpin,
+    cursorOn,
   );
   const { invalidate, camera, size } = useThree();
 
@@ -2306,8 +2544,15 @@ function Scene({
         (THRESHOLDS.shadowEnd - THRESHOLDS.shadowStart),
     );
     if (shadowMatRef.current) {
-      shadowMatRef.current.opacity = shadowT * 0.22 * exitScale;
+      shadowMatRef.current.opacity = shadowT * 0.28 * exitScale;
     }
+    // Grounding decals fade in with the landing (and shrink away on exit) so
+    // the monitor reads as resting on a surface, not floating in the void.
+    const groundFade = shadowT * exitScale;
+    if (contactMatRef.current) contactMatRef.current.opacity = groundFade;
+    if (poolMatRef.current) poolMatRef.current.opacity = groundFade;
+    if (shelfMatRef.current) shelfMatRef.current.opacity = groundFade;
+    if (edgeMatRef.current) edgeMatRef.current.opacity = groundFade * 0.85;
     // PERF: gate the shadow-map depth pass behind the contact-shadow ramp.
     //   OLD: directional light rendered its shadow map EVERY visible frame
     //        (full GLB depth pass) even during BEATs 1-2 when shadowT===0
@@ -2329,6 +2574,11 @@ function Scene({
     if (now - lastTickRef.current >= 33) {
       lastTickRef.current = now;
       setBootProgress((prev) => (Math.abs(prev - newBoot) > 0.02 ? newBoot : prev));
+      // Terminal caret blink (~1.9Hz): flips cursorOn so the boot/desktop/detail
+      // painters pulse their block cursor on otherwise-static screens. Only ticks
+      // while the scene is on-screen (this whole loop early-returns off-screen).
+      const blink = Math.floor(now / 530) % 2 === 0;
+      setCursorOn((prev) => (prev === blink ? prev : blink));
       // Float-beat screensaver gate: on before the CRT boot, while no
       // project is open and not on the narrow/landed path. Tick floatSpin
       // so useScreenTexture re-runs and the ASCII sphere animates.
@@ -2763,10 +3013,75 @@ function Scene({
         </group>
       )}
 
-      {/* Shadow plate appears only as the Mac lands; fades in via
-          ref so the floating beats stay clean (no ghosting). Y is
-          a hair below REST_Y so it sits flush beneath the Mac base. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]} receiveShadow>
+      {/* GROUNDING (the float-monitor fix), all ramped in by the landing
+          (shadowT) and shrunk away on exit. The monitor reads as RESTING on a
+          surface instead of hovering in the cream void.
+            1. a light shelf it sits on — wide + deep enough to spill past the
+               frame so it reads as ground, not a floating slab;
+            2. a thin glowing orange dock edge along the shelf front (threads
+               the screen's accent into the world);
+            3. a warm orange emission pool (the lit tube spilling onto the
+               shelf in front of it) + a crisp dark contact shadow at the base.
+          No grid, no "rice" texture — a clean surface. */}
+      {/* Landed Mac base sits at world y≈0.465; all grounding is placed there
+          so it reads in the close framing (a shelf below the housing was off
+          the bottom of the frame). */}
+      <mesh position={[0, 0.405, -0.15]}>
+        <boxGeometry args={[5.4, 0.12, 2.8]} />
+        <meshStandardMaterial
+          ref={shelfMatRef}
+          color="#e4ddce"
+          roughness={0.94}
+          metalness={0}
+          transparent
+          opacity={0}
+        />
+      </mesh>
+      <mesh position={[0, 0.466, 1.05]} renderOrder={3}>
+        <boxGeometry args={[2.2, 0.013, 0.04]} />
+        <meshBasicMaterial
+          ref={edgeMatRef}
+          color="#ff4f00"
+          transparent
+          opacity={0}
+          toneMapped={false}
+        />
+      </mesh>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.472, 0.42]}
+        renderOrder={1}
+      >
+        <planeGeometry args={[3.8, 2.1]} />
+        <meshBasicMaterial
+          ref={poolMatRef}
+          map={poolTex}
+          transparent
+          opacity={0}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.476, -0.05]}
+        renderOrder={2}
+      >
+        <planeGeometry args={[2.7, 1.9]} />
+        <meshBasicMaterial
+          ref={contactMatRef}
+          map={contactTex}
+          transparent
+          opacity={0}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+
+      {/* Shadow plate appears only as the Mac lands; fades in via ref so the
+          floating beats stay clean. Sits at the shelf top so the directional
+          key light's contact shadow falls onto the shelf. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.47, -0.1]} receiveShadow>
         <planeGeometry args={[5, 5]} />
         <shadowMaterial ref={shadowMatRef} opacity={0} transparent />
       </mesh>

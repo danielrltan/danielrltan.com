@@ -592,37 +592,55 @@ export default function App() {
     };
   }, []);
 
-  /* Warm the lazy section-scene chunks (Macintosh / Keypad) during idle time
-   * once the loader is done, so they're cached before the user scrolls to them.
-   * Hobbies is intentionally excluded (see warm() below — its preload is heavy
-   * and rides its own on-approach mount instead). Gated on `ready` so these
-   * loads don't keep drei's useProgress active during the loading screen. */
+  /* Warm the lazy section-scene chunks during idle time once the loader is
+   * done, so each scene's chunk is compiled AND its GLBs/textures are fetched
+   * before the user scrolls to it. Importing each module runs its module-scope
+   * preload (useGLTF.preload for Mac/Keypad, startPreload for Hobbies), so this
+   * is the load-quicker lever that matters: it prefetches ASSETS without ever
+   * creating a WebGL context (those still mount on-approach), so it can't
+   * reintroduce the multi-context freeze — it just means sections are READY on
+   * arrival instead of popping empty / placeholder meshes on a fast scroll.
+   *
+   * Two staggered waves: the two nearest heavy scenes first, then the heavier
+   * Play cluster (~2.3MB of Hobbies GLBs) a beat later. Hobbies USED to be
+   * excluded (its download was a standing cost on weak laptops); the overhauled
+   * site deliberately prefetches it now — the owner asked for quicker loading,
+   * and staggering it behind wave 1 keeps it off the hero's first interactions.
+   * Gated on `ready` so none of this keeps drei's useProgress active under the
+   * loading screen. */
   useEffect(() => {
     if (!ready) return;
-    const warm = () => {
-      void import("./macintosh/MacintoshScene");
-      void import("./keypad/KeypadScene");
-      // NOTE: ./other/HobbiesScene is deliberately NOT warmed here. Importing it
-      // runs its module-scope startPreload(), which fetches ~2.3MB of GLBs — and
-      // doing that ~1.2s after load pulled the whole download onto the HERO frame
-      // for every visitor (a real standing cost on weak laptops). Its <Canvas>
-      // already mounts on-approach at mountVh:2.75 (Other.tsx) — ample lead for
-      // the chunk + GLBs to resolve before arrival, so warming here was redundant.
-    };
     const w = window as unknown as {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
       cancelIdleCallback?: (id: number) => void;
     };
-    if (typeof w.requestIdleCallback === "function") {
-      // timeout GUARANTEES warm() runs within 1.2s even if the main thread stays
-      // busy. Without it, requestIdleCallback can be starved indefinitely, so the
-      // Mac/Keypad scene chunks would start compiling late and the section could
-      // pop while still loading on a quick scroll-in.
-      const id = w.requestIdleCallback(warm, { timeout: 1200 });
-      return () => w.cancelIdleCallback?.(id);
-    }
-    const tm = setTimeout(warm, 600);
-    return () => clearTimeout(tm);
+    const ids: number[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    // Schedule on idle (with a guaranteed timeout so a busy main thread can't
+    // starve it indefinitely) or a plain timer where rIC is unavailable.
+    const schedule = (cb: () => void, idleTimeout: number, fallbackMs: number) => {
+      if (typeof w.requestIdleCallback === "function") {
+        ids.push(w.requestIdleCallback(cb, { timeout: idleTimeout }));
+      } else {
+        timers.push(setTimeout(cb, fallbackMs));
+      }
+    };
+    // Wave 1 — the two nearest heavy scenes. Short timeout (was 1200) so they
+    // start compiling + fetching their GLBs promptly after the loader lifts.
+    schedule(
+      () => {
+        void import("./macintosh/MacintoshScene");
+        void import("./keypad/KeypadScene");
+      },
+      500,
+      200,
+    );
+    // Wave 2 — the heavy Play cluster, staggered behind wave 1.
+    schedule(() => void import("./other/HobbiesScene"), 1800, 1000);
+    return () => {
+      ids.forEach((id) => w.cancelIdleCallback?.(id));
+      timers.forEach((t) => clearTimeout(t));
+    };
   }, [ready]);
 
   return (

@@ -230,8 +230,8 @@ export function Keypad() {
   // preloaded and App.tsx idle-prefetches the scene chunk, so the early mount is
   // cheap. .keypad-placeholder reserves the exact box so layout never shifts.
   const mounted = useSectionCanvasMount(sectionRef, {
-    mountVh: 3.25,
-    unmountVh: 4.5,
+    mountVh: 3.75,
+    unmountVh: 5,
   });
 
   // pinProgressRef is now a TIME-driven 0..1 ramp, not scroll-driven.
