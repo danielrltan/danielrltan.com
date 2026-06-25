@@ -1290,7 +1290,6 @@ const CRT_BASE = "#0a0c10"; // near-black cool CRT ground
 const CRT_BAR = "#11141a"; // slightly lifted title-bar strip
 const CRT_TEXT = "#eef2f7"; // cool near-white, primary text
 const CRT_TEXT_DIM = "rgba(238, 242, 247, 0.66)"; // secondary
-const CRT_TEXT_FAINT = "rgba(238, 242, 247, 0.40)"; // low-emphasis
 const CRT_HAIRLINE = "rgba(238, 242, 247, 0.16)"; // dividers / chip borders
 const CRT_ACCENT = "#ff4f00"; // signature orange
 const CRT_ACCENT_INK = "#0a0c10"; // ink on an accent fill
@@ -1303,6 +1302,8 @@ const CRT_ACCENT_INK = "#0a0c10"; // ink on an accent fill
 const CRT_LAYOUT = {
   titleBarFrac: 0.135, // title bar height as a fraction of canvas height
   padFrac: 0.06, // content inset as a fraction of canvas WIDTH
+  backWFrac: 0.16, // "← BACK" button width as a fraction of canvas WIDTH
+  backHFrac: 0.56, // "← BACK" button height as a fraction of the TITLE BAR
 } as const;
 
 function drawProjectDetail(
@@ -1350,49 +1351,41 @@ function drawProjectDetail(
   ctx.lineTo(w, barH + 0.5);
   ctx.stroke();
 
-  // Close control: a sharp square outline with a clean symmetric ×,
-  // top-left. (An earlier "signature strike-out" variant mismatched the
-  // two arms — one dim, one orange overshooting the box — which read as
-  // a rendering glitch rather than a flourish; user: "fix this cross".)
-  // Both arms accent orange, equal weight, contained inside the box.
-  const closeSz = Math.round(barH * 0.42);
-  const closeX = PAD;
-  const closeY = Math.round((barH - closeSz) / 2);
-  ctx.strokeStyle = CRT_HAIRLINE;
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(closeX, closeY, closeSz, closeSz);
-  const g = Math.round(closeSz * 0.3);
+  // Back control: a retro bordered "← BACK" button, top-left, with a baked
+  // orange phosphor glow. The real DOM hotspot (Macintosh.tsx) sits exactly
+  // over it (same CRT_LAYOUT fractions) and lights a brighter glow on hover.
+  // Replaces the old × box (owner: make the close a back button + hover effect).
+  const backW = Math.round(w * CRT_LAYOUT.backWFrac);
+  const backH = Math.round(barH * CRT_LAYOUT.backHFrac);
+  const backX = PAD;
+  const backY = Math.round((barH - backH) / 2);
+  ctx.save();
+  ctx.shadowColor = "rgba(255, 79, 0, 0.45)";
+  ctx.shadowBlur = 9;
   ctx.strokeStyle = CRT_ACCENT;
-  ctx.lineWidth = 2;
-  ctx.lineCap = "square";
-  ctx.beginPath();
-  ctx.moveTo(closeX + g, closeY + g);
-  ctx.lineTo(closeX + closeSz - g, closeY + closeSz - g);
-  ctx.moveTo(closeX + g, closeY + closeSz - g);
-  ctx.lineTo(closeX + closeSz - g, closeY + g);
-  ctx.stroke();
-  ctx.lineCap = "butt";
-
-  // Breadcrumb path: mono, the one place mono suits (a system label).
-  const crumbX = closeX + closeSz + 16;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(backX + 0.75, backY + 0.75, backW - 1.5, backH - 1.5);
+  ctx.restore();
+  ctx.fillStyle = CRT_ACCENT;
+  ctx.font = `17px ${PIXEL_FONT}`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
+  drawTracked(ctx, "← BACK", backX + 15, barH / 2 + 1, 2);
+
+  // Breadcrumb path: mono system label. Base path dim; the open project id
+  // glows orange like a live phosphor target.
+  const crumbX = backX + backW + 18;
   ctx.font = `16px ${PIXEL_FONT}`;
   ctx.fillStyle = CRT_TEXT_DIM;
   const crumbBase = "projects.dir / ";
   ctx.fillText(crumbBase, crumbX, barH / 2 + 1);
   const crumbBaseW = ctx.measureText(crumbBase).width;
+  ctx.save();
+  ctx.shadowColor = "rgba(255, 79, 0, 0.55)";
+  ctx.shadowBlur = 10;
   ctx.fillStyle = CRT_ACCENT;
-  ctx.font = `16px ${PIXEL_FONT}`;
   ctx.fillText(project.id, crumbX + crumbBaseW, barH / 2 + 1);
-
-  // ESC hint: quiet faint mono label, right-aligned in the title bar
-  // (mirrors the × close box on the top-left: standard window-chrome
-  // keyboard hint). Right-aligned to w - PAD so it never collides with
-  // the breadcrumb at narrow screen aspects. Paint-only, no DOM hotspot.
-  ctx.font = `15px ${PIXEL_FONT}`;
-  ctx.fillStyle = CRT_TEXT_FAINT;
-  drawTracked(ctx, "ESC TO CLOSE", w - PAD, barH / 2 + 1, 1.5, "right");
+  ctx.restore();
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
 
@@ -1431,16 +1424,30 @@ function drawProjectDetail(
     titleSize -= 2;
     ctx.font = `${titleSize}px ${PIXEL_FONT}`;
   }
+  // PHOSPHOR GLOW: a two-pass bloom behind the title — a wide warm-orange halo
+  // then a tighter cool-white core — so the headline blooms like a lit tube
+  // instead of reading as flat ink (owner: more retro-glow vibe). Inherits the
+  // current globalAlpha, so it fades in with the title.
+  ctx.save();
+  ctx.shadowColor = "rgba(255, 122, 46, 0.42)";
+  ctx.shadowBlur = Math.round(titleSize * 0.72);
   ctx.fillText(project.title, PAD, y);
+  ctx.shadowColor = "rgba(212, 228, 248, 0.62)";
+  ctx.shadowBlur = Math.round(titleSize * 0.34);
+  ctx.fillText(project.title, PAD, y);
+  ctx.restore();
   const titleW = Math.min(ctx.measureText(project.title).width, maxTitleW);
   y += Math.round(titleSize * 0.5);
 
-  // Accent bar under the title: a confident orange rule the FULL width of
-  // the title (was a fixed short 0.08w tick) so the title reads as the
-  // hero element it is — a bold underline anchoring the wordmark, not a
-  // decorative hairline. Thickened 2 → 4px to match the new weight.
+  // Accent bar under the title: a confident orange rule the FULL width of the
+  // title, lit with an orange phosphor glow so the wordmark sits on a glowing
+  // baseline — the signature retro moment of the panel.
+  ctx.save();
+  ctx.shadowColor = CRT_ACCENT;
+  ctx.shadowBlur = 14;
   ctx.fillStyle = CRT_ACCENT;
   ctx.fillRect(PAD, y, Math.round(titleW), 4);
+  ctx.restore();
   y += 4;
   ctx.globalAlpha = 1;
 
@@ -1454,9 +1461,15 @@ function drawProjectDetail(
     const imgTop = Math.round(panelTop + (panelBottom - panelTop - imgH) / 2);
     ctx.globalAlpha = headReveal;
     drawImageCover(ctx, projImg, imgX, imgTop, imgW, imgH);
-    ctx.strokeStyle = CRT_HAIRLINE;
-    ctx.lineWidth = 1;
+    // Lit frame: a faint cool-white phosphor glow on the hairline so the
+    // thumbnail reads as part of the glowing display, not a pasted-in card.
+    ctx.save();
+    ctx.shadowColor = "rgba(206, 224, 245, 0.32)";
+    ctx.shadowBlur = 9;
+    ctx.strokeStyle = "rgba(206, 224, 245, 0.34)";
+    ctx.lineWidth = 1.25;
     ctx.strokeRect(imgX + 0.5, imgTop + 0.5, imgW - 1, imgH - 1);
+    ctx.restore();
     ctx.globalAlpha = 1;
   }
 
@@ -1583,8 +1596,15 @@ function drawProjectDetail(
     const arrow = "  →";
     const btnW = Math.round(ctx.measureText(label + arrow).width + 40);
     const bx = PAD;
+    // Lit accent key: an orange phosphor bloom behind the flat fill so the
+    // primary CTA glows like a button on the tube. The DOM <a> hotspot over
+    // it brightens this glow on hover.
+    ctx.save();
+    ctx.shadowColor = CRT_ACCENT;
+    ctx.shadowBlur = 16;
     ctx.fillStyle = CRT_ACCENT;
     ctx.fillRect(bx, btnY, btnW, btnH); // sharp-cornered flat button
+    ctx.restore();
     ctx.fillStyle = CRT_ACCENT_INK;
     ctx.textAlign = "left";
     ctx.fillText(label + arrow, bx + 20, btnY + btnH / 2 + 1);
@@ -1944,32 +1964,28 @@ function withAlpha(hex: string, alpha: number): string {
 }
 
 /**
- * Invisible interaction plane over the Mac's CRT screen — ONE plane that owns
- * BOTH gestures (open a tile, close the detail) so there is exactly one
- * raycast/click target. The old design used two SEPARATE planes (a tile
- * ScreenClickPlane + a ScreenBackPlane) that the screen-alignment fix moved to
- * the SAME transform. Two coincident, handler-bearing meshes at identical depth
- * gave R3F's click synthesis two equal-distance hits, so the pointerdown vs
- * pointerup hit target was non-deterministic across frames and clicks were
- * SWALLOWED (hover survived — pointermove is dispatched to both every frame with
- * no down/up matching). Collapsing to one plane removes the ambiguity entirely.
+ * Invisible interaction plane over the Mac's CRT screen — the single raycast
+ * target for the project TILES. Engages ONLY on the booted grid while no
+ * project is open (clickEnabled). Once a project opens the plane goes inert:
+ * the on-screen controls (the DOM back-button + link hotspots in Macintosh.tsx)
+ * own all interaction, so the detail content is NOT a giant click target and
+ * the cursor only turns to a pointer over the real controls (owner: "everything
+ * is clickable on this screen for some reason?"). Closing is the BACK button
+ * (or ESC), never a click on the body.
  *
- * clickEnabled (booted grid + no project open): a tile click opens that project.
- * backEnabled (a project open + the zoom underway): a click anywhere closes it.
+ * (A single plane is also what keeps R3F's click deterministic — an earlier
+ * design had two coincident handler planes, which made pointerdown/up resolve
+ * to different hits and swallowed clicks.)
  */
 function ScreenInteractionPlane({
   projects,
   onSelect,
-  onBack,
   clickEnabled,
-  backEnabled,
   onHoverChange,
 }: {
   projects: MacProject[];
   onSelect: (p: MacProject) => void;
-  onBack: () => void;
   clickEnabled: boolean;
-  backEnabled: boolean;
   onHoverChange: (i: number | null) => void;
 }) {
   const cols = 2;
@@ -2013,29 +2029,22 @@ function ScreenInteractionPlane({
       position={SCREEN_LOCAL_PIC_CENTER}
       rotation={[MAC_SCREEN_TILT_X, 0, 0]}
       onPointerMove={(e) => {
-        if (clickEnabled) {
-          const i = hitTile(e.uv);
-          onHoverChange(i);
-          // cursor:pointer only over an actual tile, not the dead gutter/header.
-          document.body.style.cursor = i != null ? "pointer" : "";
-        } else if (backEnabled) {
-          document.body.style.cursor = "pointer";
-        }
+        // Inert unless the tile grid is live; the detail view's controls are
+        // DOM hotspots, so the screen body never sets a pointer cursor.
+        if (!clickEnabled) return;
+        const i = hitTile(e.uv);
+        onHoverChange(i);
+        // cursor:pointer only over an actual tile, not the dead gutter/header.
+        document.body.style.cursor = i != null ? "pointer" : "";
       }}
       onPointerOut={() => {
         onHoverChange(null);
         document.body.style.cursor = "";
       }}
       onClick={(e) => {
-        if (clickEnabled) {
-          const i = hitTile(e.uv);
-          if (i != null) onSelect(projects[i]!);
-        } else if (backEnabled) {
-          // stopPropagation only on the BACK gesture (the open branch never
-          // needed it) so the close doesn't bubble to other catchers.
-          e.stopPropagation();
-          onBack();
-        }
+        if (!clickEnabled) return;
+        const i = hitTile(e.uv);
+        if (i != null) onSelect(projects[i]!);
       }}
     >
       <planeGeometry args={[SCREEN_LOCAL_W, SCREEN_LOCAL_PIC_H]} />
@@ -2055,7 +2064,6 @@ function Scene({
   projects,
   onSelectProject,
   selected,
-  onCloseProject,
   onScreenRect,
   visibleRef,
 }: Props & { visibleRef: React.RefObject<boolean> }) {
@@ -2720,18 +2728,14 @@ function Scene({
             />
           </group>
         </group>
-        {/* ONE interaction plane owns both gestures (a separate click + back
-            plane at the SAME transform made R3F's click non-deterministic).
-            clickEnabled: tile clicks engage only on the booted grid AND while no
-            project is open. backEnabled: once a project fills the CRT (and the
-            zoom is well underway, so an open-click doesn't immediately
-            re-close), a click anywhere on the screen closes it. */}
+        {/* Tile interaction plane. Engages ONLY on the booted grid while no
+            project is open; once a project opens it goes inert and the on-screen
+            DOM controls (back button + link) own interaction, so the detail body
+            is not a click target. */}
         <ScreenInteractionPlane
           projects={projects}
           onSelect={onSelectProject}
-          onBack={onCloseProject}
           clickEnabled={showDesktop && !selected}
-          backEnabled={!!selected && detailReveal > 0.6}
           onHoverChange={setHoverIndex}
         />
       </group>

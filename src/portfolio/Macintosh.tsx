@@ -698,7 +698,11 @@ export function Macintosh() {
         const { x, y, w, h } = screenRect;
         const pad = 0.06 * w;
         const barH = 0.135 * h;
-        const closeSz = 0.42 * barH;
+        // "← BACK" button rect (mirrors CRT_LAYOUT.backWFrac / backHFrac in the
+        // painter) so the clickable hotspot + its CSS hover glow cover the whole
+        // painted button.
+        const backW = 0.16 * w;
+        const backH = 0.56 * barH;
         const btnH = 0.085 * h;
         // BULGE COMPENSATION: the CRT shader barrel-distorts its sample
         // space (k=0.12), so painted content near the edges appears
@@ -710,9 +714,9 @@ export function Macintosh() {
         const by = 0.010 * h;
         const closeStyle: React.CSSProperties = {
           left: x + pad + bx,
-          top: y + (barH - closeSz) / 2 + by,
-          width: Math.max(closeSz, 30),
-          height: Math.max(closeSz, 30),
+          top: y + (barH - backH) / 2 + by,
+          width: backW,
+          height: Math.max(backH, 30),
         };
         const linkStyle: React.CSSProperties = {
           left: x + pad + bx,
