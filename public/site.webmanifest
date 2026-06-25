@@ -1,0 +1,12 @@
+{
+  "name": "Daniel Tan | Software Engineer",
+  "short_name": "Daniel Tan",
+  "description": "Interactive 3D portfolio of Daniel Tan, software engineer.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ff4f00",
+  "theme_color": "#ff4f00",
+  "icons": [
+    { "src": "/dt.png", "sizes": "750x750", "type": "image/png", "purpose": "any" }
+  ]
+}

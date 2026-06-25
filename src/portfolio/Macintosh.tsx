@@ -391,27 +391,6 @@ export function Macintosh() {
 
   return (
     <section ref={sectionRef} className="portfolio-section portfolio-mac">
-      {/* Accessible, crawlable project list. The CRT tiles are painted
-          into a <canvas> texture and clicked via a 3D raycast plane, so
-          screen readers, keyboard users, and search crawlers see NOTHING
-          of the actual work. This visually-hidden (but DOM-real and
-          focusable) list is the source of truth for those users: a real
-          <button> per project carrying the SAME onSelect the 3D tile
-          fires, so Tab → Enter opens a project with no pointer needed.
-          Mirrors the Keypad section's sr-only social list. */}
-      <nav className="sr-only" aria-label="Projects">
-        <h3>Selected projects</h3>
-        <ul>
-          {MAC_PROJECTS.map((p) => (
-            <li key={p.id}>
-              <button type="button" onClick={() => openProject(p)}>
-                {p.title}: {p.meta}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
       {/* Stage opacity is gated by `data-stage-visible` so the canvas
           doesn't peek into the About section above before the pin
           engages (set true by the scrollY listener above, or forced on
@@ -567,6 +546,40 @@ export function Macintosh() {
           <ScrambleText text="Projects" />
         </h2>
       </div>
+
+      {/* Accessible, crawlable project list. The CRT tiles are painted into a
+          <canvas> texture and clicked via a 3D raycast plane, so screen readers,
+          keyboard users, and crawlers see none of the actual work. This
+          visually-hidden (but DOM-real + focusable) list is their source of
+          truth: each item LEADS with a real <a href> to the project's live
+          Devpost/GitHub URL (crawlable, reachable with no JS), plus a <button>
+          carrying the SAME onSelect the 3D tile fires so Tab → Enter opens the
+          3D detail. Rendered AFTER the section <h2> so heading order is h2 → h3.
+          Mirrors the Keypad section's sr-only social list. */}
+      <nav className="sr-only" aria-label="Projects">
+        <h3>Selected projects</h3>
+        <ul>
+          {MAC_PROJECTS.map((p) => {
+            const href = p.liveHref || p.repoHref;
+            return (
+              <li key={p.id}>
+                {href ? (
+                  <a href={href}>
+                    {p.title}: {p.meta}
+                  </a>
+                ) : (
+                  <span>
+                    {p.title}: {p.meta}
+                  </span>
+                )}{" "}
+                <button type="button" onClick={() => openProject(p)}>
+                  Open {p.title} detail
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
       {/* Detail region. The open project is drawn into the CRT <canvas>
           texture, which is invisible to assistive tech, so the project's
           title / meta / blurb / tags + the REAL clickable live/repo link

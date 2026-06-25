@@ -65,3 +65,11 @@ createRoot(document.getElementById("root")!).render(
     <App />
   </StrictMode>,
 );
+
+// Remove the static crawler/no-JS fallback now that the React app owns the
+// single canonical <main> + <h1>. Leaving #seo-fallback in the live DOM would
+// ship TWO <main> landmarks and TWO <h1>s to JS-rendering crawlers + screen
+// readers (a document-outline violation that dilutes the primary h1). No-JS
+// crawlers never run this, so they still get the fallback. Mirrors the
+// #boot-screen removal in AssemblyController.
+document.getElementById("seo-fallback")?.remove();

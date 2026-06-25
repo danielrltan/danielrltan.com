@@ -1,21 +1,9 @@
+# Allow all crawlers full access. The site is a single-page app; there is
+# nothing to disallow. Named per-bot groups are intentionally omitted: a
+# named User-agent group OVERRIDES the wildcard for that bot rather than
+# adding to it, so duplicating "Allow: /" per bot only creates a maintenance
+# trap (a future Disallow under * would silently not apply to them).
 User-agent: *
-Allow: /
-
-# Explicitly allow the major web-filter and recruiter crawlers so the
-# site is correctly classified rather than left "uncategorized".
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: LinkedInBot
-Allow: /
-
-User-agent: Slackbot
-Allow: /
-
-User-agent: Twitterbot
 Allow: /
 
 Sitemap: https://danielrltan.com/sitemap.xml

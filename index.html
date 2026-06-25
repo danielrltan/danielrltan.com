@@ -8,8 +8,12 @@
     />
     <meta name="theme-color" content="#ff4f00" />
 
-    <!-- Favicon: the DT monogram. -->
+    <!-- Favicon: the DT monogram. apple-touch-icon reuses the same 750px PNG so
+         an iOS "Add to Home Screen" / in-app save shows the monogram, not a
+         cropped page screenshot. -->
     <link rel="icon" type="image/png" href="/dt.png" />
+    <link rel="apple-touch-icon" href="/dt.png" />
+    <link rel="manifest" href="/site.webmanifest" />
 
     <!-- Font stack: Geist covers display, body, and the HUD/tech tags
          (no monospace face). Offbit / Offbit Dot are local @font-face
@@ -46,14 +50,10 @@
          instead of flashing a fallback glyph (the dial's "weird symbol"). -->
     <link rel="preload" href="/fonts/offbit/OffBit-Bold.ttf" as="font" type="font/ttf" crossorigin />
 
-    <title>Daniel Tan // Portfolio</title>
+    <title>Daniel Tan | Software Engineer</title>
     <meta
       name="description"
-      content="Personal portfolio of Daniel Tan, software engineer in Toronto. Interactive 3D site with selected projects, work experience, resume, and contact links."
-    />
-    <meta
-      name="keywords"
-      content="Daniel Tan, software engineer, web developer, frontend, full stack, portfolio, resume, React, TypeScript, three.js, interactive 3D"
+      content="Personal portfolio of Daniel Tan, software engineer. Interactive 3D site with selected projects, work experience, resume, and contact links."
     />
     <meta name="author" content="Daniel Tan" />
 
@@ -74,24 +74,32 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://danielrltan.com/" />
     <meta property="og:site_name" content="Daniel Tan" />
-    <meta property="og:title" content="Daniel Tan's Portfolio Website" />
+    <meta property="og:title" content="Daniel Tan | Software Engineer" />
     <meta
       property="og:description"
-      content="Interactive 3D portfolio of Daniel Tan, software engineer. Selected projects, work experience, resume, and contact."
+      content="Daniel Tan, software engineer. Interactive 3D portfolio with selected projects, work experience, resume, and contact."
     />
     <meta property="og:image" content="https://danielrltan.com/images/thumbnail.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Stylized isometric 3D bedroom scene from Daniel Tan's interactive portfolio, with the site wordmark on an orange field."
+    />
     <meta property="og:locale" content="en_US" />
 
     <!-- Twitter / X Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Daniel Tan | Software Engineer Portfolio" />
+    <meta name="twitter:title" content="Daniel Tan | Software Engineer" />
     <meta
       name="twitter:description"
-      content="Interactive 3D portfolio of Daniel Tan, software engineer."
+      content="Daniel Tan, software engineer. Interactive 3D portfolio with selected projects, work experience, resume, and contact."
     />
     <meta name="twitter:image" content="https://danielrltan.com/images/thumbnail.png" />
+    <meta
+      name="twitter:image:alt"
+      content="Stylized isometric 3D bedroom scene from Daniel Tan's interactive portfolio, with the site wordmark on an orange field."
+    />
 
     <!-- Structured data: identifies this as a Person + their portfolio WebSite.
          Search engines and a growing number of filter vendors use schema.org
@@ -101,29 +109,105 @@
         "@context": "https://schema.org",
         "@graph": [
           {
-            "@type": "Person",
-            "@id": "https://danielrltan.com/#person",
-            "name": "Daniel Tan",
+            "@type": "ProfilePage",
+            "@id": "https://danielrltan.com/#profilepage",
             "url": "https://danielrltan.com/",
-            "jobTitle": "Software Engineer",
-            "sameAs": [
-              "https://www.linkedin.com/in/danielrltan",
-              "https://github.com/danielrltan"
+            "name": "Daniel Tan | Software Engineer",
+            "inLanguage": "en-US",
+            "isPartOf": { "@id": "https://danielrltan.com/#website" },
+            "about": { "@id": "https://danielrltan.com/#person" },
+            "mainEntity": { "@id": "https://danielrltan.com/#person" },
+            "primaryImageOfPage": { "@id": "https://danielrltan.com/#primaryimage" },
+            "hasPart": [
+              { "@id": "https://devpost.com/software/cognetech#project" },
+              { "@id": "https://devpost.com/software/reamp#project" },
+              { "@id": "https://github.com/danielrltan/danielrltan.com#project" },
+              { "@id": "https://devpost.com/software/weaver-r5qpk0#project" }
             ]
           },
           {
             "@type": "WebSite",
             "@id": "https://danielrltan.com/#website",
             "url": "https://danielrltan.com/",
-            "name": "Daniel Tan | Portfolio",
+            "name": "Daniel Tan | Software Engineer",
             "description": "Personal portfolio of Daniel Tan, software engineer.",
             "inLanguage": "en-US",
             "publisher": { "@id": "https://danielrltan.com/#person" },
-            "about": [
+            "about": ["Software Engineering", "Web Development", "Interactive 3D"]
+          },
+          {
+            "@type": "ImageObject",
+            "@id": "https://danielrltan.com/#primaryimage",
+            "url": "https://danielrltan.com/images/Me.jpg",
+            "width": 800,
+            "height": 800,
+            "caption": "Daniel Tan"
+          },
+          {
+            "@type": "Person",
+            "@id": "https://danielrltan.com/#person",
+            "name": "Daniel Tan",
+            "url": "https://danielrltan.com/",
+            "jobTitle": "Software Engineer",
+            "image": { "@id": "https://danielrltan.com/#primaryimage" },
+            "email": "mailto:hello@danielrltan.com",
+            "alumniOf": {
+              "@type": "CollegeOrUniversity",
+              "name": "Western University",
+              "sameAs": "https://www.uwo.ca/"
+            },
+            "knowsAbout": [
               "Software Engineering",
               "Web Development",
-              "Interactive 3D"
+              "React",
+              "TypeScript",
+              "three.js",
+              "Interactive 3D",
+              "Python",
+              "FastAPI"
+            ],
+            "hasOccupation": { "@type": "Occupation", "name": "Software Engineer" },
+            "sameAs": [
+              "https://www.linkedin.com/in/danielrltan",
+              "https://github.com/danielrltan"
             ]
+          },
+          {
+            "@type": "CreativeWork",
+            "@id": "https://devpost.com/software/cognetech#project",
+            "name": "Cognetech",
+            "url": "https://devpost.com/software/cognetech",
+            "author": { "@id": "https://danielrltan.com/#person" },
+            "description": "AI-powered video indexing and semantic search tool for clinical footage that auto-generates timestamped behavioural annotations. Python and FastAPI backend integrating TwelveLabs video models.",
+            "keywords": ["Python", "FastAPI", "Semantic Search", "Multimodal", "React"]
+          },
+          {
+            "@type": "CreativeWork",
+            "@id": "https://devpost.com/software/reamp#project",
+            "name": "Revamp",
+            "url": "https://devpost.com/software/reamp",
+            "author": { "@id": "https://danielrltan.com/#person" },
+            "description": "A plug-and-play universal battery management system for second-life EV modules on a QNX RTOS edge node, with a cloud analytics pipeline and Gemini-powered state-of-health estimation. Hack The 6ix finalist.",
+            "keywords": ["C++", "Python", "React", "QNX", "MongoDB", "Gemini"]
+          },
+          {
+            "@type": "CreativeWork",
+            "@id": "https://github.com/danielrltan/danielrltan.com#project",
+            "name": "Interactive 3D Portfolio",
+            "url": "https://danielrltan.com/",
+            "sameAs": "https://github.com/danielrltan/danielrltan.com",
+            "author": { "@id": "https://danielrltan.com/#person" },
+            "description": "This site: a hand-modelled isometric bedroom built in Blender and brought to life with React Three Fiber and Rapier physics, with real keyboard typing, cursor following, throwable objects, and a scroll-driven camera.",
+            "keywords": ["React", "TypeScript", "R3F", "Rapier", "GLSL"]
+          },
+          {
+            "@type": "CreativeWork",
+            "@id": "https://devpost.com/software/weaver-r5qpk0#project",
+            "name": "Weaver",
+            "url": "https://devpost.com/software/weaver-r5qpk0",
+            "author": { "@id": "https://danielrltan.com/#person" },
+            "description": "A collaborative AI ideation canvas that replaces linear chats with branching conversation graphs. React and React Flow front end over a FastAPI and Supabase backend with real-time WebSocket sync. Hack Western 12 submission.",
+            "keywords": ["React", "React Flow", "FastAPI", "Supabase", "WebSockets", "Gemini"]
           }
         ]
       }
@@ -180,26 +264,29 @@
     </div>
     <div id="root"></div>
 
-    <!-- Visible to crawlers and screen readers; hidden visually. Gives
-         classifiers concrete text to read so the site isn't filed as
-         "uncategorized" just because the foreground is a 3D canvas. -->
-    <main class="seo-fallback">
-      <h1>Daniel Tan | Software Engineer Portfolio</h1>
+    <!-- Crawler/no-JS fallback: visible to crawlers and screen readers, hidden
+         visually. Gives classifiers concrete text so the site isn't filed as
+         "uncategorized" just because the foreground is a 3D canvas. React REMOVES
+         this on mount (see main.tsx) so JS users keep exactly one <main> + one
+         <h1> (the React app's), while no-JS crawlers still get this. NOT a <main>
+         for that reason — it must not co-exist as a second landmark. -->
+    <div id="seo-fallback" class="seo-fallback">
+      <h1>Daniel Tan | Software Engineer</h1>
       <p>
-        Personal portfolio of Daniel Tan, a software engineer in Toronto
-        studying Computer Science and business at Western University. The
-        site is an interactive 3D experience built with React, TypeScript,
-        and three.js, featuring an isometric 3D bedroom scene.
+        Personal portfolio of Daniel Tan, a software engineer studying
+        Computer Science and business at Western University. The site is an
+        interactive 3D experience built with React, TypeScript, and three.js,
+        featuring an isometric 3D bedroom scene.
       </p>
       <p>
         Sections on the page: About, a stack and selected-projects showcase
         (including Cognetech, Revamp, Weaver, and this interactive 3D
-        portfolio itself), a work experience timeline, personal interests,
-        and contact. For recruiters and hiring managers, the experience
-        section links the full
+        portfolio itself), a work experience timeline, an honours section
+        (hackathon placements, scholarships, and grants), personal interests,
+        recent snapshots, and contact. For recruiters and hiring managers, the
+        experience section links the full
         <a href="/resume/Daniel_Tan_Resume.pdf">resume (PDF)</a>, and the
-        contact section includes a direct email link
-        (hello@danielrltan.com).
+        contact section includes a direct email link (hello@danielrltan.com).
       </p>
       <p>
         Connect with Daniel on
@@ -207,7 +294,7 @@
         or
         <a href="https://github.com/danielrltan">GitHub</a>.
       </p>
-    </main>
+    </div>
 
     <noscript>
       <div
