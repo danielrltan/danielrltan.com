@@ -2241,16 +2241,13 @@ function Scene({
   // descent so the screen faces camera by the time the boot starts.
   const macTiltRef = useRef<THREE.Group>(null);
   const macSpinRef = useRef<THREE.Group>(null);
-  const shadowMatRef = useRef<THREE.ShadowMaterial>(null);
-  // Grounding (the float-monitor fix): JUST a soft contact shadow under the
-  // base, ramped in with the landing (float beats stay clean). The shelf/slab,
-  // orange pool, and dock-edge were all removed — the owner flagged each as junk
-  // "on the ground" / "what is this plane"; a soft shadow alone grounds it with
-  // nothing visible under the monitor.
+  // Grounding (the float-monitor fix): JUST a soft radial contact shadow under
+  // the base, ramped in with the landing (float beats stay clean). The shelf,
+  // orange pool, dock-edge AND the directional CAST shadow were all removed —
+  // the owner flagged each as junk on the ground ("what is this plane / shadow
+  // plane"). The cast shadow rendered a hard-edged grey shape (clipped by the
+  // shadow-camera frustum); the soft radial decal grounds it with no hard edge.
   const contactMatRef = useRef<THREE.MeshBasicMaterial>(null);
-  // Handle to the shadow-casting key light so the useFrame loop can
-  // toggle its shadow map render off until the contact shadow ramps in.
-  const shadowLightRef = useRef<THREE.DirectionalLight>(null);
   // Overlay material handle written by MacBody once the GLB has been
   // cloned + traversed and the screen-overlay plane exists. Until then
   // this is null; the useFrame loop short-circuits. (CRT post shader:
@@ -2489,24 +2486,10 @@ function Scene({
       (p - THRESHOLDS.shadowStart) /
         (THRESHOLDS.shadowEnd - THRESHOLDS.shadowStart),
     );
-    if (shadowMatRef.current) {
-      shadowMatRef.current.opacity = shadowT * 0.28 * exitScale;
-    }
-    // Grounding decals fade in with the landing (and shrink away on exit) so
-    // the monitor reads as resting on a surface, not floating in the void.
+    // Soft contact shadow fades in with the landing (and shrinks away on exit)
+    // so the monitor reads as resting on a surface, not floating in the void.
     const groundFade = shadowT * exitScale;
     if (contactMatRef.current) contactMatRef.current.opacity = groundFade;
-    // PERF: gate the shadow-map depth pass behind the contact-shadow ramp.
-    //   OLD: directional light rendered its shadow map EVERY visible frame
-    //        (full GLB depth pass) even during BEATs 1-2 when shadowT===0
-    //        and the ShadowMaterial plate is fully transparent — invisible
-    //        cost on every frame the Mac is floating.
-    //   NEW: light.castShadow flips on only while shadowT>0 (shadow actually
-    //        visible). Identical look (plate opacity is 0 before the ramp),
-    //        zero shadow-map render during the long float/spin beats.
-    if (shadowLightRef.current) {
-      shadowLightRef.current.castShadow = shadowT > 0;
-    }
 
     // ── CRT BOOT ──────────────────────────────────────────────────
     const newBoot = clamp01(
@@ -2830,32 +2813,11 @@ function Scene({
       {/* Low ambient — the IBL now provides the soft fill the old 0.55
           ambient was faking. */}
       <ambientLight intensity={0.18} color="#ffffff" />
-      {/* PERF: shadow-camera frustum snugged to the Mac footprint and the
-          shadow map gated on by the useFrame loop only once the contact
-          shadow ramps in (shadowLightRef + shadowT above). ±1.6 box, near 1,
-          far 12. Now PCFSoft + 2048 map + bias for a clean soft contact
-          shadow; intensity dropped (the IBL fills) and warmed slightly.
-          MOBILE PERF (#17): the shadow map drops to 1024 on narrow — the
-          contact shadow is a soft, low-opacity blob, indistinguishable at
-          1024 on a phone-sized canvas, and it quarters the shadow-map
-          depth-pass fill cost. */}
-      <directionalLight
-        ref={shadowLightRef}
-        position={[3, 5, 3]}
-        intensity={1.0}
-        color="#ffffff"
-        castShadow={false}
-        shadow-mapSize-width={narrow ? 1024 : 2048}
-        shadow-mapSize-height={narrow ? 1024 : 2048}
-        shadow-bias={-0.0004}
-        shadow-normalBias={0.02}
-        shadow-camera-left={-1.6}
-        shadow-camera-right={1.6}
-        shadow-camera-top={1.6}
-        shadow-camera-bottom={-1.6}
-        shadow-camera-near={1}
-        shadow-camera-far={12}
-      />
+      {/* Key light — illumination only, NO cast shadow. Its directional cast
+          shadow on a plate rendered a hard-edged grey "shadow plane" on the
+          cream the owner flagged; grounding is now the soft radial contact
+          decal below, so this light just lights the housing. */}
+      <directionalLight position={[3, 5, 3]} intensity={1.0} color="#ffffff" />
       {/* Cool fill (kept low — the IBL does most of the fill now). */}
       <directionalLight position={[-3, 2, 2]} intensity={0.25} color="#eef4ff" />
       {/* Warm brand rim: a crisp orange edge separates the housing from the
@@ -2978,13 +2940,6 @@ function Scene({
         />
       </mesh>
 
-      {/* Shadow plate appears only as the Mac lands; fades in via ref so the
-          floating beats stay clean. Catches the directional key light's contact
-          shadow at the base (the plate itself is transparent — shadowMaterial). */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.47, -0.1]} receiveShadow>
-        <planeGeometry args={[5, 5]} />
-        <shadowMaterial ref={shadowMatRef} opacity={0} transparent />
-      </mesh>
     </>
   );
 }
