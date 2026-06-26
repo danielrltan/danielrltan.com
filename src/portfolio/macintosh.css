@@ -461,16 +461,17 @@
     box-shadow 150ms ease-out,
     background-color 150ms ease-out;
 }
-/* Hover: light an orange phosphor bloom over the painted control so the BACK
-   button + the live-link CTA feel alive. A soft glow (no hard border) forgives
-   the CRT bulge's sub-pixel offset between this flat hotspot and the painted
-   face beneath it. */
+/* Hover: light a TIGHT orange phosphor glow over the painted control so the
+   BACK button + the live-link CTA feel alive. Kept crisp (small blur, no wide
+   spread) — the old 20px/2px-spread bloom read as a blurry smear that "didn't
+   look right" (owner-flagged); a tight glow + a faint fill is cleaner and still
+   forgives the CRT bulge's sub-pixel offset. */
 .mac-crt-controls .mac-crt-close:hover,
 .mac-crt-controls .mac-crt-link:hover {
-  background-color: rgba(255, 79, 0, 0.16);
+  background-color: rgba(255, 79, 0, 0.1);
   box-shadow:
-    0 0 20px 2px rgba(255, 79, 0, 0.5),
-    inset 0 0 16px rgba(255, 79, 0, 0.3);
+    0 0 7px rgba(255, 79, 0, 0.38),
+    inset 0 0 4px rgba(255, 79, 0, 0.2);
 }
 .mac-crt-close:focus-visible,
 .mac-crt-link:focus-visible {

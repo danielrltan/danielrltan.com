@@ -254,18 +254,20 @@ export function Keypad() {
   // RiceBlob's shader uniform.
   const glowOpacityRef = useRef<number>(TUNE_MODE ? 1 : 0);
 
-  // Time-driven drop with an explicit pre-drop pause. User: 'no you
-  // still need to delay it more.' Sequence:
-  //   1. IO fires when section is well inside viewport (-25% inset)
-  //   2. Wait DROP_DELAY_MS: empty section visible, user settles
-  //   3. Ramp over DROP_RAMP_MS: keypad drops at a deliberate cadence
-  //   4. Stays landed
+  // Time-driven drop, started on APPROACH so the keypad is settling AS you
+  // arrive, not after you've stopped on an empty pinned stage. The old tuning
+  // (IO at -25% center + 300ms pause + 1200ms ramp + glow released only at the
+  // very end) made a fast scroll-to-contact read as ~1.2-2.2s of empty section
+  // "loading in" — the owner's "queued in wrong / delaying it" report. Now: IO
+  // fires as the section approaches, a near-zero pause, a brisk ramp, and the
+  // glow releases partway through the drop. (Still time-based, not scroll-bound,
+  // so it honours the fixed-rate-animation rule.)
   useEffect(() => {
     if (TUNE_MODE) return;
     const el = sectionRef.current;
     if (!el) return;
-    const DROP_DELAY_MS = 300;
-    const DROP_RAMP_MS = 1200;
+    const DROP_DELAY_MS = 50;
+    const DROP_RAMP_MS = 550;
     let started = false;
     let rampStarted = false;
     let startTime = 0;
@@ -275,14 +277,11 @@ export function Keypad() {
       const elapsed = performance.now() - startTime;
       const t = Math.max(0, Math.min(1, elapsed / DROP_RAMP_MS));
       pinProgressRef.current = t * 0.4;
-      if (t < 1) {
-        rafId = requestAnimationFrame(tick);
-      } else {
-        // Drop has landed: release the glow. RiceBlob lerps toward
-        // this target over ~1s, so the wash reads as a deliberate
-        // fade-in rather than a pop.
-        glowOpacityRef.current = 1;
-      }
+      // Release the glow PARTWAY through the drop (not at the very end): the
+      // RiceBlob wash lerps toward this over ~1s, so releasing it at t=0.5 lands
+      // the wash close to the model's landing instead of ~1s behind it.
+      if (t >= 0.5) glowOpacityRef.current = 1;
+      if (t < 1) rafId = requestAnimationFrame(tick);
     };
     const io = new IntersectionObserver(
       (entries) => {
@@ -302,7 +301,7 @@ export function Keypad() {
           }
         }
       },
-      { rootMargin: "-25% 0px -25% 0px" },
+      { rootMargin: "0px 0px 10% 0px" },
     );
     io.observe(el);
     return () => {
@@ -394,14 +393,6 @@ export function Keypad() {
             </li>
           ))}
         </ul>
-      </div>
-
-      {/* Editorial hint watermark (.keypad-hint is styled in keypad.css but
-          was never mounted). Sits behind the live canvas on desktop as a quiet
-          label; on mobile it becomes the heading above the contact chips. It
-          also remains visible if WebGL fails, so the section is never blank. */}
-      <div className="keypad-hint" aria-hidden="true">
-        <span className="keypad-hint-eyebrow">Find me elsewhere</span>
       </div>
 
       <div className="keypad-stage">

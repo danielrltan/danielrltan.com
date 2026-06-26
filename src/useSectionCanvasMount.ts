@@ -1,4 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
+import { isLowTier } from "./capabilityTier";
 
 /**
  * MOBILE NEVER MOUNTS A SECTION CANVAS (≤768px).
@@ -96,6 +97,21 @@ export function useSectionCanvasMount(
     // this section opted out (its 3D is the mobile experience, e.g. Hobbies).
     if (isMobile && disableOnMobile) {
       setMounted(false);
+      return;
+    }
+    // EAGER PATH (ported back from the pre-gate era, commit 439829b's
+    // `useState(true)`): capable DESKTOP hardware mounts the canvas IMMEDIATELY,
+    // so the WebGL context + GLB + first paint build during the loader hold
+    // instead of on scroll-approach — the keypad-and-friends "loads in late /
+    // glitches in" regression the on-approach gate introduced. The
+    // IntersectionObserver approach-gate (below) is kept ONLY for low-tier
+    // (freeze-prone) GPUs and the mobile-opted-in sections (Hobbies/Photos),
+    // which is the ONLY hardware the gate was ever built to protect. The
+    // <=768px zero-WebGL short-circuit above is untouched. On capable HW this
+    // never unmounts (matches the old eager behavior); a few idle demand-loop
+    // contexts cost nothing now that the 27MB live room is gone.
+    if (!isMobile && !isLowTier()) {
+      setMounted(true);
       return;
     }
     if (typeof IntersectionObserver === "undefined") {

@@ -727,7 +727,12 @@ export function Macintosh() {
           left: x + pad + bx,
           top: y + h - pad - btnH - by,
           height: Math.max(btnH, 34),
-          minWidth: 132,
+          // Cover the FULL painted CTA width. The painted button is
+          // measureText(label)+40 wide ("VIEW DEV POST" is the longest, ~0.23w);
+          // a fixed minWidth:132 left the right half of the button — exactly
+          // where the cursor lands on the arrow — with no hotspot, so the hover
+          // glow never fired there (owner-flagged). 0.3w covers every label.
+          width: 0.3 * w,
         };
         return (
           <div className="mac-crt-controls" aria-hidden="true">

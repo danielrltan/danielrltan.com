@@ -1205,65 +1205,12 @@ function drawTuiFrame(
   ctx.textBaseline = "alphabetic";
 }
 
-/* ─────────────────────────────────────────────────────────────────
- * AMBER ORDERED-DITHER. Full-colour project photos are the single
- * biggest break in the phosphor illusion, so each one is processed into
- * a 1-bit-feeling amber duotone (Bayer 4×4 ordered dither → a 5-stop
- * orange ramp) before it is painted — the real pixels, transformed (not
- * an orange scrim over the photo). Built once per source on first decode
- * and cached; the chunky CRT-pixel read comes from dithering at a low
- * working resolution and scaling up with smoothing off.
- * ──────────────────────────────────────────────────────────────── */
-const amberThumbCache = new Map<string, HTMLCanvasElement>();
-// Bayer 4×4 threshold matrix (values 0..15, normalised /16 at use).
-const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-// Amber ramp, ground → hot. Dither quantizes luminance onto these stops.
-const AMBER_RAMP: [number, number, number][] = [
-  [10, 8, 6], // CRT_BASE ground
-  [92, 38, 8],
-  [176, 70, 8],
-  [255, 95, 10], // ~CRT_ACCENT
-  [255, 214, 160], // CRT_HOT
-];
-function getAmberThumb(src: string): HTMLCanvasElement | null {
-  const cached = amberThumbCache.get(src);
-  if (cached) return cached;
-  const img = projectImageCache.get(src);
-  if (!imageReady(img)) return null;
-  const LW = 168; // low working res → chunky phosphor pixels when scaled up
-  const ar = img.naturalWidth / img.naturalHeight;
-  const LH = Math.max(1, Math.round(LW / ar));
-  const work = document.createElement("canvas");
-  work.width = LW;
-  work.height = LH;
-  const wctx = work.getContext("2d", { willReadFrequently: true })!;
-  wctx.drawImage(img, 0, 0, LW, LH);
-  const id = wctx.getImageData(0, 0, LW, LH);
-  const d = id.data;
-  const last = AMBER_RAMP.length - 1;
-  for (let yy = 0; yy < LH; yy++) {
-    for (let xx = 0; xx < LW; xx++) {
-      const i = (yy * LW + xx) * 4;
-      // Perceptual luminance, then a small gamma lift so mid-greys read.
-      let lum = (0.299 * d[i]! + 0.587 * d[i + 1]! + 0.114 * d[i + 2]!) / 255;
-      lum = Math.pow(lum, 0.85);
-      const thr = BAYER4[(yy & 3) * 4 + (xx & 3)]! / 16 - 0.5;
-      let level = Math.round(lum * last + thr);
-      level = level < 0 ? 0 : level > last ? last : level;
-      const c = AMBER_RAMP[level]!;
-      d[i] = c[0];
-      d[i + 1] = c[1];
-      d[i + 2] = c[2];
-      d[i + 3] = 255;
-    }
-  }
-  wctx.putImageData(id, 0, 0);
-  amberThumbCache.set(src, work);
-  return work;
-}
-/** Cover-fit an amber-dithered thumbnail into a dest rect, smoothing OFF so
- *  the dither stays crisp (chunky CRT pixels, never a blurred photo). */
-function drawAmberThumbCover(
+/* Cover-fit a project's COLOUR thumbnail into a dest rect (centre-cropped).
+ * The owner asked for colour thumbnails back (the amber 1-bit dither was
+ * dropped); the screen's CRT shader still lays scanlines + bulge over them, so
+ * the real artwork reads as a colour tube, not a flat pasted photo. Returns
+ * false until the source image has decoded so the caller can paint a fallback. */
+function drawProjectThumbCover(
   ctx: CanvasRenderingContext2D,
   src: string,
   dx: number,
@@ -1271,10 +1218,10 @@ function drawAmberThumbCover(
   dw: number,
   dh: number,
 ): boolean {
-  const work = getAmberThumb(src);
-  if (!work) return false;
-  const iw = work.width;
-  const ih = work.height;
+  const img = getProjectImage(src);
+  if (!imageReady(img)) return false;
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
   const ir = iw / ih;
   const tr = dw / dh;
   let sx: number, sy: number, sw: number, sh: number;
@@ -1290,11 +1237,10 @@ function drawAmberThumbCover(
     sy = (ih - sh) / 2;
   }
   ctx.save();
-  ctx.imageSmoothingEnabled = false;
   ctx.beginPath();
   ctx.rect(dx, dy, dw, dh);
   ctx.clip();
-  ctx.drawImage(work, sx, sy, sw, sh, dx, dy, dw, dh);
+  ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
   ctx.restore();
   return true;
 }
@@ -1506,8 +1452,8 @@ function drawProjectDetail(
   const backX = PAD;
   const backY = Math.round((barH - backH) / 2);
   ctx.save();
-  ctx.shadowColor = "rgba(255, 79, 0, 0.5)";
-  ctx.shadowBlur = 10;
+  ctx.shadowColor = "rgba(255, 79, 0, 0.35)";
+  ctx.shadowBlur = 5;
   ctx.strokeStyle = CRT_ACCENT;
   ctx.lineWidth = 1.5;
   ctx.strokeRect(backX + 0.75, backY + 0.75, backW - 1.5, backH - 1.5);
@@ -1615,7 +1561,7 @@ function drawProjectDetail(
     const panelBottom = frameTop + frameH - Math.round(h * 0.05);
     const imgTop = Math.round(panelTop + (panelBottom - panelTop - imgH) / 2);
     ctx.globalAlpha = headReveal;
-    const drew = drawAmberThumbCover(ctx, project.image!, imgX, imgTop, imgW, imgH);
+    const drew = drawProjectThumbCover(ctx, project.image!, imgX, imgTop, imgW, imgH);
     if (!drew) {
       ctx.fillStyle = CRT_BAR;
       ctx.fillRect(imgX, imgTop, imgW, imgH);
@@ -2085,7 +2031,7 @@ function drawScreen(
     const thumbX = idxX + idxW + 18;
     const thumbY = ry + Math.round((rowH - thumbH) / 2);
     const drew = p.image
-      ? drawAmberThumbCover(ctx, p.image, thumbX, thumbY, thumbW, thumbH)
+      ? drawProjectThumbCover(ctx, p.image, thumbX, thumbY, thumbW, thumbH)
       : false;
     if (!drew) {
       ctx.fillStyle = CRT_BAR;
@@ -2289,13 +2235,12 @@ function Scene({
   const macTiltRef = useRef<THREE.Group>(null);
   const macSpinRef = useRef<THREE.Group>(null);
   const shadowMatRef = useRef<THREE.ShadowMaterial>(null);
-  // Grounding (the float-monitor fix): a light shelf the Mac rests on, a thin
-  // orange dock edge along its front, a contact shadow, and the screen's
-  // orange emission pool — all ramped in with the landing (float beats clean).
+  // Grounding (the float-monitor fix): a clean light shelf the Mac rests on +
+  // a soft contact shadow, ramped in with the landing (float beats stay clean).
+  // (The orange emission pool + dock-edge were removed — owner flagged them as
+  // junk "on the ground"; a neutral surface + shadow grounds it cleanly.)
   const contactMatRef = useRef<THREE.MeshBasicMaterial>(null);
-  const poolMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const shelfMatRef = useRef<THREE.MeshStandardMaterial>(null);
-  const edgeMatRef = useRef<THREE.MeshBasicMaterial>(null);
   // Handle to the shadow-casting key light so the useFrame loop can
   // toggle its shadow map render off until the contact shadow ramps in.
   const shadowLightRef = useRef<THREE.DirectionalLight>(null);
@@ -2357,28 +2302,13 @@ function Scene({
   const contactTex = useMemo(
     () =>
       makeRadialDecal([
-        [0, "rgba(8, 5, 2, 0.95)"],
-        [0.5, "rgba(8, 5, 2, 0.5)"],
+        [0, "rgba(8, 5, 2, 0.9)"],
+        [0.5, "rgba(8, 5, 2, 0.46)"],
         [1, "rgba(8, 5, 2, 0)"],
       ]),
     [],
   );
-  const poolTex = useMemo(
-    () =>
-      makeRadialDecal([
-        [0, "rgba(255, 92, 24, 0.5)"],
-        [0.45, "rgba(255, 70, 12, 0.16)"],
-        [1, "rgba(255, 70, 12, 0)"],
-      ]),
-    [],
-  );
-  useEffect(
-    () => () => {
-      contactTex.dispose();
-      poolTex.dispose();
-    },
-    [contactTex, poolTex],
-  );
+  useEffect(() => () => contactTex.dispose(), [contactTex]);
 
   // Preload the project thumbnails; the version bumps as each decodes so
   // the CanvasTexture rebuilds and the artwork paints in.
@@ -2550,9 +2480,7 @@ function Scene({
     // the monitor reads as resting on a surface, not floating in the void.
     const groundFade = shadowT * exitScale;
     if (contactMatRef.current) contactMatRef.current.opacity = groundFade;
-    if (poolMatRef.current) poolMatRef.current.opacity = groundFade;
     if (shelfMatRef.current) shelfMatRef.current.opacity = groundFade;
-    if (edgeMatRef.current) edgeMatRef.current.opacity = groundFade * 0.85;
     // PERF: gate the shadow-map depth pass behind the contact-shadow ramp.
     //   OLD: directional light rendered its shadow map EVERY visible frame
     //        (full GLB depth pass) even during BEATs 1-2 when shadowT===0
@@ -3013,53 +2941,23 @@ function Scene({
         </group>
       )}
 
-      {/* GROUNDING (the float-monitor fix), all ramped in by the landing
-          (shadowT) and shrunk away on exit. The monitor reads as RESTING on a
-          surface instead of hovering in the cream void.
-            1. a light shelf it sits on — wide + deep enough to spill past the
-               frame so it reads as ground, not a floating slab;
-            2. a thin glowing orange dock edge along the shelf front (threads
-               the screen's accent into the world);
-            3. a warm orange emission pool (the lit tube spilling onto the
-               shelf in front of it) + a crisp dark contact shadow at the base.
-          No grid, no "rice" texture — a clean surface. */}
-      {/* Landed Mac base sits at world y≈0.465; all grounding is placed there
-          so it reads in the close framing (a shelf below the housing was off
-          the bottom of the frame). */}
+      {/* GROUNDING (the float-monitor fix), ramped in by the landing (shadowT)
+          and shrunk away on exit: a clean neutral shelf the monitor rests on
+          (wide + deep enough to spill past the frame so it reads as ground, not
+          a floating slab) + a soft dark contact shadow at the base. No orange
+          pool / dock edge (owner: junk "on the ground"), no grid, no texture.
+          Landed Mac base sits at world y≈0.465; the grounding is placed there so
+          it reads in the close framing (a shelf below the housing was off the
+          bottom of the frame). */}
       <mesh position={[0, 0.405, -0.15]}>
         <boxGeometry args={[5.4, 0.12, 2.8]} />
         <meshStandardMaterial
           ref={shelfMatRef}
-          color="#e4ddce"
-          roughness={0.94}
+          color="#e8e7e3"
+          roughness={0.96}
           metalness={0}
           transparent
           opacity={0}
-        />
-      </mesh>
-      <mesh position={[0, 0.466, 1.05]} renderOrder={3}>
-        <boxGeometry args={[2.2, 0.013, 0.04]} />
-        <meshBasicMaterial
-          ref={edgeMatRef}
-          color="#ff4f00"
-          transparent
-          opacity={0}
-          toneMapped={false}
-        />
-      </mesh>
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.472, 0.42]}
-        renderOrder={1}
-      >
-        <planeGeometry args={[3.8, 2.1]} />
-        <meshBasicMaterial
-          ref={poolMatRef}
-          map={poolTex}
-          transparent
-          opacity={0}
-          depthWrite={false}
-          toneMapped={false}
         />
       </mesh>
       <mesh

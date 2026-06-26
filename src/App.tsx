@@ -592,24 +592,24 @@ export default function App() {
     };
   }, []);
 
-  /* Warm the lazy section-scene chunks during idle time once the loader is
-   * done, so each scene's chunk is compiled AND its GLBs/textures are fetched
-   * before the user scrolls to it. Importing each module runs its module-scope
-   * preload (useGLTF.preload for Mac/Keypad, startPreload for Hobbies), so this
-   * is the load-quicker lever that matters: it prefetches ASSETS without ever
-   * creating a WebGL context (those still mount on-approach), so it can't
-   * reintroduce the multi-context freeze — it just means sections are READY on
-   * arrival instead of popping empty / placeholder meshes on a fast scroll.
+  /* Warm the lazy section-scene chunks, so each scene's chunk is compiled AND
+   * its GLBs/textures are fetched BEFORE the user scrolls to it. Importing each
+   * module runs its module-scope preload (useGLTF.preload for Mac/Keypad,
+   * startPreload for Hobbies) — bytes + parse only, NO WebGL context — so it
+   * can't touch the freeze protection; it just makes sections ready on arrival.
    *
-   * Two staggered waves: the two nearest heavy scenes first, then the heavier
-   * Play cluster (~2.3MB of Hobbies GLBs) a beat later. Hobbies USED to be
-   * excluded (its download was a standing cost on weak laptops); the overhauled
-   * site deliberately prefetches it now — the owner asked for quicker loading,
-   * and staggering it behind wave 1 keeps it off the hero's first interactions.
-   * Gated on `ready` so none of this keeps drei's useProgress active under the
-   * loading screen. */
+   * Fires on FIRST MOUNT, NOT gated on `ready` (it used to be — the stated
+   * reason was "don't keep drei's useProgress active under the loader," but
+   * useAssemblyProgress dropped useProgress entirely, so that gate was pure cost
+   * that pushed every prefetch ~3-4s out behind the loader hold). Warming during
+   * the loader means the chunks + GLBs are cached by the time it lifts, killing
+   * the cold "loads in late" pop the owner flagged — especially the Keypad.
+   *
+   * KEYPAD FIRST: it's the LAST section AND a jump-menu/StatusBar teleport
+   * target, so its chunk compiles ahead of the others (mac.glb is only ~15KB, so
+   * Mac loses nothing by going second). Hobbies (~620KB of GLBs) is staggered
+   * last so its parse doesn't contend with the nearer scenes. */
   useEffect(() => {
-    if (!ready) return;
     const w = window as unknown as {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
       cancelIdleCallback?: (id: number) => void;
@@ -625,23 +625,16 @@ export default function App() {
         timers.push(setTimeout(cb, fallbackMs));
       }
     };
-    // Wave 1 — the two nearest heavy scenes. Short timeout (was 1200) so they
-    // start compiling + fetching their GLBs promptly after the loader lifts.
-    schedule(
-      () => {
-        void import("./macintosh/MacintoshScene");
-        void import("./keypad/KeypadScene");
-      },
-      500,
-      200,
-    );
+    // Wave 1 — Keypad (last section / teleport target) compiles first, then Mac.
+    schedule(() => void import("./keypad/KeypadScene"), 300, 120);
+    schedule(() => void import("./macintosh/MacintoshScene"), 450, 200);
     // Wave 2 — the heavy Play cluster, staggered behind wave 1.
-    schedule(() => void import("./other/HobbiesScene"), 1800, 1000);
+    schedule(() => void import("./other/HobbiesScene"), 1400, 800);
     return () => {
       ids.forEach((id) => w.cancelIdleCallback?.(id));
       timers.forEach((t) => clearTimeout(t));
     };
-  }, [ready]);
+  }, []);
 
   return (
     <AssemblyProvider>
