@@ -86,6 +86,10 @@ export interface ScreenRect {
   h: number;
   /** Eased detail-zoom progress 0..1. */
   vis: number;
+  /** Painted live/dev-post CTA width as a fraction of the screen-face width, so
+   *  the DOM link hotspot matches the actual painted button (whose width varies
+   *  by label) instead of a fixed fraction that overshoots it. */
+  linkWFrac?: number;
 }
 
 const THRESHOLDS = {
@@ -1408,6 +1412,12 @@ const CRT_LAYOUT = {
   backHFrac: 0.56, // "← BACK" button height as a fraction of the TITLE BAR
 } as const;
 
+// Painted CTA width as a fraction of the canvas width, written by
+// drawProjectDetail and reported via ScreenRect.linkWFrac so the DOM link
+// hotspot matches the painted button (its width varies by label; a fixed
+// fraction overshot it — the empty lit box right of the button the owner flagged).
+let DETAIL_CTA_WFRAC = 0;
+
 function drawProjectDetail(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -1701,6 +1711,7 @@ function drawProjectDetail(
     ctx.textBaseline = "middle";
     const arrow = "  →";
     const btnW = Math.round(ctx.measureText(label + arrow).width + 40);
+    DETAIL_CTA_WFRAC = btnW / w;
     const bx = PAD;
     const linkHot = hovered === "link";
     ctx.save();
@@ -2564,6 +2575,7 @@ function Scene({
             w: maxX - minX,
             h: maxY - minY,
             vis: easeInOutCubic(clamp01(dz)),
+            linkWFrac: DETAIL_CTA_WFRAC,
           });
         } else {
           onScreenRect(null);

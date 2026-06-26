@@ -171,7 +171,12 @@ export function Macintosh() {
         Math.abs(prev.y - next.y) < 0.5 &&
         Math.abs(prev.w - next.w) < 0.5 &&
         Math.abs(prev.h - next.h) < 0.5 &&
-        Math.abs(prev.vis - next.vis) < 0.01
+        Math.abs(prev.vis - next.vis) < 0.01 &&
+        // Also propagate a changed linkWFrac (the painter reports the CTA width
+        // a tick AFTER the rect first appears, so the FIRST rect captured
+        // linkWFrac=0; without this the position settles and the real width is
+        // never picked up → the link hotspot stayed at the fallback width).
+        prev.linkWFrac === next.linkWFrac
       ) {
         return prev;
       }
@@ -741,12 +746,16 @@ export function Macintosh() {
           left: x + pad + bx,
           top: y + h - pad - btnH - by,
           height: Math.max(btnH, 34),
-          // Cover the FULL painted CTA width. The painted button is
-          // measureText(label)+40 wide ("VIEW DEV POST" is the longest, ~0.23w);
-          // a fixed minWidth:132 left the right half of the button — exactly
-          // where the cursor lands on the arrow — with no hotspot, so the hover
-          // glow never fired there (owner-flagged). 0.3w covers every label.
-          width: 0.3 * w,
+          // Match the painted CTA width exactly: the painter reports the live
+          // button's width as a fraction of the screen face (linkWFrac), since it
+          // varies by label. A fixed fraction overshot it by ~120px (the empty
+          // box right of "VIEW DEV POST" the owner flagged); +6px forgiveness.
+          width:
+            (screenRect.linkWFrac && screenRect.linkWFrac > 0
+              ? screenRect.linkWFrac
+              : 0.26) *
+              w +
+            6,
         };
         return (
           <div className="mac-crt-controls" aria-hidden="true">
