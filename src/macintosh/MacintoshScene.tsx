@@ -2228,6 +2228,13 @@ function Scene({
   // not shutting down. Drives the time-based double-blink + collapse on the
   // overlay shader (uPowerOff). Reset when the user scrolls back into the pin.
   const shutdownStartRef = useRef(-1);
+  // True while the scene is off-screen. The canvas now EAGER-mounts and never
+  // unmounts on capable HW (useSectionCanvasMount), so scene refs persist across
+  // a scroll-away/back instead of remounting fresh — without this, re-entering
+  // (e.g. scrolling UP from below into the pin's exit window) replayed a STALE
+  // shutdownStartRef and showed a dead, fully-collapsed black CRT. We reset the
+  // power state on the first visible frame after being hidden so re-entry is clean.
+  const wasHiddenRef = useRef(false);
   // Tilt group sits between the Y-translation group (macGroupRef) and
   // the spin group (macSpinRef). It holds the keypad-style float pose
   // (X/Y/Z euler from MAC_FLOAT_TILT_*) and unwinds to 0 during the
@@ -2235,12 +2242,12 @@ function Scene({
   const macTiltRef = useRef<THREE.Group>(null);
   const macSpinRef = useRef<THREE.Group>(null);
   const shadowMatRef = useRef<THREE.ShadowMaterial>(null);
-  // Grounding (the float-monitor fix): a clean light shelf the Mac rests on +
-  // a soft contact shadow, ramped in with the landing (float beats stay clean).
-  // (The orange emission pool + dock-edge were removed — owner flagged them as
-  // junk "on the ground"; a neutral surface + shadow grounds it cleanly.)
+  // Grounding (the float-monitor fix): JUST a soft contact shadow under the
+  // base, ramped in with the landing (float beats stay clean). The shelf/slab,
+  // orange pool, and dock-edge were all removed — the owner flagged each as junk
+  // "on the ground" / "what is this plane"; a soft shadow alone grounds it with
+  // nothing visible under the monitor.
   const contactMatRef = useRef<THREE.MeshBasicMaterial>(null);
-  const shelfMatRef = useRef<THREE.MeshStandardMaterial>(null);
   // Handle to the shadow-casting key light so the useFrame loop can
   // toggle its shadow map render off until the contact shadow ramps in.
   const shadowLightRef = useRef<THREE.DirectionalLight>(null);
@@ -2360,7 +2367,16 @@ function Scene({
     // PERF: short-circuit when off-screen. With frameloop="demand" on
     // the canvas, this stops the entire WebGL submit pipeline while
     // the user is on other sections.
-    if (visibleRef.current === false) return;
+    if (visibleRef.current === false) {
+      wasHiddenRef.current = true;
+      return;
+    }
+    if (wasHiddenRef.current) {
+      // First visible frame after a scroll-away: clear stale power-off state so
+      // the eager (never-unmounted) canvas re-enters clean, not on a dead CRT.
+      wasHiddenRef.current = false;
+      shutdownStartRef.current = -1;
+    }
     invalidate();
     // On narrow viewports the section isn't pinned, so the scroll-driven
     // pinProgressRef never advances. Drive the choreography from a fixed
@@ -2480,7 +2496,6 @@ function Scene({
     // the monitor reads as resting on a surface, not floating in the void.
     const groundFade = shadowT * exitScale;
     if (contactMatRef.current) contactMatRef.current.opacity = groundFade;
-    if (shelfMatRef.current) shelfMatRef.current.opacity = groundFade;
     // PERF: gate the shadow-map depth pass behind the contact-shadow ramp.
     //   OLD: directional light rendered its shadow map EVERY visible frame
     //        (full GLB depth pass) even during BEATs 1-2 when shadowT===0
@@ -2942,30 +2957,17 @@ function Scene({
       )}
 
       {/* GROUNDING (the float-monitor fix), ramped in by the landing (shadowT)
-          and shrunk away on exit: a clean neutral shelf the monitor rests on
-          (wide + deep enough to spill past the frame so it reads as ground, not
-          a floating slab) + a soft dark contact shadow at the base. No orange
-          pool / dock edge (owner: junk "on the ground"), no grid, no texture.
-          Landed Mac base sits at world y≈0.465; the grounding is placed there so
-          it reads in the close framing (a shelf below the housing was off the
-          bottom of the frame). */}
-      <mesh position={[0, 0.405, -0.15]}>
-        <boxGeometry args={[5.4, 0.12, 2.8]} />
-        <meshStandardMaterial
-          ref={shelfMatRef}
-          color="#e8e7e3"
-          roughness={0.96}
-          metalness={0}
-          transparent
-          opacity={0}
-        />
-      </mesh>
+          and shrunk away on exit: JUST a soft dark contact shadow under the base
+          plus the directional shadow plate. No shelf/slab (owner: "wtf is this
+          plane"), no orange pool/edge, no grid — the monitor reads as resting on
+          an implied surface via its own shadow, with nothing visibly under it.
+          Landed Mac base sits at world y≈0.465; the shadow is placed there. */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0.476, -0.05]}
         renderOrder={2}
       >
-        <planeGeometry args={[2.7, 1.9]} />
+        <planeGeometry args={[3.1, 2.1]} />
         <meshBasicMaterial
           ref={contactMatRef}
           map={contactTex}
@@ -2977,8 +2979,8 @@ function Scene({
       </mesh>
 
       {/* Shadow plate appears only as the Mac lands; fades in via ref so the
-          floating beats stay clean. Sits at the shelf top so the directional
-          key light's contact shadow falls onto the shelf. */}
+          floating beats stay clean. Catches the directional key light's contact
+          shadow at the base (the plate itself is transparent — shadowMaterial). */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.47, -0.1]} receiveShadow>
         <planeGeometry args={[5, 5]} />
         <shadowMaterial ref={shadowMatRef} opacity={0} transparent />

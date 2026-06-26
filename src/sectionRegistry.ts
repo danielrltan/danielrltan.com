@@ -31,7 +31,19 @@ export interface SectionEntry {
 export const SECTION_REGISTRY: SectionEntry[] = [
   { number: "00", label: "Hero", selector: ".portfolio-section--hero" },
   { number: "01", label: "About", selector: ".portfolio-section:not([class*='--'])" },
-  { number: "02", label: "Projects", selector: ".portfolio-mac" },
+  // Projects is a multi-beat GSAP-pinned section; a bare element jump lands on
+  // the pinned element's CURRENT position, which is pin-START (p≈0, the float
+  // beat) coming from above but pin-END (p≈1, the exit-vanish / powered-off
+  // state) coming from below — so jumping back up to "Projects" showed a blank,
+  // collapsed Mac. Route it through the pin like Play: land on the booted,
+  // interactive CRT (0.85 is a snap rest beat, so snap doesn't fight the jump).
+  {
+    number: "02",
+    label: "Projects",
+    selector: ".portfolio-mac",
+    pinId: "mac-pin",
+    jumpProgress: 0.85,
+  },
   { number: "03", label: "Work", selector: ".portfolio-work" },
   // Play is interests-only — the "Recents" photos moved out into their own
   // Photos section (below), so a jump lands on the section top (the 3D hobby

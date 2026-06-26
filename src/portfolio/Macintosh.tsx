@@ -268,6 +268,11 @@ export function Macintosh() {
     const el = sectionRef.current;
     if (!el) return;
     const st = ScrollTrigger.create({
+      // Named so a nav/dial jump can target a specific beat of this pin
+      // (see sectionRegistry "Projects" → pinId:"mac-pin", jumpProgress:0.85)
+      // instead of an element jump that lands on pin-start or pin-end depending
+      // on scroll direction (the blank-on-jump-from-below bug).
+      id: "mac-pin",
       trigger: el,
       start: "top top",
       end: `+=${PIN_DURATION_PX}`,
