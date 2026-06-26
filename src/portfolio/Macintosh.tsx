@@ -119,6 +119,13 @@ export function Macintosh() {
   // drawer; the CRT IS the detail view. Clearing it (ESC / BACK) pulls
   // the camera back out to the tile grid.
   const [selected, setSelected] = useState<MacProject | null>(null);
+  // Which on-CRT control the pointer is over ("back"|"link"), driving the
+  // CANVAS-painted hover feedback. The DOM hotspots are invisible hover/click
+  // detectors; painting the hover on the canvas keeps it aligned with the
+  // bulged button (a flat DOM glow drifted off it — owner-flagged).
+  const [hoveredControl, setHoveredControl] = useState<"back" | "link" | null>(
+    null,
+  );
   // MOBILE ACCORDION: which project's inline detail is expanded on the
   // narrow/landed path. Replaces the old open -> detail -> Back flow with a
   // tap-to-expand dropdown per project (user request: "just make it
@@ -205,6 +212,7 @@ export function Macintosh() {
     if (selected) track("project_close", { project: selected.title });
     setSelected(null);
     setScreenRect(null);
+    setHoveredControl(null);
     const prev = openerFocusRef.current;
     openerFocusRef.current = null;
     if (prev && typeof prev.focus === "function") {
@@ -424,6 +432,7 @@ export function Macintosh() {
               selected={selected}
               onCloseProject={closeProject}
               onScreenRect={staticLanded ? undefined : handleScreenRect}
+              hoveredControl={hoveredControl}
             />
           </Suspense>
         )}
@@ -747,6 +756,8 @@ export function Macintosh() {
               className="mac-crt-close"
               style={closeStyle}
               onClick={closeProject}
+              onPointerEnter={() => setHoveredControl("back")}
+              onPointerLeave={() => setHoveredControl(null)}
               aria-label="Close project"
             />
             {(selected.liveHref || selected.repoHref) && (
@@ -756,6 +767,8 @@ export function Macintosh() {
                 href={(selected.liveHref || selected.repoHref)!}
                 target="_blank"
                 rel="noreferrer"
+                onPointerEnter={() => setHoveredControl("link")}
+                onPointerLeave={() => setHoveredControl(null)}
                 onClick={() =>
                   track("project_link", {
                     project: selected.title,

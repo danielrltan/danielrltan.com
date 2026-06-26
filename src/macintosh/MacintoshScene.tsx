@@ -67,6 +67,15 @@ interface Props {
    * controls can fade in only once the screen has zoomed in.
    */
   onScreenRect?: (rect: ScreenRect | null) => void;
+  /**
+   * Which on-CRT control the pointer is hovering ("back" | "link"), or null.
+   * Set by the DOM hotspots in Macintosh.tsx and threaded to the painter so the
+   * hover feedback is drawn ON THE CANVAS — it then barrel-distorts identically
+   * with the bulged button and is always perfectly aligned (a flat DOM glow
+   * can't track the bulge; that was the "hover elements aren't correctly placed"
+   * bug). The hotspots are now invisible hover/click detectors only.
+   */
+  hoveredControl?: "back" | "link" | null;
 }
 
 /** CRT screen face projected to on-screen CSS pixels (canvas-relative). */
@@ -350,26 +359,6 @@ interface ScreenInfo {
 }
 
 useGLTF.preload("/mac.glb");
-
-/** Soft radial decal texture (transparent edge) used to GROUND the landed
- *  monitor: a crisp dark contact shadow directly under the base + a warm
- *  orange pool of the tube's own emission spilling onto the surface in front
- *  of it. Lets the Mac read as RESTING on a (suggested) surface instead of
- *  floating in the cream void, without a desk, a grid, or any "rice" texture. */
-function makeRadialDecal(stops: [number, string][]): THREE.CanvasTexture {
-  const s = 256;
-  const c = document.createElement("canvas");
-  c.width = s;
-  c.height = s;
-  const cx = c.getContext("2d")!;
-  const g = cx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
-  for (const [at, col] of stops) g.addColorStop(at, col);
-  cx.fillStyle = g;
-  cx.fillRect(0, 0, s, s);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
 
 // Reusable scratch vectors for the per-frame dead-on detail-zoom math
 // (avoids allocating Vector3s every frame in the useFrame loop).
@@ -1274,6 +1263,9 @@ function useScreenTexture(
   // the boot/desktop/detail painters so the terminal caret pulses on otherwise
   // static screens; the repaint cost is one extra texture upload per flip.
   cursorOn: boolean,
+  // Which detail control the pointer is over ("back"|"link"|null) — painted as
+  // an on-canvas hover state so it aligns with the bulged button.
+  hovered: "back" | "link" | null,
 ): THREE.CanvasTexture {
   // PERF (GPU texture leak fix):
   //   OLD: every dependency change (bootProgress/hoverIndex/detailReveal/...
@@ -1349,7 +1341,7 @@ function useScreenTexture(
   // the swap doesn't flash a blank panel at the very start of the zoom.
   // (drawScreen/drawProjectDetail both fully repaint, so no clear is needed.)
   if (selected && detailReveal > 0.04) {
-    drawProjectDetail(ctx, w, h, selected, detailReveal, cursorOn);
+    drawProjectDetail(ctx, w, h, selected, detailReveal, cursorOn, hovered);
   } else if (floatActive) {
     drawAsciiSphere(ctx, w, h, performance.now() / 1000);
   } else {
@@ -1423,6 +1415,7 @@ function drawProjectDetail(
   project: MacProject,
   reveal: number,
   cursorOn: boolean,
+  hovered: "back" | "link" | null,
 ) {
   const r = clamp01(reveal);
   const PAD = Math.round(w * CRT_LAYOUT.padFrac);
@@ -1445,20 +1438,28 @@ function drawProjectDetail(
   ctx.lineTo(w, barH + 0.5);
   ctx.stroke();
 
-  // BACK control: bordered amber key with a baked phosphor glow. The DOM
-  // hotspot sits exactly over it (same CRT_LAYOUT fractions).
+  // BACK control: bordered amber key. The DOM hotspot sits over it (same
+  // CRT_LAYOUT fractions) but is INVISIBLE — the hover feedback is painted HERE
+  // on the canvas so it barrel-distorts with the button and stays aligned (a
+  // flat DOM glow drifted off the bulged button).
   const backW = Math.round(w * CRT_LAYOUT.backWFrac);
   const backH = Math.round(barH * CRT_LAYOUT.backHFrac);
   const backX = PAD;
   const backY = Math.round((barH - backH) / 2);
+  const backHot = hovered === "back";
+  if (backHot) {
+    // Hover: fill the key with a faint orange wash so it reads as lit.
+    ctx.fillStyle = "rgba(255, 79, 0, 0.22)";
+    ctx.fillRect(backX, backY, backW, backH);
+  }
   ctx.save();
-  ctx.shadowColor = "rgba(255, 79, 0, 0.35)";
-  ctx.shadowBlur = 5;
+  ctx.shadowColor = backHot ? "rgba(255, 79, 0, 0.6)" : "rgba(255, 79, 0, 0.35)";
+  ctx.shadowBlur = backHot ? 9 : 5;
   ctx.strokeStyle = CRT_ACCENT;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = backHot ? 2 : 1.5;
   ctx.strokeRect(backX + 0.75, backY + 0.75, backW - 1.5, backH - 1.5);
   ctx.restore();
-  ctx.fillStyle = CRT_ACCENT;
+  ctx.fillStyle = backHot ? CRT_HOT : CRT_ACCENT;
   ctx.font = `17px ${PIXEL_FONT}`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
@@ -1701,10 +1702,14 @@ function drawProjectDetail(
     const arrow = "  →";
     const btnW = Math.round(ctx.measureText(label + arrow).width + 40);
     const bx = PAD;
+    const linkHot = hovered === "link";
     ctx.save();
     ctx.shadowColor = CRT_ACCENT;
-    ctx.shadowBlur = 16;
-    ctx.fillStyle = CRT_ACCENT;
+    ctx.shadowBlur = linkHot ? 26 : 16;
+    // Hover: a brighter/hotter orange fill so the key lights up — painted on the
+    // canvas so it distorts with the bulge and stays aligned to the button (the
+    // DOM hotspot is invisible, hover/click only).
+    ctx.fillStyle = linkHot ? "#ff7a2e" : CRT_ACCENT;
     ctx.fillRect(bx, btnY, btnW, btnH);
     ctx.restore();
     ctx.fillStyle = CRT_ACCENT_INK;
@@ -2210,6 +2215,7 @@ function Scene({
   onSelectProject,
   selected,
   onScreenRect,
+  hoveredControl,
   visibleRef,
 }: Props & { visibleRef: React.RefObject<boolean> }) {
   // Narrow (≤900px): skip the scroll-orbit choreography entirely and
@@ -2241,13 +2247,11 @@ function Scene({
   // descent so the screen faces camera by the time the boot starts.
   const macTiltRef = useRef<THREE.Group>(null);
   const macSpinRef = useRef<THREE.Group>(null);
-  // Grounding (the float-monitor fix): JUST a soft radial contact shadow under
-  // the base, ramped in with the landing (float beats stay clean). The shelf,
-  // orange pool, dock-edge AND the directional CAST shadow were all removed —
-  // the owner flagged each as junk on the ground ("what is this plane / shadow
-  // plane"). The cast shadow rendered a hard-edged grey shape (clipped by the
-  // shadow-camera frustum); the soft radial decal grounds it with no hard edge.
-  const contactMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  // NO ground element: the Mac floats clean in the void (like the Keypad/Hero
+  // scenes). Every grounding attempt — shelf, orange pool, dock edge, the
+  // directional cast shadow, AND a soft contact-shadow decal — was rejected by
+  // the owner (each read as junk / a "plane" on the ground, and the flat decal
+  // plane at the base Y clipped into the housing geometry). Clean float it is.
   // Overlay material handle written by MacBody once the GLB has been
   // cloned + traversed and the screen-overlay plane exists. Until then
   // this is null; the useFrame loop short-circuits. (CRT post shader:
@@ -2301,19 +2305,6 @@ function Scene({
     return () => window.removeEventListener("pointermove", onMove);
   }, []);
 
-  // Ground-decal textures, built once (disposed on unmount): a crisp dark
-  // contact shadow and the screen's warm orange emission pool.
-  const contactTex = useMemo(
-    () =>
-      makeRadialDecal([
-        [0, "rgba(8, 5, 2, 0.9)"],
-        [0.5, "rgba(8, 5, 2, 0.46)"],
-        [1, "rgba(8, 5, 2, 0)"],
-      ]),
-    [],
-  );
-  useEffect(() => () => contactTex.dispose(), [contactTex]);
-
   // Preload the project thumbnails; the version bumps as each decodes so
   // the CanvasTexture rebuilds and the artwork paints in.
   const imageVersion = useProjectImages(projects);
@@ -2329,6 +2320,7 @@ function Scene({
     floatActive,
     floatSpin,
     cursorOn,
+    selected ? hoveredControl ?? null : null,
   );
   const { invalidate, camera, size } = useThree();
 
@@ -2481,15 +2473,7 @@ function Scene({
       g.rotation.x += (targetPitch - g.rotation.x) * k;
     }
 
-    // ── SHADOW PLATE ──────────────────────────────────────────────
-    const shadowT = clamp01(
-      (p - THRESHOLDS.shadowStart) /
-        (THRESHOLDS.shadowEnd - THRESHOLDS.shadowStart),
-    );
-    // Soft contact shadow fades in with the landing (and shrinks away on exit)
-    // so the monitor reads as resting on a surface, not floating in the void.
-    const groundFade = shadowT * exitScale;
-    if (contactMatRef.current) contactMatRef.current.opacity = groundFade;
+    // (No ground element — the Mac floats clean; see the note by the refs.)
 
     // ── CRT BOOT ──────────────────────────────────────────────────
     const newBoot = clamp01(
@@ -2917,28 +2901,6 @@ function Scene({
           />
         </group>
       )}
-
-      {/* GROUNDING (the float-monitor fix), ramped in by the landing (shadowT)
-          and shrunk away on exit: JUST a soft dark contact shadow under the base
-          plus the directional shadow plate. No shelf/slab (owner: "wtf is this
-          plane"), no orange pool/edge, no grid — the monitor reads as resting on
-          an implied surface via its own shadow, with nothing visibly under it.
-          Landed Mac base sits at world y≈0.465; the shadow is placed there. */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.476, -0.05]}
-        renderOrder={2}
-      >
-        <planeGeometry args={[3.1, 2.1]} />
-        <meshBasicMaterial
-          ref={contactMatRef}
-          map={contactTex}
-          transparent
-          opacity={0}
-          depthWrite={false}
-          toneMapped={false}
-        />
-      </mesh>
 
     </>
   );
