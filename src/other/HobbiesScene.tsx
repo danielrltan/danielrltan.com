@@ -902,10 +902,20 @@ export const HobbiesScene = memo(function HobbiesScene({
     [],
   );
   const dprCap = useMemo<[number, number]>(() => {
-    // Weak GPU (low tier): no supersampling at all — the cluster's smooth-shaded
-    // props read fine at DPR 1 and the fragment cost is the dominant tax here.
-    if (isLowTier()) return [1, 1];
     const narrow = typeof window !== "undefined" && window.innerWidth <= 768;
+    // Weak GPU (low tier) OR a phone: no supersampling at all — the cluster's
+    // smooth-shaded props read fine at DPR 1 and fragment cost dominates here.
+    // The phone term (touch AND narrow) is checked SEPARATELY from the tier on
+    // purpose: this cluster is the one section canvas that stays live on a phone
+    // (disableOnMobile:false), and phones no longer resolve to 'low' merely for
+    // being phones, so keying "no supersampling" off the tier alone would
+    // silently hand every phone a 1.25 DPR cap (~1.56x the fragment cost) on
+    // exactly the weakest hardware. "Is a phone" and "is weak hardware" are
+    // separate axes; don't conflate them. The fall-through below is unchanged,
+    // so every non-phone case keeps the cap it always had for a given tier —
+    // though a tablet, no longer rated 'low' merely for its reported core count,
+    // now correctly takes [1,1.25] as the capable device it is.
+    if (isLowTier() || (isTouch && narrow)) return [1, 1];
     return isTouch || narrow ? [1, 1.25] : [1, 1.5];
   }, [isTouch]);
 

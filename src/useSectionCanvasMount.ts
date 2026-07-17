@@ -1,5 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
-import { isLowTier } from "./capabilityTier";
+import { isLowTier, isTouchPrimary } from "./capabilityTier";
 
 /**
  * MOBILE NEVER MOUNTS A SECTION CANVAS (≤768px).
@@ -110,7 +110,18 @@ export function useSectionCanvasMount(
     // <=768px zero-WebGL short-circuit above is untouched. On capable HW this
     // never unmounts (matches the old eager behavior); a few idle demand-loop
     // contexts cost nothing now that the 27MB live room is gone.
-    if (!isMobile && !isLowTier()) {
+    // TABLETS STAY APPROACH-GATED. `isMobile` is <=768px, so a tablet isn't
+    // "mobile" here, and tablets no longer resolve to 'low' just for reporting a
+    // small hardwareConcurrency (see capabilityTier's touch rules) — without the
+    // isTouchPrimary() term an iPad would fall into this eager branch and stand
+    // up ALL FOUR section contexts at once, forever, on a fanless battery
+    // device. That's a protection the tier used to provide by accident. Note the
+    // asymmetry this guards against: everywhere else 'low' selects a cheaper
+    // FALLBACK, so mis-rating a device 'standard' is merely a missed saving —
+    // but here 'low' is a PROTECTION, so the same miss is an actual regression.
+    // Touchscreen laptops are NOT touch-primary (trackpad), so capable desktop
+    // keeps mounting eagerly — the known "queued in late" regression stays fixed.
+    if (!isMobile && !isLowTier() && !isTouchPrimary()) {
       setMounted(true);
       return;
     }
