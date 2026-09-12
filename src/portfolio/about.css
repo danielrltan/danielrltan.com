@@ -626,6 +626,14 @@
 .c-reach .ch a:focus-visible::before {
   opacity: 1;
 }
+/* Opt out of the sitewide text-link hover (`.portfolio-section a:hover
+   { opacity: 0.7 }`, sections.css): it faded the whole row — orange fill AND
+   the inverted white text — to 70%, so the International Orange fill rendered
+   washed-out. The fill in-fade above is the hover cue; keep the row solid. */
+.c-reach .ch a:hover,
+.c-reach .ch a:focus-visible {
+  opacity: 1;
+}
 .c-reach .ch-name {
   flex: 0 0 auto;
   min-width: 86px;
