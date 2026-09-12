@@ -1717,10 +1717,12 @@ function drawProjectDetail(
     ctx.save();
     ctx.shadowColor = CRT_ACCENT;
     ctx.shadowBlur = linkHot ? 26 : 16;
-    // Hover: a brighter/hotter orange fill so the key lights up — painted on the
-    // canvas so it distorts with the bulge and stays aligned to the button (the
-    // DOM hotspot is invisible, hover/click only).
-    ctx.fillStyle = linkHot ? "#ff7a2e" : CRT_ACCENT;
+    // Hover: the fill stays true International Orange (CRT_ACCENT) — the old
+    // lighter #ff7a2e read as an off-brand orange. The hover cue is the wider
+    // bloom above (shadowBlur 26 vs 16) — painted on the canvas so it distorts
+    // with the bulge and stays aligned to the button (the DOM hotspot is
+    // invisible, hover/click only).
+    ctx.fillStyle = CRT_ACCENT;
     ctx.fillRect(bx, btnY, btnW, btnH);
     ctx.restore();
     ctx.fillStyle = CRT_ACCENT_INK;
