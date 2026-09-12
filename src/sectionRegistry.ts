@@ -48,7 +48,7 @@ export const SECTION_REGISTRY: SectionEntry[] = [
   // Play is interests-only — the "Recents" photos moved out into their own
   // Photos section (below), so a jump lands on the section top (the 3D hobby
   // reel itself), no Beat A to skip past.
-  { number: "04", label: "Play", selector: ".portfolio-other" },
+  { number: "04", label: "Play", selector: ".other-pin-wrap" },
   { number: "05", label: "Honours", selector: ".portfolio-bp" },
   // Recents: the photo trains, a standalone section between Honours and Contact.
   { number: "06", label: "Recents", selector: ".portfolio-photos" },

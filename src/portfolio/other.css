@@ -172,6 +172,29 @@
   }
 }
 
+/* SCROLL STOP (desktop): a CSS sticky hold, NOT a GSAP pin. The wrapper is
+   taller than the section by --other-stop; the section sticks to the viewport
+   top while the wrapper's extra height scrolls through, then releases. Native
+   sticky is resolved by the compositor in lockstep with the (Lenis-smoothed)
+   native scroll — the section glides to the top and stays, with no JS-timed
+   position:fixed swap to snap in. Ancestors use overflow-x: clip (not hidden)
+   precisely so sticky/fixed chrome keeps working — see index.css. Phones: no
+   wrapper height, no sticky — the portrait cluster free-scrolls. */
+.other-pin-wrap {
+  --other-stop: 1000px; /* scroll distance the section holds; the dwell */
+  position: relative;
+}
+@media (min-width: 769px) {
+  .other-pin-wrap {
+    height: calc(100vh + 100px + var(--other-stop));
+    height: calc(100svh + 100px + var(--other-stop));
+  }
+  .portfolio-other {
+    position: sticky;
+    top: 0;
+  }
+}
+
 @media (max-height: 780px) and (min-width: 769px) {
   .other-section-num,
   .other-gallery-num {

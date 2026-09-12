@@ -14,14 +14,6 @@ import { useSectionCanvasMount } from "../useSectionCanvasMount";
 
 gsap.registerPlugin(ScrollTrigger);
 
-// Scroll distance (px) the section holds pinned at the top of the viewport —
-// the scroll stop. Same pin recipe as Keypad.tsx (top top, +=px, pinSpacing,
-// anticipatePin, no scrub) with a slightly shorter dwell than its 1400px. A
-// much shorter hold (160px was tried) passes in a couple of Lenis frames and
-// reads as a SNAP rather than a smooth catch-and-release; the dwell needs to
-// be long enough for the smoothed scroll to visibly settle into the hold.
-const SCROLL_STOP_PX = 1000;
-
 /**
  * "Off the clock" (section 04, "Play"): a BOLD INTEREST CLUSTER.
  *
@@ -109,6 +101,8 @@ export function Other() {
   // Header reveal is written straight to CSS vars via applyHead (no per-tick
   // setState). headerRef points at the editorial corner header.
   const headerRef = useRef<HTMLElement>(null);
+  // Sticky-hold wrapper around the section (see other.css .other-pin-wrap).
+  const wrapRef = useRef<HTMLDivElement>(null);
   // Gates the heavy 3D render loop: flipped true as the section approaches so
   // the scene doesn't render at full rate while far off-screen. setState with
   // an unchanged value bails, so calling it per tick is free.
@@ -122,7 +116,10 @@ export function Other() {
       return;
     }
 
-    const el = sectionRef.current;
+    // Triggers measure the WRAPPER, not the sticky section: the wrapper's
+    // top/bottom are fixed in the document (the section's rect moves while it
+    // is stuck), and its bottom marks the end of the hold.
+    const el = wrapRef.current;
     if (!el) return;
 
     // Entrance reveal: fade the editorial header up as the section RISES into
@@ -143,26 +140,14 @@ export function Other() {
       },
     });
 
-    // SCROLL STOP: pin once the section lands (top at the viewport top) — a
-    // held beat so the cluster grabs the eye before the page moves on. Mirrors
-    // the Keypad section's pin exactly (see Keypad.tsx) so the catch-and-
-    // release feels identical across the two 3D sections. Desktop only — the
-    // phone layout is a tall free-scrolling portrait cluster.
-    const isPhone =
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(max-width: 768px)").matches;
-    const stop = isPhone
-      ? null
-      : ScrollTrigger.create({
-          id: "other-stop",
-          trigger: el,
-          start: "top top",
-          end: `+=${SCROLL_STOP_PX}`,
-          pin: true,
-          pinSpacing: true,
-          anticipatePin: 1,
-        });
+    // SCROLL STOP: the hold is pure CSS — `.other-pin-wrap` is taller than the
+    // section by --other-stop and the section is `position: sticky; top: 0`
+    // inside it (other.css, desktop only). A GSAP pin was tried first (same
+    // recipe as Keypad) but it swaps the section to position:fixed on a JS
+    // frame, which under Lenis' smoothed scroll could land a frame late and
+    // read as a SNAP into the hold. Sticky is resolved by the compositor with
+    // the native scroll, so the section glides to the top and simply stays —
+    // no engagement frame, nothing to snap.
 
     // Hold the header up + scene live while the section is anywhere on screen
     // (after the entrance completes the section sits pinned-free in view).
@@ -195,12 +180,16 @@ export function Other() {
     return () => {
       obs.disconnect();
       entrance.kill();
-      stop?.kill();
       presence.kill();
     };
   }, []);
 
   return (
+    // Sticky-hold wrapper: taller than the section by --other-stop on desktop;
+    // the section sticks to the viewport top while the wrapper scrolls through
+    // (the scroll stop). Also the jump/active-section target for "Play" in
+    // sectionRegistry, so a jump lands on the START of the hold.
+    <div ref={wrapRef} className="other-pin-wrap">
     <section
       ref={sectionRef}
       className="portfolio-section portfolio-other"
@@ -265,5 +254,6 @@ export function Other() {
           hover tag, but permanent on touch). The sr-only <ul> above stays the
           AT/SEO source of truth. */}
     </section>
+    </div>
   );
 }

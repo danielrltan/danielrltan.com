@@ -31,7 +31,7 @@ const JUMP_LINKS: JumpLink[] = [
   { number: "01", label: "About", selector: ".portfolio-about" },
   { number: "02", label: "Projects", selector: ".portfolio-mac" },
   { number: "03", label: "Work", selector: ".portfolio-work" },
-  { number: "04", label: "Play", selector: ".portfolio-other" },
+  { number: "04", label: "Play", selector: ".other-pin-wrap" },
   { number: "05", label: "Honours", selector: ".portfolio-bp" },
   { number: "06", label: "Recents", selector: ".portfolio-photos" },
   { number: "07", label: "Contact", selector: ".keypad-section" },
