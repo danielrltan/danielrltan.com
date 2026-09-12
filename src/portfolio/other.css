@@ -181,7 +181,7 @@
    precisely so sticky/fixed chrome keeps working — see index.css. Phones: no
    wrapper height, no sticky — the portrait cluster free-scrolls. */
 .other-pin-wrap {
-  --other-stop: 1000px; /* scroll distance the section holds; the dwell */
+  --other-stop: 500px; /* scroll distance the section holds; the dwell (halved from 1000) */
   position: relative;
 }
 @media (min-width: 769px) {
