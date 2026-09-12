@@ -32,9 +32,15 @@ const STINTS: Stint[] = [
     brand: "Fintech",
     role: "Software Engineer",
     current: true,
-    pull: { metric: "", caption: "" },
+    pull: {
+      metric: "COBOL → Java 21",
+      caption:
+        "legacy tax-slip logic, re-realized as structured YAML rules and a Spring Boot service verified against DB2",
+    },
     bullets: [
-      "Recently joined as a Software Engineer. More on this work soon.",
+      "Built an AI-assisted COBOL modernization proof of concept: turned legacy tax-slip status logic into 12 structured YAML rules and a generated Java 21 / Spring Boot service, verified end-to-end against development DB2.",
+      "Adapted the existing batch DAO contract into a REST path with dynamic T4A/R1 routing, optimistic concurrency, and per-slip results, so the live application called the new service with no redesign.",
+      "Designed a reusable family of extraction and code-generation agents plus an alternate iBatis realization, showing the rules were stack-independent. Integration tests green: 2 run, 0 failures.",
     ],
   },
   {
