@@ -53,19 +53,18 @@ export const MAC_PROJECTS: MacProject[] = [
     color: "#5a3a1f",
   },
   {
-    id: "portfolio",
-    title: "Interactive 3D Portfolio",
-    meta: "2026 · React, R3F, Rapier",
+    id: "motrack",
+    title: "MoTrack.co",
+    meta: "Feb 2025 – Present · React, Node, MongoDB, Three.js",
     blurb:
-      "This site. Hand-modelled isometric bedroom in Blender, brought to life with React Three Fiber + Rapier physics. Real keyboard typing, mouse cursor following, throwable objects, scroll-driven camera, signature replay.",
-    tags: ["React", "TypeScript", "R3F", "Rapier", "GLSL"],
-    repoHref: "https://github.com/danielrltan/danielrltan.com",
-    // Self-referential: the site's own social card (the "Daniel Tan" + orange
-    // 3D-objects thumbnail), derived from public/images/thumbnail.png and
-    // re-encoded to a light webp (1000px, ~65KB) so it doesn't ship the 965KB
-    // OG PNG into the Mac section. Cover-fit into the CRT thumb frame.
-    image: "/images/projects/portfolio.webp",
-    color: "#3a2418",
+      "Full-stack companion app for Supercell's mo.co: build creator, item database, tier lists and leaderboards, with client-side caching and shareable build links. Grown to 30,000+ monthly active users and a 1,500-member Discord, fed by a bot that surfaces live build data. Includes a real-time 3D character customizer (Three.js / R3F, GLTF morph targets + material swaps) with presets persisted in MongoDB.",
+    tags: ["React", "TypeScript", "Node.js", "MongoDB", "Three.js", "R3F"],
+    liveHref: "https://motrack.co",
+    // The site's own Open Graph card (1200×630 from motrack.co), re-encoded to
+    // a light 1000px webp so it doesn't ship the full PNG into the Mac section.
+    // Cover-fit into the CRT thumb frame.
+    image: "/images/projects/motrack.webp",
+    color: "#080828", // dominant of the OG card (deep navy)
   },
   {
     id: "weaver",
