@@ -26,12 +26,12 @@ interface Stint {
 
 const STINTS: Stint[] = [
   {
-    when: "May 2026 - Present",
+    when: "May 2026 - Aug 2026",
     year: "2026",
     where: "Broadridge",
     brand: "Fintech",
-    role: "Software Engineer",
-    current: true,
+    role: "Software Developer Intern",
+    location: "Toronto, ON",
     pull: {
       metric: "COBOL → Java 21",
       caption:
