@@ -15,8 +15,12 @@ import { useSectionCanvasMount } from "../useSectionCanvasMount";
 gsap.registerPlugin(ScrollTrigger);
 
 // Scroll distance (px) the section holds pinned at the top of the viewport —
-// the "slight scroll stop". Small on purpose: a few frames of attention.
-const SCROLL_STOP_PX = 160;
+// the scroll stop. Same pin recipe as Keypad.tsx (top top, +=px, pinSpacing,
+// anticipatePin, no scrub) with a slightly shorter dwell than its 1400px. A
+// much shorter hold (160px was tried) passes in a couple of Lenis frames and
+// reads as a SNAP rather than a smooth catch-and-release; the dwell needs to
+// be long enough for the smoothed scroll to visibly settle into the hold.
+const SCROLL_STOP_PX = 1000;
 
 /**
  * "Off the clock" (section 04, "Play"): a BOLD INTEREST CLUSTER.
@@ -139,11 +143,11 @@ export function Other() {
       },
     });
 
-    // SCROLL STOP: a very short pin once the section lands (top at the viewport
-    // top) — a beat of held frames so the cluster grabs the eye before the page
-    // moves on. SCROLL_STOP_PX is scroll distance, not time: with Lenis'
-    // smoothing it reads as a brief catch, not a scroll-jack. Desktop only —
-    // the phone layout is a tall free-scrolling portrait cluster.
+    // SCROLL STOP: pin once the section lands (top at the viewport top) — a
+    // held beat so the cluster grabs the eye before the page moves on. Mirrors
+    // the Keypad section's pin exactly (see Keypad.tsx) so the catch-and-
+    // release feels identical across the two 3D sections. Desktop only — the
+    // phone layout is a tall free-scrolling portrait cluster.
     const isPhone =
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
