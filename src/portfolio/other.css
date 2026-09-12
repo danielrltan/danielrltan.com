@@ -157,6 +157,21 @@
    (it stays large for impact but yields room); the number stays the tiny
    tag. Mirrors Work's guard. Desktop widths only — the ≤768 mobile block
    already sets its own header sizes. */
+/* DESKTOP: the section (and so the full-bleed canvas, inset:0) runs 100px
+   TALLER than the viewport. The bottom-row objects (car, keyboard) sat on the
+   very bottom edge and were sliced flat by this box's overflow:hidden — worse
+   on hover, when the focused object scales up + dollies forward. The camera
+   keeps the cluster framed to the top 100svh (HobbiesScene desktopFraming
+   reserves this exact band in px), so the extra 100px is pure slack UNDER
+   the cluster for hovered objects to grow into. Must stay in sync with
+   HobbiesScene's DESK_EXTRA_BOTTOM_PX. Phones keep the 100svh portrait box. */
+@media (min-width: 769px) {
+  .portfolio-other {
+    height: calc(100vh + 100px);
+    height: calc(100svh + 100px);
+  }
+}
+
 @media (max-height: 780px) and (min-width: 769px) {
   .other-section-num,
   .other-gallery-num {

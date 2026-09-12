@@ -626,17 +626,33 @@ const DESK_BOT_Y = Math.min(..._LAYOUT_Y) - CLUSTER_PAD;
 const DESK_HALF_W = Math.max(..._LAYOUT_XABS) + CLUSTER_PAD;
 // Vertical band the cluster may occupy: top fraction reserved for the wordmark,
 // a small bottom breathing margin. WIDTH_FILL keeps it near edge-to-edge.
-const TOP_RESERVE = 0.3;
-const BOTTOM_MARGIN = 0.04;
+const TOP_RESERVE_BASE = 0.3;
+const BOTTOM_MARGIN_BASE = 0.04;
 const WIDTH_FILL = 0.99;
+// DESKTOP canvas slack: other.css makes the section (= canvas) 100px taller
+// than the viewport on desktop. This band is EXCLUDED from the framing maths so
+// the cluster is framed to the top 100svh exactly as before (same on-screen
+// size + position) and the extra 100px is empty room UNDER the bottom row for
+// a hovered object (×1.1 scale + forward dolly) to grow into without being
+// sliced by the canvas edge. Keep in sync with other.css (+100px).
+export const DESK_EXTRA_BOTTOM_PX = 100;
 export interface Framing {
   dist: number;
   lookY: number;
 }
-export function desktopFraming(aspect: number): Framing {
+/** @param extraBottomFrac fraction of the canvas HEIGHT that is slack below the
+ *  framed band (DESK_EXTRA_BOTTOM_PX / canvas px height). 0 = legacy framing. */
+export function desktopFraming(aspect: number, extraBottomFrac = 0): Framing {
   const a = Math.max(0.0001, aspect);
   const halfHc = (DESK_TOP_Y - DESK_BOT_Y) / 2; // cluster world half-height
   const centerY = (DESK_TOP_Y + DESK_BOT_Y) / 2; // cluster world centre
+  // Scale the fractional reserves into the non-slack part of the frame, then
+  // add the slack itself to the bottom. With e = extraBottomFrac this keeps
+  // (1 - TOP - BOT) × (H − slack) px for the cluster — identical pixels to the
+  // legacy 100svh framing — and parks the slack entirely at the bottom.
+  const e = Math.min(0.4, Math.max(0, extraBottomFrac));
+  const TOP_RESERVE = TOP_RESERVE_BASE * (1 - e);
+  const BOTTOM_MARGIN = BOTTOM_MARGIN_BASE * (1 - e) + e;
   const visibleFracV = 1 - TOP_RESERVE - BOTTOM_MARGIN;
   // Distance so the cluster height fills `visibleFracV` of the frame AND its width
   // fills `WIDTH_FILL` of the frame; take whichever needs MORE distance so neither
@@ -730,7 +746,12 @@ function SceneInner({
         CLUSTER_HALF_H_PORTRAIT,
       );
     } else {
-      const f = desktopFraming(aspect);
+      // Exclude the desktop canvas slack (see DESK_EXTRA_BOTTOM_PX) from the
+      // framed band so the cluster keeps its legacy on-screen size/position.
+      const f = desktopFraming(
+        aspect,
+        state.size.height > 0 ? DESK_EXTRA_BOTTOM_PX / state.size.height : 0,
+      );
       lookY = f.lookY;
       dist = f.dist;
     }

@@ -14,6 +14,10 @@ import { useSectionCanvasMount } from "../useSectionCanvasMount";
 
 gsap.registerPlugin(ScrollTrigger);
 
+// Scroll distance (px) the section holds pinned at the top of the viewport —
+// the "slight scroll stop". Small on purpose: a few frames of attention.
+const SCROLL_STOP_PX = 160;
+
 /**
  * "Off the clock" (section 04, "Play"): a BOLD INTEREST CLUSTER.
  *
@@ -135,6 +139,27 @@ export function Other() {
       },
     });
 
+    // SCROLL STOP: a very short pin once the section lands (top at the viewport
+    // top) — a beat of held frames so the cluster grabs the eye before the page
+    // moves on. SCROLL_STOP_PX is scroll distance, not time: with Lenis'
+    // smoothing it reads as a brief catch, not a scroll-jack. Desktop only —
+    // the phone layout is a tall free-scrolling portrait cluster.
+    const isPhone =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 768px)").matches;
+    const stop = isPhone
+      ? null
+      : ScrollTrigger.create({
+          id: "other-stop",
+          trigger: el,
+          start: "top top",
+          end: `+=${SCROLL_STOP_PX}`,
+          pin: true,
+          pinSpacing: true,
+          anticipatePin: 1,
+        });
+
     // Hold the header up + scene live while the section is anywhere on screen
     // (after the entrance completes the section sits pinned-free in view).
     const presence = ScrollTrigger.create({
@@ -166,6 +191,7 @@ export function Other() {
     return () => {
       obs.disconnect();
       entrance.kill();
+      stop?.kill();
       presence.kill();
     };
   }, []);
