@@ -100,11 +100,14 @@
   font-size: 27px;
   line-height: 1;
   /* No trailing letter-spacing: on a 2-digit readout it pushed the glyphs
-     left of the aperture centre. The small upward nudge optically centres the
-     OffBit numerals, which sit low in their em box. */
+     left of the aperture centre. Vertical: OffBit numerals sit HIGH in their
+     em box (measured at 27px: ink top 11px / bottom 20px from the block
+     edges with no nudge beyond -1px, i.e. ~4.5px too high). The downward
+     nudge lands the ink at ~15.5/15.5 — true optical centre of the 54px
+     aperture. The old -1px "upward nudge" assumed the opposite. */
   letter-spacing: 0;
   color: #ffffff;
-  transform: translateY(-1px);
+  transform: translateY(3px);
 }
 
 /* White readout body — just the SECTION eyebrow now. */
