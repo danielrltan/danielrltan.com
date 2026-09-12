@@ -80,9 +80,16 @@
   flex-direction: column;
   /* Banner + bento as ONE block, vertically centred so it fills the viewport
      like a full-screen banner, without big empty bands above or below. */
-  justify-content: center;
+  /* `safe` so an overflowing banner+grid never spills UP under the fixed
+     top strip; it top-aligns instead and the page scrolls it. */
+  justify-content: safe center;
   gap: clamp(16px, 2.4vh, 32px);
-  padding: clamp(48px, 6vh, 76px) 0 clamp(32px, 4.5vh, 52px);
+  /* Top inset floors at --top-strip-clear (sections.css): this stage is PINNED
+     and centres the banner, so without the floor the "01 — danielrltan.com"
+     crumb + the top of the ABOUT wordmark sat under the fixed brand tile for
+     the whole pin (the top-left overlap the owner flagged). */
+  padding: max(var(--top-strip-clear, 86px), clamp(48px, 6vh, 76px)) 0
+    clamp(32px, 4.5vh, 52px);
 }
 
 /* ----------------------------------------------------------------------
@@ -824,8 +831,10 @@
    ====================================================================== */
 @media (min-width: 901px) and (max-height: 900px) {
   .about-stage {
-    /* Trim the top/bottom bands so the grid claims the reclaimed height. */
-    padding: clamp(20px, 3vh, 40px) 0 clamp(16px, 2.4vh, 30px);
+    /* Trim the top/bottom bands so the grid claims the reclaimed height —
+       but never above the fixed brand tile (see --top-strip-clear). */
+    padding: max(var(--top-strip-clear, 86px), clamp(20px, 3vh, 40px)) 0
+      clamp(16px, 2.4vh, 30px);
     gap: clamp(10px, 1.5vh, 18px);
   }
   /* Cap the giant wordmark so the banner stops eating a sixth of a short
@@ -874,8 +883,10 @@
     width: 100%;
     /* #27: trim the top inset (was 96px) so the first card isn't pushed below
        the fold; keep a safe-area cushion on notched devices. */
-    padding: calc(56px + env(safe-area-inset-top, 0px)) 20px
-      calc(48px + env(safe-area-inset-bottom, 0px));
+    /* Top inset clears the 44px brand tile at 14px (+ safe area) with air
+       beneath it — see --top-strip-clear-mobile in sections.css. */
+    padding: var(--top-strip-clear-mobile, calc(72px + env(safe-area-inset-top, 0px)))
+      20px calc(48px + env(safe-area-inset-bottom, 0px));
     /* Top-anchored editorial flow that grows with the column. NO inner scroll:
        the old `overflow-y:auto; height:100svh` was a rubber-band scroll-trap
        captured inside the page pin. The page itself scrolls the column now. */

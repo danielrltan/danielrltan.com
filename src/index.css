@@ -527,6 +527,49 @@ html.loading-active .scroll-rail {
   }
 }
 
+/* Brand mark (RoomHUD.tsx): the top-left signature on a SOLID WHITE TILE.
+   Same surface language as the SectionDial bar top-right (.snc-dial: flat
+   white rectangle, transparent 2px ring that eases in orange on hover, 1px
+   lift, soft orange bloom) so the top strip reads as one bar with a tile at
+   each end. The tile is what masks the section corner headers that scroll
+   beneath it — previously the bare orange strokes collided with the orange
+   "01" tag and the wordmark. Backdrop blur keeps it reading as glass over
+   the 3D room / photos while staying opaque enough to fully hide text. */
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.96);
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
+  backdrop-filter: blur(12px) saturate(1.15);
+  outline: 2px solid transparent;
+  outline-offset: 3px;
+  text-decoration: none;
+  user-select: none;
+  transition:
+    opacity 0.3s ease,
+    outline-color 220ms ease,
+    box-shadow 240ms ease,
+    transform 220ms cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.brand-mark:hover,
+.brand-mark:focus-visible {
+  outline-color: var(--accent);
+  box-shadow: 0 8px 26px -10px rgba(255, 79, 0, 0.5);
+  transform: translateY(-1px);
+}
+.brand-mark:active {
+  transform: translateY(0) scale(0.98);
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark,
+  .brand-mark:hover,
+  .brand-mark:focus-visible {
+    transform: none;
+  }
+}
+
 /* Glass HUD buttons: hover/active reactivity for the inline-styled
    JumpToTop icon button. */
 .hud-btn {

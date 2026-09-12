@@ -52,6 +52,15 @@
   --hdr-eyebrow: var(--ink-muted);   /* cool muted eyebrow (was warm #6c6660) */
   /* Consistent header rhythm, shared by every section's corner header. */
   --hdr-gap-title: clamp(40px, 5vw, 64px); /* title → content breathing room */
+
+  /* TOP-STRIP CLEARANCE. The fixed brand tile (RoomHUD, top-left: 20px top +
+     54px tall) and the SectionDial (top-right) own the first ~74px of the
+     viewport. Any PINNED stage that parks a corner header top-left at rest
+     must start below this line, or the header sits under the tile for the
+     whole pin (the About "01 — danielrltan.com" crumb + wordmark did). 12px
+     of air under the tile. Mobile tile: 14px top + 44px tall → 58px + gap. */
+  --top-strip-clear: 86px;
+  --top-strip-clear-mobile: calc(72px + env(safe-area-inset-top, 0px));
 }
 
 .portfolio-section {

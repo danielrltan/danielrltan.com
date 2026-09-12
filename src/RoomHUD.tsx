@@ -25,7 +25,9 @@ const FADE_MS = 700;
 // navbar reads as one editorial bar.
 const TOP_STRIP_TOP = 20;
 const TOP_STRIP_LEFT = 22;
-const TOP_STRIP_CHIP_H = 40;
+// Chip height matches the SectionDial bar (.snc-dial, 54px) so the two
+// top-row tiles read as one system: white tile left, white tile right.
+const TOP_STRIP_CHIP_H = 54;
 const BRAND_ICON_PX = 26;
 
 export function RoomHUD({ visible }: Props) {
@@ -99,39 +101,27 @@ export function RoomHUD({ visible }: Props) {
           position: "absolute",
           top: topOffset,
           left: leftOffset,
-          // The signature is WIDE (aspect ~2.6:1), so the mark sizes to its
-          // content (width:auto) rather than a square chip. Height is the tap
-          // target (≥44px on mobile); a little left-aligned padding gives the
-          // gesture air without shifting it off the corner.
+          // The signature is WIDE (aspect ~2.6:1), so the tile sizes to its
+          // content (width:auto) rather than a square. Height is the tap
+          // target (≥44px on mobile) and matches the dial bar on desktop.
+          //
+          // SURFACE (see .brand-mark in index.css): the mark used to float bare
+          // over the page, so every section's corner header ("01 —
+          // danielrltan.com", the giant wordmark) scrolled straight through the
+          // orange strokes and the two orange marks tangled. It now sits on a
+          // solid white tile — the same tile language as the SectionDial on the
+          // right — so whatever scrolls beneath is cleanly masked, and the top
+          // strip reads as ONE bar with a tile at each end.
           width: "auto",
           height: isMobile ? 44 : chipH,
           minWidth: 44,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "flex-start",
-          padding: "0 6px",
+          padding: isMobile ? "0 12px" : "0 16px",
           zIndex: HUD_Z,
           pointerEvents: dodge ? "none" : "auto",
           opacity: dodge ? 0 : 1,
           // currentColor drives the signature stroke (SignatureMark uses
-          // stroke="currentColor"). International Orange: the mark only reveals
-          // AFTER the hero (see `visible` in App.tsx), so it always sits over the
-          // light content sections, where orange reads on-brand. (Dark ink was
-          // unreadable on the orange hero, and the hero already carries the big
-          // signature wordmark — so the small mark is hidden there entirely.)
+          // stroke="currentColor"). International Orange on the white tile.
           color: "var(--accent)",
-          textDecoration: "none",
-          userSelect: "none",
-          transition: "transform 0.18s ease, opacity 0.3s ease",
-        }}
-        onPointerEnter={(e) => {
-          // Mouse/trackpad only: on touch, the lift would stick until the next
-          // tap elsewhere (mouseenter has no touch counterpart that releases).
-          if (e.pointerType !== "mouse") return;
-          e.currentTarget.style.transform = "translateY(-1px)";
-        }}
-        onPointerLeave={(e) => {
-          e.currentTarget.style.transform = "translateY(0)";
         }}
       >
         <SignatureMark height={iconPx} />
