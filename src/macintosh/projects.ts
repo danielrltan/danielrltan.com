@@ -29,6 +29,20 @@ export function liveLinkLabel(liveHref: string): string {
 
 export const MAC_PROJECTS: MacProject[] = [
   {
+    id: "poddle",
+    title: "Poddle",
+    meta: "Sep 2026 · Three.js, Node, WebSockets, Swift",
+    blurb:
+      "Hack the North 2026. Wii Sports-style online pickleball where your phone (or one AirPod) is the paddle. Scan a QR code and the phone streams its motion sensors to the game, nothing to install; on a Mac, a Swift menu-bar app reads AirPod head-tracking via CoreMotion. Swings are read from orientation and rotation rate alone, with a jitter buffer and grip-independent calibration. Authoritative Node + WebSocket server with rooms, a bot and fair hit registration; three.js court in the browser.",
+    tags: ["Three.js", "Node.js", "WebSockets", "Swift", "CoreMotion", "MediaPipe"],
+    liveHref: "https://poddleball.com",
+    repoHref: "https://github.com/danielrltan/poddle",
+    // The game's own Open Graph card (1200×630 from poddleball.com), resized to
+    // 1000px. Cover-fit into the CRT thumb frame.
+    image: "/images/projects/poddle.jpg",
+    color: "#3a8fd8", // dominant of the OG card (sky blue)
+  },
+  {
     id: "cognetech",
     title: "Cognetech",
     // Meta lines ration the middle dot to ONE per line (date · stack);
@@ -65,17 +79,6 @@ export const MAC_PROJECTS: MacProject[] = [
     // Cover-fit into the CRT thumb frame.
     image: "/images/projects/motrack.webp",
     color: "#080828", // dominant of the OG card (deep navy)
-  },
-  {
-    id: "weaver",
-    title: "Weaver",
-    meta: "Nov 2025 · React, FastAPI, Gemini",
-    blurb:
-      "Hack Western 12 submission. A collaborative AI ideation canvas that replaces linear chats with visual, branching conversation graphs: every idea is a node, every reply a branch, so context never collapses the way it does in a long thread. React + React Flow front end over a FastAPI + Supabase (Postgres) backend, with WebSocket sync for up to four people drawing on one board in real time. Gemini powers the LLM response at each node.",
-    tags: ["React", "React Flow", "FastAPI", "Supabase", "WebSockets", "Gemini"],
-    liveHref: "https://devpost.com/software/weaver-r5qpk0",
-    image: "/images/projects/weaver.jpg",
-    color: "#26282d",
   },
 ];
 
