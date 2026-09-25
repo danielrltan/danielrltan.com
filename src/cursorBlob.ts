@@ -60,3 +60,43 @@ vec3 blobComposite(vec3 bg, vec3 rice, float a) {
   return mix(bg, rice, clamp(a, 0.0, 1.0));
 }
 `;
+
+/**
+ * Advance the metaball cursor trail one frame. The head chases the cursor;
+ * each follower lags toward the one ahead and is clamped to MAX_GAP so the
+ * union stays a continuous rope that stretches when moving and flows back
+ * together when still. While the blob is invisible (`active` < 0.02) the whole
+ * rope snaps onto the cursor so it forms AT the cursor instead of flying in
+ * from the centre on first appearance. Shared by RiceBlob + MercuryAura so the
+ * two blobs move identically.
+ */
+export function advanceCursorTrail(
+  trail: THREE.Vector2[],
+  target: { x: number; y: number },
+  active: number,
+  dtc: number,
+): void {
+  if (active < 0.02) {
+    for (const p of trail) p.set(target.x, target.y);
+    return;
+  }
+  const head = trail[0]!;
+  const kHead = 1 - Math.exp(-dtc * 32);
+  head.x += (target.x - head.x) * kHead;
+  head.y += (target.y - head.y) * kHead;
+  const kChain = 1 - Math.exp(-dtc * 26);
+  const MAX_GAP = 0.03;
+  for (let i = 1; i < trail.length; i++) {
+    const p = trail[i]!;
+    const a = trail[i - 1]!;
+    p.x += (a.x - p.x) * kChain;
+    p.y += (a.y - p.y) * kChain;
+    const dx = a.x - p.x;
+    const dy = a.y - p.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    if (dist > MAX_GAP) {
+      p.x = a.x - (dx / dist) * MAX_GAP;
+      p.y = a.y - (dy / dist) * MAX_GAP;
+    }
+  }
+}

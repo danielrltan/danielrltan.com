@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { requestScrollRefresh } from "./scrollRefresh";
+import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import "./sections.css";
 import "./work-timeline.css";
 import { ScrambleText } from "./ScrambleText";
@@ -99,7 +99,6 @@ const STINTS: Stint[] = [
  */
 export function Work() {
   const sectionRef = useRef<HTMLElement>(null);
-  const itemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const [entered, setEntered] = useState(false);
 
   const [reducedMotion] = useState(
@@ -186,17 +185,9 @@ export function Work() {
       },
     });
     stRef.current = st;
-    const html = document.documentElement;
-    let lastLoading = html.classList.contains("loading-active");
-    const obs = new MutationObserver(() => {
-      const now = html.classList.contains("loading-active");
-      if (lastLoading && !now) requestScrollRefresh();
-      lastLoading = now;
-    });
-    obs.observe(html, { attributes: true, attributeFilter: ["class"] });
-    if (!lastLoading) requestScrollRefresh();
+    const stopLoaderWatch = refreshScrollOnLoaderLift();
     return () => {
-      obs.disconnect();
+      stopLoaderWatch();
       st.kill();
       stRef.current = null;
     };
@@ -235,7 +226,7 @@ export function Work() {
           <div className="work-ledger-head-text">
             <div className="work-ledger-head-left">
               <span className="work-ledger-num">03</span>
-              <span className="work-ledger-index">03 / 06 · Work</span>
+              <span className="work-ledger-index">03 / 07 · Work</span>
             </div>
             <h2 className="work-ledger-title">
               <ScrambleText text="Experience" />
@@ -269,9 +260,6 @@ export function Work() {
             return (
               <li
                 key={i}
-                ref={(el) => {
-                  itemRefs.current[i] = el;
-                }}
                 className={`work-acc-item${open ? " is-open" : ""}${s.current ? " is-current" : ""}${openIndex != null && i < openIndex ? " is-past" : ""}`}
               >
                 <button

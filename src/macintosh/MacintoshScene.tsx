@@ -4,12 +4,12 @@ import { useGLTF, OrbitControls, Environment, Lightformer } from "@react-three/d
 import * as THREE from "three";
 import { SKILL_LOGOS, liveLinkLabel, type MacProject, type SkillLogo } from "./projects";
 import { useMacNarrow } from "./useMacNarrow";
+import { clamp01 } from "../math";
+import { isTuneMode } from "../tuneMode";
 
 // Visit ?tune=mac to enter a free-camera, slider-driven positioning
 // view for re-framing the model.
-const TUNE_MODE =
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("tune") === "mac";
+const TUNE_MODE = isTuneMode("mac");
 
 /**
  * 3D scene for the Macintosh section. THREE-BEAT scroll choreography:
@@ -17,20 +17,20 @@ const TUNE_MODE =
  *   BEAT 1: STACK   (pin 0.00 → 0.22)
  *     Mac floats high in empty cool-white space (no floor, no shadow
  *     plate). Tech-stack cards arranged in a volumetric ring around
- *     the Mac's vertical Y axis at radii 1.8-2.25 with per-card
+ *     the Mac's vertical Y axis at radii 2.9-3.0 with per-card
  *     yOffset for depth. Cards are STATIC, locked at their starting
  *     orbital angle. Mac self-spins slowly for dynamism.
  *
  *   BEAT 2: ORBIT   (pin 0.22 → 0.55)
  *     Cards orbit the Mac through a slow partial revolution (ORBIT_SWEEP
- *     ≈ 1.2π). Mac continues to self-spin and stays at hover Y. Camera
+ *     ≈ 0.8π). Mac continues to self-spin and stays at hover Y. Camera
  *     is locked; the orbit is the kinetic centerpiece.
  *
  *   BEAT 3: LAND + EXPLORE (pin 0.55 → 1.00)
  *     Cards dissolve (opacity → 0, scale → 0.4, position drift × 1.5
  *     outward) across 0.50 → 0.65. Mac descends from HOVER_Y to REST_Y
- *     across 0.55 → 0.78 and settles to rotation 0 (face-camera). A
- *     shadow plate fades in beneath. CRT boot text types in 0.72 →
+ *     across 0.55 → 0.78 and settles to rotation 0 (face-camera). CRT
+ *     boot text types in 0.72 →
  *     0.85 then desktop tile grid appears; click planes engage.
  *
  * Composition mirrors the Keypad scene's framing: the Mac and orbit
@@ -55,8 +55,6 @@ interface Props {
    * which pulls the camera back out to the tile grid.
    */
   selected: MacProject | null;
-  /** Close the open project (ESC / on-screen BACK). */
-  onCloseProject: () => void;
   /**
    * Fires (throttled) with the CRT screen face's on-screen rect in CSS
    * pixels relative to the canvas, plus the detail-zoom progress. The DOM
@@ -109,17 +107,11 @@ const THRESHOLDS = {
   // the user to read tiles.
   spinSettleStart: 0.50,
   spinSettleEnd: 0.65,
-  // Shadow plate fades in as the Mac approaches its rest position.
-  shadowStart: 0.62,
-  shadowEnd: 0.78,
   // CRT boot text + desktop tile reveal.
   bootStart: 0.72,
   bootEnd: 0.85,
 };
 
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
@@ -252,7 +244,7 @@ const TILT_UNWIND_END = 0.78;
  *
  * GEOMETRY (FOV 28 → vertical half-angle 14°, tan≈0.2493):
  *   At the landed state the CRT screen plane (0.72 world tall) sits
- *   centered at world y ≈ REST_Y + 1.0 = 0.8 (ScreenClickPlane is at
+ *   centered at world y ≈ REST_Y + 1.0 = 0.8 (ScreenInteractionPlane is at
  *   local y=1.0 inside macGroupRef which rests at REST_Y=-0.2).
  *   Visible viewport height at distance d = 2·d·tan(14°) = 0.4986·d.
  *   At z=DOLLY_Z_CLOSE=2.6 → visible height ≈ 1.30 → screen fills
@@ -733,8 +725,7 @@ function ensureUppercase(text: string): string {
 }
 
 /* ─────────────────────────────────────────────────────────────────
- * Mac model + CRT screen overlay (kept identical to the prior
- * implementation; only the position/rotation choreography is new).
+ * Mac model + CRT screen overlay.
  * ──────────────────────────────────────────────────────────────── */
 
 /**
@@ -942,8 +933,6 @@ function MacBody({
     // overlay EXPLICITLY at the measured screen rect below.
     clone.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
-      obj.castShadow = true; // the single body mesh is the contact-shadow caster
-      obj.receiveShadow = false;
       const matSources: THREE.Material[] = Array.isArray(obj.material)
         ? obj.material
         : [obj.material];
@@ -2167,12 +2156,6 @@ function ScreenInteractionPlane({
       document.body.style.cursor = "";
     };
   }, [clickEnabled, onHoverChange]);
-  useEffect(
-    () => () => {
-      document.body.style.cursor = "";
-    },
-    [],
-  );
 
   // Map a UV hit on the plane to a record-row index (or null above the first
   // row / below the last). Uses the SAME LIST_ROWS_TOP/BOTTOM band the painter
@@ -2956,7 +2939,7 @@ function CameraFramer({ narrow }: { narrow: boolean }) {
     const aspect = size.width / Math.max(size.height, 1);
     const fov = THREE.MathUtils.degToRad(cam.fov); // 28°
     const halfTan = Math.tan(fov / 2); // ≈0.2493
-    const SCREEN_W = 1.02; // ScreenClickPlane width
+    const SCREEN_W = 1.02; // nominal screen width the narrow framing was tuned on
     const TARGET_W_FILL = 0.82; // screen occupies ~82% of viewport width
     // d such that 2·d·halfTan·aspect = SCREEN_W / TARGET_W_FILL
     const zForWidth = SCREEN_W / TARGET_W_FILL / (2 * halfTan * aspect);
@@ -2986,11 +2969,6 @@ export function MacintoshScene(props: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const visibleRef = useRef<boolean>(false);
   const invalidateRef = useRef<(() => void) | null>(null);
-  // mac.glb load gate: flipped true by LoadedSignal (which only mounts
-  // once <Scene>'s useGLTF suspense resolves). Drives the DOM loading
-  // overlay so the section shows a "booting" placeholder instead of a
-  // blank transparent canvas on a cold/slow load.
-  const [loaded, setLoaded] = useState(false);
   // Drives responsive camera framing (CameraFramer below). Same 900px
   // breakpoint as the CSS + the Scene's orbit gate.
   const narrow = useMacNarrow();
@@ -3042,7 +3020,6 @@ export function MacintoshScene(props: Props) {
         // each visible frame to keep the loop running while on-screen,
         // and as soon as visibleRef flips false the loop quiets.
         frameloop="demand"
-        shadows={{ type: THREE.PCFSoftShadowMap }}
         gl={{
           antialias: true,
           alpha: true,
@@ -3064,11 +3041,11 @@ export function MacintoshScene(props: Props) {
         {/* Suspense boundary so the mac.glb fetch doesn't bubble an
             unhandled suspension out of the Canvas. fallback={null}
             keeps the canvas transparent (it composites onto the cool
-            page bg) while the DOM overlay below shows the load state.
-            LoadedSignal mounts only after the GLB resolves. */}
+            page bg) while the GLB resolves: the scene mounts on approach
+            with mac.glb module-preloaded, so a brief empty stage beats a
+            loading placeholder. */}
         <Suspense fallback={null}>
           <Scene {...props} visibleRef={visibleRef} />
-          <LoadedSignal onLoaded={() => setLoaded(true)} />
         </Suspense>
         {/* Responsive framing: dollies in + recenters on the landed
             Mac at ≤900px; restores the wide orbit pose above. Disabled
@@ -3085,27 +3062,9 @@ export function MacintoshScene(props: Props) {
           />
         )}
       </Canvas>
-      {/* While the GLB resolves we render NOTHING visible — no "loading" text.
-          The scene mounts on approach (useSectionCanvasMount) with mac.glb
-          module-preloaded, so it's ready before it scrolls into view; a brief
-          empty stage beats a loading placeholder. `loaded` is still consumed
-          here so the LoadedSignal path stays live. */}
-      {!loaded && <div aria-hidden="true" />}
       {TUNE_MODE && <MacTuneHUD />}
     </div>
   );
-}
-
-/**
- * Mounts only after the surrounding <Suspense> resolves (i.e. once
- * mac.glb has loaded), so its mount effect is a reliable "model ready"
- * signal for the DOM loading overlay. Renders nothing in the scene.
- */
-function LoadedSignal({ onLoaded }: { onLoaded: () => void }) {
-  useEffect(() => {
-    onLoaded();
-  }, [onLoaded]);
-  return null;
 }
 
 /** TUNE_MODE only: copies camera pose into window.__macCamTune. */

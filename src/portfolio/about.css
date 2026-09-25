@@ -4,7 +4,7 @@
    An opaque light-grey bento grid that "boots up" as the GSAP pin scrubs.
    The isometric room render is the feature centerpiece; two info cards sit
    BEHIND it (occluded by the room silhouette, peeking through its
-   transparent PNG margins) and two chips float IN FRONT.
+   transparent PNG margins).
 
    DESIGN-SYSTEM NOTES
    • Only chromatic colour is International Orange (var(--accent)); the
@@ -17,9 +17,8 @@
      transparent About would expose the fixed orange hero field mid-dissolve.
      (It also used to mask a fixed full-screen room-render layer behind the app;
      that layer has since been deleted, but the opaque flat ground stays.)
-   • Glass cards: translucent white + backdrop-blur, hairline border, a
-     faint white top edge, soft shadow, ~18px radius. The FOCUS card is
-     near-ink with orange.
+   • Cards: flat white surface, hairline border, sharp corners (the glass
+     blur + sheen were dropped for the pixel voice).
    ====================================================================== */
 
 .portfolio-about {
@@ -270,7 +269,7 @@
 /* ===== grid placement: a clean THREE-COLUMN bento =====
    LEFT (cols 1-4):   name -> now -> study
    CENTRE (cols 5-8):  render (feature, 4 rows) -> reach
-   RIGHT (cols 9-12):  portrait -> explore -> (loc | focus)
+   RIGHT (cols 9-12):  portrait -> explore -> loc
    No card's CONTENT overlaps another's. The only overlap is the render's
    transparent margin + drop-shadow bleeding a touch over the cards beside it
    (see .c-render) — depth without clipping a single word. */
@@ -379,17 +378,9 @@
   background: transparent;
   border: none;
   box-shadow: none;
-  /* Kill the glass: .card applies backdrop-filter: blur(14px); on this
-     transparent render cell that blur paints a frosted rectangle over
-     everything behind the room. The room art needs no glass. */
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
   z-index: 20;
   overflow: visible;
   pointer-events: none;
-}
-.c-render::before {
-  display: none;
 }
 .render-frame {
   position: relative;
@@ -933,8 +924,7 @@
   .c-explore,
   .c-study,
   .c-reach,
-  .c-loc,
-  .c-focus {
+  .c-loc {
     grid-row: auto;
     margin: 0;
   }
@@ -980,20 +970,14 @@
     padding: clamp(20px, 1.7vw, 26px);
   }
 
-  /* #15 PERF: drop the live backdrop-blur on the 8 glass cards. On a flat
-     opaque section bg the frosted glass reads near-identical to a solid
-     near-white panel, but the live blur is expensive to repaint every frame
-     while the column scrolls. Swap to a cheap opaque surface. */
+  /* Cheap near-opaque card surface for the stacked mobile column. */
   .card {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
     background: rgba(255, 255, 255, 0.92);
   }
   /* The .behind tuck (0.72) only exists for desktop occlusion peek-through; on
      a single column there's nothing overlapping these cards, so match the
      regular mobile card surface. (Specificity-equal to .card but later in
-     source, so it lands; also re-asserts over .c-study/.c-reach's own 0.6/0.72
-     backgrounds where they're .behind.) */
+     source, so it lands.) */
   .behind {
     background: rgba(255, 255, 255, 0.92);
   }
@@ -1007,15 +991,6 @@
        bloat block in the stacked column. The desktop bento keeps its floating
        room; phones are facts-first + compact. */
     display: none;
-  }
-  .render-frame {
-    height: 100%;
-    animation: none;
-  }
-  .about-room {
-    object-position: center 52%;
-    /* #27: drop the desktop 1.3x scale — full-width it over-crops the room. */
-    transform: none;
   }
 
   /* Portrait needs an explicit height once it's no longer a grid cell. */
@@ -1091,9 +1066,6 @@
   .c-now .pill a {
     display: inline-flex;
     align-items: center;
-    min-height: 44px;
-  }
-  .c-reach .btn {
     min-height: 44px;
   }
 }

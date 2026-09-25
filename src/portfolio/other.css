@@ -1,52 +1,23 @@
 /* ======================================================================
    Other: "Off the clock" (section 04, "Play") — BOLD INTEREST CLUSTER
    ----------------------------------------------------------------------
-   A single bold screen (no pin, no scroll-jack). The 3D HobbiesScene fills
-   the viewport full-bleed and floats all ten interest objects together as
-   one dense, overlapping cluster suspended in open space. The editorial
-   corner header (tiny "04" tag + giant wordmark) floats on top; hovering an
-   object surfaces its label via a tooltip. The only scroll-driven motion is
-   a light entrance fade-up of the header.
+   A single bold screen held briefly by a CSS sticky stop (no GSAP pin, no
+   scroll-jack). The 3D HobbiesScene fills the viewport full-bleed and floats
+   all ten interest objects together as one dense, overlapping cluster
+   suspended in open space. The editorial corner header (tiny "04" tag +
+   giant wordmark) floats on top; hovering an object surfaces its label as an
+   in-canvas tag. The only scroll-driven motion is a light entrance fade-up
+   of the header.
 
-   NOTE: the Photos ("Recents") section reuses the `.other-gallery*` +
-   `.other-train*` rules further down this file for its photo-train stack, so
-   those rules remain even though Play itself no longer renders them.
+   The Recents photo trains that used to be this section's opening beat now
+   live in photos.css.
    ====================================================================== */
-
-/* ----------------------------------------------------------------------
-   Accent-as-text contrast token. Raw --accent (#ff4f00) on the cool page
-   is ~2.6:1, fails AA for the small mono eyebrow + scrub label text.
-   Darken toward ink (66% accent / 34% ink) for ~5:1 while keeping the
-   orange identity. Same darkening trick the hero used. Used only for
-   SMALL accent text; the big title period + dot fills keep pure --accent
-   (large / non-text decoration where the ratio rule is relaxed). */
-.portfolio-other {
-  --accent-text: color-mix(in srgb, var(--accent) 66%, var(--ink));
-}
-
-/* Visually-hidden but DOM-real + focusable accessible content (the
-   interests <ul> + the sr <h2>). Mirrors the Macintosh / Keypad sr-only
-   recipe so screen readers, keyboard users, and crawlers reach the real
-   interests even though the visible objects live in a <canvas>. Scoped so
-   the off-screen clip never leaks onto other sections. */
-.other-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
 
 .portfolio-other {
   position: relative;
-  /* svh with vh fallback: this section PINS on mobile, and with bare
-     100vh its height (and pin geometry) changed every time the iOS URL
-     bar collapsed mid-scrub, shifting the trains/caption/dots layout.
-     svh is constant under browser-chrome changes. */
+  /* svh with vh fallback: bare 100vh changes every time the iOS URL bar
+     collapses, shifting the sticky-hold geometry. svh is constant under
+     browser-chrome changes. */
   height: 100vh;
   height: 100svh;
   overflow: hidden;
@@ -60,23 +31,8 @@
 }
 
 /* ======================================================================
-   Photos (Recents) reuses this file's `.other-gallery*` + `.other-train*`
-   rules for its own photo-train stack, so the gallery container rule stays
-   here. (The Play section itself no longer has a gallery beat.)
-   ====================================================================== */
-.other-gallery {
-  position: absolute;
-  inset: 0;
-  /* GSAP-onUpdate writes opacity inline; CSS transition smooths edge
-     cases like jump-to-section anchors. */
-  transition: opacity var(--t-fast) linear;
-  will-change: opacity;
-}
-
-/* ======================================================================
-   Beat B header: eyebrow, big title, sub-blurb. Spans the full top
-   edge with generous side gutter. Persistent across the pin; per-
-   element fade-up is driven by --head-eye / --head-title / --head-sub
+   Header: eyebrow + big title. Spans the full top edge with generous side
+   gutter; per-element fade-up is driven by the --head-eye / --head-title
    custom props poked from React.
    ====================================================================== */
 
@@ -94,7 +50,7 @@
   align-items: end;
 }
 
-/* Beat-B header eyebrow: now just the big "04" number on the shared
+/* Header eyebrow: now just the big "04" number on the shared
    corner-header scale (the small "/ Off the clock" tag was removed). */
 .other-eyebrow {
   grid-column: 1;
@@ -151,7 +107,7 @@
               transform var(--t-slow) var(--ease-entrance);
 }
 
-/* Short-viewport guard: this section is pinned full-bleed with the 3D reel
+/* Short-viewport guard: this section is full-bleed with the 3D cluster
    filling the centre. On short screens the GIANT shared-scale wordmark
    would push down over the centred reel hero, so ease the title back here
    (it stays large for impact but yields room); the number stays the tiny
@@ -194,22 +150,19 @@
     top: 0;
   }
 }
-
 @media (max-height: 780px) and (min-width: 769px) {
-  .other-section-num,
-  .other-gallery-num {
+  .other-section-num {
     font-size: clamp(13px, 1.4vw, 20px);
   }
-  .portfolio-other .other-title,
-  .portfolio-other .other-gallery-title {
+  .portfolio-other .other-title {
     font-size: clamp(40px, 7vw, 96px);
   }
 }
 
 /* ======================================================================
-   Beat B: Full-width 3D scene
+   Full-width 3D scene
    ----------------------------------------------------------------------
-   The 3D scene occupies the entire pin viewport. The header floats
+   The 3D scene occupies the entire viewport. The header floats
    above it; the editorial label + dot strip float below. The scene's
    canvas is transparent so the cool-grey section gradient reads
    through, giving the floating objects the feeling of suspended-in-
@@ -278,239 +231,6 @@
 }
 
 /* ======================================================================
-   BEAT A: Photo train stack
-   ----------------------------------------------------------------------
-   Three horizontal rows. Each row is `overflow: hidden` with a
-   left/right gradient mask so cards enter/leave the viewport without
-   hard-clipping. The inner strip is `display: flex` with cards laid
-   out left-to-right; React writes a per-row translate3d via inline
-   style every rAF tick (the lerp loop runs in OtherPhotoTrains).
-   ====================================================================== */
-
-.other-gallery-header {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding: 6vh 6vw 0;
-  z-index: 5;
-  pointer-events: none;
-  display: grid;
-  /* Single column: Beat A's header only renders the eyebrow + title, so
-     the old `1fr auto` second track was always empty and only served to
-     inset the title by `column-gap`. Collapsing to `1fr` signals a
-     deliberate difference from Beat B's grid rather than an accidental
-     empty column (Beat B currently renders no .other-sub either). The
-     mobile override below was already single-column. */
-  grid-template-columns: 1fr;
-  grid-template-rows: auto auto;
-  align-items: end;
-}
-/* Beat-A header eyebrow: now just the big "04" number on the shared
-   corner-header scale (the "/ Photo reel" tag was removed). */
-.other-gallery-eyebrow {
-  grid-column: 1;
-  grid-row: 1;
-  display: flex;
-  align-items: flex-start;
-  opacity: var(--gh-eye, 1);
-  transform: translateY(calc((1 - var(--gh-eye, 1)) * 8px));
-  transition: opacity var(--t-med) var(--ease-entrance),
-              transform var(--t-med) var(--ease-entrance);
-}
-/* Small section-number tag on the shared --hdr-num scale: 04 reads at the
-   SAME tiny size as every other section's number. (The "/ Photo reel" tag
-   + its label/divider wrappers were removed — vibe-coded caption clutter.) */
-.other-gallery-num {
-  font-family: var(--font-pixel);
-  font-weight: 700;
-  font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
-  line-height: 0.9;
-  letter-spacing: 0.01em;
-  color: var(--hdr-num-color, #c23d00);
-}
-/* Scoped for the same specificity reason as .other-title above. */
-.portfolio-other .other-gallery-title {
-  grid-column: 1;
-  grid-row: 2;
-  /* Clear gap under the eyebrow — the pixel title's line-height:0.9 overflows
-     upward, so the old 2px let it crowd/overlap the number tag. */
-  margin: clamp(16px, 2.2vh, 34px) 0 0;
-  /* OffBit pixel display on the shared GIANT --hdr-title scale. UPPERCASE.
-     "RECENTS" is a single 7-glyph word that fits the 1fr stage at full
-     size; break-word guards narrower frames. */
-  font-family: var(--font-dot);
-  font-weight: 700;
-  font-size: var(--hdr-title, clamp(48px, 13vw, 190px));
-  line-height: 0.9;
-  letter-spacing: 0.01em;
-  text-transform: none;
-  color: var(--hdr-ink, var(--ink));
-  min-width: 0;
-  overflow-wrap: break-word;
-  word-break: break-word;
-  opacity: var(--gh-title, 1);
-  transform: translateY(calc((1 - var(--gh-title, 1)) * 22px));
-  transition: opacity var(--t-slow) var(--ease-entrance),
-              transform var(--t-slow) var(--ease-entrance);
-}
-.other-gallery-sub {
-  grid-column: 2;
-  grid-row: 2;
-  margin: 0 0 14px;
-  align-self: end;
-  max-width: 280px;
-  font-family: var(--font-body);
-  font-size: var(--fs-meta);
-  line-height: 1.6;
-  color: var(--ink-muted);
-  opacity: var(--gh-sub, 1);
-  transform: translateY(calc((1 - var(--gh-sub, 1)) * 10px));
-  transition: opacity 360ms ease, transform 360ms ease;
-}
-
-/* The trains wrap: centered vertical band between the header and the
-   foot HUD. Holds the three-row train stack.
-
-   OVERLAP FIX: the band top was 28vh while the Beat-A header+blurb
-   occupy the top ~21vh AND the three-row stack used to be ~670px tall
-   inside a ~540px band, so, being centred, it overflowed ~65px UPWARD
-   and the top row collided with the right-side blurb's last line
-   ("…keyboard."). Two guards now keep them apart at every scrub
-   position:
-     1. `top: 30vh` drops the band start to a clear ~9vh below the
-        blurb's lowest line (blurb bottom ≈ 21vh).
-     2. `overflow: hidden` clips the band so its rows can NEVER escape
-        upward into the header zone even if a future card size change
-        re-overflows.
-   The row/card heights below are also vh-tuned so the three rows fit
-   inside the band (no clipping of card content; the clip is a belt-
-   and-braces guard, not the primary mechanism). */
-.other-trains-wrap {
-  position: absolute;
-  /* Centre the stack vertically between the "Recents" header (top) and the
-     "CURATED REEL" index line (bottom). It was bottom-heavy and jammed
-     against the footer line; 30/12vh + slightly shorter rows (18vh, below)
-     give a balanced ~57px of breathing room on both sides. Verified via
-     Playwright against the real pinned view.
-
-     svh (with a vh fallback) so the band geometry references the SAME viewport
-     unit as the section (height:100svh) + the cards (19svh). Mixing vh here was
-     the iOS bug: real Safari resolves `vh` to the LARGE (URL-bar-collapsed)
-     viewport while `svh` is the small one, so on a real iPhone the band sat in
-     a different box than the section and `justify-content:space-between` blew the
-     row gaps out — yet DevTools (where vh==svh) looked correct. */
-  top: 30vh;
-  top: 30svh;
-  bottom: 12vh;
-  bottom: 12svh;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 3;
-}
-
-.other-trains {
-  width: 100%;
-  /* Fill the whole train band and distribute the three rows evenly across
-     it (equal gaps) instead of clustering them in the centre with empty
-     headroom above/below. */
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-height: 0;
-  /* Minimum row gap; space-between adds the rest to fill the band. svh to match
-     the section/cards/band (see .other-trains-wrap) — a vh gap diverged on iOS. */
-  gap: clamp(12px, 1.6vh, 22px);
-  gap: clamp(12px, 1.6svh, 22px);
-}
-
-.other-train-row {
-  position: relative;
-  overflow: hidden;
-  width: 100%;
-  /* Centre the (much wider) strip so its resting position overflows BOTH
-     sides. The rAF drift then translates around centre and never runs past
-     an edge — that left-anchored overrun was the mid-scroll gap. */
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  /* No left/right edge fade — the gradient mask read as a "weird fade" the
-     owner flagged. Cards hard-clip at the row edge instead (clean, gradient-
-     free, on both desktop and mobile). */
-}
-
-.other-train-strip {
-  display: flex;
-  gap: var(--space-5);
-  will-change: transform;
-  /* No CSS transition; the rAF lerp loop computes the transform on
-     every frame; a CSS transition would add lag. */
-}
-
-/* Each card is a SQUARE tile. Placeholder gradient fill until real
-   photos land in /public/images/photos/.
-
-   OVERLAP FIX: height is vh-driven (16vh, clamped 118–180px) so the
-   three-row stack scales with the vh-defined train band and fits inside
-   at 900px tall the stack is ~3x144 + 2x18 = 468px in a 522px band,
-   leaving headroom on both edges. Width is derived from height via
-   aspect-ratio:1 so the card reads as a square photo tile. */
-.other-train-card {
-  flex: 0 0 auto;
-  /* Tile size: 18vh so three rows + gaps fit the centred band with
-     balanced padding above ("Recents") and below ("CURATED REEL"). */
-  height: clamp(132px, 18vh, 220px);
-  aspect-ratio: 1 / 1;
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  padding: var(--space-4);
-  color: var(--bg-surface);
-  border: 1px solid var(--ink-hairline);
-  /* Flat ground: the soft orange-cast elevation shadow read "cheap" (user) —
-     the photo tile now sits flush on its 1px hairline border, matching the
-     flat spec-sheet card voice used across the rest of the site. */
-  overflow: hidden;
-}
-
-/* Cover photo inside the card: real <img> (not background-image) so
-   loading="lazy" / decoding="async" apply — the background variant
-   decoded every WebP synchronously at section entry (scroll jank). */
-.other-train-photo {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
-.other-train-card-label {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--bg-surface);
-  font-weight: 600;
-  padding: 5px 10px;
-  background: rgba(13, 14, 16, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-
-/* (Removed the Beat-A foot HUD: the "02 / Curated reel" handoff caption
-   + the old scrub readout were vibe-coded NN / label clutter.) */
-
-/* ======================================================================
    Mobile (≤ 768px)
    ====================================================================== */
 @media (max-width: 768px) {
@@ -536,71 +256,6 @@
   }
   /* Each interest's NAME is now rendered STATICALLY over its 3D object inside
      the canvas (.hobbies-label--static), so there's no bottom chip row here. */
-
-  /* ===== Beat A: mobile train stack (reused by the Photos section) ===== */
-  /* Same HUD clearance as Beat B's header; drop the "01 - PHOTO REEL /
-     Flashes." block below the cat + status pill so it never collides. */
-  .other-gallery-header {
-    padding: calc(max(72px, 9vh) + env(safe-area-inset-top, 0px)) 6vw 0;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto;
-    row-gap: 6px;
-  }
-  .other-gallery-eyebrow { grid-column: 1; grid-row: 1; }
-  .other-gallery-num {
-    font-size: clamp(13px, 3.4vw, 18px);
-  }
-  .portfolio-other .other-gallery-title  {
-    grid-column: 1;
-    grid-row: 2;
-    /* Very little padding under the number tag. */
-    margin-top: 2px;
-    font-size: clamp(44px, 15vw, 84px);
-  }
-  .other-gallery-sub {
-    grid-column: 1;
-    grid-row: 3;
-    margin: 4px 0 0;
-    max-width: none;
-    /* Match Beat B's blurb bump (12.5 → 14px) for mobile legibility;
-       the train band starts at 26vh so this stays clear. */
-    font-size: 14px;
-    line-height: 1.5;
-  }
-  /* Train band starts below the pushed-down header and ends above the
-     foot hint. overflow:hidden on the band (+ .portfolio-other) means the
-     rows slide via transform WITHOUT ever creating page horizontal
-     scroll. */
-  .other-trains-wrap {
-    top: 26vh;
-    top: 26svh;
-    bottom: 13vh;
-    bottom: 13svh;
-  }
-  .other-trains {
-    gap: clamp(8px, 1.4vh, 14px);
-    gap: clamp(8px, 1.4svh, 14px);
-  }
-  /* SQUARE CARD IN PORTRAIT: sized to FILL the train band. The band is
-     100svh - 26vh header - 13vh foot ≈ 61svh; three rows + two gaps
-     should consume it. The old 13.5vh rows used only ~366px of a
-     ~515px band (user: "the squares don't fill out the screen") —
-     19svh rows land 3×rows + gaps within a few px of the band height
-     on both tall (844) and short (640) phones. svh so the size doesn't
-     jump when the URL bar collapses; vh fallback for older engines. */
-  .other-train-card {
-    /* Square (aspect-ratio:1 inherited from the base rule); height
-       drives the side length. */
-    height: clamp(112px, 19vh, 190px);
-    height: clamp(112px, 19svh, 190px);
-    padding: 10px;
-  }
-  .other-train-card-label {
-    font-size: var(--text-xs);
-    padding: 4px 7px;
-    letter-spacing: 0.18em;
-  }
-  /* (Beat-A foot HUD removed; no mobile foot rules needed.) */
 }
 
 /* ======================================================================
@@ -608,28 +263,14 @@
    ----------------------------------------------------------------------
    Other.tsx reveals the header statically (no entrance scrub) and the 3D
    HobbiesScene parks itself static (no bob, sway, or parallax) under reduced
-   motion. Here we kill the residual CSS-driven motion so nothing tweens: the
-   header per-element fade-up transitions, the gallery-header transitions (the
-   Photos section reuses these classes), the train-card transition, and the
-   tooltip keyframe.
+   motion. Here we kill the residual CSS-driven header fade-up transitions so
+   nothing tweens.
    ====================================================================== */
 @media (prefers-reduced-motion: reduce) {
-  .other-gallery {
-    transition: none;
-  }
   .other-header .other-eyebrow,
-  .other-header .other-title,
-  .other-gallery-eyebrow,
-  .other-gallery-title,
-  .other-gallery-sub {
+  .other-header .other-title {
     transition: none;
     transform: none;
     opacity: 1;
-  }
-  .other-train-strip {
-    transition: none;
-  }
-  .hobbies-tooltip {
-    animation: none;
   }
 }

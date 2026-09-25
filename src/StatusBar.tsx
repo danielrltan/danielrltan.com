@@ -12,13 +12,9 @@ const NavSpillMenu = lazy(() =>
 );
 
 /**
- * Top-right section indicator: Offbit numeral + Geist label + a stepped
- * pixel-block scroll meter. Section detection reads live rects so it
- * stays accurate as pinned sections grow their pin spacers. (The
- * faux-mono readout, live clock, and reset/ambience buttons were
- * removed per design; room reset still lives on the keyboard shortcut.
- * The previous circular SVG progress ring was retired with the pixel
- * retrofuturism pass: round chrome fought the blocky type language.)
+ * Top-right section indicator: the odometer dial (SectionDial) that opens
+ * the spill menu. Section detection reads live rects so it stays accurate
+ * as pinned sections grow their pin spacers.
  */
 
 export function StatusBar() {

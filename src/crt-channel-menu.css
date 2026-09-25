@@ -1,12 +1,8 @@
 /* ─────────────────────────────────────────────────────────────────────
- * OVERDRIVE NAV — section indicator card + the jump menu it opens.
- *
- * REAL interactive 3D (not a tilted flat list): the menu is a 3D plane that
- * TILTS toward the cursor as you move the mouse — you can fiddle with it —
- * the blocks sit at staggered depth so they parallax as it turns, and each
- * lifts toward you on hover. Flat colours, sharp corners, orange + white +
- * cool-white. Site retro-futurism, tactile + fun, not a Persona pastiche.
- * Inline styles carry data/positioning; this file shape + depth + motion.
+ * OVERDRIVE NAV — the section dial (top-right odometer chit) and the 3D
+ * spill menu it opens (NavSpillMenu: a ring of orange dithered objects with
+ * drei <Html> labels). Flat colours, sharp corners, orange + white + ink.
+ * Inline styles carry data/positioning; this file owns shape + motion.
  * ──────────────────────────────────────────────────────────────────── */
 
 :root {
@@ -110,7 +106,7 @@
   transform: translateY(3px);
 }
 
-/* White readout body — just the SECTION eyebrow now. */
+/* White readout body: the section label. */
 .snc-dial-body {
   display: flex;
   flex-direction: column;
@@ -119,14 +115,6 @@
   padding: 0 12px;
   background: #ffffff;
 }
-.snc-dial-eyebrow {
-  font-family: "VT323", monospace;
-  font-size: 10px;
-  line-height: 1;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--navx-accent);
-}
 .snc-dial-label {
   font: 650 15px/1 "Geist", system-ui, sans-serif;
   letter-spacing: -0.01em;
@@ -134,7 +122,7 @@
   color: var(--navx-ink);
 }
 
-/* Trigger: grid glyph + MENU; fills orange on hover/open. */
+/* Trigger: grid glyph; fills orange on hover/open. */
 .snc-dial-trigger {
   display: flex;
   flex-direction: column;
@@ -157,14 +145,6 @@
   background: var(--navx-accent);
   transition: background 130ms ease;
 }
-.snc-dial-menu-label {
-  font-family: "VT323", monospace;
-  font-size: 11px;
-  line-height: 1;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--navx-ink);
-}
 .snc-dial:hover .snc-dial-trigger,
 .snc-dial[aria-expanded="true"] .snc-dial-trigger {
   background: var(--navx-accent-hot);
@@ -172,10 +152,6 @@
 .snc-dial:hover .snc-dial-grid > i,
 .snc-dial[aria-expanded="true"] .snc-dial-grid > i {
   background: #ffffff;
-}
-.snc-dial:hover .snc-dial-menu-label,
-.snc-dial[aria-expanded="true"] .snc-dial-menu-label {
-  color: #ffffff;
 }
 
 /* Mobile (#29): the dial is just chrome on a phone — shrink it to a compact
@@ -225,369 +201,6 @@
   .snc-dial,
   .snc-dial-trigger {
     transition: none;
-  }
-}
-
-/* ============================ RESTING CARD ============================ */
-/* Two-tone HUD chit: solid-orange index block (white numeral) + white
-   readout block, as one notched, hard-extruded 3D unit. */
-.status-nav-card {
-  position: relative;
-  display: inline-flex;
-  align-items: stretch;
-  user-select: none;
-  cursor: pointer;
-  color: var(--navx-ink);
-  /* hard, blur-free offset = the block's 3D side */
-  box-shadow: 6px 7px 0 0 var(--navx-accent-deep);
-  /* angular notched corner */
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
-  transition: box-shadow 150ms cubic-bezier(0.2, 0.9, 0.25, 1.05),
-    transform 150ms cubic-bezier(0.2, 0.9, 0.25, 1.05);
-}
-.snc-num {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 13px 3px;
-  background: var(--navx-accent-hot);
-  color: #ffffff;
-  font-family: "Offbit", monospace;
-  font-weight: 700;
-  font-size: 31px;
-  line-height: 1;
-}
-.snc-body {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  min-width: 118px;
-  padding: 7px 14px 7px 12px;
-  background: #ffffff;
-}
-.snc-eyebrow {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: var(--navx-accent);
-}
-.snc-label {
-  font: 650 15px/1 "Geist", system-ui, sans-serif;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  color: var(--navx-ink);
-}
-.snc-meter {
-  display: flex;
-  gap: 2px;
-  margin-top: 1px;
-}
-.snc-meter > span {
-  width: 4px;
-  height: 9px;
-}
-/* Persistent menu-trigger zone: the affordance that says "click me". */
-.snc-trigger {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 0 13px;
-  background: rgba(255, 79, 0, 0.1);
-  border-left: 1px solid rgba(13, 14, 16, 0.12);
-  transition: background 130ms ease;
-}
-.snc-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 5px);
-  grid-template-rows: repeat(2, 5px);
-  gap: 2.5px;
-}
-.snc-grid > i {
-  display: block;
-  background: var(--navx-accent);
-  transition: background 130ms ease;
-}
-.snc-menu-label {
-  font-family: "VT323", monospace;
-  font-size: 12px;
-  line-height: 1;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--navx-ink);
-}
-.status-nav-card:hover .snc-trigger,
-.status-nav-card[aria-expanded="true"] .snc-trigger {
-  background: var(--navx-accent-hot);
-}
-.status-nav-card:hover .snc-grid > i,
-.status-nav-card[aria-expanded="true"] .snc-grid > i {
-  background: #ffffff;
-}
-.status-nav-card:hover .snc-menu-label,
-.status-nav-card[aria-expanded="true"] .snc-menu-label {
-  color: #ffffff;
-}
-.status-nav-card[data-mobile="true"] .snc-trigger {
-  padding: 0 10px;
-  gap: 4px;
-}
-.status-nav-card[data-mobile="true"] .snc-menu-label {
-  font-size: 10px;
-}
-.status-nav-card[data-mobile="true"] .snc-num {
-  font-size: 24px;
-  padding: 5px 10px 3px;
-}
-.status-nav-card[data-mobile="true"] .snc-body {
-  min-width: 0;
-  max-width: 44vw;
-  padding: 6px 11px;
-}
-.status-nav-card[data-mobile="true"] .snc-label {
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.status-nav-card:hover,
-.status-nav-card[aria-expanded="true"] {
-  transform: translate(3px, 4px);
-  box-shadow: 2px 2px 0 0 var(--navx-accent-deep);
-}
-.status-nav-card:focus-visible {
-  outline: 2px solid var(--navx-accent);
-  outline-offset: 3px;
-}
-.status-nav-card .nav-open-hint {
-  position: absolute;
-  right: 4px;
-  bottom: -15px;
-  font-family: "VT323", monospace;
-  font-size: 11px;
-  letter-spacing: 0.16em;
-  color: var(--navx-accent);
-  opacity: 0;
-  transition: opacity 150ms ease;
-  pointer-events: none;
-}
-.status-nav-card:hover .nav-open-hint,
-.status-nav-card:focus-visible .nav-open-hint,
-.status-nav-card[aria-expanded="true"] .nav-open-hint {
-  opacity: 1;
-}
-
-/* ============================ JUMP MENU ============================== */
-.navx-stage {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  perspective: 900px;
-  pointer-events: none;
-}
-.navx-stage[data-open="true"] {
-  pointer-events: auto;
-}
-
-/* Soft LIGHT focus wash + faint orange halftone (never a dark UI). */
-.navx-scrim {
-  position: absolute;
-  inset: 0;
-  background: rgba(238, 240, 243, 0.5);
-  background-image: radial-gradient(
-    rgba(255, 79, 0, 0.18) 1px,
-    transparent 1.4px
-  );
-  background-size: 7px 7px;
-  opacity: 0;
-  transition: opacity 220ms ease;
-}
-.navx-stage[data-open="true"] .navx-scrim {
-  opacity: 1;
-}
-
-/* The 3D plane: tilts toward the cursor (--rx/--ry set per-frame in JS). */
-.navx-stack {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  transform-style: preserve-3d;
-  transform: rotateX(var(--rx, 0deg)) rotateY(calc(-8deg + var(--ry, 0deg)));
-  transition: transform 140ms ease-out;
-}
-
-/* Per-item depth slot: holds the static Z stagger + the slam cascade, so
-   the items sit at different depths and parallax as the plane turns. */
-.navx-slot {
-  transform-style: preserve-3d;
-  transform: translateX(72px) translateZ(calc(var(--i) * 9px));
-  opacity: 0;
-  transition: transform 460ms cubic-bezier(0.18, 0.92, 0.24, 1.12),
-    opacity 380ms ease;
-  transition-delay: calc(var(--i) * 46ms);
-}
-.navx-stage[data-open="true"] .navx-slot {
-  transform: translateX(0) translateZ(calc(var(--i) * 9px));
-  opacity: 1;
-}
-.navx-stage[data-closing="true"] .navx-slot {
-  transform: translateX(64px) translateZ(calc(var(--i) * 9px));
-  opacity: 0;
-  transition-delay: calc((6 - var(--i)) * 26ms);
-}
-
-/* The block. Hard blur-free offset = its 3D side; it tilts WITH the plane. */
-.navx-shard {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 56px;
-  padding: 0 16px;
-  border: 1px solid rgba(13, 14, 16, 0.14);
-  cursor: pointer;
-  color: var(--navx-ink);
-  background: #ffffff;
-  box-shadow: 7px 8px 0 0 var(--navx-accent);
-  text-align: left;
-  font: inherit;
-  transform-style: preserve-3d;
-  transition: transform 180ms cubic-bezier(0.2, 0.9, 0.25, 1.05),
-    box-shadow 160ms ease, background 130ms ease;
-}
-.navx-shard::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 5px;
-  background: var(--navx-accent);
-}
-
-/* Hover / armed: the block LIFTS toward the viewer off the plane (real Z),
-   shadow grows -> it floats. Tactile + fun. */
-.navx-stage[data-open="true"] .navx-shard:hover,
-.navx-stage[data-open="true"] .navx-shard[data-armed="true"] {
-  transform: translateZ(40px);
-  box-shadow: 12px 14px 0 0 var(--navx-accent);
-  background: var(--accent-tint); /* on-brand orange hover wash (was warm cream #fff6f1) */
-}
-.navx-shard:focus-visible {
-  outline: 2px solid var(--navx-accent);
-  outline-offset: -3px;
-}
-
-/* Active section = the one solid-orange block, WHITE text (not ink). */
-.navx-shard[data-active="true"] {
-  background: var(--navx-accent-hot);
-  color: #ffffff;
-  border-color: var(--navx-accent-deep);
-  box-shadow: 7px 8px 0 0 var(--navx-accent-deep);
-}
-.navx-shard[data-active="true"]::before {
-  background: #ffffff;
-}
-.navx-stage[data-open="true"] .navx-shard[data-active="true"]:hover,
-.navx-stage[data-open="true"] .navx-shard[data-active="true"][data-armed="true"] {
-  background: var(--navx-accent-hot);
-  box-shadow: 12px 14px 0 0 var(--navx-accent-deep);
-}
-
-.navx-num {
-  font-family: "Offbit", monospace;
-  font-weight: 700;
-  font-size: 30px;
-  line-height: 1;
-  transform: translateY(3px);
-  min-width: 38px;
-  color: var(--navx-accent);
-}
-.navx-shard[data-active="true"] .navx-num {
-  color: #ffffff;
-}
-.navx-label {
-  flex: 1;
-  font-size: 15.5px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.navx-tag {
-  font-family: "VT323", monospace;
-  font-size: 13px;
-  letter-spacing: 0.12em;
-  color: var(--navx-accent);
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-.navx-shard[data-active="true"] .navx-tag {
-  color: #ffffff;
-  opacity: 0.9;
-}
-.navx-shard:hover .navx-tag,
-.navx-shard[data-armed="true"] .navx-tag {
-  opacity: 0.85;
-}
-
-/* Header chip: an orange extruded "JUMP" tab, white text. */
-.navx-head {
-  position: absolute;
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 14px;
-  background: var(--navx-accent-hot);
-  color: #ffffff;
-  box-shadow: 4px 5px 0 0 var(--navx-accent-deep);
-  font-family: "VT323", monospace;
-  font-size: 15px;
-  letter-spacing: 0.18em;
-  opacity: 0;
-  transform: translateX(64px);
-  transition: transform 400ms cubic-bezier(0.18, 0.92, 0.24, 1.12),
-    opacity 320ms ease;
-}
-.navx-stage[data-open="true"] .navx-head {
-  opacity: 1;
-  transform: translateX(0);
-}
-.navx-stage[data-closing="true"] .navx-head {
-  opacity: 0;
-  transform: translateX(60px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .status-nav-card,
-  .status-nav-card::before,
-  .nav-open-hint {
-    transition: none;
-  }
-  .navx-stack {
-    transform: none;
-  }
-  .navx-slot,
-  .navx-head {
-    transition: opacity 120ms ease;
-    transform: none;
-  }
-  .navx-stage[data-open="true"] .navx-slot,
-  .navx-stage[data-open="true"] .navx-head {
-    transform: none;
-  }
-  .navx-stage[data-open="true"] .navx-shard:hover,
-  .navx-stage[data-open="true"] .navx-shard[data-armed="true"] {
-    transform: none;
-    background: var(--accent-tint); /* on-brand orange hover wash (was warm cream #fff6f1) */
-  }
-  .navx-stage[data-closing="true"] .navx-slot,
-  .navx-stage[data-closing="true"] .navx-head {
-    transform: none;
   }
 }
 
@@ -701,101 +314,6 @@
     height: 48px;
     top: max(14px, calc(env(safe-area-inset-top, 0px) + 8px));
     right: max(14px, calc(env(safe-area-inset-right, 0px) + 8px));
-  }
-}
-
-/* ── MOBILE: accessible jump LIST (replaces the WebGL spill ring, #4) ───── */
-/* On touch the ring is unusable (hover-driven enlarge/aim, 8 crowded objects),
-   so NavSpillMenu renders this vertical list instead. Large full-width tap
-   rows (≥48px), ≥16px text, TAP not hover, reuses the .navx-shard block
-   language. The whole sheet fades with data-open and respects safe areas. */
-.navx-spill-root--list {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-.navx-list {
-  position: relative;
-  z-index: 4; /* above the scrim, below the close button (z-index:5) */
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  max-width: 520px;
-  margin: 0 auto;
-  padding: max(72px, calc(env(safe-area-inset-top, 0px) + 64px))
-    max(18px, env(safe-area-inset-right, 0px))
-    max(24px, calc(env(safe-area-inset-bottom, 0px) + 18px))
-    max(18px, env(safe-area-inset-left, 0px));
-  box-sizing: border-box;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 220ms ease, transform 260ms cubic-bezier(0.2, 0.9, 0.25, 1);
-}
-.navx-spill-root--list[data-open="true"] .navx-list {
-  pointer-events: auto;
-  opacity: 1;
-  transform: translateY(0);
-}
-/* Full-width tap row. Reuses .navx-shard for the block look (orange edge bar,
-   hard offset shadow) but flattens the 3D plane transforms for a flat list. */
-.navx-list-row {
-  width: 100%;
-  min-height: 56px;
-  height: auto;
-  padding: 10px 18px;
-  box-sizing: border-box;
-  transform: none;
-  box-shadow: 4px 5px 0 0 var(--navx-accent);
-  transition: background 130ms ease, box-shadow 130ms ease, transform 90ms ease;
-}
-/* TAP feedback (no hover): the row presses into its shadow when touched. */
-.navx-list-row:active {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 3px 0 0 var(--navx-accent);
-  background: var(--accent-tint);
-}
-.navx-list-row[data-active="true"] {
-  background: var(--navx-accent-hot);
-  color: #ffffff;
-  border-color: var(--navx-accent-deep);
-  box-shadow: 4px 5px 0 0 var(--navx-accent-deep);
-}
-.navx-list-row[data-active="true"]::before {
-  background: #ffffff;
-}
-.navx-list-row[data-active="true"]:active {
-  background: var(--navx-accent-hot);
-  box-shadow: 2px 3px 0 0 var(--navx-accent-deep);
-}
-.navx-list-num {
-  transform: translateY(2px);
-  min-width: 42px;
-}
-.navx-list-label {
-  flex: 1;
-  font-size: 17px;
-}
-.navx-list-here {
-  font-family: "VT323", monospace;
-  font-size: 14px;
-  letter-spacing: 0.16em;
-  color: #ffffff;
-  opacity: 0.9;
-}
-@media (prefers-reduced-motion: reduce) {
-  .navx-list {
-    transition: opacity 140ms ease;
-    transform: none;
-  }
-  .navx-spill-root--list[data-open="true"] .navx-list {
-    transform: none;
-  }
-  .navx-list-row:active {
-    transform: none;
   }
 }
 

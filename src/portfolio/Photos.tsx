@@ -1,11 +1,9 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { requestScrollRefresh } from "./scrollRefresh";
+import { refreshScrollOnLoaderLift } from "./scrollRefresh";
+import { smoothstep } from "../math";
 import "./sections.css";
-// Reuse the photo-train + gallery-header CSS that Beat A used inside Other.
-// (Those classes are global; only the giant title is re-scoped in photos.css.)
-import "./other.css";
 import "./photos.css";
 import { ScrambleText } from "./ScrambleText";
 import { OtherPhotoTrains } from "../other/OtherPhotoTrains";
@@ -16,10 +14,9 @@ gsap.registerPlugin(ScrollTrigger);
 /**
  * PHOTOS — "Recents".
  *
- * The horizontal photo-train stack that used to be Beat A inside the Play
- * (Other) section, lifted out into its own standalone section so Photos can
- * live near the end of the page (after Honors, before Contact) instead of
- * being the opening beat of the interests reel. Three rows of cards glide at
+ * The horizontal photo-train stack (originally the opening beat of the Play
+ * section), now its own standalone section near the end of the page (after
+ * Honours, before Contact). Three rows of cards glide at
  * their own controlled rate as the section's pin scrubs; OtherPhotoTrains owns
  * the rAF lerp (never bound directly to scroll — see the project rule). Real
  * uploads stream in from /photos/manifest.json; until they exist the tinted
@@ -57,11 +54,6 @@ const PREFERS_REDUCED_MOTION =
   typeof window.matchMedia === "function" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-
-function smoothstep(edge0: number, edge1: number, x: number) {
-  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
 
 // Write the gallery header reveal STRAIGHT to CSS vars (no React state → the
 // ~108 card nodes never re-render on a scrub tick). Fed by GSAP's smoothed
@@ -148,20 +140,10 @@ export function Photos() {
 
     // Refresh after the loading screen lifts: pin position can shift during
     // initial layout. Same pattern as Other / Macintosh / Keypad.
-    const html = document.documentElement;
-    let lastLoading = html.classList.contains("loading-active");
-    const obs = new MutationObserver(() => {
-      const now = html.classList.contains("loading-active");
-      if (lastLoading && !now) requestScrollRefresh();
-      lastLoading = now;
-    });
-    obs.observe(html, { attributes: true, attributeFilter: ["class"] });
-    if (!lastLoading) {
-      requestScrollRefresh();
-    }
+    const stopLoaderWatch = refreshScrollOnLoaderLift();
 
     return () => {
-      obs.disconnect();
+      stopLoaderWatch();
       st.kill();
       entrance.kill();
     };
@@ -177,7 +159,7 @@ export function Photos() {
           placeholders (aria-hidden below), so this carries the section name
           for AT and crawlers. When real captioned photos land, give each card
           a real <img alt> and promote the visible header. */}
-      <h2 id="photos-sr-heading" className="other-sr-only">
+      <h2 id="photos-sr-heading" className="sr-only">
         Recents: a few frames from off the clock
       </h2>
 

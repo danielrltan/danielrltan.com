@@ -3,6 +3,7 @@ import { useGLTF } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { track } from "../analytics";
+import { SOCIALS } from "../socials";
 
 /**
  * Loads /keypad.glb and wires up four social keycaps + the spinnable
@@ -51,10 +52,10 @@ useGLTF.preload("/keypad.glb");
 function smoothNormalsAcrossSharedPositions(
   geom: THREE.BufferGeometry,
   posTol = 1e-4,
-): { clusters: number; merged: number } {
+): void {
   const pos = geom.attributes.position as THREE.BufferAttribute | undefined;
   const norm = geom.attributes.normal as THREE.BufferAttribute | undefined;
-  if (!pos || !norm) return { clusters: 0, merged: 0 };
+  if (!pos || !norm) return;
   // Round each coordinate to the same 1e-6 grid toFixed(6) used.
   // OLD: O(n) string alloc — `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`
   //      per vertex; heavy per-character heap allocation for n ≈ thousands.
@@ -107,26 +108,13 @@ function smoothNormalsAcrossSharedPositions(
     merged++;
   }
   norm.needsUpdate = true;
-  return { clusters: clusterCount, merged };
 }
 
-// TODO(daniel): confirm these handles. Defaulting to the same
-// `danielrltan` slug used for GitHub/LinkedIn. Adjust if X or
-// Pinterest use a different username.
-// NOTE: in the source GLB the node named "github" actually carries
-// the LinkedIn icon material, and the node "linkedin" carries the
-// GitHub icon, confirmed by walking child.material.name in the
-// meshInfo probe. Swapping the URL mapping here is the right fix
-// (re-naming nodes in Blender would also work but the user prefers
-// to keep node names where they are). When the cap is clicked we
-// look up its NODE name, so the URLs below pair node-name → URL the
-// USER sees on the cap.
-const SOCIAL_URLS: Record<string, string> = {
-  github: "https://www.linkedin.com/in/danielrltan",
-  linkedin: "https://github.com/danielrltan",
-  x: "https://x.com/danielrltan",
-  pinterest: "https://www.pinterest.com/danrlt",
-};
+// Keycap NODE name → URL the USER sees on the cap (src/socials.ts owns the
+// list, including the deliberately crossed github/linkedin node names).
+const SOCIAL_URLS: Record<string, string> = Object.fromEntries(
+  SOCIALS.map((s) => [s.node, s.href]),
+);
 
 const SOCIAL_KEYS = Object.keys(SOCIAL_URLS);
 

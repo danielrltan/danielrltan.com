@@ -61,12 +61,13 @@ orange accent.** That is the whole palette.
 | `--accent-hot` | `#ff6a2a` | Hover / active state |
 | `--accent-tint` | `rgba(255,79,0,0.10)` | Soft fills (chip backplates, hover fills) |
 
-### Legacy aliases
+Small accent text uses `--accent-text` (accent mixed 66% toward ink,
+~5:1 on the page) and big display numbers `--accent-text-lg` (85%, ~3.4:1);
+`--accent-deep` is the darkened orange for large display text.
 
-`--wrapper-bg`, `--wrapper-bg-soft`, `--wrapper-bg-deep`,
-`--wrapper-ink`, `--wrapper-ink-soft`, `--wrapper-ink-faint`,
-`--accent-soft`: all alias to the new tokens. Prefer the new names
-in new CSS.
+### Legacy alias
+
+`--wrapper-ink` aliases `--ink`. Prefer the new name in new CSS.
 
 ---
 
@@ -75,7 +76,7 @@ in new CSS.
 | Token | Family | Use |
 |---|---|---|
 | `--font-display` / `--font-body` | Geist | Headings, body |
-| `--font-mono` | JetBrains Mono | HUD labels, meta, tags |
+| `--font-mono` | Geist (no monospace face; tabular-nums) | HUD labels, meta, tags |
 | `--font-dot` | Offbit Dot | Hero name, section markers (loud, sparing) |
 | `--font-pixel` | Offbit (solid) | Retro feel without dot rendering |
 
@@ -85,20 +86,21 @@ in new CSS.
 |---|---|
 | `--fs-mono` | `11px` |
 | `--fs-meta` | `13px` |
+| `--fs-sub` | `14px` |
 | `--fs-body` | `16px` |
-| `--fs-lead` | `clamp(20px, 2.1vw, 28px)` |
-| `--fs-h2` | `clamp(48px, 7.5vw, 108px)` |
-| `--fs-h1` | `clamp(72px, 13vw, 220px)` |
+| `--fs-body-lg` | `17px` |
 
-**HUD micro-scale:** `--text-xs` 10, `--text-sm` 11, `--text-base` 12.
-Trackings: `--tracking-wide` 2px, `--tracking-wider` 3px, `--tracking-widest` 4px.
+Section headers share `--hdr-num` (the tiny section number) and
+`--hdr-title` (the giant pixel wordmark), set in `sections.css`.
+
+**HUD micro-scale:** `--text-xs` 10, `--text-base` 12.
 
 ---
 
 ## Spacing / radii / motion
 
-- **Spacing:** `--space-1` 4, `--space-2` 8, `--space-3` 12, `--space-4` 16, `--space-5` 24, `--space-6` 32, `--space-7` 48, `--space-8` 64, `--space-9` 96.
-- **Radii:** `--r-chip` 999px (pills), `--r-card` 14px, `--r-card-lg` 20px.
+- **Spacing:** `--space-1` 4, `--space-2` 8, `--space-3` 12, `--space-4` 16, `--space-4h` 20, `--space-5` 24, `--space-6` 32, `--space-7` 48, `--space-8` 64.
+- **Radii:** none. Every surface is sharp-cornered (`border-radius: 0`).
 - **Easings:** `--ease-out` `cubic-bezier(0.22, 1, 0.36, 1)`, `--ease-soft` `cubic-bezier(0.2, 0.7, 0.2, 1)`.
 - **Durations:** `--t-fast` 180ms, `--t-base` 280ms, `--t-slow` 540ms.
 
@@ -106,19 +108,17 @@ Trackings: `--tracking-wide` 2px, `--tracking-wider` 3px, `--tracking-widest` 4p
 
 ## Component norms
 
-### Chip / pill
+### Chip
 
-Used by: StatusBar pill, brand chip, JumpToTop, hero eyebrow.
+Used by: the section dial, brand tile, JumpToTop, project tags.
 
 ```css
-background: rgba(238, 240, 243, 0.82);
-backdrop-filter: blur(10px) saturate(120%);
+background: var(--bg-surface);            /* or var(--bg-page) */
 border: 1px solid var(--ink-hairline);
-border-radius: var(--r-chip);
-box-shadow:
-  0 1px 0 rgba(255, 255, 255, 0.5) inset,
-  0 8px 24px -16px rgba(13, 14, 16, 0.25);
+border-radius: 0;
 ```
+
+The blur-glass pill was retired with the pixel pass.
 
 ### Card
 
@@ -132,8 +132,7 @@ box-shadow:
   0 24px 48px -32px rgba(194, 61, 0, 0.10);  /* warm orange-cast shadow OK */
 ```
 
-Existing cards keep sharp corners (TE/industrial). New cards use
-`border-radius: var(--r-card)` unless there's a reason to break it.
+All cards keep sharp corners (TE/industrial).
 
 ### Button (primary, `.btn-pill`)
 
@@ -159,8 +158,8 @@ color: var(--bg-surface);
 ## Loading screen
 
 `html.loading-active` paints the wrapper `var(--accent)` (orange) so
-the orange cover-dome has no gap during loading. The cool retro-
-futurism palette resumes the instant `loading-active` drops.
+the boot loader's orange field has no gap during loading. The cool
+retro-futurism palette resumes the instant `loading-active` drops.
 
 Verified: cool-white wrapper transitions cleanly from orange when
 the loader completes. No flash.

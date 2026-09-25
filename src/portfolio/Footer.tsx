@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { FooterSignature } from "./FooterSignature";
 import { track } from "../analytics";
+import { SECTION_REGISTRY } from "../sectionRegistry";
 import "./footer.css";
 
 interface JumpLink {
@@ -20,22 +21,14 @@ interface ElsewhereLink {
   aria: string;
 }
 
-/* Jump targets reference each section's STABLE class (not :nth-of-type,
-   which counted the aria-hidden SectionTransition filler as a sibling
-   and pointed half the links at the wrong (or invisible) section).
-   Labels are the canonical short section names (same set the dial + spill
-   menu use, see sectionRegistry): Hero 00 / About 01 / Projects 02 / Work 03 /
-   Play 04 / Honours 05 / Recents 06 / Contact 07. */
-const JUMP_LINKS: JumpLink[] = [
-  { number: "00", label: "Hero", selector: "top" },
-  { number: "01", label: "About", selector: ".portfolio-about" },
-  { number: "02", label: "Projects", selector: ".portfolio-mac" },
-  { number: "03", label: "Work", selector: ".portfolio-work" },
-  { number: "04", label: "Play", selector: ".other-pin-wrap" },
-  { number: "05", label: "Honours", selector: ".portfolio-bp" },
-  { number: "06", label: "Recents", selector: ".portfolio-photos" },
-  { number: "07", label: "Contact", selector: ".keypad-section" },
-];
+/* Jump targets come from the shared section registry (same numbers, labels
+   and stable class selectors the dial + spill menu use). The hero link scrolls
+   to the very top. */
+const JUMP_LINKS: JumpLink[] = SECTION_REGISTRY.map((entry, i) => ({
+  number: entry.number,
+  label: entry.label,
+  selector: i === 0 ? "top" : entry.selector,
+}));
 
 const ELSEWHERE: ElsewhereLink[] = [
   {

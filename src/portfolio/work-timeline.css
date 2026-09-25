@@ -21,10 +21,11 @@
 
 .portfolio-work {
   position: relative;
-  /* CLICK-DRIVEN now (no GSAP pin / scroll-scrub): the section flows with the
-     page and grows with whichever panel is open, with a full-viewport MINIMUM so
-     it still lands as a full-screen editorial frame. overflow visible so an
-     expanded lower row is never clipped. */
+  /* The section flows with the page and grows with whichever panel is open,
+     with a full-viewport MINIMUM so it still lands as a full-screen editorial
+     frame (desktop adds a GSAP pin that steps through the rows; mobile and
+     reduced-motion are click-driven). overflow visible so an expanded lower
+     row is never clipped. */
   min-height: 100vh;
   height: auto;
   overflow: visible;

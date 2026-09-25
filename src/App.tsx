@@ -17,23 +17,14 @@ import { scrollToSection } from "./portfolio/Keypad";
 import { useIsMobile } from "./useIsMobile";
 import { StatusBar } from "./StatusBar";
 import { isLowTier, demoteTier } from "./capabilityTier";
+import { clamp01 } from "./math";
 
 /*
- * The live R3F room (a 27 MB GLB rendered every frame) is gone. All the 3D room
- * machinery (Room, GroundPlane, ScrollCamera, IntroController, the
- * ScrollWireframeRoom assembly, OrbitControls, the room frameloop gate, the fake
- * contact shadow) was deleted in the seamless-portfolio landing. A static render
- * (public/render.webp) then briefly stood in as a fixed full-screen backdrop
- * during the hero→About beat — but it was PROVABLY never visible (an opaque
- * z≥10 section always covered it across its entire fade window), so that layer +
- * its --canvas-opacity choreography were removed too. About keeps its own copy
- * of render.webp inside the bento (.about-room); the hero hands straight off to
- * the opaque About section below it.
+ * App shell: the fixed hero layer, the scroll choreography that drives it
+ * (CSS vars, no React re-renders on scroll), the sections, and the HUD. The
+ * hero hands straight off to the opaque About section below it; About's
+ * bento carries the room render (.about-room).
  */
-
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
 
 // Hero wrapper opacity is a TIME-BASED one-shot fade, NOT a scroll-position ramp.
 // The composition is held FULL through the pixel-zoom (so the zoom is SEEN), then
@@ -77,9 +68,10 @@ const PROGRESS_EASE_RATE = 2.5;
 // Clamp per-frame dt so a long idle / tab-switch doesn't produce one giant
 // catch-up jump on the next tick.
 const MAX_TICK_DT = 0.05;
-// Stepped pixelation buckets for the hero dive (SVG mosaic #hero-px-1..5).
-// Front-loaded (was [0.08, 0.26, 0.44, 0.62, 0.8]) so the chunky #hero-px-3/4/5
-// mosaic lands while the hero is still opaque and uncovered, not at the very end
+// Stepped pixelation buckets for the hero dive (data-hero-px 1..5 contrast
+// steps in hero-composition.css).
+// Front-loaded (was [0.08, 0.26, 0.44, 0.62, 0.8]) so the chunky buckets 3/4/5
+// land while the hero is still opaque and uncovered, not at the very end
 // when the next section has already risen over it.
 const HERO_PX_STEPS = [0.05, 0.18, 0.34, 0.52, 0.72];
 
@@ -107,13 +99,10 @@ const HERO_SETTLE_BAND_LO = 0.55; // fire only once the dive is well underway
 const HERO_SETTLE_BAND_HI = 1.1; // ...and before About's header has scrolled off
 const HERO_SETTLE_DURATION = 0.5; // desktop Lenis tween, seconds
 const HERO_SETTLE_IDLE_MS = 90; // scroll-quiesced debounce == "scroll ended"
-// The hero→About settle is DESKTOP-ONLY now: mobile native momentum can't be
+// The hero→About settle is DESKTOP-ONLY: mobile native momentum can't be
 // cleanly arrested and yanking the page to a section top read as janky
-// (owner-flagged). The mobile scroll-end debounce is kept only so the (no-op)
-// settle check is paced the same on touch; the pull itself never fires on mobile
-// (see settle()). The intro instead locks scroll until the hero has faded in, so
-// the user always starts at the top.
-const HERO_SETTLE_MOBILE_IDLE_MS = 130;
+// (owner-flagged); settle() returns early there. The intro instead locks scroll
+// until the hero has faded in, so the user always starts at the top.
 // Re-arm the one-shot only after clearly leaving the band (back above the hero,
 // or committed down into About's body) so it never re-fires mid-band.
 const HERO_SETTLE_REARM_LO = 0.4;
@@ -169,10 +158,7 @@ function installHeroSettle(): void {
     // Fire on scroll-END: each event resets the idle timer; it only resolves
     // once the wheel/Lenis ease (or a touch fling) has quiesced.
     if (idleTimer !== undefined) clearTimeout(idleTimer);
-    idleTimer = setTimeout(
-      settle,
-      mobileQuery.matches ? HERO_SETTLE_MOBILE_IDLE_MS : HERO_SETTLE_IDLE_MS,
-    );
+    idleTimer = setTimeout(settle, HERO_SETTLE_IDLE_MS);
   };
 
   window.addEventListener("scroll", onScroll, { passive: true });
@@ -328,7 +314,7 @@ function installScrollChoreography(): void {
     setVar("--hero-to-about", heroToAbout.toFixed(3));
     // Stop the (z-11, near-full-viewport) hero wordmark from swallowing clicks
     // the INSTANT the dive begins — NOT when its opacity fade finishes. The
-    // opacity fade runs late (HERO_FADE_START/END 0.92→1.12vh) while the About
+    // opacity fade only starts at HERO_HIDE_VH (1.0vh) while the About
     // pin already sits under it at ratio ~1.0, so a fade-gated value left the
     // still-semi-visible wordmark stealing clicks from the top ~100px of About
     // (its upper Reach links were dead). heroToAbout>0.004 latches through the

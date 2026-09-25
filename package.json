@@ -10,7 +10,8 @@
     "postbuild": "node scripts/stamp-build-date.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b",
-    "photos": "node scripts/process-photos.mjs"
+    "photos": "node scripts/process-photos.mjs",
+    "test:smoke": "node scripts/smoke-test.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.0.0",
@@ -33,7 +34,6 @@
     "meshoptimizer": "^1.1.1",
     "playwright": "^1.60.0",
     "sharp": "^0.34.5",
-    "three-stdlib": "^2.36.1",
     "typescript": "^5.6.3",
     "vite": "^6.0.0"
   }

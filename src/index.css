@@ -61,30 +61,28 @@
  *   Type:     --font-display / --font-body / --font-mono Geist,
  *             --font-dot Offbit Dot, --font-pixel Offbit
  *   Sizes:    --fs-mono 11, --fs-meta 13, --fs-sub 14, --fs-body 16,
- *             --fs-body-lg 17, --fs-lead 20→28, --fs-h2 48→108,
- *             --fs-h1 72→220
- *   Space:    --space-1..9 (4, 8, 12, 16, 24, 32, 48, 64, 96) +
+ *             --fs-body-lg 17; section headers use --hdr-num / --hdr-title
+ *   Space:    --space-1..8 (4, 8, 12, 16, 24, 32, 48, 64) +
  *             --space-4h 20 (mid step in the 16→24 gap)
- *   Radii:    --r-chip 999px, --r-card 14px, --r-card-lg 20px
+ *   Radii:    none — the site is sharp-cornered (radius 0) everywhere
  *   Motion:   --ease-out, --ease-soft, --ease-entrance, --ease-bounce;
  *             --t-fast 180, --t-base 280, --t-med 400, --t-slow 540;
  *             --stagger 60 (per-item reveal step)
  *
  * COMPONENT NORMS
  * ---------------
- *   Chip/pill: cool-white rgba(238,240,243,0.82), blur(10) sat(120),
- *              ink-hairline border, soft cool shadow, --r-chip.
+ *   Chip:      flat --bg-page or --bg-surface, ink-hairline border,
+ *              sharp corners (the blur-glass pill was retired).
  *   Card:      --bg-surface (or --bg-elevated for secondary), 1px
- *              ink-hairline border, sharp corners (TE/industrial) or
- *              --r-card for newer surfaces.
+ *              ink-hairline border, sharp corners (TE/industrial).
  *   Button:    border + color = --accent, transparent bg; on hover bg
  *              fills accent, color goes white. Mono 11px 0.18em
  *              uppercase 600.
  *
  * LOADING SCREEN
  * --------------
- *   html.loading-active paints the wrapper var(--accent) so the
- *   orange cover-dome has no gap. Cool palette resumes when
+ *   html.loading-active paints the wrapper var(--accent) so the boot
+ *   loader's orange field has no gap. Cool palette resumes when
  *   loading-active drops.
  *
  * Found a deviation? Fix it. Add a one-line comment with what you
@@ -110,18 +108,9 @@
   --font-mono:
     "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  /* HUD micro-scale (loading caption, hint banner, boot-sequence). */
+  /* HUD micro-scale (photo card labels, cursor readouts). */
   --text-xs: 10px;
-  --text-sm: 11px;
   --text-base: 12px;
-  --tracking-wide: 2px;
-  --tracking-wider: 3px;
-  --tracking-widest: 4px;
-
-  /* HUD palette: used by the loading/boot overlay. */
-  --hud-amber: #ffb077;
-  --hud-amber-soft: rgba(255, 176, 119, 0.2);
-  --hud-cream: #f0e0d0;
 
   /* -- Surfaces ------------------------------------------------------ */
   --bg-page: #eef0f3;                /* cool off-white wrapper */
@@ -145,7 +134,6 @@
   --accent-hot: #ff4f00;
   --accent-deep: #c23d00;            /* deeper int'l orange — readable as large display text (~4.6:1 on --bg-page) */
   --accent-tint: rgba(255, 79, 0, 0.10);
-  --accent-soft: rgba(255, 79, 0, 0.12);  /* legacy alias */
   /* Accent darkened toward ink for SMALL text that must pass WCAG AA.
      Base --accent (#ff4f00) on --bg-page is only ~2.83:1, fine for
      large/bold display, fails 4.5:1 for small text. This mix lands
@@ -179,12 +167,6 @@
   --space-6: 32px;
   --space-7: 48px;
   --space-8: 64px;
-  --space-9: 96px;
-
-  /* -- Radii -------------------------------------------------------- */
-  --r-chip: 999px;
-  --r-card: 14px;
-  --r-card-lg: 20px;
 
   /* -- Motion easings + durations -----------------------------------
    * Coherent motion spine. Four duration steps + a stagger unit, four
@@ -228,26 +210,15 @@
   --fs-sub: 14px;   /* dense 13→16 mid-range step */
   --fs-body: 16px;
   --fs-body-lg: 17px; /* editorial body voice (current .portfolio-section p) */
-  --fs-lead: clamp(20px, 2.1vw, 28px);
-  --fs-h2: clamp(48px, 7.5vw, 108px);
-  --fs-h1: clamp(72px, 13vw, 220px);
 
-  /* Legacy aliases: prefer the `--bg-*` / `--ink-*` tokens above in
-     new CSS. Kept so existing call-sites keep working. */
-  --wrapper-bg: var(--bg-page);
-  --wrapper-bg-soft: var(--bg-elevated);
-  --wrapper-bg-deep: var(--bg-deep);
+  /* Legacy alias: prefer --ink in new CSS. */
   --wrapper-ink: var(--ink);
-  --wrapper-ink-soft: var(--ink-muted);
-  --wrapper-ink-faint: var(--ink-hairline);
 
   /* Defaults for scroll-choreography vars (overwritten on every
      scroll-rAF by installScrollChoreography() in App.tsx).
-     --hero-to-about (0..1) drives the awwwards-style hero→about
-     disassembly: wordmark dissolves via a vertical mask-image erode,
-     ring contracts + intensifies, then a thin orange scan-band sweeps
-     across the viewport at the handoff. See hero-composition.css for
-     the per-element pipelines. */
+     --hero-to-about (0..1) drives the hero→About pixel-zoom dive: the
+     whole composition scales up and steps through contrast buckets, then
+     --hero-opacity dissolves it. See hero-composition.css. */
   --hero-opacity: 1;
   --hero-to-about: 0;
   --content-opacity: 0;
@@ -255,8 +226,7 @@
 
 /* Scroll-driven hero layer consumes a CSS variable instead of receiving opacity
    via React state on every scroll frame. Keeps App.tsx from re-rendering on
-   scroll. (The old static room-render layer that rode --canvas-opacity here was
-   deleted — it was provably never visible; About keeps its own .about-room.) */
+   scroll. */
 .scroll-layer--hero {
   opacity: var(--hero-opacity, 1);
   /* Opaque orange field: the hero OWNS the first screen and the next section
@@ -300,28 +270,6 @@ textarea,
   user-select: text;
 }
 
-/* Thin white chevron drifting down + fading away above the monitor.
-   non-verbal "click here" hint. The keyframe drives the drop + fade
-   pulse; outer wrapper handles show/hide via opacity. See
-   `MonitorClickHint` in Room.tsx for the 3D anchor. */
-@keyframes monitor-click-hint-drop {
-  0%   { transform: translateY(-4px); opacity: 0; }
-  20%  { opacity: 1; }
-  100% { transform: translateY(10px); opacity: 0; }
-}
-
-.monitor-click-hint {
-  pointer-events: none;
-  animation: monitor-click-hint-drop 1.8s ease-in-out infinite;
-  /* Two-pass white drop-shadow: tight inner halo for legibility +
-     softer outer bloom. Kept subtle so the chevron still reads as a
-     thin line rather than a glowing blob. */
-  filter:
-    drop-shadow(0 0 3px rgba(255, 255, 255, 0.35))
-    drop-shadow(0 0 8px rgba(255, 255, 255, 0.18));
-  display: inline-block;
-}
-
 html,
 body,
 #root {
@@ -351,11 +299,6 @@ body::before {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.85 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-/* REC dot pulse: used by the StatusBar live indicator. */
-@keyframes status-rec-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.35; }
-}
 html, body { min-height: 100%; }
 /* Horizontal scroll should never appear; vertical scroll drives the
    portfolio. `clip` (vs `hidden`) kills any horizontal overflow WITHOUT
@@ -378,7 +321,7 @@ body {
 }
 
 /* During loading the wrapper paints orange so there's no white flash
-   between #boot-screen removal and the cover-dome painting.
+   between #boot-screen removal and the BootLoader painting.
    main.tsx adds html.loading-active synchronously before React mounts. */
 .app-wrapper {
   background: var(--bg-page);
@@ -388,8 +331,7 @@ html.loading-active .app-wrapper {
   background: var(--accent);
 }
 
-/* Hide native scrollbars. ScrollRail on the right edge is the only
-   scroll indicator. */
+/* Hide native scrollbars. The section dial is the only scroll indicator. */
 html {
   scrollbar-width: none;        /* Firefox */
   -ms-overflow-style: none;     /* IE / old Edge */
@@ -408,8 +350,8 @@ canvas {
 
 /* MOBILE SCROLL TRAP FIX: on touch devices, any full-viewport canvas
    with touch-action:none silently eats every vertical swipe that lands
-   on it (the room canvas during the About beat, the Mac/Hobbies scene
-   canvases in normal flow), leaving the page un-scrollable with no
+   on it (the Mac/Hobbies/Keypad scene canvases in normal flow), leaving
+   the page un-scrollable with no
    visual cue. Scroll must always win on touch: allow vertical pan
    everywhere; horizontal / multi-touch gestures still reach the scene.
    (keypad.css already shipped this exact fix for its own canvas.)
@@ -440,30 +382,6 @@ html.loading-active body {
   overflow: hidden;
   touch-action: none;
   overscroll-behavior: none;
-}
-
-/* During loading the chrome stays hidden, then fades in via a
-   ONE-SHOT keyframe (not a transition) so subsequent scroll-driven
-   inline opacity updates don't inherit the transition timing. */
-@keyframes hero-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-.hero-mark,
-.blinking-cat,
-.scroll-hint {
-  animation: hero-fade-in 0.7s ease 0.25s both;
-}
-html.loading-active .hero-mark,
-html.loading-active .blinking-cat,
-html.loading-active .scroll-hint {
-  animation: none !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-html.loading-active .status-bar,
-html.loading-active .scroll-rail {
-  display: none !important;
 }
 
 /* Hide the OS cursor SITE-WIDE so only the custom MoveableCursor shows — this
@@ -611,18 +529,6 @@ html.loading-active .scroll-rail {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-/* sr-only that becomes visible on focus (skip-link / hidden-control
-   reveal, for keyboard users tabbing onto otherwise-hidden controls. */
-.sr-only-focusable:focus,
-.sr-only-focusable:focus-visible {
-  position: fixed;
-  width: auto;
-  height: auto;
-  margin: 0;
-  clip: auto;
-  overflow: visible;
-  white-space: normal;
 }
 
 /* Global keyboard focus ring for in-section links. Section content

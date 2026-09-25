@@ -1,15 +1,11 @@
 /**
- * Turn the captured signature events (down/move/up sequence in
- * normalized 0..1 viewport coordinates) into a set of 3D tubes
- * suitable for hero rendering.
- *
- * Each pen-down → pen-up window becomes one TubeGeometry traced along
- * the polyline of points. Pen lifts (up events) break the stroke into
- * separate tubes so the signature reads as multiple discrete glyphs
- * instead of one connected scrawl.
+ * The captured signature: a down/move/up event stream in normalized 0..1
+ * coordinates (public/signature.json, recorded with the ?sign=1 tool). One
+ * cached fetch feeds every renderer (hero 2D canvas, footer canvas, SVG brand
+ * mark); `eventsToStrokes` groups the stream into discrete pen strokes.
  */
 
-interface SignatureEvent {
+export interface SignatureEvent {
   type: "down" | "move" | "up";
   t: number;
   nx: number;
@@ -54,4 +50,26 @@ export function eventsToStrokes(events: SignatureEvent[]): StrokePolyline[] {
   }
   if (current && current.points.length > 1) out.push(current);
   return out;
+}
+
+// Module-cached fetch so the hero, footer and brand mark share ONE request.
+let cached: SignatureData | null = null;
+let inflight: Promise<SignatureData | null> | null = null;
+
+/** Fetch + cache /signature.json. Resolves null on any failure (offline, 404). */
+export function loadSignatureData(): Promise<SignatureData | null> {
+  if (cached) return Promise.resolve(cached);
+  if (!inflight) {
+    inflight = (async () => {
+      try {
+        const r = await fetch("/signature.json");
+        if (!r.ok) return null;
+        cached = (await r.json()) as SignatureData;
+        return cached;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return inflight;
 }

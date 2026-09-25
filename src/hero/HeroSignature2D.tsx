@@ -3,36 +3,31 @@ import { type SignatureData, eventsToStrokes } from "./signatureGeometry";
 
 /**
  * 2D canvas that draws the captured signature stroke-by-stroke in
- * WHITE against the orange loading background. This is the loading
- * screen's visible state; it replaces the wireframe assembly.
+ * WHITE against the orange loading background: a loading-screen
+ * flourish behind the held loader.
  *
- * Unlike the footer SignatureCanvas (which paints amber on the room
- * scene), this one is dedicated to the hero loading sequence:
+ * Unlike the footer signature (orange, small canvas), this one is
+ * dedicated to the hero loading sequence:
  *   - white strokes, half the thickness of the footer's signature
  *   - centered on the viewport
  *   - no per-frame fade (strokes accumulate as drawn)
- *   - signals `onComplete` when the final stroke finishes
  *
- * After completion + assets-loaded the parent HeroSignature crossfades
- * this canvas out and the 3D signature in.
+ * The parent HeroSignature crossfades this canvas out and unmounts it
+ * once the composition settles.
  */
 
 interface Props {
   data: SignatureData | null;
-  onComplete: () => void;
   /** Gate: the stroke playback (and the reduced-motion one-pass paint)
-   *  only begins once this is true. The loader now finishes BEFORE the
+   *  only begins once this is true. The loader finishes BEFORE the
    *  signature draws, so the parent flips this on loaderDone. */
   start: boolean;
-  /** Multiplies the natural playback speed. 1 = recorded pace. */
-  speedMultiplier?: number;
   /** Visible opacity (parent controls the crossfade out). */
   opacity: number;
-  /** Stacking order. High (5) while drawing/crossfading so the ink
-   *  paints over the composition; low (1) once settled so the
-   *  persistent ghost sits behind the wordmark. */
-  zIndex?: number;
 }
+
+// Playback speed relative to the recorded pace.
+const SPEED_MULTIPLIER = 2.2;
 
 // White on the orange loading backdrop.
 const STROKE_COLOR = "#ffffff";
@@ -76,14 +71,7 @@ function resolveWidthRatio(vw: number, vh: number): number {
   return isPortraitPhone ? TARGET_WIDTH_RATIO_PORTRAIT : TARGET_WIDTH_RATIO;
 }
 
-export function HeroSignature2D({
-  data,
-  onComplete,
-  start,
-  speedMultiplier = 2.2,
-  opacity,
-  zIndex = 5,
-}: Props) {
+export function HeroSignature2D({ data, start, opacity }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -298,7 +286,6 @@ export function HeroSignature2D({
       // Mark the whole stream as drawn so a later resize replays it all.
       lastEventIdx = flat.length;
       completed = true;
-      onComplete();
       return () => {
         window.removeEventListener("resize", onResize);
         if (resizeRaf) cancelAnimationFrame(resizeRaf);
@@ -308,7 +295,7 @@ export function HeroSignature2D({
     const tick = () => {
       if (completed) return;
       if (startWall === 0) startWall = performance.now();
-      const elapsedRecorded = (performance.now() - startWall) * speedMultiplier;
+      const elapsedRecorded = (performance.now() - startWall) * SPEED_MULTIPLIER;
       while (lastEventIdx < flat.length && flat[lastEventIdx]!.t <= elapsedRecorded) {
         drawEvent(flat[lastEventIdx]!);
         lastEventIdx++;
@@ -318,7 +305,6 @@ export function HeroSignature2D({
         elapsedRecorded >= totalRecorded
       ) {
         completed = true;
-        onComplete();
         return;
       }
       raf = requestAnimationFrame(tick);
@@ -331,9 +317,7 @@ export function HeroSignature2D({
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
     };
     // Re-run on data arrival AND when `start` flips true (the loader-done
-    // gate). Speed multiplier changes after first render are ignored;
-    // first-paint timing determines the loading sequence pace.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // gate).
   }, [data, start]);
 
   return (
@@ -346,7 +330,8 @@ export function HeroSignature2D({
         left: 0,
         width: "100vw",
         height: "100vh",
-        zIndex,
+        // Above the composition (z 3) so the ink paints over the orange scrim.
+        zIndex: 5,
         pointerEvents: "none",
         opacity,
         transition: "opacity 360ms ease",

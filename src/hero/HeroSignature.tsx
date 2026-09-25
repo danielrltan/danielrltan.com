@@ -8,7 +8,7 @@ import { HeroSignature2D } from "./HeroSignature2D";
 const HeroGlyphRing = lazy(() =>
   import("./HeroGlyphRing").then((m) => ({ default: m.HeroGlyphRing })),
 );
-import { type SignatureData } from "./signatureGeometry";
+import { loadSignatureData, type SignatureData } from "./signatureGeometry";
 import { useAssembly } from "../loading";
 import { useTier } from "../capabilityTier";
 import "./hero-composition.css";
@@ -31,31 +31,17 @@ const PREFERS_REDUCED_MOTION =
  * Hero composition. ASCII ring is the kinetic centerpiece; editorial
  * type frames it (eyebrow top-left, wordmark center, meta row bottom).
  *
- * State machine (the loader now finishes BEFORE the signature draws):
- *   drawing:    waits for loaderDone, then the 2D signature draws on the
- *               orange scrim (the BootLoader has already lifted off)
- *   transition: draw done AND loaderDone, ~520ms crossfade window
+ * State machine:
+ *   drawing:    waits for loaderDone; the 2D signature draws on the orange
+ *               scrim behind the held loader (the visitor never waits on it)
+ *   transition: loaderDone, ~520ms crossfade window
  *   settled:    composition is the only visible layer; fires `hero-composed`
  */
 
 type Phase = "drawing" | "transition" | "settled";
 
-/* Mosaic cell sizes (px, pre-transform) for the dive's stepped
-   pixelation. The composition also scales up to 3x during the dive, so
-   the on-screen block size is cell * scale — the late cells read much
-   chunkier than these numbers suggest. Must stay in sync with the
-   `data-hero-px` bucket count in App.tsx and the rules in
-   hero-composition.css. */
-const PIXELATE_CELLS = [4, 8, 14, 22, 32];
-
 export function HeroSignature() {
   const [data, setData] = useState<SignatureData | null>(null);
-  // Start "draw complete" so the phase machine does NOT wait on the signature
-  // flourish. In the new intro the hero composes BEHIND the held loader scrim
-  // and is then revealed by a crossfade (the user never sees the draw), so
-  // blocking the compose on a multi-second hand-drawn signature would only
-  // stretch the loader hold. The signature still draws (hidden) + unmounts.
-  const [drawingComplete, setDrawingComplete] = useState(true);
   const [phase, setPhase] = useState<Phase>("drawing");
   const assembly = useAssembly();
   // Static ring fallback on the weakest hardware (or reduced-motion). See the
@@ -64,34 +50,20 @@ export function HeroSignature() {
 
   useEffect(() => {
     let cancelled = false;
-    // FAILURE FALLBACK: if signature.json can't load (offline, 404, CDN
-    // hiccup), data stays null, HeroSignature2D never draws, and
-    // onComplete never fires — which would strand the phase machine in
-    // "drawing" and the wordmark would NEVER compose (the page unlocks
-    // via climaxDone regardless, so the user would just see an empty
-    // hero). Treat a failed fetch as "drawing finished" so the
-    // composition still lands; only the signature flourish is lost.
-    const fail = () => {
-      if (!cancelled) setDrawingComplete(true);
-    };
-    fetch("/signature.json")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (cancelled) return;
-        if (d) setData(d as SignatureData);
-        else fail();
-      })
-      .catch(fail);
+    // The phase machine never waits on the signature: the hero composes BEHIND
+    // the held loader scrim, so a failed fetch (offline, 404) just costs the
+    // flourish — data stays null and HeroSignature2D draws nothing.
+    void loadSignatureData().then((d) => {
+      if (!cancelled && d) setData(d);
+    });
     return () => {
       cancelled = true;
     };
   }, []);
 
   // Two-step state advance:
-  //   1) drawing → transition (when the signature draw is done AND the
-  //      loader has finished — loaderDone, not climaxReady, so a failed
-  //      signature fetch that flips drawingComplete early still can't
-  //      compose before the loader is off-screen)
+  //   1) drawing → transition once the loader has finished (loaderDone, not
+  //      climaxReady, so the hero can't compose before the loader is off-screen)
   //   2) transition → settled (after the crossfade window)
   // Splitting these into two effects so the timeout that schedules
   // step 2 isn't torn down by the dep-change from step 1. When the
@@ -100,10 +72,9 @@ export function HeroSignature() {
   // in `transition` forever.
   useEffect(() => {
     if (phase !== "drawing") return;
-    if (!drawingComplete) return;
     if (!assembly.loaderDone) return;
     setPhase("transition");
-  }, [phase, drawingComplete, assembly.loaderDone]);
+  }, [phase, assembly.loaderDone]);
   useEffect(() => {
     if (phase !== "transition") return;
     const t = window.setTimeout(() => setPhase("settled"), 520);
@@ -123,16 +94,8 @@ export function HeroSignature() {
   // remove the watermark behind the hero). The persistent low-opacity
   // ghost behind the wordmark is gone; the signature is purely a
   // loading-screen flourish now.
-  const twoDOpacity =
-    phase === "drawing" ? 1 : phase === "transition" ? 0.5 : 0;
-  // Z-index hand-off. While drawing/crossfading, the signature paints
-  // ON TOP of the orange scrim (z 5, above the composition at z 3).
-  // Once settled it drops BEHIND the composition (z 1, under the
-  // wordmark fill at z 2) so the persistent ghost reads as a background
-  // gesture the wordmark "loads around", not a faint veil sitting over
-  // the orange type muddying its edges.
-  const twoDZIndex = phase === "settled" ? 1 : 5;
-  // Unmount the 2D signature canvas once settled (it's opacity 0 then anyway) —
+  const twoDOpacity = phase === "drawing" ? 1 : 0.5;
+  // Unmount the 2D signature canvas once settled —
   // frees its full-viewport backing buffer (~tens of MB) + one compositor layer,
   // which compounds the hero's VRAM pressure on weak GPUs through the scroll.
   const renderTwoD = phase !== "settled";
@@ -357,18 +320,6 @@ export function HeroSignature() {
 
   return (
     <>
-      {/* PARKED / INERT (perf): these blur-then-downsample mosaic filters
-          (feGaussianBlur → feFlood/feComposite/feTile → feMorphology) are a
-          true pixelation of the composition's own rendered pixels, BUT
-          feMorphology + feTile have no GPU path in Chromium, so applying
-          url(#hero-px-N) to the full-viewport composition (which holds the live
-          WebGL ring <canvas>) software-rasterized the whole subtree on the MAIN
-          THREAD every dive frame as it scaled — ~19fps at 6× CPU. The live dive
-          now uses GPU-cheap contrast()+scale only (see hero-composition.css), so
-          NOTHING references these anymore — an unreferenced <filter> in <defs>
-          never executes, so they cost nothing at rest. Kept (not deleted) so the
-          block mosaic is a one-line opt-in (re-add `url(#hero-px-N)` to the
-          data-hero-px rules) if it's ever wanted behind a capability probe. */}
       <svg
         aria-hidden
         focusable="false"
@@ -377,32 +328,6 @@ export function HeroSignature() {
         style={{ position: "absolute" }}
       >
         <defs>
-          {PIXELATE_CELLS.map((c, i) => (
-            <filter
-              key={c}
-              id={`hero-px-${i + 1}`}
-              x="-5%"
-              y="-5%"
-              width="110%"
-              height="110%"
-            >
-              <feGaussianBlur
-                in="SourceGraphic"
-                stdDeviation={c * 0.175}
-                result="blur"
-              />
-              <feFlood
-                x={c * 0.4}
-                y={c * 0.4}
-                width={Math.max(1, c * 0.2)}
-                height={Math.max(1, c * 0.2)}
-              />
-              <feComposite width={c} height={c} />
-              <feTile result="grid" />
-              <feComposite in="blur" in2="grid" operator="in" />
-              <feMorphology operator="dilate" radius={Math.min(4, c / 2)} />
-            </filter>
-          ))}
           {/* ASCII outline: the wordmark's keyline is a DITHERED orange
               dot-grid band around the glyphs (not a smooth line, which
               read as cheap), echoing the symbol field. Dilate the glyph
@@ -439,9 +364,7 @@ export function HeroSignature() {
         <HeroSignature2D
           data={data}
           opacity={twoDOpacity}
-          zIndex={twoDZIndex}
           start={assembly.loaderDone}
-          onComplete={() => setDrawingComplete(true)}
         />
       )}
       <div
@@ -480,7 +403,7 @@ export function HeroSignature() {
           </p>
           <div className="hero-mega-text" aria-hidden>
             {wordmarkLines.map((line) => (
-              <span key={line.text} className={line.className} data-text={line.text}>
+              <span key={line.text} className={line.className}>
                 <span className="hero-mega-fill" aria-hidden>
                   {line.text.split("").map((ch, i) => (
                     <span key={i} className="hero-mega-char">
@@ -488,7 +411,6 @@ export function HeroSignature() {
                     </span>
                   ))}
                 </span>
-                <span className="hero-mega-outline" aria-hidden>{line.text}</span>
               </span>
             ))}
           </div>

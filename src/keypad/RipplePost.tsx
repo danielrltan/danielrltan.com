@@ -34,7 +34,7 @@ import * as THREE from "three";
 // restarting from the middle on spam clicks. 5 slots x ~1.2s life means
 // stealing a live slot needs sustained >4 clicks/s, and the stolen slot
 // is always the oldest/most-faded one.
-export const PULSE_SLOTS = 5;
+const PULSE_SLOTS = 5;
 
 /** One ripple: start = performance.now() stamp (-1 = idle), origin in
  *  canvas UV (0..1, Y-down to match the cursor convention). */

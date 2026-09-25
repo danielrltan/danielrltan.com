@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { eventsToStrokes, type SignatureData } from "./hero/signatureGeometry";
+import {
+  eventsToStrokes,
+  loadSignatureData,
+  type SignatureData,
+} from "./hero/signatureGeometry";
 
 /**
  * The captured signature as a crisp VECTOR mark.
@@ -18,10 +22,10 @@ import { eventsToStrokes, type SignatureData } from "./hero/signatureGeometry";
  * anywhere a static, scalable signature is wanted.
  */
 
-// Module-cached parsed path so every instance shares ONE fetch + parse.
+// Module-cached parsed path so every instance shares ONE parse (the fetch
+// itself is cached in signatureGeometry).
 type SigPath = { d: string; aspect: number };
 let cached: SigPath | null = null;
-let inflight: Promise<SigPath | null> | null = null;
 
 function buildPath(data: SignatureData): SigPath {
   const b = data.bounds ?? { minX: 0, minY: 0, maxX: 1000, maxY: 384 };
@@ -44,19 +48,10 @@ function buildPath(data: SignatureData): SigPath {
 
 async function loadSignature(): Promise<SigPath | null> {
   if (cached) return cached;
-  if (!inflight) {
-    inflight = (async () => {
-      try {
-        const r = await fetch("/signature.json");
-        if (!r.ok) return null;
-        cached = buildPath((await r.json()) as SignatureData);
-        return cached;
-      } catch {
-        return null;
-      }
-    })();
-  }
-  return inflight;
+  const data = await loadSignatureData();
+  if (!data) return null;
+  cached = buildPath(data);
+  return cached;
 }
 
 interface Props {

@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   type AssemblyState,
   CLIMAX_DURATION_MS,
-  GLB_TOTAL_MB,
   HARD_CEILING_MS,
   LOADER_OUTRO_MS,
   POST_CLIMAX_HUD_FADE_MS,
@@ -16,21 +15,12 @@ import {
 const STATE_UPDATE_INTERVAL_MS = 100;
 
 export function useAssemblyProgress(): AssemblyState {
-  // The only eager asset (the 27MB room GLB) was removed, so there is nothing
-  // for drei's useProgress to report during the loader window: it always read
-  // progress 0 / active false, which pins bytePct to 1 and makes the loader
-  // purely timeline-driven. Dropping the drei dependency here is what keeps
-  // @react-three/drei (and the transitive ~1MB three chunk) OUT of the entry
-  // bundle — the loader no longer forces three onto the first-paint path. Lazy
-  // section GLBs load later (after the loader) on scroll approach.
-  const progressRef = useRef(0);
-  const activeRef = useRef(false);
-
+  // The loader is purely timeline-driven: there is no eager asset to track
+  // (the section GLBs load lazily on scroll approach, after the loader), and
+  // keeping @react-three/drei's useProgress out of here is what keeps drei and
+  // the ~1MB three chunk OUT of the entry bundle.
   const [state, setState] = useState<AssemblyState>({
-    timelinePct: 0,
-    bytePct: 0,
     combinedPct: 0,
-    bytesMB: 0,
     climaxReady: false,
     loaderDone: false,
     climaxDone: false,
@@ -51,8 +41,7 @@ export function useAssemblyProgress(): AssemblyState {
   // so weak hardware can't be trapped on the loading screen forever.
   const assetsReadyAtRef = useRef<number | null>(null);
 
-  // Pause timeline while tab is hidden. Bytes keep accumulating in
-  // the background fetch; only the choreography pauses.
+  // Pause the timeline while the tab is hidden.
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "hidden") {
@@ -82,48 +71,28 @@ export function useAssemblyProgress(): AssemblyState {
 
       if (!paused) {
         const elapsed = now - startRef.current - pausedTotalRef.current;
-        const timelinePct = Math.min(1, elapsed / TIMELINE_FLOOR_MS);
+        const combinedPct = Math.min(1, elapsed / TIMELINE_FLOOR_MS);
 
-        // While drei is loading, progress is the bytes percentage.
-        // Once `active` goes false the load is done; pin to 100.
-        const driveByte = activeRef.current ? progressRef.current / 100 : 1;
-        const bytePct = Math.max(0, Math.min(1, driveByte));
-        const combinedPct = Math.min(timelinePct, bytePct);
-
-        // Hard prerequisites: the minimum timeline elapsed AND all asset
-        // bytes streamed in. These are NOT hardware-sensitive (time always
-        // advances; bytes arrive over the network regardless of CPU).
-        // assetsReady once the timeline floor has elapsed AND nothing is
-        // actively loading. Originally this also required progress >= 100, but
-        // with the 3D room (the only eager GLB) removed there is no eager asset
-        // for drei to report, so progress stays 0 and `active` is false from the
-        // start — meaning there is simply nothing to wait for. `progress === 0`
-        // (nothing ever loaded) is therefore as "ready" as `>= 100` (everything
-        // loaded); requiring only `>= 100` would trap the loader on the
-        // hard-ceiling failsafe. Lazy section GLBs load later, after the loader.
-        const assetsReady =
-          timelinePct >= 1 &&
-          !activeRef.current &&
-          (progressRef.current >= 100 || progressRef.current === 0);
+        // Hard prerequisite: the minimum timeline elapsed. Not
+        // hardware-sensitive (time always advances).
+        const assetsReady = combinedPct >= 1;
         if (assetsReady && assetsReadyAtRef.current == null) {
           assetsReadyAtRef.current = now;
         }
 
-        // Smoothness gate: PREFER 30 consecutive sub-22ms frames so the
-        // room reveals without jank — but bound the wait. On weak hardware
-        // the always-on room canvas may never sustain 30 stable frames, so
-        // after STABLE_WAIT_TIMEOUT_MS of assets-ready time we proceed
-        // anyway rather than trap the visitor (the original hang: the
-        // counter perpetually reset to 0 and climaxReady never fired).
+        // Smoothness gate: PREFER a streak of sub-22ms frames so the hero
+        // reveals without jank — but bound the wait. On weak hardware the
+        // streak may never come, so after STABLE_WAIT_TIMEOUT_MS of
+        // timeline-done time we proceed anyway rather than trap the visitor
+        // (the original hang: the counter perpetually reset to 0 and
+        // climaxReady never fired).
         const smoothEnough =
           stableFramesRef.current >= STABLE_FRAMES_REQUIRED ||
           (assetsReadyAtRef.current != null &&
             now - assetsReadyAtRef.current >= STABLE_WAIT_TIMEOUT_MS);
 
         // Absolute failsafe (defense in depth): never hold the loader past
-        // HARD_CEILING_MS of wall-clock loading, whatever stalls (a
-        // silently-failed asset so drei.active never clears, untracked
-        // physics wasm, a lost WebGL context). Last-resort backstop.
+        // HARD_CEILING_MS of wall-clock loading, whatever stalls.
         const hardCeiling = elapsed >= HARD_CEILING_MS;
 
         const climaxReady = (assetsReady && smoothEnough) || hardCeiling;
@@ -154,15 +123,7 @@ export function useAssemblyProgress(): AssemblyState {
           lastClimaxReadyRef.current = climaxReady;
           lastLoaderDoneRef.current = loaderDone;
           lastClimaxDoneRef.current = climaxDone;
-          setState({
-            timelinePct,
-            bytePct,
-            combinedPct,
-            bytesMB: Math.round(bytePct * GLB_TOTAL_MB * 10) / 10,
-            climaxReady,
-            loaderDone,
-            climaxDone,
-          });
+          setState({ combinedPct, climaxReady, loaderDone, climaxDone });
         }
 
         // Terminal early-out: once climaxDone is committed the loading

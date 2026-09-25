@@ -18,6 +18,18 @@ import { isLowTier, isTouchPrimary } from "./capabilityTier";
  */
 const MOBILE_QUERY = "(max-width: 768px)";
 
+/**
+ * Minimum time a section canvas stays mounted once it has mounted. R3F's
+ * <Canvas> configures its renderer asynchronously and only then connects its
+ * pointer events to the wrapper div; if the gate releases the canvas inside
+ * that window (a fast scroll-past on a low-tier GPU, where context creation
+ * is slow) React Three Fiber 9.6 throws "Cannot read properties of null
+ * (reading 'addEventListener')" from the unmounted wrapper. Holding the
+ * canvas for a floor well past any realistic context-creation time closes
+ * the race; the unmount is only a perf nicety, never urgent.
+ */
+const MIN_MOUNTED_MS = 2500;
+
 function isMobileViewport(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -133,6 +145,7 @@ export function useSectionCanvasMount(
     }
 
     let unmountTimer = 0;
+    let mountedAt = 0;
     const cancelUnmount = () => {
       if (unmountTimer) {
         clearTimeout(unmountTimer);
@@ -145,6 +158,7 @@ export function useSectionCanvasMount(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
           cancelUnmount();
+          mountedAt = performance.now();
           setMounted(true);
         }
       },
@@ -160,10 +174,14 @@ export function useSectionCanvasMount(
         if (near) {
           cancelUnmount();
         } else if (!unmountTimer) {
+          // Never release inside the canvas's creation window (see
+          // MIN_MOUNTED_MS): stretch the debounce to cover the remainder.
+          const sinceMount = performance.now() - mountedAt;
+          const delay = Math.max(unmountDelayMs, MIN_MOUNTED_MS - sinceMount);
           unmountTimer = window.setTimeout(() => {
             unmountTimer = 0;
             setMounted(false);
-          }, unmountDelayMs);
+          }, delay);
         }
       },
       { rootMargin: `${Math.round(unmountVh * 100)}% 0px ${Math.round(unmountVh * 100)}% 0px` },

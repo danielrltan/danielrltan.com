@@ -460,22 +460,16 @@ function RingScene({
   spinDuration: number;
 }) {
   const { gl, scene, camera, size } = useThree();
-  const tiltGroupRef = useRef<THREE.Group>(null);
   const torusRef = useRef<THREE.Mesh>(null);
   const lastTRef = useRef(performance.now() / 1000);
   // Throttle the two-pass render to ~30fps (see useFrame). The ring is a slow
   // 26s spin, so 30 vs 60 is imperceptible and ~halves the GPU cost of the
   // RT + fullscreen-post pipeline on weak integrated GPUs.
   const lastRenderRef = useRef(0);
-  // Entrance: timestamp (s) the ring's reveal began, or null until the hero
-  // first reveals (loading scrim lifts). Drives the crossfade-in + the
-  // face-on -> tilt-back rotation. Runs once.
-  const entranceStartRef = useRef<number | null>(null);
-  const gateMetAtRef = useRef<number | null>(null);
-  const ENTRANCE_DELAY = 0; // ring appears the instant the hero reveals (no hold)
-  const wasOffscreenRef = useRef(true);
-  // Resting orientation (the scene's tilt). The entrance rotates the tilt
-  // group from 0 (face-on) to these over the reveal.
+  // Latched true once the hero composition is visible; the ring renders
+  // nothing before that so it never flashes ahead of the reveal.
+  const revealedRef = useRef(false);
+  // Resting orientation (the scene's tilt), applied once on the tilt group.
   const TILT_X = (38 * Math.PI) / 180;
   const TILT_Z = (-12 * Math.PI) / 180;
   const reducedMotion =
@@ -490,16 +484,6 @@ function RingScene({
         window.matchMedia("(hover: none), (pointer: coarse)").matches
       ? 0.45
       : 1;
-  // DEV: ?introFreeze=<seconds> freezes the entrance at a fixed elapsed time
-  // and bypasses the load gate, for screenshotting specific reveal moments.
-  const INTRO_FREEZE = (() => {
-    if (typeof window === "undefined") return null;
-    const raw = new URLSearchParams(window.location.search).get("introFreeze");
-    if (raw == null) return null;
-    const v = parseFloat(raw);
-    return Number.isFinite(v) ? v : null;
-  })();
-
   // PERF: the hero composition is `position: fixed`, so this component
   // NEVER unmounts. Once the hero has scrolled out of view we skip both
   // passes entirely (zero GPU work) via this ref; a passive scroll
@@ -720,7 +704,6 @@ function RingScene({
     // so the spin doesn't jump on resume.
     if (offscreenRef.current) {
       lastTRef.current = performance.now() / 1000;
-      wasOffscreenRef.current = true;
       return;
     }
 
@@ -744,7 +727,7 @@ function RingScene({
     // rendering through it is fine.)
     if (
       dive <= 0.001 &&
-      entranceStartRef.current !== null &&
+      revealedRef.current &&
       performance.now() - lastScrollRef.current < 140
     ) {
       lastTRef.current = performance.now() / 1000;
@@ -759,43 +742,16 @@ function RingScene({
     const dt = Math.min(0.05, now - lastTRef.current);
     lastTRef.current = now;
 
-    // Mark the ring "revealed" once the LOADING SCREEN is gone AND the
-    // composition is visible (ENTRANCE_DELAY is 0 — no hold). This only gates the
-    // ring off until the hero shows; there's no entrance animation anymore.
-    if (INTRO_FREEZE == null) {
-      if (entranceStartRef.current === null) {
-        // Render as soon as the composition is visible — even while
-        // `loading-active` is still up — so the ring is fully present BEHIND the
-        // held loader scrim and is there the instant the scrim fades to reveal
-        // the hero (the new crossfade intro). Was also gated on loading-active
-        // being gone, which made the ring pop in AFTER the reveal.
-        const gateMet = !!document.querySelector(".hero-composition.is-visible");
-        if (gateMet) {
-          if (gateMetAtRef.current === null) gateMetAtRef.current = now;
-          if (now - gateMetAtRef.current >= ENTRANCE_DELAY) {
-            entranceStartRef.current = now;
-          }
-        }
-      }
-      // Nothing to show until the entrance begins: skip the render so
-      // the ring never flashes at full opacity before its crossfade.
-      if (entranceStartRef.current === null) {
-        wasOffscreenRef.current = true;
-        return;
-      }
+    // Render as soon as the composition is visible — even while
+    // `loading-active` is still up — so the ring is fully present BEHIND the
+    // held loader scrim and is there the instant the scrim fades to reveal the
+    // hero. Until then skip the render so it never flashes early. There is NO
+    // entrance animation (owner: drop the ring "explosion"/crossfade-in — just
+    // have it there); the composition's own is-visible fade carries it in.
+    if (!revealedRef.current) {
+      if (!document.querySelector(".hero-composition.is-visible")) return;
+      revealedRef.current = true;
     }
-
-    // NO entrance animation: the ring sits at full opacity + its resting tilt the
-    // instant the hero composition reveals (owner: drop the ring
-    // "explosion"/crossfade-in entrance — just have the ring there immediately).
-    // The composition's own is-visible fade is what carries it onto the screen.
-    const ringOpacity = 1;
-    const tiltT = 1;
-
-    // Apply orientation + the crossfade opacity (CSS on the canvas).
-    const tg = tiltGroupRef.current;
-    if (tg) tg.rotation.set(tiltT * TILT_X, 0, tiltT * TILT_Z);
-    gl.domElement.style.opacity = ringOpacity.toFixed(3);
 
     // Spin on the torus's local Y axis (scaled down on touch, stilled under
     // reduced-motion).
@@ -910,8 +866,6 @@ function RingScene({
       pipeline.postMaterial.uniforms.uTrailActive!.value = 0;
     }
 
-    wasOffscreenRef.current = false;
-
     // PASS 1: torus -> cell-grid data target.
     gl.setRenderTarget(pipeline.rt);
     gl.render(scene, camera);
@@ -932,8 +886,7 @@ function RingScene({
 
   return (
     /* Tilt group + torus: torus spins on local Y inside the tilted
-       parent so the silhouette actually changes over time. Starts
-       face-on; the entrance tilts it back to the resting lean.
+       parent so the silhouette actually changes over time.
        SMOOTH TESSELLATION (AsciiEffect-era counts): the surface is
        smooth-shaded now, so the mesh must be dense enough that neither
        the silhouette nor the interpolated normals read as polygons -
@@ -941,7 +894,7 @@ function RingScene({
        low-poly read the user rejected. The tile grid re-quantizes
        everything to 10px cells anyway, so the extra vertices cost only
        the pass-1 vertex stage. */
-    <group ref={tiltGroupRef} rotation={[0, 0, 0]}>
+    <group rotation={[TILT_X, 0, TILT_Z]}>
       <mesh ref={torusRef} material={pipeline.ringMaterial}>
         <torusGeometry
           args={IS_SMALL_SCREEN ? [1.25, 0.3, 24, 160] : [1.25, 0.3, 40, 260]}

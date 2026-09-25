@@ -18,8 +18,7 @@ export interface SectionEntry {
    * ScrollTrigger plus a 0..1 progress to land on. When set, a jump to this
    * section scrolls to that fraction of the pin instead of the section's top,
    * so it lands on a specific beat rather than the section's opening beat.
-   * Play uses this to reach the "Some interests" 3D reel (Beat B) instead of
-   * dumping the viewer on the "Recents" photo beat (Beat A) at the top.
+   * Projects uses this to land on the booted, interactive CRT.
    */
   pinId?: string;
   jumpProgress?: number;
@@ -30,7 +29,7 @@ export interface SectionEntry {
 // do NOT expand them to the longer section-eyebrow phrasings.
 export const SECTION_REGISTRY: SectionEntry[] = [
   { number: "00", label: "Hero", selector: ".portfolio-section--hero" },
-  { number: "01", label: "About", selector: ".portfolio-section:not([class*='--'])" },
+  { number: "01", label: "About", selector: ".portfolio-about" },
   // Projects is a multi-beat GSAP-pinned section; a bare element jump lands on
   // the pinned element's CURRENT position, which is pin-START (p≈0, the float
   // beat) coming from above but pin-END (p≈1, the exit-vanish / powered-off
@@ -45,9 +44,8 @@ export const SECTION_REGISTRY: SectionEntry[] = [
     jumpProgress: 0.85,
   },
   { number: "03", label: "Work", selector: ".portfolio-work" },
-  // Play is interests-only — the "Recents" photos moved out into their own
-  // Photos section (below), so a jump lands on the section top (the 3D hobby
-  // reel itself), no Beat A to skip past.
+  // Play is interests-only — the "Recents" photos live in their own Photos
+  // section (below), so a jump lands on the section top (the 3D cluster).
   { number: "04", label: "Play", selector: ".other-pin-wrap" },
   { number: "05", label: "Honours", selector: ".portfolio-bp" },
   // Recents: the photo trains, a standalone section between Honours and Contact.
@@ -55,31 +53,13 @@ export const SECTION_REGISTRY: SectionEntry[] = [
   { number: "07", label: "Contact", selector: ".keypad-section" },
 ];
 
-/**
- * Resolve each registry entry to its live DOM element. The About entry
- * (index 1) is the first generic `.portfolio-section` with no modifier
- * class; a selector-based match would clash with the other sections'
- * own classes, so it's special-cased.
- */
+/** Resolve each registry entry to its live DOM element. */
 export function findSectionElements(): Array<{
   entry: SectionEntry;
   el: Element | null;
 }> {
-  return SECTION_REGISTRY.map((entry, i) => {
-    if (i === 1) {
-      const all = Array.from(document.querySelectorAll(".portfolio-section"));
-      const generic = all.filter(
-        (e) =>
-          !e.classList.contains("portfolio-section--hero") &&
-          !e.classList.contains("portfolio-mac") &&
-          !e.classList.contains("portfolio-work") &&
-          !e.classList.contains("portfolio-other") &&
-          !e.classList.contains("portfolio-bp") &&
-          !e.classList.contains("portfolio-photos") &&
-          !e.classList.contains("keypad-section"),
-      );
-      return { entry, el: generic[0] ?? null };
-    }
-    return { entry, el: document.querySelector(entry.selector) };
-  });
+  return SECTION_REGISTRY.map((entry) => ({
+    entry,
+    el: document.querySelector(entry.selector),
+  }));
 }

@@ -1,10 +1,12 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { requestScrollRefresh } from "./scrollRefresh";
+import { refreshScrollOnLoaderLift } from "./scrollRefresh";
+import { smoothstep } from "../math";
 import "./sections.css";
 import "./other.css";
 import { ScrambleText } from "./ScrambleText";
+import { HOBBIES } from "../other/hobbies";
 // Lazy: 3D hobbies scene loads on scroll-approach (idle-prefetched in App.tsx)
 // rather than shipping in the first-paint bundle.
 const HobbiesScene = lazy(() =>
@@ -33,29 +35,6 @@ gsap.registerPlugin(ScrollTrigger);
  * decorative <canvas>.
  */
 
-interface Hobby {
-  id: string;
-  label: string;
-  caption: string; // 1-line note, carried by the sr-only accessible list
-}
-
-const HOBBIES: Hobby[] = [
-  { id: "belt",     label: "Kickboxing",  caption: "gloves up, the discipline of throwing a clean combination and taking the hit." },
-  { id: "piano",    label: "Piano",       caption: "an hour at the keys before anyone else is up." },
-  { id: "pc",       label: "Workstation", caption: "the desk is the workshop is the lab is the rabbit hole." },
-  { id: "shoe",     label: "Fashion",     caption: "a fit is a sentence. Punctuation matters." },
-  { id: "keyboard", label: "Keyboards",   caption: "tactile under the fingers, loud in the room. on purpose." },
-  { id: "cursor",   label: "Design",      caption: "obsession over the line weight no one will ever notice." },
-  { id: "car",      label: "Cars",        caption: "spool, whistle, dump: the soundtrack of a good morning." },
-  { id: "yarn",     label: "3D Modelling", caption: "started with the Blender donut, stayed for the topology." },
-  { id: "luggage",  label: "Travel",      caption: "the carry-on is packed by Thursday for a Saturday I haven't booked." },
-  { id: "ski",      label: "Skiing",      caption: "blue light, edges biting, the mountain quiet under it all." },
-];
-
-// Stable module-level id list — preserves referential identity across renders
-// so HobbiesScene's memo/prop-equality is not defeated every render.
-const HOBBY_IDS = HOBBIES.map((h) => h.id);
-
 // prefers-reduced-motion: skip the entrance scrub and reveal the header
 // statically with the 3D cluster live (the scene parks itself static too). Read
 // once at mount; stable for the page lifetime.
@@ -63,11 +42,6 @@ const PREFERS_REDUCED_MOTION =
   typeof window !== "undefined" &&
   typeof window.matchMedia === "function" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-function smoothstep(edge0: number, edge1: number, x: number) {
-  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
 
 // Write the editorial header reveal STRAIGHT to CSS custom props on the header
 // element (no React state → the section never re-renders on a scrub tick). Fed
@@ -165,20 +139,10 @@ export function Other() {
 
     // Refresh after the loading screen lifts: layout can shift during initial
     // paint. Same pattern as the other sections.
-    const html = document.documentElement;
-    let lastLoading = html.classList.contains("loading-active");
-    const obs = new MutationObserver(() => {
-      const now = html.classList.contains("loading-active");
-      if (lastLoading && !now) requestScrollRefresh();
-      lastLoading = now;
-    });
-    obs.observe(html, { attributes: true, attributeFilter: ["class"] });
-    if (!lastLoading) {
-      requestScrollRefresh();
-    }
+    const stopLoaderWatch = refreshScrollOnLoaderLift();
 
     return () => {
-      obs.disconnect();
+      stopLoaderWatch();
       entrance.kill();
       presence.kill();
     };
@@ -203,10 +167,10 @@ export function Other() {
           truth for those users and for SEO: a real heading + a real <ul> of
           every interest with its one-line note.
           ==================================================================== */}
-      <h2 id="other-sr-heading" className="other-sr-only">
+      <h2 id="other-sr-heading" className="sr-only">
         Off the clock: some things I enjoy
       </h2>
-      <ul className="other-sr-only" aria-label="Personal interests">
+      <ul className="sr-only" aria-label="Personal interests">
         {HOBBIES.map((h) => (
           <li key={h.id}>
             {h.label}: {h.caption}
@@ -244,7 +208,7 @@ export function Other() {
       <div className="other-scene-wrap" aria-hidden="true">
         {sceneMounted && (
           <Suspense fallback={null}>
-            <HobbiesScene hobbyIds={HOBBY_IDS} live={live} />
+            <HobbiesScene live={live} />
           </Suspense>
         )}
       </div>

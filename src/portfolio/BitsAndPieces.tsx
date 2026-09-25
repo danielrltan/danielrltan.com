@@ -316,19 +316,30 @@ export function BitsAndPieces() {
     // Same rootMargin as the old per-tile observer.
     const io = new IntersectionObserver(
       (entries) => {
-        let changed = false;
-        const next = new Set(revealedSet);
+        const entered: number[] = [];
         for (const entry of entries) {
           if (entry.isIntersecting) {
             const idx = tileEls.current.indexOf(entry.target as HTMLLIElement);
-            if (idx !== -1 && !next.has(idx)) {
-              next.add(idx);
-              changed = true;
+            if (idx !== -1) {
+              entered.push(idx);
               io.unobserve(entry.target);
             }
           }
         }
-        if (changed) setRevealedSet(next);
+        if (entered.length === 0) return;
+        // Functional update: this callback lives in a []-dep effect, so a
+        // closed-over `revealedSet` would be the stale initial Set and every
+        // later batch would REPLACE the set (un-revealing earlier tiles).
+        setRevealedSet((prev) => {
+          let next: Set<number> | null = null;
+          for (const idx of entered) {
+            if (!prev.has(idx)) {
+              next ??= new Set(prev);
+              next.add(idx);
+            }
+          }
+          return next ?? prev;
+        });
       },
       { rootMargin: "0px 0px -10% 0px" },
     );
@@ -341,9 +352,6 @@ export function BitsAndPieces() {
       io.disconnect();
       sharedIoRef.current = null;
     };
-    // revealedSet intentionally excluded: we mutate via the closure copy `next`
-    // and only call setRevealedSet when something genuinely changed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Recompute reveal direction + stagger from the RESOLVED layout GEOMETRY,
@@ -527,7 +535,7 @@ export function BitsAndPieces() {
         <header className="bp-head">
           <span className="section-marker bp-marker">05</span>
           <span className="section-index bp-index">
-            05 / 06 &middot; Honours
+            05 / 07 &middot; Honours
           </span>
           <h2 className="bp-title">
             <ScrambleText text="The trophy wall" />

@@ -12,18 +12,16 @@ import {
 } from "./RipplePost";
 import { useIsMobile } from "../useIsMobile";
 import { isLowTier } from "../capabilityTier";
+import { isTuneMode } from "../tuneMode";
 
 // Tuning mode: pass ?tune=keypad in the URL to enable OrbitControls
 // + a live values HUD so you can drag the keypad to the orientation
 // you want, then copy the values back into CAMERA_POS / BASE_TILT_Y.
-const TUNE_MODE =
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("tune") === "keypad";
+const TUNE_MODE = isTuneMode("keypad");
 
 /**
- * Dedicated R3F canvas for the keypad section. Lives in its own
- * scene + camera so the room canvas's intro / orbit / postprocessing
- * machinery doesn't have to know about it.
+ * Dedicated R3F canvas for the keypad section, with its own scene +
+ * camera (mounted on approach by Keypad.tsx).
  *
  * Composition:
  *   <RiceBlob/>      cursor-anchored rice fluid backdrop (z=-4)

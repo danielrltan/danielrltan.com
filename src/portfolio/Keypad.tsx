@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { requestScrollRefresh } from "./scrollRefresh";
+import { refreshScrollOnLoaderLift } from "./scrollRefresh";
+import { SOCIALS } from "../socials";
+import { isTuneMode } from "../tuneMode";
 import Lenis from "lenis";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 // Lazy: keypad 3D scene (last section before the footer) loads on approach,
@@ -14,32 +16,6 @@ import { track } from "../analytics";
 import "./keypad.css";
 
 gsap.registerPlugin(ScrollTrigger);
-
-// Single source of truth for the four socials the keypad exposes.
-// Used by BOTH the visually-hidden semantic list (AT / SEO) and the
-// mobile DOM contact chips below, so the links can't drift apart. The
-// 3D caps reference the same destinations on desktop.
-const SOCIALS = [
-  { label: "X", aria: "X (Twitter)", href: "https://x.com/danielrltan", host: "x.com" },
-  {
-    label: "LinkedIn",
-    aria: "LinkedIn",
-    href: "https://www.linkedin.com/in/danielrltan",
-    host: "linkedin.com",
-  },
-  {
-    label: "GitHub",
-    aria: "GitHub",
-    href: "https://github.com/danielrltan",
-    host: "github.com",
-  },
-  {
-    label: "Pinterest",
-    aria: "Pinterest",
-    href: "https://www.pinterest.com/danielrltan",
-    host: "pinterest.com",
-  },
-] as const;
 
 /**
  * Keypad section: bottom-of-page Contact surface. Pure 3D: the
@@ -77,9 +53,7 @@ const SOCIALS = [
  * WebGL context idle until the section approaches the viewport.
  */
 
-const TUNE_MODE =
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("tune") === "keypad";
+const TUNE_MODE = isTuneMode("keypad");
 
 // Pixels of vertical scroll the user travels while the section is
 // pinned. Tuned long enough for the drop to land + a deliberate
@@ -355,22 +329,10 @@ export function Keypad() {
     // without this refresh the pin can engage at the wrong scroll
     // position (the bug that caused "keypad doesn't drop on first
     // scroll").
-    const html = document.documentElement;
-    let lastLoadingActive = html.classList.contains("loading-active");
-    const obs = new MutationObserver(() => {
-      const nowLoading = html.classList.contains("loading-active");
-      if (lastLoadingActive && !nowLoading) {
-        requestScrollRefresh();
-      }
-      lastLoadingActive = nowLoading;
-    });
-    obs.observe(html, { attributes: true, attributeFilter: ["class"] });
-    if (!lastLoadingActive) {
-      requestScrollRefresh();
-    }
+    const stopLoaderWatch = refreshScrollOnLoaderLift();
 
     return () => {
-      obs.disconnect();
+      stopLoaderWatch();
       pinST.kill();
     };
     // Re-run when the breakpoint flips (rotate / resize across 768px)

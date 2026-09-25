@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  loadSignatureData,
+  type SignatureData,
+  type SignatureEvent,
+} from "../hero/signatureGeometry";
 
 /**
- * Self-contained footer signature. Renders the captured gesture
- * (signature.json) into a small canvas that lives INSIDE the
- * footer column, scaled to fit. Independent from the fullscreen
- * SignatureCanvas + SignatureReplay pair that used to live at the
- * hero; this version doesn't need the global brush registry, it
- * paints directly into its own ctx with its own projection.
+ * Footer signature. Renders the captured gesture (signature.json, via the
+ * shared cached loader) into a small canvas that lives INSIDE the footer
+ * column, scaled to fit, painting directly into its own ctx with its own
+ * projection.
  *
  * Trigger: once the canvas's IntersectionObserver fires, the
  * stroke replays from t=0 over ~1.6s. No fade afterwards: the
@@ -16,18 +19,6 @@ import { useEffect, useRef, useState } from "react";
  * prefers-reduced-motion the replay is skipped entirely and the final
  * static signature is painted in a single pass; no animation.
  */
-
-interface NormalizedEvent {
-  type: "down" | "move" | "up";
-  t: number;
-  nx: number;
-  ny: number;
-}
-interface SignatureJSON {
-  totalDuration: number;
-  events: NormalizedEvent[];
-  bounds?: { minX: number; minY: number; maxX: number; maxY: number };
-}
 
 interface Props {
   /** CSS height of the signature canvas on desktop. Defaults to 120px.
@@ -107,10 +98,10 @@ export function FooterSignature({
     // (the IntersectionObserver disconnects after its first fire, so it
     // can't re-trigger a replay; without this, any resize wiped the
     // signature permanently).
-    let cachedSig: SignatureJSON | null = null;
+    let cachedSig: SignatureData | null = null;
     let hasPlayed = false;
 
-    const render = (sig: SignatureJSON, animated: boolean) => {
+    const render = (sig: SignatureData, animated: boolean) => {
       ctx.clearRect(0, 0, w, h);
 
       // Project the normalised gesture into our small canvas while
@@ -182,7 +173,7 @@ export function FooterSignature({
 
       // Draw a single recorded event, advancing the pen state. Shared
       // by the animated replay and the reduced-motion single-pass draw.
-      const drawEvent = (ev: NormalizedEvent) => {
+      const drawEvent = (ev: SignatureEvent) => {
         const px = projectX(ev.nx);
         const py = projectY(ev.ny);
         if (ev.type === "down") {
@@ -239,15 +230,7 @@ export function FooterSignature({
     // (the IntersectionObserver fired); later resize-driven renders are
     // static so they never re-trigger the draw-on animation.
     const ensureRendered = async (animated: boolean) => {
-      if (!cachedSig) {
-        try {
-          const r = await fetch("/signature.json");
-          if (!r.ok) return;
-          cachedSig = (await r.json()) as SignatureJSON;
-        } catch {
-          return;
-        }
-      }
+      if (!cachedSig) cachedSig = await loadSignatureData();
       if (!cachedSig || cancelled) return;
       // Once the signature has played (or under reduced motion) every
       // subsequent paint is static: only the very first in-view paint

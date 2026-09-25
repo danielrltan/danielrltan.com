@@ -3,14 +3,9 @@ import { SignatureMark } from "./SignatureMark";
 import { useIsMobile } from "./useIsMobile";
 
 /**
- * Persistent chrome over the room view: the brand mark (top-left) — now
- * Daniel's signature (the cat mascot was retired). `visible` fades the whole
- * HUD in/out for desk-view transitions.
- *
- * The reset/audio pills that used to sit bottom-left were removed
- * entirely at the owner's request (they read as stray leftover controls,
- * and on a phone the room isn't the interaction surface). No audio
- * control exists anymore; room reset lives on the keyboard shortcut.
+ * Top-left brand mark: Daniel's signature in a white tile. `visible` fades
+ * it in once the visitor has scrolled past the hero (App.tsx's hudVisible),
+ * and it dodges the footer so it never sits over the sign-off.
  */
 interface Props {
   /** Outer visibility: fades the whole HUD in/out for desk-view transitions. */

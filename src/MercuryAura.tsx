@@ -1,7 +1,12 @@
 import { useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { blobRiceColor, blobBgColor, BLOB_COMPOSITE_GLSL } from "./cursorBlob";
+import {
+  blobRiceColor,
+  blobBgColor,
+  BLOB_COMPOSITE_GLSL,
+  advanceCursorTrail,
+} from "./cursorBlob";
 
 /**
  * CURSOR RICE POOL + VENOM HUG — the spill menu's liquid cursor effect.
@@ -215,35 +220,8 @@ export function MercuryAura({ cursorRef, positionsRef, reduced }: Props) {
     const tgt = cursorRef.current;
     const trail = mat.uniforms.uTrail.value as THREE.Vector2[];
     const active = mat.uniforms.uActive.value as number;
-
-    // Snap the whole rope onto the cursor while invisible, so it forms AT the
-    // cursor instead of flying in from the centre on first appearance.
-    if (active < 0.02) {
-      for (let i = 0; i < TRAIL_N; i++) trail[i]!.set(tgt.x, tgt.y);
-    } else {
-      // Head chases the cursor; each follower lags toward the one ahead and is
-      // clamped to MAX_GAP so the union stays a continuous mercury rope that
-      // stretches when moving and flows back together when still.
-      const head = trail[0]!;
-      const kHead = 1 - Math.exp(-dtc * 32);
-      head.x += (tgt.x - head.x) * kHead;
-      head.y += (tgt.y - head.y) * kHead;
-      const kChain = 1 - Math.exp(-dtc * 26);
-      const MAX_GAP = 0.03;
-      for (let i = 1; i < TRAIL_N; i++) {
-        const p = trail[i]!;
-        const a = trail[i - 1]!;
-        p.x += (a.x - p.x) * kChain;
-        p.y += (a.y - p.y) * kChain;
-        const dx = a.x - p.x;
-        const dy = a.y - p.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        if (dist > MAX_GAP) {
-          p.x = a.x - (dx / dist) * MAX_GAP;
-          p.y = a.y - (dy / dist) * MAX_GAP;
-        }
-      }
-    }
+    // Cursor TRAIL update (shared step; identical to the keypad RiceBlob).
+    advanceCursorTrail(trail, tgt, active, dtc);
 
     const ak = 1 - Math.exp(-dtc * 8);
     mat.uniforms.uActive.value += ((tgt.active ? 1 : 0) - active) * ak;

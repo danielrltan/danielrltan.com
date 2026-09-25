@@ -72,17 +72,15 @@
   padding: 140px 0;
 }
 
-/* Hero is intentionally bare: no padding, just space and the room
-   behind. */
+/* Hero is intentionally bare: no padding, just a viewport of space. */
 .portfolio-section--hero {
   padding: 0;
   min-height: 100vh;
 }
-.portfolio-section--hero::before { display: none; }
 
-/* Right-column gutter. Content opacity follows --content-opacity from
-   the consolidated scroll listener so section text only fades in
-   AFTER the canvas-shrink window completes. */
+/* Right-column gutter (Macintosh). Content opacity follows --content-opacity
+   from App.tsx's scroll choreography so section text only fades in once the
+   hero has cleared. */
 .portfolio-col {
   margin-left: 50vw;
   width: 50vw;
@@ -216,9 +214,6 @@
     width: 100vw;
     padding: 0 6vw;
     max-width: none;
-  }
-  .portfolio-section--hero + .portfolio-section .portfolio-col {
-    padding-top: 14vh;
   }
   .portfolio-section--hero .portfolio-col {
     padding: 0;

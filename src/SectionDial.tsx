@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { SECTION_REGISTRY } from "./sectionRegistry";
+import { clamp01 } from "./math";
 // Own the dial's styles EAGERLY. crt-channel-menu.css was previously imported
 // only by NavSpillMenu, which is lazy-loaded on idle (~1.5s) — so the dial
 // (rendered immediately by StatusBar) painted UNSTYLED until that chunk landed:
@@ -55,9 +56,6 @@ const MAX_ROLL_MS = 1200;
 function shortestArc(from: number, to: number): number {
   const d = (((to - from) % 360) + 540) % 360 - 180;
   return from + d;
-}
-function clamp01(x: number): number {
-  return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 // easeInOutCubic: accelerate then decelerate. The accel is what sells the
 // "wheel spinning up" read that a pure decaying lerp lacks.

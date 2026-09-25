@@ -6,6 +6,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { isLowTier } from "../capabilityTier";
 import { track } from "../analytics";
+import { HOBBIES, type Hobby } from "./hobbies";
 
 // First-focus-per-page guard for hobby_focus analytics (module scope persists
 // across the scene's mount-on-approach remounts, so each interest fires once).
@@ -31,37 +32,14 @@ const SEEN_HOBBIES = new Set<string>();
  * HOVER — focus + face-tracking parallax (ported from the keypad section):
  *   Hovering an object FOCUSES it: it lifts/scales up, eases forward, slows its
  *   drift to hold still, and tilts TOWARD the cursor (±15°, exp-lerp rate 6 —
- *   the same face-tracking the keypad uses). A DOM tooltip shows its label.
+ *   the same face-tracking the keypad uses). An in-canvas <Html> tag shows
+ *   its label.
  *
  * Palette discipline: the site runs a strict off-white / ink / orange system.
  * The abstract placeholder objects wear a glossy duotone of deep graphite,
  * light steel, and brand orange; the real GLB props keep their authored
  * materials with a gloss boost so the whole cluster reads as one candy set.
  */
-
-export interface Hobby {
-  id: string;
-  file: string;
-  label: string;
-}
-
-// NOTE: `id` is an opaque, STABLE key (drives LAYOUT / POS_PORTRAIT lookups +
-// the parent roster-sync check). It deliberately does NOT have to match `file`.
-// Three slots were re-modelled from new .blend drops: belt→glove.glb (relabelled
-// Kickboxing), shoe→boot.glb (Fashion), yarn→donut.glb (3D Modelling — the
-// Blender donut). Keeping the ids avoids churning the layout maps below.
-export const HOBBIES: Hobby[] = [
-  { id: "belt",     file: "glove.glb",    label: "Kickboxing"  },
-  { id: "piano",    file: "piano.glb",    label: "Piano"       },
-  { id: "pc",       file: "gpu.glb",      label: "Workstation" },
-  { id: "shoe",     file: "boot.glb",     label: "Fashion"     },
-  { id: "keyboard", file: "keyboard.glb", label: "Keyboards"   },
-  { id: "cursor",   file: "cursor.glb",   label: "Design"      },
-  { id: "car",      file: "car.glb",      label: "Cars"        },
-  { id: "yarn",     file: "donut.glb",    label: "3D Modelling" },
-  { id: "luggage",  file: "luggage.glb",  label: "Travel"      },
-  { id: "ski",      file: "ski.glb",      label: "Skiing"      },
-];
 
 type PlaceholderKind =
   | "icosahedron"
@@ -96,7 +74,7 @@ const TONE_COLOR: Record<Tone, string> = {
  */
 // `rot` (radians, XYZ Euler) is the object's authored REST orientation. The
 // gentle sway + hover parallax oscillate AROUND it.
-export interface HobbyLayoutEntry {
+interface HobbyLayoutEntry {
   pos: [number, number, number];
   scale: number;
   rot: [number, number, number];
@@ -104,7 +82,7 @@ export interface HobbyLayoutEntry {
   placeholder: PlaceholderKind;
   tone: Tone;
 }
-export const LAYOUT: Record<string, HobbyLayoutEntry> = {
+const LAYOUT: Record<string, HobbyLayoutEntry> = {
   belt:     { pos: [-2.94,  0.31, -0.02], scale: 1.50, rot: [-0.85, -0.65, -3.10], radius: 0.64, placeholder: "dodecahedron", tone: "orange" },
   piano:    { pos: [-2.49,  1.42,  0.04], scale: 1.31, rot: [ 0.57, -0.03, -0.04], radius: 0.66, placeholder: "box",          tone: "ink"    },
   pc:       { pos: [-0.17,  1.33,  0.11], scale: 2.03, rot: [-0.32, -0.27, -0.14], radius: 0.74, placeholder: "icosahedron",  tone: "orange" },
@@ -170,7 +148,7 @@ function PlaceholderMesh({ kind, size }: { kind: PlaceholderKind; size: number }
  * every prop reads at a consistent footprint no matter how it was modelled.
  * Returns a CLONE (never mutates the cached PRELOADED scene).
  */
-export function normalizeHobbyScene(scene: THREE.Group): THREE.Group {
+function normalizeHobbyScene(scene: THREE.Group): THREE.Group {
   const cloned = scene.clone(true);
   const box = new THREE.Box3().setFromObject(cloned);
   const sphere = new THREE.Sphere();
@@ -540,12 +518,12 @@ function HobbyMesh({
 // the portrait home; optional `scale`/`rot` override the desktop LAYOUT values
 // for mobile (omit to inherit). Selected at <=768px via the reactive `mobile`
 // flag in SceneInner.
-export interface HobbyPortraitEntry {
+interface HobbyPortraitEntry {
   pos: [number, number, number];
   scale?: number;
   rot?: [number, number, number];
 }
-export const POS_PORTRAIT: Record<string, HobbyPortraitEntry> = {
+const POS_PORTRAIT: Record<string, HobbyPortraitEntry> = {
   // scale/rot are set only where they differ from the desktop LAYOUT; pos is the
   // portrait home slot.
   belt:     { pos: [ 0.78, -2.52,  0.04], scale: 1.29, rot: [-0.69, -1.01, -2.06] },
@@ -562,12 +540,12 @@ export const POS_PORTRAIT: Record<string, HobbyPortraitEntry> = {
 
 /** Resolve an object's effective transform for the active arrangement.
  *  Mobile inherits desktop scale/rot unless POS_PORTRAIT overrides them. */
-export interface ResolvedTransform {
+interface ResolvedTransform {
   pos: [number, number, number];
   scale: number;
   rot: [number, number, number];
 }
-export function resolveTransform(id: string, mobile: boolean): ResolvedTransform {
+function resolveTransform(id: string, mobile: boolean): ResolvedTransform {
   const L = LAYOUT[id]!;
   if (mobile) {
     const P = POS_PORTRAIT[id];
@@ -579,20 +557,19 @@ export function resolveTransform(id: string, mobile: boolean): ResolvedTransform
   }
   return { pos: L.pos, scale: L.scale, rot: L.rot };
 }
-export const CLUSTER_HALF_W_PORTRAIT = 1.4;
-export const CLUSTER_HALF_H_PORTRAIT = 3.1;
+const CLUSTER_HALF_W_PORTRAIT = 1.4;
+const CLUSTER_HALF_H_PORTRAIT = 3.1;
 // Look ABOVE centre so the cluster sits LOWER in the frame — the top row of
 // objects (+ their static labels) clears the big "Some interests" wordmark that
 // floats over the top of the section.
-export const CAM_LOOK_Y_PORTRAIT = 0.5;
-const CAM_HEIGHT_OFFSET = 0.0;
-export const VFOV_DEG = 36;
+const CAM_LOOK_Y_PORTRAIT = 0.5;
+const VFOV_DEG = 36;
 const VFOV_RAD = (VFOV_DEG * Math.PI) / 180;
 const HALF_VFOV_TAN = Math.tan(VFOV_RAD / 2);
 // Eased from 0.92 so the cluster sits a touch smaller with clear margin top AND
 // bottom (the hovered bottom object was clipping the bottom edge).
 const FILL_FRACTION = 0.86;
-export function camDistanceForAspect(
+function camDistanceForAspect(
   aspect: number,
   halfW: number,
   halfH: number,
@@ -635,14 +612,14 @@ const WIDTH_FILL = 0.99;
 // size + position) and the extra 100px is empty room UNDER the bottom row for
 // a hovered object (×1.1 scale + forward dolly) to grow into without being
 // sliced by the canvas edge. Keep in sync with other.css (+100px).
-export const DESK_EXTRA_BOTTOM_PX = 100;
-export interface Framing {
+const DESK_EXTRA_BOTTOM_PX = 100;
+interface Framing {
   dist: number;
   lookY: number;
 }
 /** @param extraBottomFrac fraction of the canvas HEIGHT that is slack below the
  *  framed band (DESK_EXTRA_BOTTOM_PX / canvas px height). 0 = legacy framing. */
-export function desktopFraming(aspect: number, extraBottomFrac = 0): Framing {
+function desktopFraming(aspect: number, extraBottomFrac = 0): Framing {
   const a = Math.max(0.0001, aspect);
   const halfHc = (DESK_TOP_Y - DESK_BOT_Y) / 2; // cluster world half-height
   const centerY = (DESK_TOP_Y + DESK_BOT_Y) / 2; // cluster world centre
@@ -756,7 +733,7 @@ function SceneInner({
       dist = f.dist;
     }
     const frameX = mobile ? 0 : FRAME_SHIFT_X;
-    camera.position.set(frameX, lookY + CAM_HEIGHT_OFFSET, dist);
+    camera.position.set(frameX, lookY, dist);
     camera.lookAt(frameX, lookY, 0);
 
     // Visible world half-extents at z=0 (for the containment clamp). Anything
@@ -894,12 +871,10 @@ function SceneInner({
 }
 
 interface HobbiesSceneProps {
-  hobbyIds?: string[];
   live?: boolean;
 }
 
 export const HobbiesScene = memo(function HobbiesScene({
-  hobbyIds,
   live = true,
 }: HobbiesSceneProps) {
   const [loaded, setLoaded] = useState<Record<string, THREE.Group | null>>(() => {
@@ -940,22 +915,6 @@ export const HobbiesScene = memo(function HobbiesScene({
     return isTouch || narrow ? [1, 1.25] : [1, 1.5];
   }, [isTouch]);
 
-  // Roster sanity check (dev only).
-  useEffect(() => {
-    if (!hobbyIds) return;
-    const sceneIds = HOBBIES.map((h) => h.id);
-    if (
-      import.meta.env.DEV &&
-      (sceneIds.length !== hobbyIds.length ||
-        sceneIds.some((id, i) => id !== hobbyIds[i]))
-    ) {
-      console.warn("[HobbiesScene] hobby roster mismatch with parent", {
-        parent: hobbyIds,
-        scene: sceneIds,
-      });
-    }
-  }, [hobbyIds]);
-
   // Subscribe to the module-scope preload so late-arriving GLBs swap in.
   useEffect(() => {
     const unsubs: Array<() => void> = [];
@@ -968,8 +927,7 @@ export const HobbiesScene = memo(function HobbiesScene({
         // left such a GLB neither in the snapshot NOR subscribed, so it was stuck
         // on its placeholder forever (a fast scroll-to-section right after load
         // could strand 2-3 props — and showing a placeholder for a GLB that DID
-        // load violates "never fake"). Fold it into state instead. Mirrors the
-        // useHobbyScenes hook's loaded-entry handling.
+        // load violates "never fake"). Fold it into state instead.
         setLoaded((p) => (h.id in p ? p : { ...p, [h.id]: entry.scene }));
         return;
       }

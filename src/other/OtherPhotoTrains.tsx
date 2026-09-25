@@ -1,13 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * Hobby photo trains: three horizontal rows of placeholder photo
- * cards that slide opposite directions as Beat A of the Other section
- * scrubs (0..1). Recovered from the pre-redesign (commit f92a48f) and
- * adapted to read a parent-supplied progress instead of scrollY:
+ * Photo trains (the Recents section): three horizontal rows of photo cards
+ * that slide in opposite directions as the section's pin scrubs (0..1).
+ * Reads a parent-supplied progress instead of scrollY:
  *
- *   - Parent writes `progress` (0..1) every GSAP onUpdate frame for
- *     Beat A.
+ *   - Photos.tsx writes `progress` (0..1) every GSAP onUpdate frame.
  *   - A continuous rAF loop lerps each row's actual transform toward
  *     a per-row TARGET shift derived from that progress.
  *   - Result: trains glide smoothly even when the scrub jumps
@@ -23,12 +21,12 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
  *     row 2   R→L   ─── card card card card card card ───
  *     row 3   L→R   ─── card card card card card card ───
  *
- * Each row repeats the photo vocabulary 4× so cards never run out as
- * the strip slides. The strip is mask-faded at the left/right edges so
- * cards entering/leaving the viewport don't hard-clip.
+ * Each row repeats the photo vocabulary (repeat count derived from live
+ * geometry) so cards never run out as the strip slides; cards hard-clip at
+ * the row edges.
  */
 
-export interface PhotoItem {
+interface PhotoItem {
   /** Real photo URL (from /photos/manifest.json, built by `npm run photos`).
    *  When present the card shows the image and the label/tint are unused. */
   src?: string;
@@ -40,10 +38,10 @@ export interface PhotoItem {
 
 interface Props {
   photos: PhotoItem[];
-  /** Beat-A progress 0..1, written by Other.tsx's pin onUpdate into a
+  /** Pin progress 0..1, written by Photos.tsx's pin onUpdate into a
    *  REF (not state): as a number prop it re-rendered all ~108 card
-   *  nodes on every scroll tick of the Beat A scrub. The rAF loop
-   *  below reads it directly; React never re-renders for progress. */
+   *  nodes on every scroll tick. The rAF loop below reads it directly;
+   *  React never re-renders for progress. */
   progressRef: React.MutableRefObject<number>;
 }
 
@@ -117,11 +115,6 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
   // loop short-circuits when the rack isn't on screen.
   const visibleRef = useRef<boolean>(false);
 
-  // PERF: 4× repeat = 48 cards/row × 3 rows = 144 DOM nodes. Card width
-  // is clamp(220, 22vw, 340) and rows travel ~70% of strip width across
-  // Beat A. 3x repeat gives ample wrap room (overshoot stays in mask)
-  // while cutting DOM node count by 25% (144 → 108). The mask-image
-  // fade at the row edges hides the seam either way.
   // Real uploaded photos, fetched at runtime from the manifest that
   // `npm run photos` generates. Until any exist (or if the fetch fails),
   // fall back to the gradient placeholders passed via props — so the reel
@@ -281,26 +274,20 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
         }
         firstFrame = false;
       }
-      let maxDelta = 0;
       for (let i = 0; i < ROWS; i++) {
         const cur = currentShiftRef.current[i]!;
         const tgt = targetShiftRef.current[i]!;
-        const delta = tgt - cur;
-        if (Math.abs(delta) > maxDelta) maxDelta = Math.abs(delta);
-        const next = cur + delta * LERP_K;
+        const next = cur + (tgt - cur) * LERP_K;
         currentShiftRef.current[i] = next;
         const row = rowRefs.current[i];
         if (row) {
           row.style.transform = `translate3d(${-next}%, 0, 0)`;
         }
       }
+      // Keep ticking even when settled so incoming progress writes are
+      // picked up; the off-screen cheap-skip above makes an idle tick ~one
+      // branch.
       loopRaf = requestAnimationFrame(tick);
-      // PERF: when settled (<0.02% pos delta across all rows) we still
-      // need to react to incoming progress changes. Caller writes new
-      // progress via the prop → progressRef effect; we just need to
-      // keep ticking. The cheap-skip above means an off-screen tick
-      // costs ~one branch.
-      void maxDelta;
     };
 
     loopRaf = requestAnimationFrame(tick);

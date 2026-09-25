@@ -21,9 +21,7 @@ declare global {
 }
 
 export type AnalyticsEvent =
-  | "intro_started" // user first scroll triggers the intro
-  | "room_entered" // intro completes, scene is interactive
-  | "room_reset" // R key resets the room
+  | "room_entered" // HUD revealed: the visitor scrolled past the hero (legacy name)
   // Navigation
   | "section_view" // a section scrolled into view — { section }
   | "nav_open" // channel/spill menu opened — { via }

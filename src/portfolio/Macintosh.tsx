@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { requestScrollRefresh } from "./scrollRefresh";
+import { refreshScrollOnLoaderLift } from "./scrollRefresh";
+import { isTuneMode } from "../tuneMode";
 import "./sections.css";
 import "./macintosh.css";
 import { ScrambleText } from "./ScrambleText";
@@ -53,10 +54,10 @@ function usePrefersReducedMotion() {
 
 // Three-beat choreography needs breathing room: STACK (0.00→0.22),
 // ORBIT (0.22→0.55), LAND+EXPLORE (0.55→1.00).
-// Bumped 1800 → 2600 → 6200px, then trimmed to 5400: at 6200 the
+// Bumped 1800 → 2600 → 6200px, then trimmed to 5800: at 6200 the
 // entry beat (floating cards) demanded ~1360px of scroll before
 // anything committed, which read as the section refusing the wheel
-// (user: stubborn at first, too much to give it). 5400 keeps the
+// (user: stubborn at first, too much to give it). 5800 keeps the
 // scroll-lock property — a single hard flick still can't clear the
 // pin, the nearest-beat snap still settles every rest on a composed
 // pose — while shaving ~13% off every beat's scroll cost (entry beat
@@ -65,9 +66,7 @@ const PIN_DURATION_PX = 5800;
 
 // ?tune=mac skips the pin so OrbitControls inside MacintoshScene can
 // drive the camera freely for re-framing.
-const TUNE_MODE =
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("tune") === "mac";
+const TUNE_MODE = isTuneMode("mac");
 
 // ?pin=<0..1> parks pinProgress at a fixed value WITHOUT pinning the
 // section: useful for QA-ing a specific beat (e.g. ?pin=0.10 to see
@@ -153,10 +152,6 @@ export function Macintosh() {
   // project is open: focused on open so keyboard users land on a control
   // inside the (canvas-invisible) detail view, and ESC-reachable.
   const backBtnRef = useRef<HTMLButtonElement>(null);
-  // Narrow/touch path's VISIBLE back button (inside the detail panel).
-  // Focused on open instead of backBtnRef when the desktop CRT hotspot
-  // isn't rendered, so the focus lands on a real, on-screen control.
-  const narrowBackBtnRef = useRef<HTMLButtonElement>(null);
 
   // Apply a projected screen rect from the 3D scene, but only re-render
   // when it changes enough to matter: the scene emits ~30Hz; once the
@@ -231,13 +226,9 @@ export function Macintosh() {
   // preventScroll so opening never scrolls the pinned page either.
   useEffect(() => {
     if (!selected) return;
-    // Defer so the button is mounted before we focus it. On the narrow
-    // path the desktop CRT hotspot isn't rendered: focus the VISIBLE
-    // in-panel back button instead so keyboard/AT focus lands on a real,
-    // on-screen control rather than nothing.
+    // Defer so the button is mounted before we focus it.
     const id = requestAnimationFrame(() => {
-      const target = narrowBackBtnRef.current ?? backBtnRef.current;
-      target?.focus({ preventScroll: true });
+      backBtnRef.current?.focus({ preventScroll: true });
     });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -341,10 +332,9 @@ export function Macintosh() {
     };
     window.addEventListener("mac-zoom-request", onMacZoom);
 
-    // Reveal the Mac stage right after the room fade-out window in
-    // App.tsx (ROOM_FADE_OUT_END_VH) so the two scenes never overlap.
+    // Reveal the Mac stage once the page has scrolled past the hero + About
+    // (STAGE_REVEAL_VH) so it never shows through the About beat.
     const stage = el.querySelector(".mac-stage") as HTMLElement | null;
-    const ticker = el.querySelector(".mac-ticker-slot") as HTMLElement | null;
     const STAGE_REVEAL_VH = 2.25;
     let raf = 0;
     let lastVisible = false;
@@ -356,9 +346,6 @@ export function Macintosh() {
         lastVisible = visible;
         if (stage) {
           stage.setAttribute("data-stage-visible", visible ? "true" : "false");
-        }
-        if (ticker) {
-          ticker.setAttribute("data-stage-visible", visible ? "true" : "false");
         }
       }
     };
@@ -372,20 +359,10 @@ export function Macintosh() {
 
     // Refresh once loading-active drops: pin positions shift during
     // initial layout.
-    const html = document.documentElement;
-    let lastLoading = html.classList.contains("loading-active");
-    const obs = new MutationObserver(() => {
-      const now = html.classList.contains("loading-active");
-      if (lastLoading && !now) requestScrollRefresh();
-      lastLoading = now;
-    });
-    obs.observe(html, { attributes: true, attributeFilter: ["class"] });
-    if (!lastLoading) {
-      requestScrollRefresh();
-    }
+    const stopLoaderWatch = refreshScrollOnLoaderLift();
 
     return () => {
-      obs.disconnect();
+      stopLoaderWatch();
       st.kill();
       window.removeEventListener("mac-zoom-request", onMacZoom);
       window.removeEventListener("scroll", onScroll);
@@ -435,19 +412,13 @@ export function Macintosh() {
               projects={MAC_PROJECTS}
               onSelectProject={openProject}
               selected={selected}
-              onCloseProject={closeProject}
               onScreenRect={staticLanded ? undefined : handleScreenRect}
               hoveredControl={hoveredControl}
             />
           </Suspense>
         )}
       </div>
-      <div
-        className="mac-ticker-slot"
-        data-stage-visible={
-          TUNE_MODE || PIN_FREEZE != null || staticLanded ? "true" : "false"
-        }
-      >
+      <div className="mac-ticker-slot">
         <TechStackTicker />
       </div>
 
@@ -565,7 +536,7 @@ export function Macintosh() {
         className={`portfolio-col mac-col${selected ? " is-detail-open" : ""}`}
       >
         <span className="section-marker">02</span>
-        <span className="section-index">02 / 06 &middot; Projects</span>
+        <span className="section-index">02 / 07 &middot; Projects</span>
         <h2>
           <ScrambleText text="Projects" />
         </h2>
@@ -607,20 +578,11 @@ export function Macintosh() {
       {/* Detail region. The open project is drawn into the CRT <canvas>
           texture, which is invisible to assistive tech, so the project's
           title / meta / blurb / tags + the REAL clickable live/repo link
-          live here as DOM. aria-live announces the open.
-
-          DESKTOP: visually hidden (the CRT is the visual surface) but
-          DOM-real + focusable: surfaced only on keyboard focus.
-
-          NARROW/TOUCH: made VISIBLE (see .mac-detail-a11y[data-narrow] in
-          the CSS). On a phone the in-CRT canvas text is small and the
-          camera does NOT dolly into the screen, so this real DOM panel is
-          the legible, readable presentation of the work; the CRT just
-          shows the matching framed view behind it. The BACK + live/source
-          controls render as large ≥44px buttons here on narrow. */}
-      {/* Desktop-only a11y/keyboard detail for the 3D CRT selection. On mobile
-          the accordion above is the visible + accessible project detail, and
-          `selected` is never set there, so this stays empty (sr-only). */}
+          live here as DOM: visually hidden (the CRT is the visual surface)
+          but DOM-real + focusable, surfaced only on keyboard focus.
+          aria-live announces the open. On mobile the accordion above is the
+          visible + accessible project detail and `selected` is never set
+          there, so this stays empty. */}
       <div
         className="mac-detail-a11y"
         role="region"
@@ -629,22 +591,6 @@ export function Macintosh() {
       >
         {selected && (
           <article>
-            {/* Visible-on-narrow BACK control, leading the panel so the
-                primary "get out" action is the first thing a thumb meets.
-                On desktop this whole panel is clipped, so the BACK button
-                that keyboard/pointer users actually hit is the transparent
-                CRT hotspot below; here it's a real, large, labelled
-                control for touch. */}
-            {staticLanded && (
-              <button
-                ref={narrowBackBtnRef}
-                type="button"
-                className="mac-detail-back"
-                onClick={closeProject}
-              >
-                <span aria-hidden="true">‹</span> Back to projects
-              </button>
-            )}
             {selected.image && (
               <img
                 className="mac-detail-thumb"
@@ -709,8 +655,7 @@ export function Macintosh() {
 
           NOT rendered on the narrow/touch path: there's no dolly-into-CRT
           on mobile, so invisible hotspots can't reliably track the painted
-          labels. Narrow instead gets the VISIBLE, large BACK + live/source
-          controls inside the .mac-detail-a11y[data-narrow] panel above. */}
+          labels; the mobile accordion above carries the live/source links. */}
       {selected && !staticLanded && screenRect && screenRect.vis > 0.4 && (() => {
         // Map the painted controls' canvas fractions onto the screen's
         // live on-screen rect so the real clickable hotspots sit EXACTLY

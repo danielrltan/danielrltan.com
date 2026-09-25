@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { requestScrollRefresh } from "./scrollRefresh";
+import { requestScrollRefresh, refreshScrollOnLoaderLift } from "./scrollRefresh";
 import "./sections.css";
 import "./about.css";
 import { ScrambleText } from "./ScrambleText";
@@ -150,25 +150,15 @@ export function About() {
       anticipatePin: 1,
       onUpdate: (self) => setProgress(self.progress),
     });
-    const html = document.documentElement;
-    let lastLoading = html.classList.contains("loading-active");
-    const obs = new MutationObserver(() => {
-      const now = html.classList.contains("loading-active");
-      if (lastLoading && !now) requestScrollRefresh();
-      lastLoading = now;
-    });
-    obs.observe(html, { attributes: true, attributeFilter: ["class"] });
     // Refresh after THIS pin is (re)created — not only after the loading
     // scrim clears. When the breakpoint flips mid-session (rotation), the
     // pin is killed and recreated with a different duration, which changes
     // this section's spacer height and therefore the START position of
     // every pin below it (Work, Other, Keypad). Without a refresh those
     // pins keep stale positions until some other refresh happens to fire.
-    if (!lastLoading) {
-      requestScrollRefresh();
-    }
+    const stopLoaderWatch = refreshScrollOnLoaderLift();
     return () => {
-      obs.disconnect();
+      stopLoaderWatch();
       st.kill();
     };
     // Re-create (or skip) the pin when the breakpoint flips so the layout
@@ -189,14 +179,12 @@ export function About() {
     reducedMotion || progress >= cellAt(index, desktopAt);
 
   /* Look a cell up by key so the JSX can ask for its class without tracking
-     indices by hand (the array order IS the boot order). `base` is the
-     reveal-bearing wrapper class: glass cells use "card", the two floating
-     chips use "front" (they carry their own surface, NOT the .card glass). */
-  const cellClass = (key: string, base = "card") => {
+     indices by hand (the array order IS the boot order). */
+  const cellClass = (key: string) => {
     const index = CELLS.findIndex((c) => c.key === key);
     const cell = CELLS[index];
     const on = revealed(index, cell.at) ? " is-revealed" : "";
-    return `${base} c-${key}${on}`;
+    return `card c-${key}${on}`;
   };
 
   return (

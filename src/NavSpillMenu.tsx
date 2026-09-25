@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
 import { useIsMobile } from "./useIsMobile";
 import { scrollToSection, setScrollLocked } from "./portfolio/Keypad";
+import { clamp01 } from "./math";
 import { MercuryAura, type CursorState, type AuraTarget } from "./MercuryAura";
 import {
   houseGeom,
@@ -113,9 +114,6 @@ function easeOutBack(t: number, s = 1.1): number {
 function hashF(n: number): number {
   const s = Math.sin(n * 53.13) * 7891.23;
   return s - Math.floor(s);
-}
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
 }
 
 // One geometry + size + idle-spin per section (index matches SECTION_REGISTRY).

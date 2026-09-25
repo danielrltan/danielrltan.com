@@ -1,16 +1,13 @@
 /* ======================================================================
    Photos: "Recents"
    ----------------------------------------------------------------------
-   The photo-train stack, extracted from Beat A of the Play (Other) section
-   into its own pinned section between Honors and Contact. It reuses the
-   global `.other-gallery-header` / `.other-trains*` / `.other-train-*`
-   rules from other.css; this file only owns the section shell + the
-   `.portfolio-other`-SCOPED rules re-scoped to `.portfolio-photos`.
+   The photo-train stack, extracted from the opening beat of the Play (Other)
+   section into its own pinned section between Honours and Contact. This file
+   owns the section shell, the corner header, and the three-row train rack
+   (OtherPhotoTrains). The `.other-*` class names are historical.
    ====================================================================== */
 
 .portfolio-photos {
-  /* Small-accent-text contrast token (same darkening trick as Other). */
-  --accent-text: color-mix(in srgb, var(--accent) 66%, var(--ink));
   position: relative;
   /* svh with vh fallback: this section PINS, and bare 100vh changed its pin
      geometry whenever the iOS URL bar collapsed mid-scrub. */
@@ -26,22 +23,7 @@
   color: var(--ink);
 }
 
-/* Visually-hidden but DOM-real accessible heading (the trains + visible header
-   are aria-hidden placeholders). Mirrors the .other-sr-only recipe so it never
-   leaks its off-screen clip onto neighbours. */
-.portfolio-photos .other-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* Giant title — re-scoped from `.portfolio-other .other-gallery-title` so the
+/* Giant title — scoped under .portfolio-photos so the
    shared `.portfolio-section h2 { margin }` rule (class+element, 0,1,1) can't
    beat the bare class selector and eat the authored eyebrow gap. */
 .portfolio-photos .other-gallery-title {
@@ -64,10 +46,261 @@
     transform var(--t-slow) var(--ease-entrance);
 }
 
-/* Mobile: the photo CAROUSEL (the horizontal `.other-trains` rack) runs on
-   phones too, exactly like desktop — the pin scrubs it as a swipe-through
-   carousel (restored per the owner; the vertical grid was bad mobile UX). So
-   there's no mobile override here: the section keeps its base full-bleed
-   (100svh, overflow:hidden) pinned shell, and the global other.css @media block
-   already sizes the `.other-gallery-*` header for ≤768px. The train cards
-   (clamp(220px,22vw,340px)) read fine at phone widths. */
+/* Short-viewport guard (desktop widths only; the ≤768 block sets its own). */
+@media (max-height: 780px) and (min-width: 769px) {
+  .other-gallery-num {
+    font-size: clamp(13px, 1.4vw, 20px);
+  }
+}
+
+/* ======================================================================
+   Photo train stack
+   ----------------------------------------------------------------------
+   Corner header + three horizontal rows, each `overflow: hidden` (cards
+   hard-clip at the row edge, no gradient mask). The inner strip is
+   `display: flex` with cards laid out left-to-right; React writes a per-row
+   translate3d via inline style every rAF tick (the lerp loop runs in
+   OtherPhotoTrains). The class names keep their historical `other-` prefix:
+   these rules started life as the opening beat of the Play section.
+   ====================================================================== */
+
+.other-gallery-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 6vh 6vw 0;
+  z-index: 5;
+  pointer-events: none;
+  display: grid;
+  /* Single column: the header only renders the eyebrow + title. */
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto;
+  align-items: end;
+}
+/* Header eyebrow: just the big section number on the shared corner-header
+   scale. */
+.other-gallery-eyebrow {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: flex-start;
+  opacity: var(--gh-eye, 1);
+  transform: translateY(calc((1 - var(--gh-eye, 1)) * 8px));
+  transition: opacity var(--t-med) var(--ease-entrance),
+              transform var(--t-med) var(--ease-entrance);
+}
+/* Small section-number tag on the shared --hdr-num scale: 06 reads at the
+   SAME tiny size as every other section's number. (The "/ Photo reel" tag
+   + its label/divider wrappers were removed — vibe-coded caption clutter.) */
+.other-gallery-num {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
+  line-height: 0.9;
+  letter-spacing: 0.01em;
+  color: var(--hdr-num-color, #c23d00);
+}
+
+/* The trains wrap: centered vertical band between the header and the
+   foot HUD. Holds the three-row train stack.
+
+   OVERLAP FIX: the band top was 28vh while the header+blurb
+   occupy the top ~21vh AND the three-row stack used to be ~670px tall
+   inside a ~540px band, so, being centred, it overflowed ~65px UPWARD
+   and the top row collided with the right-side blurb's last line
+   ("…keyboard."). Two guards now keep them apart at every scrub
+   position:
+     1. `top: 30vh` drops the band start to a clear ~9vh below the
+        blurb's lowest line (blurb bottom ≈ 21vh).
+     2. `overflow: hidden` clips the band so its rows can NEVER escape
+        upward into the header zone even if a future card size change
+        re-overflows.
+   The row/card heights below are also vh-tuned so the three rows fit
+   inside the band (no clipping of card content; the clip is a belt-
+   and-braces guard, not the primary mechanism). */
+.other-trains-wrap {
+  position: absolute;
+  /* Centre the stack vertically between the "Recents" header (top) and the
+     "CURATED REEL" index line (bottom). It was bottom-heavy and jammed
+     against the footer line; 30/12vh + slightly shorter rows (18vh, below)
+     give a balanced ~57px of breathing room on both sides. Verified via
+     Playwright against the real pinned view.
+
+     svh (with a vh fallback) so the band geometry references the SAME viewport
+     unit as the section (height:100svh) + the cards (19svh). Mixing vh here was
+     the iOS bug: real Safari resolves `vh` to the LARGE (URL-bar-collapsed)
+     viewport while `svh` is the small one, so on a real iPhone the band sat in
+     a different box than the section and `justify-content:space-between` blew the
+     row gaps out — yet DevTools (where vh==svh) looked correct. */
+  top: 30vh;
+  top: 30svh;
+  bottom: 12vh;
+  bottom: 12svh;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.other-trains {
+  width: 100%;
+  /* Fill the whole train band and distribute the three rows evenly across
+     it (equal gaps) instead of clustering them in the centre with empty
+     headroom above/below. */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 0;
+  /* Minimum row gap; space-between adds the rest to fill the band. svh to match
+     the section/cards/band (see .other-trains-wrap) — a vh gap diverged on iOS. */
+  gap: clamp(12px, 1.6vh, 22px);
+  gap: clamp(12px, 1.6svh, 22px);
+}
+
+.other-train-row {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  /* Centre the (much wider) strip so its resting position overflows BOTH
+     sides. The rAF drift then translates around centre and never runs past
+     an edge — that left-anchored overrun was the mid-scroll gap. */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  /* No left/right edge fade — the gradient mask read as a "weird fade" the
+     owner flagged. Cards hard-clip at the row edge instead (clean, gradient-
+     free, on both desktop and mobile). */
+}
+
+.other-train-strip {
+  display: flex;
+  gap: var(--space-5);
+  will-change: transform;
+  /* No CSS transition; the rAF lerp loop computes the transform on
+     every frame; a CSS transition would add lag. */
+}
+
+/* Each card is a SQUARE tile. Placeholder gradient fill until the real
+   photos from /photos/manifest.json arrive.
+
+   OVERLAP FIX: height is vh-driven (16vh, clamped 118–180px) so the
+   three-row stack scales with the vh-defined train band and fits inside
+   at 900px tall the stack is ~3x144 + 2x18 = 468px in a 522px band,
+   leaving headroom on both edges. Width is derived from height via
+   aspect-ratio:1 so the card reads as a square photo tile. */
+.other-train-card {
+  flex: 0 0 auto;
+  /* Tile size: 18vh so three rows + gaps fit the centred band with
+     balanced padding above ("Recents") and below. */
+  height: clamp(132px, 18vh, 220px);
+  aspect-ratio: 1 / 1;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  padding: var(--space-4);
+  color: var(--bg-surface);
+  border: 1px solid var(--ink-hairline);
+  /* Flat ground: the soft orange-cast elevation shadow read "cheap" (user) —
+     the photo tile now sits flush on its 1px hairline border, matching the
+     flat spec-sheet card voice used across the rest of the site. */
+  overflow: hidden;
+}
+
+/* Cover photo inside the card: real <img> (not background-image) so
+   loading="lazy" / decoding="async" apply — the background variant
+   decoded every WebP synchronously at section entry (scroll jank). */
+.other-train-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.other-train-card-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--bg-surface);
+  font-weight: 600;
+  padding: 5px 10px;
+  background: rgba(13, 14, 16, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ======================================================================
+   Mobile (≤ 768px): the photo CAROUSEL runs on phones too, exactly like
+   desktop — the pin scrubs it as a swipe-through carousel (restored per the
+   owner; the vertical grid was bad mobile UX). The section keeps its base
+   full-bleed (100svh, overflow:hidden) pinned shell.
+   ====================================================================== */
+@media (max-width: 768px) {
+  /* Same HUD clearance as the Play header. */
+  .other-gallery-header {
+    padding: calc(max(72px, 9vh) + env(safe-area-inset-top, 0px)) 6vw 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    row-gap: 6px;
+  }
+  .other-gallery-eyebrow { grid-column: 1; grid-row: 1; }
+  .other-gallery-num {
+    font-size: clamp(13px, 3.4vw, 18px);
+  }
+  /* Train band starts below the pushed-down header and ends above the
+     foot hint. overflow:hidden on the band (+ .portfolio-photos) means the
+     rows slide via transform WITHOUT ever creating page horizontal
+     scroll. */
+  .other-trains-wrap {
+    top: 26vh;
+    top: 26svh;
+    bottom: 13vh;
+    bottom: 13svh;
+  }
+  .other-trains {
+    gap: clamp(8px, 1.4vh, 14px);
+    gap: clamp(8px, 1.4svh, 14px);
+  }
+  /* SQUARE CARD IN PORTRAIT: sized to FILL the train band. The band is
+     100svh - 26vh header - 13vh foot ≈ 61svh; three rows + two gaps
+     should consume it. The old 13.5vh rows used only ~366px of a
+     ~515px band (user: "the squares don't fill out the screen") —
+     19svh rows land 3×rows + gaps within a few px of the band height
+     on both tall (844) and short (640) phones. svh so the size doesn't
+     jump when the URL bar collapses; vh fallback for older engines. */
+  .other-train-card {
+    /* Square (aspect-ratio:1 inherited from the base rule); height
+       drives the side length. */
+    height: clamp(112px, 19vh, 190px);
+    height: clamp(112px, 19svh, 190px);
+    padding: 10px;
+  }
+  .other-train-card-label {
+    font-size: var(--text-xs);
+    padding: 4px 7px;
+    letter-spacing: 0.18em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .other-gallery-eyebrow,
+  .other-gallery-title {
+    transition: none;
+    transform: none;
+    opacity: 1;
+  }
+  .other-train-strip {
+    transition: none;
+  }
+}

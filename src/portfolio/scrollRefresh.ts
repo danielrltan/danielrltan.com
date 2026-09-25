@@ -25,3 +25,22 @@ export function requestScrollRefresh() {
     ScrollTrigger.refresh();
   });
 }
+
+/**
+ * Refresh ScrollTrigger once the loading scrim (html.loading-active) lifts —
+ * pin positions shift during the initial layout — or immediately if it is
+ * already gone. Returns the observer's disconnect for effect cleanup. Every
+ * pinned section installs this so the burst above collapses to one refresh.
+ */
+export function refreshScrollOnLoaderLift(): () => void {
+  const html = document.documentElement;
+  let lastLoading = html.classList.contains("loading-active");
+  const obs = new MutationObserver(() => {
+    const now = html.classList.contains("loading-active");
+    if (lastLoading && !now) requestScrollRefresh();
+    lastLoading = now;
+  });
+  obs.observe(html, { attributes: true, attributeFilter: ["class"] });
+  if (!lastLoading) requestScrollRefresh();
+  return () => obs.disconnect();
+}

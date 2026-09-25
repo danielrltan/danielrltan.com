@@ -7,11 +7,11 @@ import {
 } from "./types";
 
 /**
- * Loading state context. Tracks bytes / timeline / stable frames via
- * `useAssemblyProgress`, and toggles `html.loading-active` from
- * `climaxDone`. CSS uses that class to paint the wrapper orange, hide
- * the custom cursor, lock body scroll, and pause Lenis while the hero
- * signature is still drawing on the orange backdrop.
+ * Loading state context. Tracks the loader timeline / stable frames via
+ * `useAssemblyProgress`, and lifts `html.loading-active` once the hero has
+ * composed (`hero-composed`) plus the post-reveal hold, or on failsafe. CSS
+ * uses that class to paint the wrapper orange, hide the custom cursor, lock
+ * body scroll, and pause Lenis while the loader is up.
  */
 
 const AssemblyCtx = createContext<AssemblyState | null>(null);

@@ -72,7 +72,7 @@
   max-width: 1680px;
   margin: 0 auto;
   /* Re-enable pointer events: <main> is a pointer-events:none
-     pass-through (so the room canvas stays interactive) and each
+     pass-through (so the fixed hero layer never blocks scrolling) and each
      section must opt its content back in. This section NEVER did —
      every card hover was dead, and pointers over the trophy wall fell
      through to the invisible hero wordmark's hit island below. */
