@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "photos": "node scripts/process-photos.mjs",
-    "test:smoke": "node scripts/smoke-test.mjs"
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "model:mac": "/Applications/Blender.app/Contents/MacOS/Blender -b -P scripts/build-mac-model.py"
   },
   "dependencies": {
     "@react-three/drei": "^10.0.0",

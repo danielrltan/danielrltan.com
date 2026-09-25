@@ -25,10 +25,11 @@ const MOBILE_QUERY = "(max-width: 768px)";
  * that window (a fast scroll-past on a low-tier GPU, where context creation
  * is slow) React Three Fiber 9.6 throws "Cannot read properties of null
  * (reading 'addEventListener')" from the unmounted wrapper. Holding the
- * canvas for a floor well past any realistic context-creation time closes
- * the race; the unmount is only a perf nicety, never urgent.
+ * canvas for a floor well past any realistic context-creation time (shader
+ * compiles on a loaded software-GL machine run into seconds) closes the race;
+ * the unmount is only a perf nicety, never urgent.
  */
-const MIN_MOUNTED_MS = 2500;
+const MIN_MOUNTED_MS = 4000;
 
 function isMobileViewport(): boolean {
   return (

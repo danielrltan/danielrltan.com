@@ -651,6 +651,20 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
   const isMobile = useIsMobile();
   const [mounted, setMounted] = useState(false);
   const [shown, setShown] = useState(false);
+  // R3F's <Canvas> configures its renderer asynchronously and only then wires
+  // pointer events to its wrapper div; unmounting it before that lands throws
+  // "Cannot read properties of null (reading 'addEventListener')" (R3F 9.6).
+  // A quick open→close on a machine where the shader compile is slow hits
+  // exactly that window, so the unmount waits for onCreated when needed.
+  const canvasCreatedRef = useRef(false);
+  const unmountPendingRef = useRef(false);
+  const onCanvasCreated = () => {
+    canvasCreatedRef.current = true;
+    if (unmountPendingRef.current) {
+      unmountPendingRef.current = false;
+      setMounted(false);
+    }
+  };
   // -1 = nothing armed. Hover arms an index (enlarge + select cue); pointer-out
   // releases back to -1. It must NOT default to activeIdx, or the current
   // section spawns permanently enlarged with no way to shrink it.
@@ -695,6 +709,8 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
       startMsRef.current = performance.now() + SPILL_LEAD_MS;
       setArmed(-1); // open with nothing enlarged; hover is what arms an object
       cursor.current.active = false;
+      unmountPendingRef.current = false;
+      if (!mounted) canvasCreatedRef.current = false;
       setMounted(true);
       setScrollLocked(true); // page can't be scrolled under the open menu
       const r = requestAnimationFrame(() => setShown(true));
@@ -709,10 +725,15 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
       // spin-away — no drop. Only ONCE the objects have spun/retracted away
       // (~0.85s) do we flip shown=false for a single clean fade, then unmount.
       const fadeT = window.setTimeout(() => setShown(false), 850);
-      const unmountT = window.setTimeout(() => setMounted(false), 1160);
+      const unmountT = window.setTimeout(() => {
+        // Never tear the canvas down mid-creation (see canvasCreatedRef).
+        if (canvasCreatedRef.current) setMounted(false);
+        else unmountPendingRef.current = true;
+      }, 1160);
       return () => {
         window.clearTimeout(fadeT);
         window.clearTimeout(unmountT);
+        unmountPendingRef.current = false;
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -838,6 +859,7 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
           dpr={[1, 2]}
           gl={{ alpha: true, antialias: true }}
           onPointerMissed={onClose}
+          onCreated={onCanvasCreated}
         >
           {/* Mercury cursor blob is a hover/cursor effect — skip it on touch,
               where there's no pointer for it to pool toward. */}

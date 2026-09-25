@@ -1,0 +1,14 @@
+{
+  "_comment": "Classic Macintosh housing spec, shared by scripts/build-mac-model.py (Blender generator for public/mac.glb) and MacintoshScene.tsx (CRT overlay fit). Dimensions in inches; `scale` converts to macGroup-local units so the picture is 0.72 tall with its centre at screenCenterLocal. Front face is vertical and faces +Z; the body is centred on x=0 / z=0.",
+  "scale": 0.1358,
+  "body": { "w": 9.6, "h": 12.6, "d": 10.4 },
+  "screenCenterFromBottom": 8.6,
+  "screenCenterLocal": [0, 1.0],
+  "glass": { "w": 8.0, "h": 6.0, "r": 0.45, "recess": 0.32 },
+  "picture": { "w": 7.5, "h": 5.3 },
+  "bezel": { "inset": 0.35, "depth": 0.14, "r": 0.4 },
+  "topChamfer": { "fromFront": 6.6, "drop": 2.4 },
+  "baseRecess": { "depth": 4.6, "height": 0.9 },
+  "floppy": { "w": 3.7, "h": 0.28, "x": 2.15, "y": 3.0, "depth": 0.6 },
+  "bevel": 0.16
+}
