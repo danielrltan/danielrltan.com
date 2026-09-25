@@ -101,13 +101,20 @@ const FRAGMENT = /* glsl */ `
     }
 
     // VENOM HUG: a metaball at the hovered object that the liquid engulfs.
-    // A wider smin (kHug) makes the trail reach out and wrap it as it grows.
+    // A wider smin makes the trail reach out and wrap it as it grows. The
+    // radius scales with the hug strength all the way to ZERO: on release the
+    // fading ball slides onto the cursor (see the JS lerp), and a radius floor
+    // here left a big ball sitting on the cursor that then vanished at the
+    // cut-off — the pool visibly popped from large to small. Easing the
+    // strength keeps the grow-in punchy while the release shrinks smoothly
+    // into the trail head.
     if (uHugStrength > 0.001) {
+      float hs = smoothstep(0.0, 1.0, uHugStrength);
       vec2 dh = (uv - uHugCenter) * uAspect;
       vec2 hdir = normalize(dh + vec2(1e-4));
       float hwob = (noise2(hdir * 2.0 + vec2(uTime * 0.5, 7.0)) - 0.5) * 0.03;
-      float rh = uHugRadius * (0.55 + 0.45 * uHugStrength) + hwob;
-      sd = sunion(sd, length(dh) - rh, 0.11);
+      float rh = (uHugRadius + hwob) * hs;
+      sd = sunion(sd, length(dh) - rh, mix(0.03, 0.11, hs));
     }
 
     float inside = smoothstep(0.006, -0.006, sd);          // 1 inside the pool
