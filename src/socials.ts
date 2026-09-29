@@ -11,11 +11,9 @@ export interface Social {
   /** Short host shown under the label on the mobile chips. */
   host: string;
   /**
-   * Name of the keycap node in /keypad.glb that opens this link. NOTE: in the
-   * source GLB the node named "github" carries the LinkedIn icon material and
-   * the node "linkedin" carries the GitHub icon (confirmed by walking
-   * child.material.name), so those two are deliberately crossed here. The
-   * user prefers to keep the node names as-is in Blender.
+   * Name of the keycap node in /keypad.glb that opens this link. Each social
+   * node carries the matching icon material/texture (linkedin → LinkedIn,
+   * github → GitHub), so node names map straight through.
    */
   node: string;
 }
@@ -27,14 +25,14 @@ export const SOCIALS: readonly Social[] = [
     aria: "LinkedIn",
     href: "https://www.linkedin.com/in/danielrltan",
     host: "linkedin.com",
-    node: "github",
+    node: "linkedin",
   },
   {
     label: "GitHub",
     aria: "GitHub",
     href: "https://github.com/danielrltan",
     host: "github.com",
-    node: "linkedin",
+    node: "github",
   },
   {
     label: "Pinterest",

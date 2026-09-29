@@ -110,8 +110,7 @@ function smoothNormalsAcrossSharedPositions(
   norm.needsUpdate = true;
 }
 
-// Keycap NODE name → URL the USER sees on the cap (src/socials.ts owns the
-// list, including the deliberately crossed github/linkedin node names).
+// Keycap NODE name → URL (src/socials.ts owns the list).
 const SOCIAL_URLS: Record<string, string> = Object.fromEntries(
   SOCIALS.map((s) => [s.node, s.href]),
 );
