@@ -113,17 +113,11 @@ function smoothNormalsAcrossSharedPositions(
 // TODO(daniel): confirm these handles. Defaulting to the same
 // `danielrltan` slug used for GitHub/LinkedIn. Adjust if X or
 // Pinterest use a different username.
-// NOTE: in the source GLB the node named "github" actually carries
-// the LinkedIn icon material, and the node "linkedin" carries the
-// GitHub icon, confirmed by walking child.material.name in the
-// meshInfo probe. Swapping the URL mapping here is the right fix
-// (re-naming nodes in Blender would also work but the user prefers
-// to keep node names where they are). When the cap is clicked we
-// look up its NODE name, so the URLs below pair node-name → URL the
-// USER sees on the cap.
+// When the cap is clicked we look up its NODE name, so the URLs
+// below pair node-name → URL.
 const SOCIAL_URLS: Record<string, string> = {
-  github: "https://www.linkedin.com/in/danielrltan",
-  linkedin: "https://github.com/danielrltan",
+  github: "https://github.com/danielrltan",
+  linkedin: "https://www.linkedin.com/in/danielrltan",
   x: "https://x.com/danielrltan",
   pinterest: "https://www.pinterest.com/danrlt",
 };
