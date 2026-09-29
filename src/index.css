@@ -393,11 +393,14 @@ html.loading-active body {
    Gated to fine-pointer devices ONLY: the custom MoveableCursor mounts behind
    the same `(hover:hover) and (pointer:fine)` condition (App.tsx: `!isMobile`),
    so on touch / hybrid devices where it is NOT mounted, this would otherwise
-   hide the OS pointer with nothing to replace it. */
+   hide the OS pointer with nothing to replace it. Also keyed on
+   html.custom-cursor, which MoveableCursor adds on its first pointermove: the
+   page can't know where the pointer is until then, so the OS arrow shows on
+   boot instead of no cursor at all. */
 @media (hover: hover) and (pointer: fine) {
-  *,
-  *::before,
-  *::after {
+  html.custom-cursor *,
+  html.custom-cursor *::before,
+  html.custom-cursor *::after {
     cursor: none !important;
   }
 }

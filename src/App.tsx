@@ -435,8 +435,8 @@ export default function App() {
   }
 
   // `ready` flips once the loading screen lifts (html.loading-active removed).
-  // It gates the custom cursor, the HUD reveal, and the idle warm-up so none
-  // appear over the loader.
+  // It gates the HUD reveal and the idle warm-up so neither appears over the
+  // loader.
   const [ready, setReady] = useState(false);
   // The HUD (dial + jump-to-top) reveals once ready AND the user has scrolled
   // past the hero, so it never clutters the opening signature.
@@ -664,8 +664,10 @@ export default function App() {
           <HeroSignature />
         </div>
 
-        {/* Orange ring + dot cursor with parallax trail. */}
-        {ready && !isMobile && <MoveableCursor hot={moveableHover} />}
+        {/* Custom pointer. Mounted from first paint (not gated on `ready`) so a
+            cursor is visible over the boot loader too; the OS arrow stays
+            until it takes over (see html.custom-cursor in index.css). */}
+        {!isMobile && <MoveableCursor hot={moveableHover} />}
         {/* Middle-button pan / autoscroll cursor. */}
         {ready && !isMobile && <PanCursor />}
 

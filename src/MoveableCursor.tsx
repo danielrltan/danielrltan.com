@@ -93,6 +93,9 @@ export function MoveableCursor({ hot }: Props) {
       if (!revealed) {
         revealed = true;
         rootEl.style.opacity = "1";
+        // Only now hide the OS cursor (index.css keys off this class), so the
+        // page never shows NO pointer before the first move.
+        document.documentElement.classList.add("custom-cursor");
       }
       dirty = true; // pointer moved → re-check what's underneath
       schedule();
@@ -185,6 +188,7 @@ export function MoveableCursor({ hot }: Props) {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("blur", onUp);
       cancelAnimationFrame(frame);
+      document.documentElement.classList.remove("custom-cursor");
     };
   }, []);
 
