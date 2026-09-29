@@ -286,18 +286,24 @@ const EXIT_END = 1.0;
 // dolly-in win; tiles must read at land).
 const DOLLY_Z_WIDE = 8.5;
 const DOLLY_Z_CLOSE = 2.6;
-// Wide camera Y + lookAt parked just ABOVE the FLOAT composition's
-// center of mass so the Mac + ring read dead-centered top-to-bottom (no
-// dead empty bottom half). The ring center sits at MAC_HOVER_Y +
-// ORBIT_GROUP_Y (0.15 + 0.30 = 0.45); raising the lookAt to 0.58 drops
-// the whole composition ~80px in a 1080-tall frame so it sits centered
-// rather than slightly high. Level the camera (Y == lookAt) so the view
-// is straight-on, not looking down from above. CLOSE keeps the landed-CRT
-// framing (camera y 0.8, lookAt 0.8 centers the screen plane).
-const DOLLY_Y_WIDE = 0.58;
-const DOLLY_Y_CLOSE = 0.8;
-const DOLLY_LOOK_Y_WIDE = 0.58;
-const DOLLY_LOOK_Y_CLOSE = 0.8;
+// Framing heights are derived from macSpec so they track the housing: the
+// WIDE camera sits level with the middle of the floating housing (so the Mac
+// reads dead-centered top-to-bottom; the float tilt pivots near that height,
+// so it projects centered too), and CLOSE sits level with the landed screen
+// centre. Level camera (Y == lookAt) = straight-on, not looking down.
+const MAC_BODY_CENTER_LOCAL_Y =
+  macSpec.screenCenterLocal[1]! -
+  inch(macSpec.screenCenterFromBottom) +
+  inch(macSpec.body.h) / 2;
+const DOLLY_Y_WIDE = MAC_HOVER_Y + MAC_BODY_CENTER_LOCAL_Y * MAC_GROUP_SCALE;
+// Landed CRT picture centre in world space (group rests at MAC_REST_Y).
+const MAC_LANDED_SCREEN_Y = MAC_REST_Y + MAC_SEAT.cy * MAC_GROUP_SCALE;
+const DOLLY_Y_CLOSE = MAC_LANDED_SCREEN_Y;
+const DOLLY_LOOK_Y_WIDE = DOLLY_Y_WIDE;
+const DOLLY_LOOK_Y_CLOSE = DOLLY_Y_CLOSE;
+// The skill ring rides a little below the camera line (as it always has) so
+// the cards read centred in the frame around the Mac.
+const ORBIT_RING_Y = DOLLY_Y_WIDE - 0.13;
 // Base orbit radius: used as a fallback when a SkillLogo doesn't
 // supply its own per-card radius. Matches the widened ring (~2.6).
 const ORBIT_BASE_RADIUS = 2.65;
@@ -2646,10 +2652,10 @@ function Scene({
       // On-axis fallback pose (screen world-center ≈ y0.8, z0) used only
       // for the few frames before the screen geometry is published.
       let detPosX = 0;
-      let detPosY = 0.8;
+      let detPosY = MAC_LANDED_SCREEN_Y;
       let detPosZ = 1.55;
       let detLookX = 0;
-      let detLookY = 0.8;
+      let detLookY = MAC_LANDED_SCREEN_Y;
       let detLookZ = 0;
       // PERF: the detail pose (updateWorldMatrix + getNormalMatrix +
       // getWorldScale + tan + distance solve) is blended in by `detail` and
@@ -2898,19 +2904,16 @@ function Scene({
 
       {/* Logo orbit: a sibling of the Mac group so the cards orbit
           in WORLD space around the Mac's vertical axis (independent
-          of the Mac's self-spin). The +0.30 offset centers the ring on
-          the Mac's screen rather than its housing base, visually reads
-          as "tools circling the brain", not "tools spinning around the
-          feet". With MAC_HOVER_Y=0.15 the ring center sits at world
-          y≈0.45, which is exactly the camera lookAt (DOLLY_LOOK_Y_WIDE),
-          so the ring is dead-centered in the viewport during the float.
+          of the Mac's self-spin). ORBIT_RING_Y keeps the ring on the
+          camera line (a touch below), so it circles the middle of the
+          housing, "tools circling the brain", not "around the feet".
           Cards dissolve before the Mac drops so they're gone by the time
           the descent visibly starts. Mobile gets the flat
           TechStackTicker marquee instead; the orbit needs more
           horizontal real estate than a 390px viewport can give without
           cards overlapping the housing. */}
       {!narrow && (
-        <group position={[0, MAC_HOVER_Y + 0.3, 0]}>
+        <group position={[0, ORBIT_RING_Y, 0]}>
           <LogoOrbit
             logos={SKILL_LOGOS}
             orbitAngleRef={orbitAngleRef}
@@ -2967,8 +2970,8 @@ function CameraFramer({ narrow }: { narrow: boolean }) {
     // near-square narrow boxes) nor further than 7.0 (avoid shrinking the
     // tiles on ultra-tall slivers). aspect 0.462 (390×844) → z≈5.4.
     const z = THREE.MathUtils.clamp(zForWidth, 3.4, 7.0);
-    cam.position.set(0, 0.8, z);
-    cam.lookAt(0, 0.8, 0);
+    cam.position.set(0, MAC_LANDED_SCREEN_Y, z);
+    cam.lookAt(0, MAC_LANDED_SCREEN_Y, 0);
     cam.updateProjectionMatrix();
     // Demand loop: render the new pose immediately (resize / breakpoint
     // cross can happen while the loop is otherwise idle).
@@ -3027,7 +3030,7 @@ export function MacintoshScene(props: Props) {
         // the composition center (0, 0.58, 0) so the Mac + ring are
         // vertically centered. FOV stays 28; a tighter FOV would crop the
         // wider orbit ring on the sides.
-        camera={{ position: [0, 0.58, 8.5], fov: 28, near: 0.1, far: 40 }}
+        camera={{ position: [0, DOLLY_Y_WIDE, DOLLY_Z_WIDE], fov: 28, near: 0.1, far: 40 }}
         // DPR cap 1.5 (was 1.25): the housing now carries env reflections +
         // soft shadows, and the boxy silhouette aliases at 1.25; 1.5 cleans
         // the edges. Matches the Hobbies canvas's desktop cap.
@@ -3050,7 +3053,7 @@ export function MacintoshScene(props: Props) {
           powerPreference: "high-performance",
         }}
         onCreated={({ camera, gl, invalidate }) => {
-          camera.lookAt(0, 0.58, 0);
+          camera.lookAt(0, DOLLY_LOOK_Y_WIDE, 0);
           gl.setClearColor(0x000000, 0);
           // Expose invalidate to the IO callback above. Re-entering
           // the section pokes the loop alive even though Scene's
@@ -3076,7 +3079,7 @@ export function MacintoshScene(props: Props) {
           <OrbitControls
             enableDamping
             dampingFactor={0.08}
-            target={[0, 0.8, 0]}
+            target={[0, MAC_LANDED_SCREEN_Y, 0]}
             minDistance={2}
             maxDistance={20}
           />

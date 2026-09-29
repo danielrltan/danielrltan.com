@@ -130,9 +130,12 @@ boolean(body, cutter)
 
 # Base recess: the underside steps up toward the back so the case sits on a
 # front "foot" (the real Mac's recessed base).
+# The cutter overshoots past the back and bottom faces: a cutter face lying
+# exactly on a body face leaves inverted coplanar slivers that z-fight.
 BR = SPEC["baseRecess"]
-boolean(body, add_box("cut_base", (W * 2, u(BR["depth"]), u(BR["height"])),
-                      (0, D / 2 - u(BR["depth"]) / 2, bottom_z + u(BR["height"]) / 2)))
+OV = u(1.0)
+boolean(body, add_box("cut_base", (W * 2, u(BR["depth"]) + OV, u(BR["height"]) + OV),
+                      (0, D / 2 - u(BR["depth"]) / 2 + OV / 2, bottom_z + u(BR["height"]) / 2 - OV / 2)))
 
 # Front bezel: a shallow rounded-rect inset covering the front panel, giving
 # the case its raised outer lip.
@@ -148,8 +151,10 @@ screen_cz = SPEC["screenCenterLocal"][1]
 boolean(body, add_rounded_rect_prism("cut_screen", u(G["w"]), u(G["h"]), u(G["r"]), u(G["recess"]) * 2,
                                      (0, bezel_y, screen_cz)))
 glass_y = bezel_y + u(G["recess"])   # glass surface plane (recessed behind the bezel)
+# Glass front stands a hair (0.01in) proud of the recess floor so the two
+# never share a plane (z-fighting); the scene's overlay sits further forward.
 glass = add_rounded_rect_prism("screen", u(G["w"]) - u(0.02), u(G["h"]) - u(0.02), u(G["r"]),
-                               u(0.12), (0, glass_y + u(0.06), screen_cz), mat=MAT_SCREEN)
+                               u(0.12), (0, glass_y + u(0.06) - u(0.01), screen_cz), mat=MAT_SCREEN)
 
 # Floppy slot (right of centre in the chin) with a dark inner block behind it.
 F = SPEC["floppy"]
@@ -208,6 +213,6 @@ bpy.ops.export_scene.gltf(
 
 # Report the rects the scene relies on (macGroup-local, Y-up glTF space).
 print("MAC_MODEL body local: x±%.3f  y %.3f..%.3f  z %.3f..%.3f" % (W / 2, bottom_z, top_z, -D / 2, D / 2))
-print("MAC_MODEL glass: w %.4f h %.4f center y %.3f z(front of glass) %.4f" % (u(G["w"]), u(G["h"]), screen_cz, -(glass_y + u(0.12))))
+print("MAC_MODEL glass: w %.4f h %.4f center y %.3f z(front of glass) %.4f" % (u(G["w"]), u(G["h"]), screen_cz, -(glass_y - u(0.01))))
 print("MAC_MODEL picture: w %.4f h %.4f" % (u(SPEC["picture"]["w"]), u(SPEC["picture"]["h"])))
 print("MAC_MODEL wrote", OUT, os.path.getsize(OUT), "bytes")
