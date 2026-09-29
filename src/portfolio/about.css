@@ -485,8 +485,11 @@
 }
 .c-now .pill a {
   color: inherit;
-  text-decoration: none;
-  border-bottom: 1px solid currentColor;
+  /* A real underline (not border-bottom) so it follows each line when the
+     school name wraps on phones, instead of floating under the whole box. */
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 .c-now .pill a:hover {
   color: var(--accent, #ff4f00);
@@ -1060,7 +1063,7 @@
     color: var(--bg-surface, #fff);
   }
 
-  /* Touch targets: the mail link + Broadridge link + Say-hello button all
+  /* Touch targets: the mail link + Ivey link + Say-hello button all
      need a comfortable hit area. */
   .c-reach .mail,
   .c-now .pill a {

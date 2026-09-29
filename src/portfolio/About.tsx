@@ -274,24 +274,24 @@ export function About() {
               <dt className="label">Currently</dt>
               <dd className="c-info-body">
                 <span className="big">
-                  Software
+                  HBA
                   <br />
-                  Engineer
+                  Candidate
                 </span>
                 <span className="pill">
                   @{" "}
                   <a
-                    href="https://www.broadridge.com"
+                    href="https://www.ivey.uwo.ca/hba/"
                     target="_blank"
                     rel="noreferrer"
                     onClick={() =>
                       track("outbound_link", {
-                        url: "broadridge",
+                        url: "ivey",
                         context: "about",
                       })
                     }
                   >
-                    Broadridge
+                    Ivey Business School
                   </a>
                 </span>
               </dd>
