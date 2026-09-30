@@ -106,12 +106,18 @@ const FLOAT_FADE_S = 1.0; // float amplitude fade-in after the landing
 //                 shape (a slam past the hover height and a recoil into it).
 //   600 ms        LANDED: the idle float clock starts.
 // Every value is a named constant so the owner can tune the feel here.
-// World units above rest at t = 0. Spec said 3 (down from 6), but measured on
-// a real GPU at 1440x900 a 3-unit offset leaves the model's lower ~145 px
-// hanging visibly at the canvas top BEFORE the drop arms (≈202 px per unit).
-// The model clears the frame at ≈3.72 units, so 4 is the smallest clean value:
-// it starts just out of frame and the inCubic's slow first ~140 ms stays hidden.
+// Minimum world units above rest at t = 0. Spec said 3 (down from 6), but
+// measured on a real GPU at 1440x900 a 3-unit offset leaves the model's lower
+// ~145 px hanging visibly at the canvas top BEFORE the drop arms (≈202 px per
+// unit; it clears at ≈3.72). 4 is the smallest clean value there, keeping the
+// inCubic's slow, hidden first stretch short (~140 ms). Narrower/portrait
+// canvases fit the model larger, so the actual start height is derived per
+// canvas size from the projected rest pose (dropStartHeight), never below this.
 const DROP_HEIGHT = 4;
+const DROP_HEIGHT_MAX = 8;
+// Clearance (px) between the model's bottom edge and the canvas top at t = 0,
+// covering the cursor face-tracking tilt.
+const DROP_CLEAR_PX = 40;
 const DROP_FALL_S = 0.34; // fall duration; contact fires when t crosses it
 const DROP_SQUASH_S = 0.22; // squash decay after contact (ends at 560 ms)
 const DROP_TOTAL_S = 0.6; // rebound done; float bob may begin
@@ -123,12 +129,13 @@ const LAND_DIAL_KICK = 12; // rad/s added to the dial at contact
 // mid-fall stretches the drop instead of teleporting past the contact beat.
 const DROP_MAX_DT = 1 / 30;
 
-/** Model Y offset (world units, 0 = rest) at drop time t (s). Continuous at
- *  the contact (both branches give -DROP_REBOUND) and exactly 0 at the end. */
-function dropOffsetY(t: number): number {
+/** Model Y offset (world units, 0 = rest) at drop time t (s), falling from
+ *  `height`. Continuous at the contact (both branches give -DROP_REBOUND)
+ *  and exactly 0 at the end. */
+function dropOffsetY(t: number, height: number): number {
   if (t < DROP_FALL_S) {
     const u = t / DROP_FALL_S;
-    return (DROP_HEIGHT + DROP_REBOUND) * (1 - ease.inCubic(u)) - DROP_REBOUND;
+    return (height + DROP_REBOUND) * (1 - ease.inCubic(u)) - DROP_REBOUND;
   }
   if (t < DROP_TOTAL_S) {
     const u = (t - DROP_FALL_S) / (DROP_TOTAL_S - DROP_FALL_S);
@@ -145,11 +152,44 @@ function landSquash(t: number): number {
   return LAND_SQUASH * (1 - u) * (1 - u);
 }
 
+/** Start height (world units) that puts the model's bottom edge
+ *  DROP_CLEAR_PX above the canvas top, measured by projecting the base-tilt
+ *  pose at rest and at DROP_HEIGHT. Called once per canvas size, pre-landing.
+ *  Restores the group's transform. */
+function dropStartHeight(
+  g: THREE.Group,
+  camera: THREE.Camera,
+  canvas: HTMLCanvasElement,
+): number {
+  const pos = g.position.y;
+  const rot = g.rotation.clone();
+  const scl = g.scale.clone();
+  g.rotation.set(BASE_TILT_X, BASE_TILT_Y, BASE_TILT_Z);
+  g.scale.setScalar(1);
+  g.position.y = 0;
+  g.updateMatrixWorld(true);
+  const rest = projectToViewport(g, camera, canvas);
+  g.position.y = DROP_HEIGHT;
+  g.updateMatrixWorld(true);
+  const high = projectToViewport(g, camera, canvas);
+  g.position.y = pos;
+  g.rotation.copy(rot);
+  g.scale.copy(scl);
+  g.updateMatrixWorld(true);
+  if (!rest || !high) return DROP_HEIGHT;
+  const top = canvas.getBoundingClientRect().top;
+  const pxPerUnit = (rest.bottom - high.bottom) / DROP_HEIGHT;
+  if (!(pxPerUnit > 0)) return DROP_HEIGHT;
+  const need = (rest.bottom - top + DROP_CLEAR_PX) / pxPerUnit;
+  return Math.min(DROP_HEIGHT_MAX, Math.max(DROP_HEIGHT, need));
+}
+
 /** Measurement mirror for the e2e probes (like window.__heroMotion). Written
  *  only at the arm, contact and settle beats: no steady-state cost. */
 interface KeypadMotionDebug {
   frame: number;
   triggerTop: number | null;
+  startHeight?: number;
   contact: null | {
     frame: number;
     t: number;
@@ -546,7 +586,11 @@ function SceneContents({
   // TransformControls JSX can re-render once the group has mounted;
   // useRef updates don't trigger renders.
   const [groupNode, setGroupNode] = useState<THREE.Group | null>(null);
-  const tiltState = useRef({ x: 0, y: 0 });
+  // Start at the base pose: starting at 0 made the first frames snap the
+  // model flat, then ease it back to the base tilt.
+  const tiltState = useRef({ x: BASE_TILT_X, y: BASE_TILT_Y });
+  // Derived drop start height, cached per canvas size (see dropStartHeight).
+  const startHRef = useRef({ h: DROP_HEIGHT, w: 0, hgt: 0 });
   // Monotonic float clock (clamped-dt accumulator) so the idle bob/sway
   // advances smoothly and never pops when the demand-loop canvas resumes
   // after being scrolled off-screen (a raw clock delta could jump). It only
@@ -562,7 +606,7 @@ function SceneContents({
   // performance.now() stamp of the last knob press (-1 = idle); drives
   // the whole-keypad cartoony wobble in the frame loop.
   const wobbleStartRef = useRef(-1);
-  const { camera, invalidate, gl } = useThree();
+  const { camera, invalidate, gl, size } = useThree();
 
   // Knob press -> jiggle the whole device. KeypadModel dispatches
   // "keypad-knob-press" on dial click; gated by reduced motion.
@@ -657,7 +701,16 @@ function SceneContents({
     }
     firstFrameRef.current = false;
     const dropT = d.t;
-    g.position.y = dropOffsetY(dropT);
+    // Re-derive the start height when the canvas size changes, but only
+    // before the fall is under way (never mid-drop, never once landed).
+    const sh = startHRef.current;
+    if (dropT === 0 && (sh.w !== size.width || sh.hgt !== size.height)) {
+      sh.h = dropStartHeight(g, camera, gl.domElement);
+      sh.w = size.width;
+      sh.hgt = size.height;
+      dbg.startHeight = Math.round(sh.h * 100) / 100;
+    }
+    g.position.y = dropOffsetY(dropT, sh.h);
 
     // CONTACT: the frame the fall crosses DROP_FALL_S. Thud shockwave from
     // beneath the keypad + dial kick, both in THIS frame, so the ripple has
