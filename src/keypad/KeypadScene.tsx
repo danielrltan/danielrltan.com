@@ -10,9 +10,12 @@ import {
   stampPulse,
   type PulseChannel,
 } from "./RipplePost";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useIsMobile } from "../useIsMobile";
 import { isLowTier } from "../capabilityTier";
 import { isTuneMode } from "../tuneMode";
+import { clampDt, ease, reducedMotion } from "../motion";
+import type { KeypadDropState } from "../portfolio/Keypad";
 
 // Tuning mode: pass ?tune=keypad in the URL to enable OrbitControls
 // + a live values HUD so you can drag the keypad to the orientation
@@ -28,10 +31,14 @@ const TUNE_MODE = isTuneMode("keypad");
  *   <group>          base orientation + parallax tilt
  *     <KeypadModel/> the gltf + click/hover/spin logic
  *
- * Parallax:
- *   Desktop: cursor offset from canvas center drives ±8° tilt
- *             around X and Y. Lerped each frame.
- *   Mobile: no cursor; slow auto-rotate around Y at ~1 rev / 40s.
+ * Motion:
+ *   Drop-in: a 600 ms time-based fall + impact (DROP_* below), armed by
+ *            Keypad.tsx. Nothing here is scroll-linked.
+ *   Desktop: face-tracking, the model turns toward the viewport cursor
+ *            (±15° on X and Y, damped at PARALLAX_LERP_RATE).
+ *   Touch:   no cursor; holds the base pose. (The canvas does not mount
+ *            at <=768px, but coarse-pointer tablets above it land here.)
+ *   Both:    idle float once landed; the knob press wobbles the device.
  */
 
 // Camera + model orientation: dialed in via the ?tune=keypad
@@ -62,19 +69,18 @@ const WOBBLE_DAMP = 2.8; // gentle decay, matched to the shockwave
 const WOBBLE_ROT_AMP = THREE.MathUtils.degToRad(7); // peak tilt jiggle
 const WOBBLE_SCALE_AMP = 0.05; // peak squash-and-stretch
 
-// prefers-reduced-motion: read once at module load. When set, the idle
-// float below is fully disabled (the keypad holds a dead-still pose).
-const PREFERS_REDUCED_MOTION =
-  typeof window !== "undefined" &&
-  typeof window.matchMedia === "function" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+// prefers-reduced-motion is read LIVE (reducedMotion.value from src/motion.ts)
+// so an OS toggle applies without a reload. When set: the model rests from its
+// first frame (no drop, thud or dial kick), and the idle float, knob wobble and
+// press ripples are all off (the keypad holds a dead-still pose).
 
 // Idle float: once the keypad has LANDED it drifts with a gentle
 // vertical bob + a barely-there pitch/roll sway so it reads as
 // "suspended in the scene, alive" rather than dead-still. Time-driven
-// (a clamped-dt accumulator, never scroll-bound), eased IN by the drop
-// progress so it only begins after the landing, and frozen entirely
-// under prefers-reduced-motion. Deliberately NO yaw drift: a yaw
+// (a clamped-dt accumulator, never scroll-bound). Its clock only starts at
+// the end of the drop timeline, so every axis begins at phase 0, and its
+// amplitude fades in over FLOAT_FADE_S: no pop out of the rebound. Frozen
+// entirely under prefers-reduced-motion. Deliberately NO yaw drift: a yaw
 // oscillation would read like the auto-spin that was just removed.
 // Co-prime-ish periods keep the three axes from beating into lockstep.
 const FLOAT_BOB_PERIOD = 5.0; // s per rise+fall cycle (calm float)
@@ -83,30 +89,139 @@ const FLOAT_PITCH_PERIOD = 6.7;
 const FLOAT_PITCH_AMP = THREE.MathUtils.degToRad(1.8);
 const FLOAT_ROLL_PERIOD = 8.3;
 const FLOAT_ROLL_AMP = THREE.MathUtils.degToRad(1.3);
+const FLOAT_FADE_S = 1.0; // float amplitude fade-in after the landing
 
-// Drop-in effect: model translates from this Y offset (well above
-// the visible camera frame) down to 0 as sectionProgress goes 0 → 1.
-// Picked empirically. Needs to be larger than the visible frustum
-// half-height at the lookAt distance so the model is genuinely
-// off-screen at progress=0, not just clipped.
-const DROP_HEIGHT = 6;
-// Total time the drop-in animation takes, in milliseconds. The drop
-// is driven by elapsed time since Keypad.tsx's onEnter ScrollTrigger
-// stamped `dropStartTimeRef` (NOT by scroll progress), so the pace
-// is identical regardless of how fast the user scrolls into the
-// section.
-//
-// 700ms targets the "slightly faster than scroll rate" feel: at a
-// typical user scroll rate of ~1500px/s, the 800px entry distance
-// from "section first appears" to "section's top hits viewport top"
-// takes ~500ms. A 700ms drop runs a hair slower than that, so the
-// keypad is mid-landing as the user scrolls past where it should be
-// and finishes landing just as the pin engages. Reads as
-// "animated drop in sync with my scroll" rather than "I scroll,
-// then it animates" or "I scroll, then it slowly plays out."
-// easeOutCubic still applies inside this 700ms so the landing feels
-// soft despite the shorter duration.
-// The drop ramp is driven from Keypad.tsx via pinProgressRef.
+// DROP-IN (motion spec W6): a time-based timeline, armed by Keypad.tsx when
+// the section top crosses 0.45vh, advanced by frame dt (frame-rate
+// independent). 600 ms total:
+//   0 -> 340 ms   FALL: from DROP_HEIGHT above rest, ease.inCubic (GSAP
+//                 power2.in), so it accelerates INTO the landing: a drop, not
+//                 a soft glide.
+//   340 ms        CONTACT, in the same frame: the thud shockwave through the
+//                 rice (stampPulse) + a dial kick (kickDial).
+//   340 -> 560 ms SQUASH: scaleY 0.94 / XZ 1.03 at contact, decaying to 1,
+//                 through the same scale path as the knob-press wobble.
+//   340 -> 600 ms REBOUND: the fall overshoots rest by DROP_REBOUND, then
+//                 springs back up those +0.10 units with an ease.outBack
+//                 shape (a slam past the hover height and a recoil into it).
+//   600 ms        LANDED: the idle float clock starts.
+// Every value is a named constant so the owner can tune the feel here.
+// World units above rest at t = 0. Spec said 3 (down from 6), but measured on
+// a real GPU at 1440x900 a 3-unit offset leaves the model's lower ~145 px
+// hanging visibly at the canvas top BEFORE the drop arms (≈202 px per unit).
+// The model clears the frame at ≈3.72 units, so 4 is the smallest clean value:
+// it starts just out of frame and the inCubic's slow first ~140 ms stays hidden.
+const DROP_HEIGHT = 4;
+const DROP_FALL_S = 0.34; // fall duration; contact fires when t crosses it
+const DROP_SQUASH_S = 0.22; // squash decay after contact (ends at 560 ms)
+const DROP_TOTAL_S = 0.6; // rebound done; float bob may begin
+const DROP_REBOUND = 0.1; // contact overshoot below rest, recovered by outBack
+const LAND_SQUASH = 0.06; // scaleY 1 - 0.06 = 0.94, XZ 1 + 0.03 = 1.03
+const LAND_PULSE = { strength: 1.35, x: 0.5, y: 0.58 } as const; // thud ripple
+const LAND_DIAL_KICK = 12; // rad/s added to the dial at contact
+// Per-frame cap on drop time. Tighter than MAX_DT: a mount/compile hitch
+// mid-fall stretches the drop instead of teleporting past the contact beat.
+const DROP_MAX_DT = 1 / 30;
+
+/** Model Y offset (world units, 0 = rest) at drop time t (s). Continuous at
+ *  the contact (both branches give -DROP_REBOUND) and exactly 0 at the end. */
+function dropOffsetY(t: number): number {
+  if (t < DROP_FALL_S) {
+    const u = t / DROP_FALL_S;
+    return (DROP_HEIGHT + DROP_REBOUND) * (1 - ease.inCubic(u)) - DROP_REBOUND;
+  }
+  if (t < DROP_TOTAL_S) {
+    const u = (t - DROP_FALL_S) / (DROP_TOTAL_S - DROP_FALL_S);
+    return -DROP_REBOUND * (1 - ease.outBack(u));
+  }
+  return 0;
+}
+
+/** Landing squash amount (0..LAND_SQUASH) at drop time t: full on the
+ *  contact frame, decaying (quadratic ease-out) to 0 by 560 ms. */
+function landSquash(t: number): number {
+  const u = (t - DROP_FALL_S) / DROP_SQUASH_S;
+  if (u < 0 || u >= 1) return 0;
+  return LAND_SQUASH * (1 - u) * (1 - u);
+}
+
+/** Measurement mirror for the e2e probes (like window.__heroMotion). Written
+ *  only at the arm, contact and settle beats: no steady-state cost. */
+interface KeypadMotionDebug {
+  frame: number;
+  triggerTop: number | null;
+  contact: null | {
+    frame: number;
+    t: number;
+    scrollY: number;
+    pinActive: boolean;
+    pulseFrame: number;
+    kickFrame: number | null;
+    bbox: ViewportBox | null;
+  };
+  settle: null | { frame: number; scrollY: number; bbox: ViewportBox | null };
+  reducedMotion: boolean;
+}
+interface ViewportBox {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+const debugMirror = (): KeypadMotionDebug => {
+  const w = window as unknown as { __keypadMotion?: KeypadMotionDebug };
+  return (w.__keypadMotion ??= {
+    frame: 0,
+    triggerTop: null,
+    contact: null,
+    settle: null,
+    reducedMotion: false,
+  });
+};
+const _v = new THREE.Vector3();
+// Vertex budget per bbox: a strided sample keeps the two probe frames cheap
+// (well under a millisecond) at a few px of bbox accuracy.
+const BBOX_SAMPLE_VERTS = 6000;
+/** Screen-space bbox (viewport px) of an object's rendered geometry, from a
+ *  strided sample of its mesh vertices. Only called on two probe frames. */
+function projectToViewport(
+  obj: THREE.Object3D,
+  camera: THREE.Camera,
+  canvas: HTMLCanvasElement,
+): ViewportBox | null {
+  const meshes: THREE.Mesh[] = [];
+  let total = 0;
+  obj.traverse((o) => {
+    const m = o as THREE.Mesh;
+    const pos = m.isMesh ? m.geometry?.getAttribute("position") : undefined;
+    if (pos && m.visible) {
+      meshes.push(m);
+      total += pos.count;
+    }
+  });
+  if (!total) return null;
+  const stride = Math.max(1, Math.ceil(total / BBOX_SAMPLE_VERTS));
+  const r = canvas.getBoundingClientRect();
+  const out = { top: Infinity, bottom: -Infinity, left: Infinity, right: -Infinity };
+  for (const m of meshes) {
+    const pos = m.geometry.getAttribute("position");
+    for (let i = 0; i < pos.count; i += stride) {
+      _v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld).project(camera);
+      const x = r.left + ((_v.x + 1) / 2) * r.width;
+      const y = r.top + ((1 - _v.y) / 2) * r.height;
+      if (x < out.left) out.left = x;
+      if (x > out.right) out.right = x;
+      if (y < out.top) out.top = y;
+      if (y > out.bottom) out.bottom = y;
+    }
+  }
+  return {
+    top: Math.round(out.top),
+    bottom: Math.round(out.bottom),
+    left: Math.round(out.left),
+    right: Math.round(out.right),
+  };
+}
 
 interface CursorState {
   // 0..1 across the canvas (top-left origin to match HTML conventions).
@@ -117,20 +232,17 @@ interface CursorState {
 }
 
 interface KeypadSceneProps {
-  // Pin progress 0..1 driven by Keypad.tsx's GSAP ScrollTrigger pin
-  // (scrub:true). 0 = section just engaged the pin; 1 = section is
-  // about to release. KeypadScene reads this each frame and drives
-  // its drop animation from pin progress 0.00 → 0.30, then settles
-  // for the remaining dwell.
-  pinProgressRef: React.MutableRefObject<number>;
-  /** 0..1 target opacity for the RiceBlob's orange glow layer.
-   *  Keypad.tsx ramps this from 0 to 1 once the drop-in animation
-   *  has completed, so the orange wash never appears behind an
-   *  empty section. */
+  /** Drop timeline state owned by Keypad.tsx (so it outlives this canvas).
+   *  Keypad.tsx arms it at the trigger line; this scene advances `t` by
+   *  frame dt and fires the contact beat once. */
+  dropRef: React.MutableRefObject<KeypadDropState>;
+  /** 0..1 target opacity for the RiceBlob's orange glow layer. Keypad.tsx
+   *  sets it to 1 on APPROACH (before the drop), so the stage is already
+   *  blooming when the model falls. */
   glowOpacityRef?: React.MutableRefObject<number>;
 }
 
-export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps) {
+export function KeypadScene({ dropRef, glowOpacityRef }: KeypadSceneProps) {
   const isMobile = useIsMobile();
   // Cursor target shared with RiceBlob (uniform driver) and with the
   // SceneContents component (parallax driver).
@@ -212,7 +324,7 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
   const pulsesRef = useRef<PulseChannel>(createPulseChannel());
   useEffect(() => {
     const onInteract = (e: Event) => {
-      if (PREFERS_REDUCED_MOTION) return;
+      if (reducedMotion.value) return;
       const ev = e as CustomEvent<{ strength?: number }>;
       // Ring-buffer stamp: rapid presses each spawn their OWN ripple
       // (in-flight waves always complete; nothing restarts from the
@@ -271,6 +383,11 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
     <div ref={wrapperRef} className="keypad-canvas-wrapper">
       <Canvas
         camera={{ position: CAMERA_POS, fov: 32, near: 0.1, far: 50 }}
+        // No re-measure on scroll: R3F's pointer mapping uses event
+        // offsetX/offsetY (canvas-local), so a stale page-relative rect is
+        // harmless, and re-measuring on every scroll stop re-rendered the
+        // Canvas root mid-scroll. Size changes still come via ResizeObserver.
+        resize={{ scroll: false }}
         // PERF (mobile): the RiceBlob is a full-screen fragment-heavy
         // shader (per-pixel noise + three glow blobs) that runs every
         // visible frame. Fragment cost scales with the rendered pixel
@@ -295,13 +412,16 @@ export function KeypadScene({ pinProgressRef, glowOpacityRef }: KeypadSceneProps
           gl.outputColorSpace = THREE.SRGBColorSpace;
           gl.setClearColor(0x000000, 0);
           canvasInvalidateRef.current = invalidate;
+          // The visibility observer may have flipped to visible before this
+          // ran (canvas mounted on arrival), dropping its wake poke.
+          if (visibleRef.current) invalidate();
         }}
       >
         <SceneContents
           cursorRef={cursorRef}
           riceCursorRef={riceCursorRef}
           isMobile={isMobile}
-          pinProgressRef={pinProgressRef}
+          dropRef={dropRef}
           glowOpacityRef={glowOpacityRef}
           tuneStateRef={tuneStateRef}
           transformMode={transformMode}
@@ -404,7 +524,7 @@ function SceneContents({
   cursorRef,
   riceCursorRef,
   isMobile,
-  pinProgressRef,
+  dropRef,
   glowOpacityRef,
   tuneStateRef,
   transformMode,
@@ -414,7 +534,7 @@ function SceneContents({
   cursorRef: React.MutableRefObject<CursorState>;
   riceCursorRef: React.MutableRefObject<CursorState>;
   isMobile: boolean;
-  pinProgressRef: React.MutableRefObject<number>;
+  dropRef: React.MutableRefObject<KeypadDropState>;
   glowOpacityRef?: React.MutableRefObject<number>;
   tuneStateRef: React.MutableRefObject<TuneState>;
   transformMode: TuneTransformMode;
@@ -427,37 +547,44 @@ function SceneContents({
   // useRef updates don't trigger renders.
   const [groupNode, setGroupNode] = useState<THREE.Group | null>(null);
   const tiltState = useRef({ x: 0, y: 0 });
-  // Drop-in animation state: initialized to DROP_HEIGHT so the
-  // model starts off-screen above on first frame, then lerps down
-  // as the user scrolls into the section.
-  const dropY = useRef(DROP_HEIGHT);
   // Monotonic float clock (clamped-dt accumulator) so the idle bob/sway
   // advances smoothly and never pops when the demand-loop canvas resumes
-  // after being scrolled off-screen (a raw clock delta could jump).
+  // after being scrolled off-screen (a raw clock delta could jump). It only
+  // advances once the drop has landed.
   const floatTimeRef = useRef(0);
-  // Captured from KeypadModel via onReady callback. Used to fire an
-  // automatic dial spin during the drop-in so the knob is mid-rotation
-  // when the keypad lands, feels like the device "shakes off" the
-  // fall before settling. The dial's existing DIAL_DAMP decay ends
-  // the spin naturally over the back half of the drop.
+  // Captured from KeypadModel via onReady. The landing kicks the dial at the
+  // contact frame so the knob spins off the impact, then DIAL_DAMP (in
+  // KeypadModel) winds it down.
   const kickDialRef = useRef<((v: number) => void) | null>(null);
-  const hasAutoSpunRef = useRef(false);
-  const hasLandedPulseRef = useRef(false);
+  // Skip the drop clock on the scene's first rendered frame: its dt spans
+  // the mount/shader-compile hitch, not animation time.
+  const firstFrameRef = useRef(true);
   // performance.now() stamp of the last knob press (-1 = idle); drives
   // the whole-keypad cartoony wobble in the frame loop.
   const wobbleStartRef = useRef(-1);
-  const { camera, invalidate } = useThree();
+  const { camera, invalidate, gl } = useThree();
 
   // Knob press -> jiggle the whole device. KeypadModel dispatches
   // "keypad-knob-press" on dial click; gated by reduced motion.
   useEffect(() => {
     const onKnob = () => {
-      if (PREFERS_REDUCED_MOTION) return;
+      if (reducedMotion.value) return;
       wobbleStartRef.current = performance.now();
       invalidate();
     };
     window.addEventListener("keypad-knob-press", onKnob);
     return () => window.removeEventListener("keypad-knob-press", onKnob);
+  }, [invalidate]);
+
+  // Demand-loop wake-ups. (1) On mount: after a cut jump straight to Contact
+  // the canvas mounts on arrival, and the visibility observer can flip before
+  // onCreated has handed over `invalidate`, losing its wake poke. (2) When
+  // the drop arms, in case the loop is idle at that moment.
+  useEffect(() => {
+    invalidate();
+    const onArmed = () => invalidate();
+    window.addEventListener("keypad-drop-armed", onArmed);
+    return () => window.removeEventListener("keypad-drop-armed", onArmed);
   }, [invalidate]);
   // Fit is now self-contained inside KeypadModel. It computes its
   // own bounding-sphere-based scale against the camera frustum, so
@@ -510,35 +637,61 @@ function SceneContents({
       return;
     }
 
-    // Drop-in: model falls from DROP_HEIGHT above the frame to 0
-    // (resting) over a FIXED DURATION, regardless of scroll speed.
-    // This is the "guided story" pacing: the user can't speed up or
-    // slow down the drop by scrolling faster or slower, so the
-    // landing always feels deliberate.
-    //
-    // Driven by `pinProgressRef`, written by Keypad.tsx's GSAP pin
-    // (scrub:true). Pin progress 0..1 across the entire pin window;
-    // the drop animation uses the first 30% of pin progress so the
-    // keypad is landed by the time the user is 1/3 through the pin,
-    // leaving the back 70% for the dwell / interact beat.
-    //
-    // easeOutCubic on the local 0..1 timeline gives a soft landing.
-    const pinP = pinProgressRef.current;
-    const DROP_PIN_RANGE = 0.30;
-    const local = Math.max(0, Math.min(1, pinP / DROP_PIN_RANGE));
-    const eased = 1 - Math.pow(1 - local, 3);
-    g.position.y = (1 - eased) * DROP_HEIGHT;
-    dropY.current = g.position.y;
+    // DROP-IN timeline (see the DROP_* constants). Armed by Keypad.tsx at
+    // the trigger line; advanced here by clamped frame dt, so the pace is
+    // the same at 60 and 120 Hz and independent of scroll speed. The state
+    // lives in Keypad.tsx, so a remounted canvas shows the landed pose.
+    const dbg = debugMirror();
+    dbg.frame++;
+    const d = dropRef.current;
+    const rm = reducedMotion.value;
+    dbg.reducedMotion = rm;
+    if (rm) {
+      // Reduced motion: the model rests from its first frame. Spend the
+      // contact latch so no thud or dial kick ever fires.
+      d.t = Math.max(d.t, DROP_TOTAL_S);
+      d.contactFired = true;
+    } else if (d.armed && d.t < DROP_TOTAL_S) {
+      if (!firstFrameRef.current) d.t += Math.min(clampDt(dt), DROP_MAX_DT);
+      if (dbg.triggerTop == null) dbg.triggerTop = d.triggerTop;
+    }
+    firstFrameRef.current = false;
+    const dropT = d.t;
+    g.position.y = dropOffsetY(dropT);
 
-    // Idle float: gentle bob + sway, faded in by the drop `eased` (so
-    // it only starts once landed) and off under reduced motion. Applied
-    // to BOTH the touch (static) and desktop (cursor-tracked) paths below
-    // so the keypad always feels alive once it has landed. The bob is
+    // CONTACT: the frame the fall crosses DROP_FALL_S. Thud shockwave from
+    // beneath the keypad + dial kick, both in THIS frame, so the ripple has
+    // a visible cause (the device slamming into the space it lands in).
+    if (!d.contactFired && dropT >= DROP_FALL_S) {
+      d.contactFired = true;
+      stampPulse(pulsesRef.current, LAND_PULSE.strength, LAND_PULSE.x, LAND_PULSE.y);
+      const kick = kickDialRef.current;
+      if (kick) kick(LAND_DIAL_KICK);
+      const st = ScrollTrigger.getById("keypad-pin");
+      dbg.contact = {
+        frame: dbg.frame,
+        t: Math.round(dropT * 1000) / 1000,
+        scrollY: Math.round(window.scrollY),
+        pinActive: !!st?.isActive,
+        pulseFrame: dbg.frame,
+        kickFrame: kick ? dbg.frame : null,
+        bbox: null,
+      };
+      g.updateMatrixWorld(true);
+      dbg.contact.bbox = projectToViewport(g, camera, gl.domElement);
+    }
+
+    // Idle float: gentle bob + sway, only once landed and off under reduced
+    // motion. Its clock starts at the landing (phase 0) and its amplitude
+    // fades in, so it never pops out of the rebound. Applied to BOTH the
+    // touch (static) and desktop (cursor-tracked) paths below. The bob is
     // added to position here; the pitch/roll sway is applied per-path
     // alongside the base/tracked rotation.
-    floatTimeRef.current += Math.min(dt, 0.05);
+    const landed = dropT >= DROP_TOTAL_S;
+    if (landed && !rm) floatTimeRef.current += clampDt(dt);
     const ft = floatTimeRef.current;
-    const floatGate = PREFERS_REDUCED_MOTION ? 0 : eased;
+    const fadeIn = Math.min(1, ft / FLOAT_FADE_S);
+    const floatGate = rm || !landed ? 0 : fadeIn * fadeIn * (3 - 2 * fadeIn);
     const floatPitch =
       Math.sin((ft / FLOAT_PITCH_PERIOD) * Math.PI * 2) *
       FLOAT_PITCH_AMP *
@@ -550,14 +703,14 @@ function SceneContents({
     g.position.y +=
       Math.sin((ft / FLOAT_BOB_PERIOD) * Math.PI * 2) * FLOAT_BOB_AMP * floatGate;
 
-    // Cartoony knob-press WOBBLE: a fast decaying oscillation layered on
-    // top of the rotation (x + z, out of phase) plus a squash-stretch
-    // scale pulse. Always applied (set to neutral when idle) so the
-    // group scale resets cleanly after the jiggle settles.
+    // Cartoony knob-press WOBBLE: a decaying oscillation layered on top of
+    // the rotation (x + z, out of phase) plus a squash-stretch scale pulse.
+    // The landing squash rides the SAME scale path (summed into `sq`), so a
+    // press during the landing composes instead of overwriting it. Always
+    // applied (neutral when idle) so the group scale resets cleanly.
     let wobX = 0;
     let wobZ = 0;
-    let wobScaleXZ = 1;
-    let wobScaleY = 1;
+    let sq = rm ? 0 : landSquash(dropT);
     const wStart = wobbleStartRef.current;
     if (wStart > 0) {
       const age = (performance.now() - wStart) / 1000;
@@ -569,39 +722,22 @@ function SceneContents({
           WOBBLE_ROT_AMP *
           0.85 *
           decay;
-        const sq = Math.sin(age * WOBBLE_FREQ) * WOBBLE_SCALE_AMP * decay;
-        wobScaleY = 1 - sq; // squash down...
-        wobScaleXZ = 1 + sq * 0.5; // ...bulge sideways
+        sq += Math.sin(age * WOBBLE_FREQ) * WOBBLE_SCALE_AMP * decay;
       } else {
         wobbleStartRef.current = -1;
       }
     }
-    g.scale.set(wobScaleXZ, wobScaleY, wobScaleXZ);
+    // squash down... bulge sideways (half as much, roughly volume-keeping)
+    g.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5);
 
-    // Auto-spin the dial mid-drop. Fires ONCE at local >= 0.3 so the
-    // dial is mid-rotation when the keypad lands. KeypadModel's
-    // DIAL_DAMP decays it naturally over the remaining drop frames,
-    // settling just as the model touches down.
-    if (!hasAutoSpunRef.current && local >= 0.3 && kickDialRef.current) {
-      hasAutoSpunRef.current = true;
-      kickDialRef.current(12);
-    }
-    // LANDING THUD: the moment the drop settles, one strong shockwave
-    // ring radiates through the rice field from beneath the keypad —
-    // the device visibly displaces the space it lands in. Same pulse
-    // channel the press interactions use.
-    if (!hasLandedPulseRef.current && eased >= 0.995) {
-      hasLandedPulseRef.current = true;
-      if (!PREFERS_REDUCED_MOTION) {
-        stampPulse(pulsesRef.current, 1.35, 0.5, 0.58);
-      }
-    }
-    // Reset the auto-spin + landing latches when the user scrolls fully
-    // back above the pin (pin progress = 0). Re-entering replays the
-    // drop, dial kick, and thud fresh.
-    if (pinP <= 0.001) {
-      hasAutoSpunRef.current = false;
-      hasLandedPulseRef.current = false;
+    // SETTLE record for the probes: the first landed frame.
+    if (landed && dbg.contact && !dbg.settle) {
+      g.updateMatrixWorld(true);
+      dbg.settle = {
+        frame: dbg.frame,
+        scrollY: Math.round(window.scrollY),
+        bbox: projectToViewport(g, camera, gl.domElement),
+      };
     }
 
     if (isMobile) {
@@ -633,7 +769,7 @@ function SceneContents({
     const y = c.active ? (c.y - 0.5) * 2 : 0;  // -1..1
     const targetX = BASE_TILT_X + y * PARALLAX_X;
     const targetY = BASE_TILT_Y + -x * PARALLAX_Y;
-    const k = 1 - Math.exp(-dt * PARALLAX_LERP_RATE);
+    const k = 1 - Math.exp(-clampDt(dt) * PARALLAX_LERP_RATE);
     tiltState.current.x += (targetX - tiltState.current.x) * k;
     tiltState.current.y += (targetY - tiltState.current.y) * k;
     // Cursor-tracked tilt + the idle float sway + the knob-press wobble

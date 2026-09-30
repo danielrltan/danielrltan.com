@@ -17,11 +17,11 @@
    canvas, no flex centering, no padding. */
 .portfolio-section.keypad-section {
   /* Section is exactly one viewport tall in its un-pinned form.
-     The dwell beat is now provided by GSAP ScrollTrigger (Keypad.tsx)
-     which pins the section at top:top and accumulates PIN_DURATION_PX
-     of scroll into a 0..1 progress before releasing. While pinned,
-     ScrollTrigger lifts this element into a fixed layer and inserts
-     a pin-spacer below it so the document height grows accordingly. */
+     The dwell beat is a GSAP ScrollTrigger pin (Keypad.tsx, id
+     "keypad-pin") that holds the section at top:top for 0.6 viewport
+     heights of scroll (PIN_VH). While pinned, ScrollTrigger lifts this
+     element into a fixed layer and pads its pin-spacer so the document
+     height grows accordingly. */
   display: block;
   height: 100vh;
   padding: 0;
@@ -29,8 +29,8 @@
   position: relative;
 }
 
-/* The GSAP pin-spacer wraps the keypad section and adds 1200px of
-   padding-bottom (= PIN_DURATION_PX) to preserve document flow while
+/* The GSAP pin-spacer wraps the keypad section and adds 0.6vh of
+   padding-bottom (the pin length, PIN_VH) to preserve document flow while
    the section is position:fixed. That padding area is transparent by
    default, so as the user scrolls through it they see straight
    through to the wrapper-bg behind, producing a

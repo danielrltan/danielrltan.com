@@ -27,24 +27,26 @@ gsap.registerPlugin(ScrollTrigger);
  * spins on click; cursor proximity pools rice grains in a soft fluid
  * blob behind it.
  *
- * Scroll pattern (after the kit/Macintosh refactor):
- *   ONE GSAP ScrollTrigger pin with scrub:true. start: "top top",
- *   end: `+=PIN_DURATION_PX`. The pin's onUpdate writes pin progress
- *   (0..1) into pinProgressRef. KeypadScene reads that ref every
- *   frame and drives:
- *     - drop-in animation: pin progress 0.00 → 0.30
- *     - dial auto-spin kick: fires at pin progress ≈ 0.10
- *     - idle / face-tracking: pin progress > 0.30
+ * Motion (motion spec W6). Nothing inside this section is scroll-linked:
+ *   - GLOW: an approach observer (section top within 1.1vh) releases the
+ *     RiceBlob wash, which fades in at λ 2.2, so the stage is already
+ *     blooming when the model falls (no "empty stage").
+ *   - DROP: a second observer ARMS a one-shot, time-based drop once the
+ *     section top crosses DROP_TRIGGER_VH of the viewport, so the landing
+ *     plays on screen instead of below the fold. The timeline itself (fall,
+ *     thud + dial kick at contact, squash, rebound) lives in KeypadScene and
+ *     advances by frame dt. Time-based on purpose: the owner found a
+ *     scroll-bound drop "overwhelming" (it arrived exactly as fast as they
+ *     scrolled) and an after-the-fact drop "empty".
+ *   - PIN: one GSAP pin (id "keypad-pin", start "top top", end +PIN_VH of the
+ *     viewport) is a pure dwell beat before the footer. No scrub, no onUpdate.
  *
- *   Previously this used TWO triggers (drop on entry by time, pin by
- *   scrub) + its own Lenis singleton; that combo bugged out on first
- *   load when the page's layout shifted between trigger registration
- *   and the user reaching the section. Single-pin pattern matches the
- *   kit's, which has been reliable. Drop animation is now scroll-
- *   driven (not time-driven) so the user feels they're directly
- *   pulling the model into view.
+ * The drop state lives in `dropRef` HERE, not in the scene, so it outlives
+ * the canvas: on approach-gated devices (low tier, tablets) the scene
+ * unmounts ~5vh away, and coming back shows the landed pose instead of
+ * replaying the drop. One drop per page load.
  *
- * Lenis × ScrollTrigger sync lives in src/scroll.ts (module-scope
+ * Lenis x ScrollTrigger sync lives in src/scroll.ts (module-scope
  * singleton). This section still calls ensureLenis() before its pin is
  * registered, so Lenis creation timing is unchanged.
  *
@@ -52,34 +54,56 @@ gsap.registerPlugin(ScrollTrigger);
  * also renders a visually-hidden but DOM-real h2 + <ul> of <a> tags
  * so screen readers, keyboard users, and crawlers see the links.
  *
- * Canvas is lazy-mounted via IntersectionObserver: keeps the second
- * WebGL context idle until the section approaches the viewport.
+ * The canvas mounts via useSectionCanvasMount: eagerly on capable desktops,
+ * on approach for low-tier GPUs and tablets. Mobile (<=768px) never mounts
+ * it and shows the tappable contact chips instead.
  */
 
 const TUNE_MODE = isTuneMode("keypad");
 
-// Pixels of vertical scroll the user travels while the section is
-// pinned. Tuned long enough for the drop to land + a deliberate
-// dwell on the keypad before the footer takes over.
-const PIN_DURATION_PX = 1400;
+/** Pin length as a fraction of the viewport height. Pure dwell, sized so the
+ *  600 ms drop lands inside the pin at scroll speeds up to ~1500 px/s. */
+const PIN_VH = 0.6;
+/** The drop arms when the section top crosses this fraction of the viewport
+ *  height. Applied as an IO bottom inset. Spec: 0.45 (405 px at 900 tall,
+ *  ±30 px). Measured on a real GPU at 1440x900, the landed model spans
+ *  section-relative y ≈ 90-750, so at 600 px/s the contact frame clipped
+ *  ~65 px below the fold at 0.45. 0.42 (378 px) is the low edge of the
+ *  spec band and buys ~27 px of that back. */
+const DROP_TRIGGER_VH = 0.42;
+/** The glow releases earlier, on approach (section top within 1.1vh). */
+const GLOW_APPROACH_MARGIN = "0px 0px 10% 0px";
+
+/**
+ * Drop timeline state shared with KeypadScene. Keypad.tsx arms it; the scene
+ * advances `t` by frame dt and fires the contact beat exactly once.
+ */
+export interface KeypadDropState {
+  /** Set by the trigger observer; the scene only advances `t` once armed. */
+  armed: boolean;
+  /** Seconds of drop timeline played (clamped-dt accumulator). */
+  t: number;
+  /** Latched when the contact beat (thud + dial kick) has fired. */
+  contactFired: boolean;
+  /** Section top (px) when the drop armed. Debug/measurement only. */
+  triggerTop: number | null;
+}
 
 export function Keypad() {
   const sectionRef = useRef<HTMLElement>(null);
-  // MOBILE: the GSAP pin below is skipped on phones. The desktop pin
-  // holds the section fixed for PIN_DURATION_PX of scroll, but the
-  // keypad <Canvas> fills the whole section and inherits the global
-  // `canvas { touch-action: none }`: on a phone a finger drag that
-  // starts on the keypad can't pan-scroll the page, trapping the user
-  // on a pinned full-viewport canvas with no way out. The sibling 3D
-  // section (Macintosh) already skips its pin at narrow widths for the
-  // same reason. Without the pin this is a normal-flow ~80vh band; the
-  // drop-in still plays because pinProgressRef is driven by the
-  // time-based IntersectionObserver ramp below, NOT by the pin.
+  // MOBILE: the GSAP pin below is skipped on phones. The keypad <Canvas>
+  // fills the whole section and inherits the global
+  // `canvas { touch-action: none }`: on a phone a finger drag that starts on
+  // the keypad couldn't pan-scroll the page, trapping the user on a pinned
+  // full-viewport canvas. The canvas never mounts on mobile
+  // (useSectionCanvasMount), so the section is a normal-flow band carrying
+  // the contact chips below.
   const isMobile = useIsMobile();
-  // Mount the keypad <Canvas> WELL ahead of arrival, then release its WebGL
-  // context once it's well out of view. The keypad is the LAST section (footer
-  // below), so a generous ~3.25-viewport mount margin spins up the context +
-  // GLB + first render while the user is still in Photos/Honors — so it's fully
+  // Capable desktops mount the canvas eagerly (see useSectionCanvasMount). On
+  // approach-gated devices, mount it WELL ahead of arrival and release its
+  // WebGL context once it's well out of view. The keypad is the LAST section
+  // (footer below), so a generous ~3.75-viewport mount margin spins up the context +
+  // GLB + first render while the user is still in Photos/Honors, so it's fully
   // loaded + settled BEFORE they reach it (no "Find me elsewhere placeholder
   // then it glitches/loads in" pop the owner flagged). The GLB is module-scope
   // preloaded and App.tsx idle-prefetches the scene chunk, so the early mount is
@@ -89,80 +113,52 @@ export function Keypad() {
     unmountVh: 5,
   });
 
-  // pinProgressRef is now a TIME-driven 0..1 ramp, not scroll-driven.
-  // User feedback: the scroll-bound drop matched the scroll rate so
-  // closely that the landing felt 'overwhelming': the keypad was
-  // arriving as fast as the user scrolled, leaving no moment to
-  // actually watch it land.
-  //
-  // New behaviour: ramp from 0 → 1 over DROP_RAMP_MS once the section
-  // ENTERS the viewport (IntersectionObserver). User scrolls there,
-  // section enters, keypad drops in on its own pace, user has the
-  // pinned dwell to read + interact.
-  //
-  // TUNE_MODE parks at 1 so the playground sees the landed model.
-  const pinProgressRef = useRef<number>(TUNE_MODE ? 1 : 0);
+  // TUNE_MODE starts landed (t far past the timeline, contact already spent)
+  // so the playground sees the resting model.
+  const dropRef = useRef<KeypadDropState>({
+    armed: TUNE_MODE,
+    t: TUNE_MODE ? 60 : 0,
+    contactFired: TUNE_MODE,
+    triggerTop: null,
+  });
 
-  // RiceBlob's orange glow opacity 0..1. Held at 0 until the keypad
-  // drop animation finishes, then ramped to 1 with a subtle fade so
-  // the orange wash doesn't appear behind an empty section. Read by
-  // RiceBlob's shader uniform.
+  // RiceBlob's orange glow target opacity 0..1 (its shader eases toward it).
   const glowOpacityRef = useRef<number>(TUNE_MODE ? 1 : 0);
 
-  // Time-driven drop, started on APPROACH so the keypad is settling AS you
-  // arrive, not after you've stopped on an empty pinned stage. The old tuning
-  // (IO at -25% center + 300ms pause + 1200ms ramp + glow released only at the
-  // very end) made a fast scroll-to-contact read as ~1.2-2.2s of empty section
-  // "loading in" — the owner's "queued in wrong / delaying it" report. Now: IO
-  // fires as the section approaches, a near-zero pause, a brisk ramp, and the
-  // glow releases partway through the drop. (Still time-based, not scroll-bound,
-  // so it honours the fixed-rate-animation rule.)
+  // Two one-shot observers: the glow on approach, the drop at the trigger line.
   useEffect(() => {
     if (TUNE_MODE) return;
     const el = sectionRef.current;
     if (!el) return;
-    const DROP_DELAY_MS = 50;
-    const DROP_RAMP_MS = 550;
-    let started = false;
-    let rampStarted = false;
-    let startTime = 0;
-    let rafId = 0;
-    let delayId: number | null = null;
-    const tick = () => {
-      const elapsed = performance.now() - startTime;
-      const t = Math.max(0, Math.min(1, elapsed / DROP_RAMP_MS));
-      pinProgressRef.current = t * 0.4;
-      // Release the glow PARTWAY through the drop (not at the very end): the
-      // RiceBlob wash lerps toward this over ~1s, so releasing it at t=0.5 lands
-      // the wash close to the model's landing instead of ~1s behind it.
-      if (t >= 0.5) glowOpacityRef.current = 1;
-      if (t < 1) rafId = requestAnimationFrame(tick);
-    };
-    const io = new IntersectionObserver(
+    const glowIO = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting && !started) {
-            started = true;
-            io.disconnect();
-            // Pre-drop pause: user gets a beat of empty section
-            // before the keypad starts landing.
-            delayId = window.setTimeout(() => {
-              if (rampStarted) return;
-              rampStarted = true;
-              startTime = performance.now();
-              rafId = requestAnimationFrame(tick);
-            }, DROP_DELAY_MS);
-            return;
-          }
-        }
+        if (!entries.some((e) => e.isIntersecting)) return;
+        glowOpacityRef.current = 1;
+        glowIO.disconnect();
       },
-      { rootMargin: "0px 0px 10% 0px" },
+      { rootMargin: GLOW_APPROACH_MARGIN },
     );
-    io.observe(el);
+    const dropIO = new IntersectionObserver(
+      (entries) => {
+        const hit = entries.find((e) => e.isIntersecting);
+        if (!hit) return;
+        dropIO.disconnect();
+        const d = dropRef.current;
+        if (d.armed) return;
+        d.armed = true;
+        d.triggerTop = Math.round(hit.boundingClientRect.top);
+        // Wake the scene's demand loop if it is already mounted and idle.
+        window.dispatchEvent(new Event("keypad-drop-armed"));
+      },
+      {
+        rootMargin: `0px 0px -${Math.round((1 - DROP_TRIGGER_VH) * 100)}% 0px`,
+      },
+    );
+    glowIO.observe(el);
+    dropIO.observe(el);
     return () => {
-      io.disconnect();
-      cancelAnimationFrame(rafId);
-      if (delayId != null) window.clearTimeout(delayId);
+      glowIO.disconnect();
+      dropIO.disconnect();
     };
   }, []);
 
@@ -176,40 +172,30 @@ export function Keypad() {
     setTimeout(scroll, 50);
   }, []);
 
-  // Single pin ScrollTrigger: same pattern as Macintosh.tsx. scrub:true
-  // means pin progress is the user's scroll position relative to the
-  // pin window (0 at "top top," 1 at "+=PIN_DURATION_PX").
+  // The dwell pin. Pure hold: nothing reads its progress. The drop is armed
+  // by the observer above, so it plays during the approach and lands in view.
   useEffect(() => {
     if (TUNE_MODE) return;
     ensureLenis();
     const el = sectionRef.current;
     if (!el) return;
-    // Skip the pin on mobile: see the isMobile comment above. The
-    // section becomes a normal-flow band; Lenis is still ensured so
-    // page-wide smooth scroll (desktop) and the other sections' pins
-    // keep their ScrollTrigger.update feed.
+    // Skip the pin on mobile: see the isMobile comment above. Lenis is still
+    // ensured so the other sections' pins keep their ScrollTrigger.update feed.
     if (isMobile) return;
 
-    // Pin trigger: holds the section snapped to viewport top for a
-    // dwell beat. NO onUpdate / scrub here; pinProgressRef is owned
-    // by the scroll listener above which spans BOTH approach AND
-    // pin, so the drop animation can play during entry instead of
-    // only after pin engagement (the bug that left the section
-    // looking empty on first scroll-past).
     const pinST = ScrollTrigger.create({
+      id: "keypad-pin",
       trigger: el,
       start: "top top",
-      end: `+=${PIN_DURATION_PX}`,
+      end: () => "+=" + Math.round(window.innerHeight * PIN_VH),
+      invalidateOnRefresh: true,
       pin: true,
       pinSpacing: true,
-      anticipatePin: 1,
     });
 
-    // Refresh once after the layout settles (loading-active removed).
-    // The page's height shifts as fonts load + lazy sections mount;
-    // without this refresh the pin can engage at the wrong scroll
-    // position (the bug that caused "keypad doesn't drop on first
-    // scroll").
+    // Refresh once after the layout settles (loading-active removed): the
+    // page's height shifts as fonts load + lazy sections mount, and a stale
+    // start would engage the pin at the wrong scroll position.
     const stopLoaderWatch = refreshScrollOnLoaderLift();
 
     return () => {
@@ -220,8 +206,15 @@ export function Keypad() {
     // so the pin is created/torn down to match the new layout.
   }, [isMobile]);
 
+
   return (
-    <section ref={sectionRef} className="portfolio-section keypad-section">
+    <section
+      ref={sectionRef}
+      className="portfolio-section keypad-section"
+      // jumpToSection() lands a menu/footer jump at the pin START, so the drop
+      // (armed at DROP_TRIGGER_VH) plays in view on arrival.
+      data-jump-progress="0"
+    >
       {/* Hidden semantic content for AT / keyboard / SEO. Driven from the
           shared SOCIALS list so it can't drift from the visible chips. On
           mobile these same links are surfaced as real, tappable chips below
@@ -241,10 +234,7 @@ export function Keypad() {
       <div className="keypad-stage">
         {mounted ? (
           <Suspense fallback={<div className="keypad-placeholder" />}>
-            <KeypadScene
-              pinProgressRef={pinProgressRef}
-              glowOpacityRef={glowOpacityRef}
-            />
+            <KeypadScene dropRef={dropRef} glowOpacityRef={glowOpacityRef} />
           </Suspense>
         ) : (
           <div className="keypad-placeholder" />
