@@ -184,7 +184,9 @@ export function installHeroWipe(): void {
   const mobileQ = window.matchMedia("(max-width: 768px)");
   const reduceQ = window.matchMedia("(prefers-reduced-motion: reduce)");
   const forceManual = new URLSearchParams(window.location.search).has("nost");
-  const hasScrollTimeline =
+  // `let`: demoted to the manual path if the engine creates scroll-driven
+  // animations but ignores the px ranges (see verifyRanges).
+  let hasScrollTimeline =
     !forceManual && typeof (window as unknown as { ScrollTimeline?: unknown }).ScrollTimeline === "function";
 
   let vh = window.innerHeight || 1;
@@ -285,13 +287,36 @@ export function installHeroWipe(): void {
       // 100vh spacer), so translate(y - vh) holds it at the viewport top until
       // its pin takes over at y = vh with a zero offset.
       make(stage, [{ translate: `0 ${-vh}px` }, { translate: "0 0" }], 0, vh, "linear");
-      make(stage, [{ scale: String(ABOUT_PULL) }, { scale: "1" }], s, e, PULL_EASE);
+      // Pull-back only on the pinned, one-viewport bento (>900px). In the
+      // 769-900 band About is a tall stacked column, and scaling it about its
+      // centre would drift the visible top.
+      if (w > 900) make(stage, [{ scale: String(ABOUT_PULL) }, { scale: "1" }], s, e, PULL_EASE);
     }
     if (section) {
       // The section's warm pool (::after) rides along so it stays centred.
       make(section, [{ translate: `0 ${-vh}px` }, { translate: "0 0" }], 0, vh, "linear", "::after");
     }
     built = true;
+  };
+
+  // Engines that ship ScrollTimeline but not px animation ranges would map the
+  // iris across the WHOLE document (a tiny hole when the hide fires = a hard
+  // cut). Once per session, when the scroll is far enough in to tell the two
+  // mappings apart, compare the linear counter-translate's live progress with
+  // scrollY; on a mismatch, rebuild on the manual (rAF scrub) path.
+  let rangesVerified = false;
+  const verifyRanges = (y: number) => {
+    if (rangesVerified || !built || !hasScrollTimeline || y < vh * 0.25) return;
+    const d = driven.find((x) => x.start === 0 && x.end === vh);
+    if (!d || d.anim.pending) return;
+    rangesVerified = true;
+    const expected = Math.min(1, Math.max(0, y / vh));
+    const actual = d.anim.effect?.getComputedTiming().progress;
+    if (actual == null || Math.abs(actual - expected) > 0.15) {
+      hasScrollTimeline = false;
+      teardown();
+      build();
+    }
   };
 
   const scrub = (y: number) => {
@@ -357,7 +382,10 @@ export function installHeroWipe(): void {
       const inRange = y > 0.5 && y < vh;
       if (inRange && !built) build();
       else if (!inRange && built) teardown();
-      if (built) scrub(y);
+      if (built) {
+        verifyRanges(y);
+        scrub(y);
+      }
       setIrisHidden(ratio >= WIPE_END_VH);
     } else {
       if (built) teardown();
