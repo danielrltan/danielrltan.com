@@ -19,6 +19,12 @@ export interface SectionEntry {
    * section scrolls to that fraction of the pin instead of the section's top,
    * so it lands on a specific beat rather than the section's opening beat.
    * Projects uses this to land on the booted, interactive CRT.
+   *
+   * jumpToSection() (src/scroll.ts) resolves the landing progress as
+   * `data-jump-progress` on the SECTION ELEMENT first, then this registry
+   * `jumpProgress`: the attribute wins, so an owner can move the landing beat
+   * in the same change as their beat map. A `pinId` whose ScrollTrigger isn't
+   * registered (yet), or no progress at all, falls back to the element top.
    */
   pinId?: string;
   jumpProgress?: number;
@@ -29,7 +35,7 @@ export interface SectionEntry {
 // do NOT expand them to the longer section-eyebrow phrasings.
 export const SECTION_REGISTRY: SectionEntry[] = [
   { number: "00", label: "Hero", selector: ".portfolio-section--hero" },
-  { number: "01", label: "About", selector: ".portfolio-about" },
+  { number: "01", label: "About", selector: ".portfolio-about", pinId: "about-pin" },
   // Projects is a multi-beat GSAP-pinned section; a bare element jump lands on
   // the pinned element's CURRENT position, which is pin-START (p≈0, the float
   // beat) coming from above but pin-END (p≈1, the exit-vanish / powered-off
@@ -43,14 +49,14 @@ export const SECTION_REGISTRY: SectionEntry[] = [
     pinId: "mac-pin",
     jumpProgress: 0.85,
   },
-  { number: "03", label: "Work", selector: ".portfolio-work" },
+  { number: "03", label: "Work", selector: ".portfolio-work", pinId: "work-pin" },
   // Play is interests-only — the "Recents" photos live in their own Photos
   // section (below), so a jump lands on the section top (the 3D cluster).
   { number: "04", label: "Play", selector: ".other-pin-wrap" },
   { number: "05", label: "Honours", selector: ".portfolio-bp" },
   // Recents: the photo trains, a standalone section between Honours and Contact.
-  { number: "06", label: "Recents", selector: ".portfolio-photos" },
-  { number: "07", label: "Contact", selector: ".keypad-section" },
+  { number: "06", label: "Recents", selector: ".portfolio-photos", pinId: "photos-pin" },
+  { number: "07", label: "Contact", selector: ".keypad-section", pinId: "keypad-pin" },
 ];
 
 /** Resolve each registry entry to its live DOM element. */

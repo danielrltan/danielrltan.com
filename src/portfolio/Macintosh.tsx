@@ -332,30 +332,30 @@ export function Macintosh() {
     };
     window.addEventListener("mac-zoom-request", onMacZoom);
 
-    // Reveal the Mac stage once the page has scrolled past the hero + About
-    // (STAGE_REVEAL_VH) so it never shows through the About beat.
+    // Reveal the Mac stage while the SECTION is on screen (section-relative,
+    // replaces the absolute STAGE_REVEAL_VH = 2.25 scrollY gate, which broke as
+    // soon as a pin above changed length). Active from the section's top
+    // entering the viewport bottom until its bottom leaves the top AFTER the
+    // pin. The end is explicit because this trigger's element is the pinned
+    // element itself and starts before the pin, so GSAP would not add the
+    // pin's spacing to a plain "bottom top" end (the stage would go dark ~one
+    // section height into the pin). `st` is created first, so it has already
+    // refreshed when this end is re-evaluated.
     const stage = el.querySelector(".mac-stage") as HTMLElement | null;
-    const STAGE_REVEAL_VH = 2.25;
-    let raf = 0;
-    let lastVisible = false;
-    const updateStageVisibility = () => {
-      const vh = window.innerHeight || 1;
-      const ratio = window.scrollY / vh;
-      const visible = ratio >= STAGE_REVEAL_VH;
-      if (visible !== lastVisible) {
-        lastVisible = visible;
-        if (stage) {
-          stage.setAttribute("data-stage-visible", visible ? "true" : "false");
-        }
-      }
-    };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(updateStageVisibility);
-    };
-    updateStageVisibility();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
+    const setStageVisible = (v: boolean) =>
+      stage?.setAttribute("data-stage-visible", String(v));
+    const stageST = ScrollTrigger.create({
+      trigger: el,
+      start: "top bottom",
+      end: () =>
+        "+=" + Math.round(st.end - st.start + el.offsetHeight + window.innerHeight),
+      invalidateOnRefresh: true,
+      onToggle: (s) => setStageVisible(s.isActive),
+    });
+    // Seed (refresh-at-offset). isActive is undefined until the trigger's
+    // first update, so coerce; the post-refresh update fires onToggle if a
+    // mid-page reload lands inside the range.
+    setStageVisible(!!stageST.isActive);
 
     // Refresh once loading-active drops: pin positions shift during
     // initial layout.
@@ -363,11 +363,9 @@ export function Macintosh() {
 
     return () => {
       stopLoaderWatch();
+      stageST.kill();
       st.kill();
       window.removeEventListener("mac-zoom-request", onMacZoom);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      cancelAnimationFrame(raf);
     };
   }, [staticLanded]);
 
@@ -393,7 +391,7 @@ export function Macintosh() {
     <section ref={sectionRef} className="portfolio-section portfolio-mac">
       {/* Stage opacity is gated by `data-stage-visible` so the canvas
           doesn't peek into the About section above before the pin
-          engages (set true by the scrollY listener above, or forced on
+          engages (set by the section-relative ScrollTrigger above, or forced on
           for the static-landed narrow/reduced-motion path). */}
       <div
         className="mac-stage"

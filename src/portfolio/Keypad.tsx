@@ -4,7 +4,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import { SOCIALS } from "../socials";
 import { isTuneMode } from "../tuneMode";
-import Lenis from "lenis";
+import { ensureLenis } from "../scroll";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 // Lazy: keypad 3D scene (last section before the footer) loads on approach,
 // idle-prefetched in App.tsx so the chunk is cached before scroll-in.
@@ -14,6 +14,10 @@ const KeypadScene = lazy(() =>
 import { useIsMobile } from "../useIsMobile";
 import { track } from "../analytics";
 import "./keypad.css";
+
+// Legacy scroll API: the Lenis singleton moved to src/scroll.ts; re-exported
+// here so existing importers keep working until they migrate.
+export { scrollToSection, panScrollTo, setScrollLocked } from "../scroll";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -40,10 +44,9 @@ gsap.registerPlugin(ScrollTrigger);
  *   driven (not time-driven) so the user feels they're directly
  *   pulling the model into view.
  *
- * Lenis × ScrollTrigger sync still lives here as a module-scope
- * singleton: Lenis is set up before any pin is registered, both
- * ScrollTrigger.update + gsap.ticker hooked once so the page-wide
- * smooth scroll feeds every section's pin.
+ * Lenis × ScrollTrigger sync lives in src/scroll.ts (module-scope
+ * singleton). This section still calls ensureLenis() before its pin is
+ * registered, so Lenis creation timing is unchanged.
  *
  * Accessibility / SEO: the visual surface is 3D-only, but the section
  * also renders a visually-hidden but DOM-real h2 + <ul> of <a> tags
@@ -59,128 +62,6 @@ const TUNE_MODE = isTuneMode("keypad");
 // pinned. Tuned long enough for the drop to land + a deliberate
 // dwell on the keypad before the footer takes over.
 const PIN_DURATION_PX = 1400;
-
-// Lenis singleton: initialized lazily on first Keypad mount.
-// Module scope so StrictMode's double-mount in dev doesn't spin up
-// a competing instance.
-let lenisInstance: Lenis | null = null;
-function ensureLenis() {
-  if (lenisInstance || typeof window === "undefined") return;
-  // Lenis tuning: balances smoothness vs responsiveness. PERF /
-  // FEEL: duration dropped 0.95s → 0.6s after user reported the page
-  // feeling "laggy and unusable". The longer duration was amplifying
-  // perceived jank: every wheel impulse spread its work over ~57
-  // frames, and any per-frame stall during that window read as the
-  // entire page hitching. 0.6s still feels glided (vs. the bare-OS
-  // 0ms native scroll) while keeping each impulse resolved in ~36
-  // frames: fewer chances for an outlier frame to register.
-  //
-  // wheelMultiplier bumped 0.85 → 1.0 so a single wheel notch moves
-  // a sensible distance even though each impulse is shorter.
-  //
-  // TOUCH: smooth-scroll is intentionally OFF on touch. `syncTouch:false`
-  // (Lenis default, set explicitly here for clarity) means a finger drag
-  // uses the OS's native momentum/rubber-band scrolling, which on mobile
-  // GPUs feels crisper and lower-latency than re-interpolating every touch
-  // delta through Lenis's lerp (that path reads as laggy on a phone).
-  // GSAP ScrollTrigger still updates from the native scroll, so the
-  // pinned keypad/Mac/footer sections stay in sync. touchMultiplier left
-  // at the neutral 1 (it only scales deltas when syncTouch is on).
-  lenisInstance = new Lenis({
-    duration: 0.6,
-    easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-    smoothWheel: true,
-    wheelMultiplier: 1.0,
-    syncTouch: false,
-    touchMultiplier: 1,
-  });
-  // Force scroll-origin sync: without it, if Lenis initializes
-  // after the browser has scrolled (cache restore), Lenis snapshots
-  // whatever position the scroller is at and treats it as 0.
-  lenisInstance.scrollTo(0, { immediate: true });
-  lenisInstance.on("scroll", ScrollTrigger.update);
-  gsap.ticker.add((time) => lenisInstance!.raf(time * 1000));
-  // Disable GSAP's lag smoothing: Lenis already manages frame
-  // pacing; competing interpolators jitter the pin engagement.
-  gsap.ticker.lagSmoothing(0);
-
-  // Pause Lenis while the loading screen is up. CSS overflow:hidden
-  // doesn't stop Lenis because Lenis hijacks wheel events; only
-  // lenis.stop() truly halts input. MutationObserver fires
-  // synchronously on classList toggles so input is gated cleanly.
-  const html = document.documentElement;
-  const sync = () => {
-    if (!lenisInstance) return;
-    if (html.classList.contains("loading-active")) lenisInstance.stop();
-    else lenisInstance.start();
-  };
-  sync();
-  new MutationObserver(sync).observe(html, {
-    attributes: true,
-    attributeFilter: ["class"],
-  });
-}
-
-/**
- * Middle-button PAN / auto-scroll: jump the page to an ABSOLUTE Y immediately
- * (no lerp) via the shared Lenis singleton, so the autoscroll tracks the caller's
- * own running target at a direct, snappy, predictable rate. The caller owns the
- * target (accumulating it frame to frame) so nothing compounds — reading Lenis's
- * smoothed `.scroll` back each frame scrolled ~3x too fast. Routing through Lenis
- * (rather than window.scrollTo, which Lenis would lerp straight back) keeps GSAP
- * ScrollTrigger + the pinned sections in sync. ensureLenis() is idempotent.
- */
-export function panScrollTo(y: number) {
-  if (typeof window === "undefined") return;
-  ensureLenis();
-  if (lenisInstance) {
-    lenisInstance.scrollTo(y, { immediate: true });
-  } else {
-    window.scrollTo(0, y);
-  }
-}
-
-/**
- * Smooth-scroll to an absolute Y (or an element) via the shared Lenis
- * singleton. Falls back to native window.scrollTo if Lenis isn't up yet.
- * Used by the section nav menu to jump between sections; routing through
- * the same Lenis instance keeps GSAP ScrollTrigger / the pinned sections
- * in sync (a raw window.scrollTo would fight Lenis's lerp).
- */
-export function scrollToSection(
-  target: number | HTMLElement,
-  opts?: { duration?: number; immediate?: boolean },
-) {
-  if (lenisInstance) {
-    lenisInstance.scrollTo(target, {
-      duration: opts?.duration,
-      immediate: opts?.immediate,
-    });
-    return;
-  }
-  if (typeof window === "undefined") return;
-  const y =
-    typeof target === "number"
-      ? target
-      : target.getBoundingClientRect().top + window.scrollY;
-  window.scrollTo({ top: y, behavior: opts?.immediate ? "auto" : "smooth" });
-}
-
-/**
- * Lock / unlock page scrolling. CSS overflow:hidden alone doesn't stop Lenis
- * (it hijacks wheel events), so we stop the Lenis singleton too — and set
- * overflow:hidden as the native fallback. Used by the spill menu so the page
- * can't be scrolled underneath it while it's open.
- */
-export function setScrollLocked(locked: boolean) {
-  if (lenisInstance) {
-    if (locked) lenisInstance.stop();
-    else lenisInstance.start();
-  }
-  if (typeof document !== "undefined") {
-    document.documentElement.style.overflow = locked ? "hidden" : "";
-  }
-}
 
 export function Keypad() {
   const sectionRef = useRef<HTMLElement>(null);

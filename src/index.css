@@ -192,6 +192,32 @@
   --t-slow: 540ms;
   --stagger: 60ms;  /* per-item reveal step: item-i delay = i * --stagger */
 
+  /* -- Motion spine v2 (additive; mirrored 1:1 in src/motion.ts) ------------
+   * Duration scale: --t-press 120 < --t-fast 180 < --t-base 280 < --t-med 400
+   *   < --t-morph 420 < --t-slow 540. Snap rule for any ad-hoc value:
+   *   <=150ms -> --t-press, 151-220 -> --t-fast, 221-320 -> --t-base,
+   *   321-450 -> --t-med (layout morphs -> --t-morph), 451-700 -> --t-slow.
+   * Ambient loops (marquees, bobs, stepped dither) are exempt. */
+  --t-press: 120ms;       /* press/active feedback, tiny hover fills */
+  --t-morph: 420ms;       /* layout morphs (grid-template-rows, height) */
+  --t-handoff: 320ms;     /* hero -> About clear */
+  --t-cover-in: 120ms;    /* scroll-cover in (stepped) */
+  --t-cover-out: 200ms;   /* scroll-cover out */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* both ends on screen (morphs, travel) */
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);     /* exits */
+  --ease-steps-4: steps(4, jump-end);            /* pixel-voice opacity steps */
+  --stagger-max: 5;       /* unitless cap: delay = min(var(--i),var(--stagger-max))*var(--stagger) */
+  /* Semantic aliases: use these in NEW css so intent is explicit. */
+  --reveal-dur: var(--t-slow);
+  --reveal-ease: var(--ease-out);
+  --reveal-lift: 16px;
+  --hover-dur: var(--t-fast);
+  --hover-ease: var(--ease-out);
+  --chrome-dur: var(--t-base);
+  --chrome-lift: 8px;
+  --exit-dur: var(--t-fast);
+  --exit-ease: var(--ease-in);
+
   /* Editorial type scale (separate from `--text-*` HUD micro-scale).
    * --fs-sub closes the 13→16 gap (14px, the densest mid-range orphan,
    * 7 uses). --fs-body-lg is the existing 17px body voice used by
@@ -221,7 +247,6 @@
      --hero-opacity dissolves it. See hero-composition.css. */
   --hero-opacity: 1;
   --hero-to-about: 0;
-  --content-opacity: 0;
 }
 
 /* Scroll-driven hero layer consumes a CSS variable instead of receiving opacity
@@ -325,7 +350,7 @@ body {
    main.tsx adds html.loading-active synchronously before React mounts. */
 .app-wrapper {
   background: var(--bg-page);
-  transition: background 350ms ease;
+  transition: background var(--t-med) var(--ease-out);
 }
 html.loading-active .app-wrapper {
   background: var(--accent);
@@ -419,7 +444,7 @@ html.loading-active body {
   height: 0;
   pointer-events: none;
   will-change: transform, opacity;
-  transition: opacity 0.18s ease;
+  transition: opacity var(--t-fast) var(--ease-out);
 }
 
 /* The arrow (or spark variant). Per-state left/top (inline) pin the tip to the
@@ -431,7 +456,7 @@ html.loading-active body {
 
 /* Over a clickable: the arrow + sparks pop in. */
 .moveable-cursor--clickable .moveable-cursor__arrow {
-  animation: moveable-cursor-pop 240ms cubic-bezier(0.2, 0.7, 0.3, 1.3);
+  animation: moveable-cursor-pop var(--t-base) var(--ease-bounce);
 }
 
 /* Click PRESS is no longer a CSS keyframe: it is a sustained scale composed
@@ -454,25 +479,25 @@ html.loading-active body {
    lift, soft orange bloom) so the top strip reads as one bar with a tile at
    each end. The tile is what masks the section corner headers that scroll
    beneath it — previously the bare orange strokes collided with the orange
-   "01" tag and the wordmark. Backdrop blur keeps it reading as glass over
-   the 3D room / photos while staying opaque enough to fully hide text. */
+   "01" tag and the wordmark. */
 .brand-mark {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.96);
-  -webkit-backdrop-filter: blur(12px) saturate(1.15);
-  backdrop-filter: blur(12px) saturate(1.15);
+  /* Solid white, no backdrop-filter: the tile is opaque enough to hide the
+     headers beneath, and a live blur re-samples every scroll frame (a real
+     Safari scroll-perf cost). */
+  background: #fff;
   outline: 2px solid transparent;
   outline-offset: 3px;
   text-decoration: none;
   user-select: none;
   transition:
-    opacity 0.3s ease,
-    outline-color 220ms ease,
-    box-shadow 240ms ease,
-    transform 220ms cubic-bezier(0.2, 0.9, 0.25, 1);
+    opacity var(--chrome-dur) var(--ease-out),
+    outline-color var(--hover-dur) var(--hover-ease),
+    box-shadow var(--hover-dur) var(--hover-ease),
+    transform var(--hover-dur) var(--hover-ease);
 }
 .brand-mark:hover,
 .brand-mark:focus-visible {
@@ -495,11 +520,11 @@ html.loading-active body {
    JumpToTop icon button. */
 .hud-btn {
   transition:
-    background 0.18s ease,
-    border-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.12s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.18s ease;
+    background var(--hover-dur) var(--hover-ease),
+    border-color var(--hover-dur) var(--hover-ease),
+    color var(--hover-dur) var(--hover-ease),
+    transform var(--t-press) var(--ease-out),
+    box-shadow var(--hover-dur) var(--hover-ease);
 }
 .hud-btn:hover {
   background: var(--accent-tint) !important;
@@ -556,9 +581,24 @@ html.loading-active body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    /* The net zeroes durations; zero the delays too so staggers don't
+       leave items invisible for their delay (was hand-patched per file). */
+    transition-delay: 0s !important;
+    animation-delay: 0s !important;
     scroll-behavior: auto !important;
   }
 }
+
+/* Scroll cover (src/scroll.ts): long programmatic jumps (> 3 viewports) cut
+   behind this instead of blasting through every pin. Same colour as the menu
+   scrim so a cut reads as a CRT channel switch. z 9500: above the HUD (40)
+   and the menu, below the cursor (10000); never shown with the boot loader. */
+.scroll-cover { position: fixed; inset: 0; z-index: 9500; pointer-events: none; opacity: 0; visibility: hidden;
+  background: repeating-linear-gradient(to bottom, rgba(13,14,16,.06) 0 1px, transparent 1px 3px), var(--bg-page);
+  transition: opacity var(--t-cover-out) var(--ease-out), visibility 0s linear var(--t-cover-out); }
+.scroll-cover.is-on { opacity: 1; visibility: visible; pointer-events: auto;
+  transition: opacity var(--t-cover-in) steps(3, jump-end), visibility 0s; }
+@media (prefers-reduced-motion: reduce) { .scroll-cover { display: none; } }
 
 /* ===================================================================
  * GLOBAL MOBILE FOUNDATION (<=768px, matches useIsMobile breakpoint)
