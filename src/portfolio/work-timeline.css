@@ -135,14 +135,17 @@
     padding-bottom: clamp(32px, 5vh, 72px);
   }
 }
-/* Frame fit (desktop ≤920 tall, e.g. 1440×900 / 1536×864): the pinned frame
-   is locked to its refresh height, so header + three rows + the tallest open
-   panel (row 0) must fit 100vh or the last row sits below the fold for the
-   whole pin (it measured 1015px at 900). Tightens the frame padding and the
-   wordmark a step; the rows keep their roomy padding (owner request), and
-   collapsed rows no longer carry a 20px residual. The ≤800 block below
-   tightens further and wins where both match. */
-@media (max-height: 920px) and (min-width: 901px) {
+/* Frame fit (desktop ≤1100 tall: 1440×900, 1536×864, and the common
+   1920×~970 / 1512×982 browser viewports): the pinned frame is locked to its
+   refresh height, so header + three rows + the tallest open panel (row 0)
+   must fit 100vh or the last row sits below the fold for the whole pin (it
+   measured 1015px at 900). Tightens the frame padding, and caps the wordmark,
+   company and metric by the viewport HEIGHT too (min(vw, vh)) so wide-short
+   windows fit; the rows keep their roomy padding (owner request), and
+   collapsed rows no longer carry a 20px residual. The spec's 920px bound was
+   raised to 1100 because 920-1000px-tall viewports overflowed by 25-36px.
+   The ≤800 block below tightens further and wins where both match. */
+@media (max-height: 1100px) and (min-width: 901px) {
   .work-ledger {
     gap: clamp(12px, 2vh, 24px);
     padding-top: clamp(24px, 3.4vh, 40px);
@@ -152,7 +155,13 @@
     padding-bottom: clamp(10px, 1.4vh, 18px);
   }
   .portfolio-work .work-ledger-title {
-    font-size: clamp(40px, 6.4vw, 96px);
+    font-size: clamp(40px, min(6.4vw, 10.5vh), 96px);
+  }
+  .portfolio-work .work-acc-company {
+    font-size: clamp(26px, min(3.4vw, 5.6vh), 50px);
+  }
+  .portfolio-work .work-acc-pull-metric {
+    font-size: clamp(28px, min(3.4vw, 5.6vh), 52px);
   }
 }
 /* Short desktop (≈768): the dot-matrix title renders ~2x its font-size, so on a
