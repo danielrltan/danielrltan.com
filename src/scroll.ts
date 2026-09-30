@@ -219,6 +219,12 @@ function resolveY(target: number | HTMLElement, offset = 0): number {
 
 // ── Programmatic scroll ─────────────────────────────────────────────────────
 
+// The in-flight smooth scroll's finisher. A new programmatic scroll supersedes
+// it: its `end` is emitted and its onComplete/promise settle right away,
+// instead of a stale `end` arriving from its safety timeout mid-way through
+// the next scroll.
+let settleActiveSmooth: (() => void) | null = null;
+
 /** Instant jump + ScrollTrigger.update + synchronous `end` emit. */
 function cutNow(y: number, from: number) {
   if (lenisInstance) lenisInstance.scrollTo(y, { immediate: true, force: true });
@@ -243,6 +249,7 @@ function cutNow(y: number, from: number) {
  */
 export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
+  settleActiveSmooth?.();
   const presetName = opts.preset ?? "glide";
   const preset = presetName === "nudge" ? SCROLL.nudge : SCROLL.glide;
   const from = currentY();
@@ -313,12 +320,14 @@ export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): 
       if (done) return;
       done = true;
       window.clearTimeout(timer);
+      if (settleActiveSmooth === finish) settleActiveSmooth = null;
       emit({ phase: "end", mode: "smooth", from, to: y });
       opts.onComplete?.();
       resolve();
     };
     // Covers a user wheel cancelling the tween (onComplete never fires then).
     timer = window.setTimeout(finish, (duration + 0.25) * 1000);
+    settleActiveSmooth = finish;
     lenis.scrollTo(y, {
       duration,
       easing,

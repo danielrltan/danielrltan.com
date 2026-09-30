@@ -334,9 +334,9 @@ export function Macintosh() {
 
     // Reveal the Mac stage while the SECTION is on screen (section-relative,
     // replaces the absolute STAGE_REVEAL_VH = 2.25 scrollY gate, which broke as
-    // soon as a pin above changed length). Active from the section's top
-    // entering the viewport bottom until its bottom leaves the top AFTER the
-    // pin. The end is explicit because this trigger's element is the pinned
+    // soon as a pin above changed length). Active from just before the
+    // section's top enters the viewport bottom until its bottom leaves the top
+    // AFTER the pin. The end is explicit because this trigger's element is the pinned
     // element itself and starts before the pin, so GSAP would not add the
     // pin's spacing to a plain "bottom top" end (the stage would go dark ~one
     // section height into the pin). `st` is created first, so it has already
@@ -344,11 +344,20 @@ export function Macintosh() {
     const stage = el.querySelector(".mac-stage") as HTMLElement | null;
     const setStageVisible = (v: boolean) =>
       stage?.setAttribute("data-stage-visible", String(v));
+    // STAGE_LEAD_VH: reveal a little BEFORE the section enters so the stage's
+    // opacity fade (macintosh.css) finishes off screen and the section never
+    // arrives blank or mid-fade (the old absolute gate also led by ~0.64vh at
+    // 1440x900). The stage is clipped to its own box, so the lead can't show
+    // through About.
+    const STAGE_LEAD_VH = 0.5;
     const stageST = ScrollTrigger.create({
       trigger: el,
-      start: "top bottom",
+      start: () => `top bottom+=${Math.round(window.innerHeight * STAGE_LEAD_VH)}`,
       end: () =>
-        "+=" + Math.round(st.end - st.start + el.offsetHeight + window.innerHeight),
+        "+=" +
+        Math.round(
+          st.end - st.start + el.offsetHeight + window.innerHeight * (1 + STAGE_LEAD_VH),
+        ),
       invalidateOnRefresh: true,
       onToggle: (s) => setStageVisible(s.isActive),
     });
