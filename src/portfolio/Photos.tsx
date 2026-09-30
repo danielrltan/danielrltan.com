@@ -8,6 +8,7 @@ import "./photos.css";
 import { ScrambleText } from "./ScrambleText";
 import { OtherPhotoTrains } from "../other/OtherPhotoTrains";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
+import { isCoarsePointer } from "../motion";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -16,9 +17,12 @@ gsap.registerPlugin(ScrollTrigger);
  *
  * The horizontal photo-train stack (originally the opening beat of the Play
  * section), now its own standalone section near the end of the page (after
- * Honours, before Contact). Three rows of cards glide at
- * their own controlled rate as the section's pin scrubs; OtherPhotoTrains owns
- * the rAF lerp (never bound directly to scroll — see the project rule). Real
+ * Honours, before Contact). Three rows of cards slide as the page scrolls:
+ * ONE continuous train-progress span (the "photos-train" trigger) runs from
+ * the section entering the viewport, through the pin, to half a viewport past
+ * it, so the rack is never parked static on the way in or out.
+ * OtherPhotoTrains follows that progress through a dt-based damp that sleeps
+ * once converged. Real
  * uploads stream in from /photos/manifest.json; until they exist the tinted
  * placeholders below render.
  */
@@ -39,15 +43,12 @@ const TRAIN_PHOTOS = [
   { color: "#1f1a17", label: "Books" },
 ];
 
-// Standalone pin length: enough scroll to parade one full unique-photo chunk
-// of every row past the centred clear window (the trains derive their travel
-// from live geometry, so this is just "how much scroll the parade gets").
-const PIN_DURATION_PX = 2600;
-
-// Train scrub window inside the pin: a short lead so the header lands first,
-// a short tail so the last cards settle before the pin releases.
-const TRAIN_START = 0.08;
-const TRAIN_END = 0.92;
+// Pin length, viewport-relative (motion spec §3). Was a fixed 2600px with a
+// dead lead/tail and a static rack either side; the train now moves across
+// the whole approach + pin + exit span instead (TRAIN_TAIL_VH).
+const PIN_VH = 2.0;
+// The train progress span ends this many viewports past the pin's end.
+const TRAIN_TAIL_VH = 0.5;
 
 const PREFERS_REDUCED_MOTION =
   typeof window !== "undefined" &&
@@ -56,20 +57,27 @@ const PREFERS_REDUCED_MOTION =
 
 
 // Write the gallery header reveal STRAIGHT to CSS vars (no React state → the
-// ~108 card nodes never re-render on a scrub tick). Fed by GSAP's smoothed
-// scrub on the Lenis-synced ticker (project rule: never bind CSS to RAW scroll).
+// ~108 card nodes never re-render on a scroll tick). Driven by ScrollTrigger
+// on the Lenis-smoothed scroll (Lenis is the one smoother; photos.css keeps
+// no transition on these vars). Skips the write when nothing changed.
 function applyGalleryHead(el: HTMLElement | null, p: number) {
   if (!el) return;
-  el.style.setProperty("--gh-eye", String(smoothstep(0, 0.4, p)));
-  el.style.setProperty("--gh-title", String(smoothstep(0.25, 0.75, p)));
+  const eye = smoothstep(0, 0.4, p).toFixed(3);
+  const title = smoothstep(0.25, 0.75, p).toFixed(3);
+  if (el.style.getPropertyValue("--gh-eye") !== eye) el.style.setProperty("--gh-eye", eye);
+  if (el.style.getPropertyValue("--gh-title") !== title) {
+    el.style.setProperty("--gh-title", title);
+  }
 }
 
 export function Photos() {
   const sectionRef = useRef<HTMLElement>(null);
-  // Beat-A-style train progress 0..1, written per GSAP frame into a REF (not
-  // state) so the ~108 card nodes never re-render on a scrub tick; the trains'
-  // rAF loop reads it directly.
+  // Train progress 0..1 across the photos-train span, written per ScrollTrigger
+  // update into a REF (not state) so the ~108 card nodes never re-render on a
+  // scroll tick; the trains' rAF loop reads it directly.
   const progressRef = useRef(0);
+  // The trains' follow loop sleeps once converged; each progress write wakes it.
+  const trainWakeRef = useRef<(() => void) | null>(null);
   // Header reveal written straight to CSS vars (no per-tick setState).
   const headerRef = useRef<HTMLElement>(null);
   // Defer the ~5MB of photo webp off the INITIAL load: mount the trains only as
@@ -106,35 +114,50 @@ export function Photos() {
       id: "photos-pin",
       trigger: el,
       start: "top top",
-      end: `+=${PIN_DURATION_PX}`,
+      end: () => "+=" + Math.round(window.innerHeight * PIN_VH),
+      invalidateOnRefresh: true,
       pin: true,
       pinSpacing: true,
-      // Smoothed scrub (same as Play): a fast flick GLIDES the trains rather
-      // than teleporting the strip to the raw scroll position.
-      scrub: 1,
-      onUpdate: (self) => {
-        const p = self.progress;
-        // Header is already landed by the entrance trigger as the section
-        // rises; the pin just holds it up (no per-frame re-land that would
-        // snap it back to 0 at progress 0).
-        applyGalleryHead(headerRef.current, 1);
-        // Train progress 0..1 across [TRAIN_START, TRAIN_END].
-        progressRef.current = Math.max(
-          0,
-          Math.min(1, (p - TRAIN_START) / (TRAIN_END - TRAIN_START)),
-        );
+      // Native touch scroll pins late without it (the pin engages a frame
+      // after the section passes the top); Lenis-driven desktop scroll pins
+      // early WITH it, so only coarse pointers get it.
+      anticipatePin: isCoarsePointer() ? 1 : 0,
+      // Header is already landed by the entrance trigger as the section
+      // rises; the pin just holds it up (applyGalleryHead no-ops when the
+      // value is unchanged).
+      onUpdate: () => applyGalleryHead(headerRef.current, 1),
+    });
+
+    // One continuous train span (created AFTER the pin so it refreshes after
+    // it): from the section's top entering the viewport bottom, through the
+    // pin, to TRAIN_TAIL_VH past the pin's end. Not pinning.
+    const train = ScrollTrigger.create({
+      id: "photos-train",
+      trigger: el,
+      start: "top bottom",
+      end: () =>
+        (ScrollTrigger.getById("photos-pin")?.end ?? st.end) +
+        window.innerHeight * TRAIN_TAIL_VH,
+      invalidateOnRefresh: true,
+      onUpdate: (s) => {
+        progressRef.current = s.progress;
+        trainWakeRef.current?.();
+      },
+      // Callbacks don't fire for refresh-time changes; keep the ref seeded.
+      onRefresh: (s) => {
+        progressRef.current = s.progress;
+        trainWakeRef.current?.();
       },
     });
 
     // Entrance reveal: fade the header up as the section RISES into view,
     // before the pin engages. Mirrors the Other Beat-A entrance so the
-    // Honors→Photos seam is a cross-dissolve, not a blank gap.
+    // Honors→Photos seam is a cross-dissolve, not a blank gap. Direct on the
+    // Lenis-smoothed scroll (a numeric scrub here was inert: nothing attached).
     const entrance = ScrollTrigger.create({
       trigger: el,
       start: "top bottom",
       end: "top top",
-      // scrub:1 (was true): eased on the Lenis-synced ticker, not raw scroll.
-      scrub: 1,
       onUpdate: (self) => applyGalleryHead(headerRef.current, self.progress),
     });
 
@@ -144,6 +167,7 @@ export function Photos() {
 
     return () => {
       stopLoaderWatch();
+      train.kill();
       st.kill();
       entrance.kill();
     };
@@ -154,6 +178,8 @@ export function Photos() {
       ref={sectionRef}
       className="portfolio-section portfolio-photos"
       aria-labelledby="photos-sr-heading"
+      // Menu / footer jumps land just inside the pin (scroll.ts jumpToSection).
+      data-jump-progress="0.1"
     >
       {/* Accessible heading: the visible header + trains are decorative
           placeholders (aria-hidden below), so this carries the section name
@@ -189,7 +215,11 @@ export function Photos() {
           carousel the owner wanted back. */}
       <div className="other-trains-wrap" aria-hidden="true">
         {trainsMounted && (
-          <OtherPhotoTrains photos={TRAIN_PHOTOS} progressRef={progressRef} />
+          <OtherPhotoTrains
+            photos={TRAIN_PHOTOS}
+            progressRef={progressRef}
+            wakeRef={trainWakeRef}
+          />
         )}
       </div>
     </section>

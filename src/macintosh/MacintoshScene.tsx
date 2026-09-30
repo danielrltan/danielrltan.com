@@ -7,39 +7,50 @@ import { useMacNarrow } from "./useMacNarrow";
 import macSpec from "./macSpec.json";
 import { clamp01 } from "../math";
 import { isTuneMode } from "../tuneMode";
+import { DECAY, damp, ease, isCoarsePointer } from "../motion";
+import { onScrollJump } from "../scroll";
 
 // Visit ?tune=mac to enter a free-camera, slider-driven positioning
 // view for re-framing the model.
 const TUNE_MODE = isTuneMode("mac");
 
 /**
- * 3D scene for the Macintosh section. THREE-BEAT scroll choreography:
+ * 3D scene for the Macintosh section. Scroll choreography over the pin
+ * (Macintosh.tsx pins for 4.0 viewports; motion spec §W4 beat map):
  *
- *   BEAT 1: STACK   (pin 0.00 → 0.22)
+ *   ENTRY   (pin 0.00 → 0.06)
+ *     Camera eases in 9.0 → 8.5 (outCubic) so the very first wheel notch
+ *     visibly responds.
+ *
+ *   ORBIT   (pin 0.02 → 0.46)
  *     Mac floats high in empty cool-white space (no floor, no shadow
- *     plate). Tech-stack cards arranged in a volumetric ring around
- *     the Mac's vertical Y axis at radii 2.9-3.0 with per-card
- *     yOffset for depth. Cards are STATIC, locked at their starting
- *     orbital angle. Mac self-spins slowly for dynamism.
+ *     plate), turning toward the cursor. Tech-stack cards orbit it
+ *     through a slow partial revolution (ORBIT_SWEEP = 0.6π, ~0.068°/px
+ *     at 900 tall: the owner-approved speed).
  *
- *   BEAT 2: ORBIT   (pin 0.22 → 0.55)
- *     Cards orbit the Mac through a slow partial revolution (ORBIT_SWEEP
- *     ≈ 0.8π). Mac continues to self-spin and stays at hover Y. Camera
- *     is locked; the orbit is the kinetic centerpiece.
+ *   LAND    (pin 0.38 → 0.76)
+ *     Cards dissolve 0.38 → 0.52 (opacity → 0, scale → 0.4, outward
+ *     drift). Parallax/sway settles 0.38 → 0.50. The camera dollies in
+ *     0.42 → 0.76 (inOutSine, so it is already moving before the dissolve
+ *     ends: no static "limbo pose"). Mac descends + its float tilt unwinds
+ *     0.44 → 0.68. CRT boot types in 0.62 → 0.76 (bootEnd = the landed
+ *     magnet L in Macintosh.tsx, which also gates the detail zoom).
  *
- *   BEAT 3: LAND + EXPLORE (pin 0.55 → 1.00)
- *     Cards dissolve (opacity → 0, scale → 0.4, position drift × 1.5
- *     outward) across 0.50 → 0.65. Mac descends from HOVER_Y to REST_Y
- *     across 0.55 → 0.78 and settles to rotation 0 (face-camera). CRT
- *     boot text types in 0.72 →
- *     0.85 then desktop tile grid appears; click planes engage.
+ *   DWELL   (pin 0.76 → 0.88)
+ *     Landed, booted, readable; the tile grid is clickable.
+ *
+ *   EXIT    (pin 0.88 → 1.00, scroll-bound so scrolling back reverses it
+ *     exactly): double blink, CRT power-off collapse, then the housing
+ *     shrinks and fades away (see EXIT_* below).
  *
  * Composition mirrors the Keypad scene's framing: the Mac and orbit
  * float in empty space. The wrapper section has cool off-white
  * `var(--bg-page)` underneath; the Canvas is alpha so it composites
  * onto that surface (no in-canvas floor).
  *
- * Pin progress 0..1 is read each frame from `pinProgressRef`. State
+ * Pin progress 0..1 is read each frame from `pinProgressRef` (directly on
+ * wheel/trackpad, where Lenis already smooths; through one DECAY.follow
+ * damp on coarse pointers, where native touch scroll is unsmoothed). State
  * for the CRT (bootProgress, hoverIndex) lives in React state and is
  * throttled to ~30Hz so the CanvasTexture rebuild isn't per-frame.
  */
@@ -91,27 +102,44 @@ export interface ScreenRect {
   linkWFrac?: number;
 }
 
+// Beat map (pin fraction). Moves together with the camera constants below
+// (ENTRY_END, DOLLY_*, TILT_UNWIND_*, EXIT_*) and with the landed magnet /
+// CTA target in Macintosh.tsx (LANDED_P = bootEnd).
 const THRESHOLDS = {
-  // Orbit sweep: cards begin rotating at orbitStart, complete one full
-  // revolution by orbitEnd. The window aligns with BEAT 2.
-  orbitStart: 0.18,
-  orbitEnd: 0.55,
-  // Card dissolve window: overlaps the start of BEAT 3 so the cards
-  // are already fading as the Mac begins its descent.
-  dissolveStart: 0.50,
-  dissolveEnd: 0.65,
-  // Mac descent: slightly trails the dissolve so the eye reads the
-  // cards leaving first, then the Mac coming down to fill the space.
-  descentStart: 0.55,
-  descentEnd: 0.78,
-  // Mac self-spin damps out into BEAT 3 so the screen is stable for
-  // the user to read tiles.
-  spinSettleStart: 0.50,
-  spinSettleEnd: 0.65,
-  // CRT boot text + desktop tile reveal.
-  bootStart: 0.72,
-  bootEnd: 0.85,
+  // Orbit sweep: linear across the window (constant angular velocity).
+  orbitStart: 0.02,
+  orbitEnd: 0.46,
+  // Card dissolve: starts inside the orbit so the cards are already
+  // leaving as the dolly begins.
+  dissolveStart: 0.38,
+  dissolveEnd: 0.52,
+  // Mac descent (and the tilt unwind, TILT_UNWIND_*): the landing motion.
+  descentStart: 0.44,
+  descentEnd: 0.68,
+  // Cursor parallax / idle sway damps out so the screen is square to
+  // camera before the descent commits.
+  spinSettleStart: 0.38,
+  spinSettleEnd: 0.5,
+  // CRT boot text + desktop tile reveal. bootEnd is the landed pose.
+  bootStart: 0.62,
+  bootEnd: 0.76,
 };
+// The float-beat click-to-zoom hitbox (and its hover cursor) is live only
+// before the landing commits; after this the on-screen tiles own clicks.
+const FLOAT_CLICK_END = 0.44;
+// Detail-zoom gate tolerance: the snap/CTA land on integer scroll px, which
+// can put p a hair under bootEnd (e.g. 0.75990 at 833px tall). Without the
+// slack a tile click would set `selected` but never zoom in.
+const CAN_OPEN_EPS = 0.005;
+
+/** Orbit ring target angle for a pin progress (linear across the window). */
+function orbitAngleFor(p: number): number {
+  return (
+    clamp01(
+      (p - THRESHOLDS.orbitStart) / (THRESHOLDS.orbitEnd - THRESHOLDS.orbitStart),
+    ) * ORBIT_SWEEP
+  );
+}
 
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
@@ -152,12 +180,12 @@ const MAC_SPIN_AMP = 0.42;
 // advance linearly from 0 → ORBIT_SWEEP over the orbit window
 // (THRESHOLDS.orbitStart..orbitEnd), so this value IS the orbit's
 // angular velocity per unit scroll. Lowered in stages per repeated user
-// notes that the sweep still felt fast: 2π → 1.2π → now 0.8π (~144°)
-// over a slightly wider window (orbitStart 0.22 → 0.18). Combined with
-// the per-frame lerp smoothing on the applied rotation (LogoOrbit), the
-// ring rotates calmly, enough to read the spec-tags from several faces
-// without whipping around or tracking raw wheel steps 1:1.
-const ORBIT_SWEEP = Math.PI * 0.8;
+// notes that the sweep still felt fast: 2π → 1.2π → 0.8π → now 0.6π
+// (108°) over the 4.0vh pin's 0.02 → 0.46 window (1584px at 900 tall),
+// i.e. ~0.068°/px, the owner-approved speed of the old 5800px pin. The
+// applied rotation follows through a DECAY.soft damp (LogoOrbit) so
+// discrete wheel steps glide.
+const ORBIT_SWEEP = Math.PI * 0.6;
 
 // CURSOR PARALLAX (float beats). Replaces the old fixed Y-axis sine sway:
 // during BEATs 1-2 the Mac TURNS TOWARD the cursor — yaw tracks the
@@ -236,8 +264,8 @@ const MAC_FLOAT_TILT_Y = THREE.MathUtils.degToRad(11.1);
 const MAC_FLOAT_TILT_Z = THREE.MathUtils.degToRad(-9);
 // Float-pose tilt unwinds in lockstep with the descent so the screen
 // is dead-flat to camera by the time the CRT lights up.
-const TILT_UNWIND_START = 0.55;
-const TILT_UNWIND_END = 0.78;
+const TILT_UNWIND_START = THRESHOLDS.descentStart;
+const TILT_UNWIND_END = THRESHOLDS.descentEnd;
 
 /* ─────────────────────────────────────────────────────────────────
  * CAMERA DOLLY-IN (wide layout only).
@@ -247,8 +275,11 @@ const TILT_UNWIND_END = 0.78;
  * margin. During BEAT 3 the camera travels IN toward the landed Mac so
  * the CRT face dominates the frame and the project tiles become
  * readable. The dolly window is pin DOLLY_START→DOLLY_END (overlaps the
- * descent + tilt-unwind + CRT boot) eased easeInOutCubic, so the zoom
- * feels like one continuous landing motion with the Mac.
+ * dissolve tail + descent + tilt-unwind + CRT boot) eased inOutSine (its
+ * gentler shoulders keep it visibly moving from the first px, so there is
+ * no parked "limbo" pose between the dissolve and the push-in), so the zoom
+ * feels like one continuous landing motion with the Mac. A short ENTRY cue
+ * (z 9.0 → 8.5 over pin 0.00 → 0.06) precedes it so the first notch reads.
  *
  * GEOMETRY (FOV 28 → vertical half-angle 14°, tan≈0.2493):
  *   At the landed state the CRT screen plane (0.72 world tall) sits
@@ -263,21 +294,38 @@ const TILT_UNWIND_END = 0.78;
  *   stays dead-center as the camera pulls in.
  *
  * Driven per-frame from pinProgressRef (NOT a one-shot effect) so it
- * tracks scrub scrolling smoothly. CameraFramer owns the narrow path
+ * tracks scroll 1:1 (Lenis is the smoother). CameraFramer owns the narrow path
  * (no scroll there); this dolly owns the wide path.
  * ──────────────────────────────────────────────────────────────── */
-const DOLLY_START = 0.55;
-// Zoom-in completes at 0.85 (earlier than before) so the snap can rest on the
-// fully-landed, fully-zoomed, booted CRT and then HOLD there for a stretch of
-// scroll before anything happens — see EXIT_START.
-const DOLLY_END = 0.85;
-// EXIT VANISH window: the landed/booted snap rests at p≈0.85, and the Mac then
-// STAYS at full size, zoomed + readable, all the way to EXIT_START (a generous
-// dwell so the user doesn't blow past it by accident). Only past EXIT_START
-// does it shrink + power down + dissolve away, finishing by EXIT_END. Reverses
-// on scroll-back.
-const EXIT_START = 0.95;
+const DOLLY_START = 0.42;
+// Zoom-in completes exactly at the landed pose (bootEnd = the magnet L).
+const DOLLY_END = THRESHOLDS.bootEnd;
+// ENTRY cue: the camera settles from DOLLY_Z_ENTRY to DOLLY_Z_WIDE over the
+// first ENTRY_END of the pin (outCubic), so the first wheel notch into the
+// pin produces visible change instead of a static float frame.
+const ENTRY_END = 0.06;
+const DOLLY_Z_ENTRY = 9.0;
+// EXIT window: the landed CRT dwells at full size 0.76 → EXIT_START, then
+// the exit plays SCROLL-BOUND (no timers) across EXIT_START → EXIT_END, so
+// resting mid-exit holds the frame and scrolling back reverses it exactly.
+// Sub-beats, as fractions of the exit window (exitT 0..1):
+const EXIT_START = 0.88;
 const EXIT_END = 1.0;
+//   Double blink (two brief picture drop-outs) inside exitT 0.05 → 0.15.
+const EXIT_BLINKS: ReadonlyArray<readonly [number, number]> = [
+  [0.065, 0.09],
+  [0.11, 0.135],
+];
+const EXIT_BLINK_OPACITY = 0.1;
+//   CRT power-off collapse (uPowerOff 0 → 1: hot line → dot → black).
+const EXIT_POWER_OFF_START = 0.15;
+const EXIT_POWER_OFF_END = 0.55;
+//   Housing shrink + fade (ease.inQuad), overlapping the collapse tail.
+const EXIT_SHRINK_START = 0.45;
+// Scale the housing reaches at exitT 1 while its opacity reaches 0: it
+// recedes and fades rather than collapsing to a point on top of the CRT's
+// own line → dot collapse.
+const EXIT_MIN_SCALE = 0.3;
 // Wide framing 9.5 → 8.5 so the centered Mac + the widened ~2.95 ring
 // fill more of the viewport (less dead margin) while still leaving
 // horizontal room for the rightmost card to clear the editorial rail
@@ -405,10 +453,14 @@ interface OrbitCard {
 function LogoOrbit({
   logos,
   orbitAngleRef,
+  orbitSnapRef,
   dissolveRef,
 }: {
   logos: SkillLogo[];
   orbitAngleRef: React.MutableRefObject<number>;
+  /** Set by the Scene on a programmatic CUT jump: the next frame places the
+   *  ring at its target instead of damping across the teleport. */
+  orbitSnapRef: React.MutableRefObject<boolean>;
   dissolveRef: React.MutableRefObject<number>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -457,13 +509,18 @@ function LogoOrbit({
   useFrame((_, dt) => {
     if (groupRef.current) {
       // Ease the ring toward its scroll-driven target angle instead of
-      // binding rotation 1:1 to scroll. Exponential smoothing (frame-rate
-      // independent) so discrete wheel/trackpad steps glide rather than
-      // snap (the "smoothen" half of the user note).
+      // binding rotation 1:1 to scroll. dt-based damp (DECAY.soft, τ≈167ms:
+      // same feel at 60 and 120 Hz) so discrete wheel/trackpad steps glide
+      // rather than snap (the "smoothen" half of the user note). A cut jump
+      // lands on the target in one frame.
       const target = orbitAngleRef.current;
-      const a = 1 - Math.exp(-6 * Math.min(dt, 0.05));
-      groupRef.current.rotation.y +=
-        (target - groupRef.current.rotation.y) * a;
+      const g = groupRef.current;
+      if (orbitSnapRef.current) {
+        orbitSnapRef.current = false;
+        g.rotation.y = target;
+      } else {
+        g.rotation.y = damp(g.rotation.y, target, DECAY.soft, dt);
+      }
     }
     const d = dissolveRef.current; // 0..1
     const drift = 0.5 * d;
@@ -1256,7 +1313,7 @@ function drawProjectThumbCover(
 /* ─────────────────────────────────────────────────────────────────
  * CRT canvas painter: boot log + project DIRECTORY listing. Amber
  * phosphor TUI; the screen lights up later in the pin window because
- * the boot threshold shifted to 0.72→0.85.
+ * the boot window is THRESHOLDS.bootStart→bootEnd (0.62→0.76).
  * ──────────────────────────────────────────────────────────────── */
 
 function useScreenTexture(
@@ -2252,17 +2309,29 @@ function Scene({
   // Click-to-zoom hitbox: clickable only while the Mac floats; its visibility
   // (and thus its raycastability) is toggled by pin progress in the useFrame.
   const zoomHitRef = useRef<THREE.Mesh>(null);
-  // Timestamp the retro CRT power-off began (section started exiting), or -1 when
-  // not shutting down. Drives the time-based double-blink + collapse on the
-  // overlay shader (uPowerOff). Reset when the user scrolls back into the pin.
-  const shutdownStartRef = useRef(-1);
-  // True while the scene is off-screen. The canvas now EAGER-mounts and never
-  // unmounts on capable HW (useSectionCanvasMount), so scene refs persist across
-  // a scroll-away/back instead of remounting fresh — without this, re-entering
-  // (e.g. scrolling UP from below into the pin's exit window) replayed a STALE
-  // shutdownStartRef and showed a dead, fully-collapsed black CRT. We reset the
-  // power state on the first visible frame after being hidden so re-entry is clean.
-  const wasHiddenRef = useRef(false);
+  // Effective pin progress the choreography reads. Direct on wheel/trackpad
+  // (Lenis is already the one smoother there); on coarse pointers (native,
+  // unsmoothed touch scroll) it follows the raw progress through a single
+  // DECAY.follow damp. -1 = unseeded (first frame takes the raw value).
+  const followPRef = useRef(-1);
+  const coarseRef = useRef(isCoarsePointer());
+  useEffect(() => {
+    const mq = window.matchMedia?.("(pointer: coarse)");
+    if (!mq) return;
+    const onChange = (e: MediaQueryListEvent) => {
+      coarseRef.current = e.matches;
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  // Programmatic CUT jump (menu / footer / JumpToTop behind the cover): snap
+  // the follower and the orbit ring to the new position in the same frame
+  // instead of animating across the teleport. ScrollTrigger.update() runs
+  // before the event, so pinProgressRef is already current here.
+  const orbitSnapRef = useRef(false);
+  // Last opacity written to the canvas element by the exit fade ("" = none),
+  // so the per-frame loop only touches the style when the value changes.
+  const canvasFadeRef = useRef("");
   // Tilt group sits between the Y-translation group (macGroupRef) and
   // the spin group (macSpinRef). It holds the keypad-style float pose
   // (X/Y/Z euler from MAC_FLOAT_TILT_*) and unwinds to 0 during the
@@ -2286,6 +2355,17 @@ function Scene({
   const screenInfoRef = useRef<ScreenInfo | null>(null);
   const orbitAngleRef = useRef(0);
   const dissolveRef = useRef(0);
+  useEffect(
+    () =>
+      onScrollJump((e) => {
+        if (e.phase !== "end" || e.mode !== "cut") return;
+        const raw = narrow ? 1 : pinProgressRef.current;
+        followPRef.current = raw;
+        orbitAngleRef.current = orbitAngleFor(raw);
+        orbitSnapRef.current = true;
+      }),
+    [narrow, pinProgressRef],
+  );
   const macSelfSpinRef = useRef(0);
   // Detail-zoom progress, LERPED toward its target each frame (1 when a
   // project is open, 0 when not) so the camera push-in / pull-out is
@@ -2344,7 +2424,7 @@ function Scene({
     cursorOn,
     selected ? hoveredControl ?? null : null,
   );
-  const { invalidate, camera, size } = useThree();
+  const { invalidate, camera, size, gl } = useThree();
 
   // Repaint the screen once a late-decoding thumbnail becomes ready (the
   // canvas is only redrawn on demand).
@@ -2378,38 +2458,32 @@ function Scene({
     // PERF: short-circuit when off-screen. With frameloop="demand" on
     // the canvas, this stops the entire WebGL submit pipeline while
     // the user is on other sections.
-    if (visibleRef.current === false) {
-      wasHiddenRef.current = true;
-      return;
-    }
-    if (wasHiddenRef.current) {
-      // First visible frame after a scroll-away: clear stale power-off state so
-      // the eager (never-unmounted) canvas re-enters clean, not on a dead CRT.
-      wasHiddenRef.current = false;
-      shutdownStartRef.current = -1;
-    }
+    if (visibleRef.current === false) return;
     invalidate();
     // On narrow viewports the section isn't pinned, so the scroll-driven
     // pinProgressRef never advances. Drive the choreography from a fixed
     // landed value (1) so the Mac sits descended, square-on, booted, and
     // clickable. The mobile experience is "the Mac, landed" with no
     // orbit beat. Desktop reads the live scroll progress as before.
-    const p = narrow ? 1 : pinProgressRef.current;
+    const raw = narrow ? 1 : pinProgressRef.current;
+    // Touch-only follower (see followPRef). Everything below reads `p`.
+    if (followPRef.current < 0 || narrow || !coarseRef.current) {
+      followPRef.current = raw;
+    } else {
+      followPRef.current = damp(followPRef.current, raw, DECAY.follow, dt);
+      if (Math.abs(raw - followPRef.current) < 1e-4) followPRef.current = raw;
+    }
+    const p = followPRef.current;
     // Click-to-zoom target is live only while the Mac is still floating/orbiting
     // (before it commits to the landing); after that the on-screen tiles own
     // clicks. Invisible meshes don't raycast, so visibility IS the gate.
-    if (zoomHitRef.current) zoomHitRef.current.visible = !narrow && p < 0.6;
+    if (zoomHitRef.current)
+      zoomHitRef.current.visible = !narrow && p < FLOAT_CLICK_END;
 
     // ── ORBIT ANGLE (drives the LogoOrbit group rotation) ─────────
-    // Cards hold their starting positions through BEAT 1, then sweep
-    // a full 2π revolution across BEAT 2. The mapping is linear over
-    // the orbit window so the angular velocity is constant, feels
-    // like real orbital motion, not an ease that "snaps" at the end.
-    const orbitT = clamp01(
-      (p - THRESHOLDS.orbitStart) /
-        (THRESHOLDS.orbitEnd - THRESHOLDS.orbitStart),
-    );
-    orbitAngleRef.current = orbitT * ORBIT_SWEEP;
+    // Linear over the orbit window so the angular velocity is constant:
+    // reads like real orbital motion, not an ease that "snaps" at the end.
+    orbitAngleRef.current = orbitAngleFor(p);
 
     // ── DISSOLVE (cards fade + drift + scale-down) ────────────────
     const dissolveT = clamp01(
@@ -2421,19 +2495,29 @@ function Scene({
     // ── EXIT VANISH ───────────────────────────────────────────────
     // Past the landed-CRT dwell (EXIT_START) the user is scrolling OUT of the
     // section. Rather than let the Mac HARD-CUT at the viewport edge as the
-    // pin releases (the reported "computer just gets cut off"), it shrinks
-    // toward a point, powers its screen down, and fades the contact shadow
-    // — so it VANISHES on the way out instead of clipping, and NOT by
-    // "floating back up" (explicitly rejected). Reverses on scroll-back.
+    // pin releases (the reported "computer just gets cut off"), the CRT
+    // powers down and the housing recedes and fades, so it VANISHES on the
+    // way out instead of clipping, and NOT by "floating back up" (explicitly
+    // rejected). All of it is a pure function of scroll (no timers), so a
+    // rest mid-exit holds and scrolling back reverses it exactly.
     // Never on narrow (p is pinned at 1 there → would hide the Mac) or while
     // a project detail is open (the user is reading it, not leaving).
     const exitT =
       narrow || selected ? 0 : clamp01((p - EXIT_START) / (EXIT_END - EXIT_START));
-    // Cartoony shrink: a strong ease-in (cubic) so the Mac holds near full
-    // size through most of the exit window, then collapses fast toward a
-    // point at the end — a snappy "poof", not a linear fade-down.
-    const exitVanish = exitT * exitT * exitT;
-    const exitScale = 1 - exitVanish;
+    // Housing shrink + fade: ease.inQuad holds near full size early in the
+    // window, then accelerates away as the pin releases.
+    const exitVanish = ease.inQuad(
+      clamp01((exitT - EXIT_SHRINK_START) / (1 - EXIT_SHRINK_START)),
+    );
+    const exitScale = 1 - (1 - EXIT_MIN_SCALE) * exitVanish;
+    // Fade the housing on the canvas element (compositor-only; the orbit
+    // cards are long dissolved by now, so the Mac is all it carries). Never
+    // on .mac-stage: its opacity transition belongs to data-stage-visible.
+    const fade = exitVanish > 0.001 ? (1 - exitVanish).toFixed(3) : "";
+    if (fade !== canvasFadeRef.current) {
+      canvasFadeRef.current = fade;
+      gl.domElement.style.opacity = fade;
+    }
 
     // ── MAC DESCENT ───────────────────────────────────────────────
     const descentT = clamp01(
@@ -2603,7 +2687,7 @@ function Scene({
     // texture reveals (the narrow path renders detail in-place without a
     // camera move). Only zoom in once the boot has completed enough that
     // the screen is on (avoids zooming into a dark CRT mid-scroll-up).
-    const canOpen = narrow || pinProgressRef.current >= THRESHOLDS.bootEnd;
+    const canOpen = narrow || p >= THRESHOLDS.bootEnd - CAN_OPEN_EPS;
     const detailTarget = selected && canOpen ? 1 : 0;
     detailZoomRef.current +=
       (detailTarget - detailZoomRef.current) * (1 - Math.exp(-dt * DETAIL_RATE));
@@ -2627,8 +2711,11 @@ function Scene({
       const dollyT = clamp01(
         (p - DOLLY_START) / (DOLLY_END - DOLLY_START),
       );
-      const dolly = easeInOutCubic(dollyT);
-      const landedZ = DOLLY_Z_WIDE + (DOLLY_Z_CLOSE - DOLLY_Z_WIDE) * dolly;
+      const dolly = ease.inOutSine(dollyT);
+      // ENTRY cue (outCubic 9.0 → 8.5), then the landing dolly.
+      const entry = ease.outCubic(clamp01(p / ENTRY_END));
+      const wideZ = DOLLY_Z_ENTRY + (DOLLY_Z_WIDE - DOLLY_Z_ENTRY) * entry;
+      const landedZ = wideZ + (DOLLY_Z_CLOSE - wideZ) * dolly;
       const landedY = DOLLY_Y_WIDE + (DOLLY_Y_CLOSE - DOLLY_Y_WIDE) * dolly;
       const landedLookY =
         DOLLY_LOOK_Y_WIDE + (DOLLY_LOOK_Y_CLOSE - DOLLY_LOOK_Y_WIDE) * dolly;
@@ -2726,28 +2813,24 @@ function Scene({
       // overlay carries the boot type-in + desktop. Opacity = max(on, boot
       // ramp) so it's always at full while floating and through boot/desktop.
       const screenOn = 1;
-      // RETRO POWER-OFF: when the exit window opens (you scroll OUTWARDS), play a
-      // one-shot CRT "go to sleep" — a DOUBLE BLINK, then a collapse to a hot
-      // line -> centre dot -> black (uPowerOff). Time-based (not scroll-bound) so
-      // the blink reads as a real flicker; resets if you scroll back into the pin.
-      const exiting = exitT > 0.04;
-      if (exiting && shutdownStartRef.current < 0) {
-        shutdownStartRef.current = performance.now();
-      } else if (!exiting && shutdownStartRef.current >= 0) {
-        shutdownStartRef.current = -1;
+      // RETRO POWER-OFF, scroll-bound across the exit window: a DOUBLE BLINK
+      // (EXIT_BLINKS), then the collapse to a hot line -> centre dot -> black
+      // (uPowerOff over EXIT_POWER_OFF_START..END). Scrolling back reverses
+      // it exactly; there is no timer to restart.
+      const blinkOff = EXIT_BLINKS.some(([a, b]) => exitT >= a && exitT < b);
+      const targetOpacity = blinkOff
+        ? EXIT_BLINK_OPACITY
+        : Math.max(screenOn, newBoot);
+      const powerOff = clamp01(
+        (exitT - EXIT_POWER_OFF_START) /
+          (EXIT_POWER_OFF_END - EXIT_POWER_OFF_START),
+      );
+      if (
+        Math.abs((mat.uniforms.uOpacity!.value as number) - targetOpacity) >
+        0.001
+      ) {
+        mat.uniforms.uOpacity!.value = targetOpacity;
       }
-      let targetOpacity = Math.max(screenOn, newBoot) * exitScale;
-      let powerOff = 0;
-      if (shutdownStartRef.current >= 0) {
-        const el = performance.now() - shutdownStartRef.current;
-        // Two quick off-beats (the double blink) before the collapse begins.
-        const blinkOff = (el > 70 && el < 120) || (el > 185 && el < 240);
-        targetOpacity = blinkOff ? 0.1 : 1;
-        // Collapse the picture (line -> dot -> fade) over ~320..700ms, AFTER the
-        // blinks land.
-        powerOff = clamp01((el - 320) / 380);
-      }
-      mat.uniforms.uOpacity!.value = targetOpacity;
       if (
         Math.abs((mat.uniforms.uPowerOff!.value as number) - powerOff) > 0.001
       ) {
@@ -2838,7 +2921,8 @@ function Scene({
           through the pin. Invisible (opacity-0) hitbox.
           IMPORTANT: R3F still RAYCASTS an invisible mesh, so `visible=false`
           does NOT gate its events. The handlers must early-return themselves once
-          the Mac has LANDED (pin ≥ 0.6) or on narrow (no float). Without that
+          the Mac commits to landing (pin ≥ FLOAT_CLICK_END) or on narrow (no
+          float). Without that
           gate the hitbox's onClick + stopPropagation ran on every landed tile
           click and swallowed it before the tile plane (the CRT-tile-click
           regression). */}
@@ -2848,13 +2932,13 @@ function Scene({
         visible={false}
         onClick={(e) => {
           // Landed: the on-screen tiles own clicks — do NOT stopPropagation here.
-          if (narrow || pinProgressRef.current >= 0.6) return;
+          if (narrow || pinProgressRef.current >= FLOAT_CLICK_END) return;
           e.stopPropagation();
           document.body.style.cursor = "";
           window.dispatchEvent(new Event("mac-zoom-request"));
         }}
         onPointerOver={() => {
-          if (narrow || pinProgressRef.current >= 0.6) return;
+          if (narrow || pinProgressRef.current >= FLOAT_CLICK_END) return;
           document.body.style.cursor = "pointer";
         }}
         onPointerOut={() => {
@@ -2917,6 +3001,7 @@ function Scene({
           <LogoOrbit
             logos={SKILL_LOGOS}
             orbitAngleRef={orbitAngleRef}
+            orbitSnapRef={orbitSnapRef}
             dissolveRef={dissolveRef}
           />
         </group>

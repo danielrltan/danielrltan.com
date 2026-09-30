@@ -20,7 +20,8 @@ import { MAC_PROJECTS, liveLinkLabel, type MacProject } from "../macintosh/proje
 import { track } from "../analytics";
 import { useMacNarrow } from "../macintosh/useMacNarrow";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
-import { scrollToSection } from "./Keypad";
+import { scrollToY } from "../scroll";
+import { GSAP_EASE } from "../motion";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -46,23 +47,45 @@ function usePrefersReducedMotion() {
 }
 
 /**
- * Stack + Projects section. GSAP-pinned for ~2 viewports; pin progress
- * drives the Mac's descent + CRT boot + desktop reveal inside
- * MacintoshScene. Pin progress writes into a ref so the 3D scene can
- * interpolate smoothly on fast scroll.
+ * Stack + Projects section. GSAP-pinned for PIN_VH viewports; pin progress
+ * drives the orbit, the Mac's descent + CRT boot + desktop reveal, and the
+ * exit inside MacintoshScene (beat map at its THRESHOLDS). Pin progress is
+ * written into a ref every ScrollTrigger update and read 1:1 by the scene:
+ * Lenis is the one smoother on wheel input (touch gets a single follower
+ * inside the scene).
  */
 
-// Three-beat choreography needs breathing room: STACK (0.00→0.22),
-// ORBIT (0.22→0.55), LAND+EXPLORE (0.55→1.00).
-// Bumped 1800 → 2600 → 6200px, then trimmed to 5800: at 6200 the
-// entry beat (floating cards) demanded ~1360px of scroll before
-// anything committed, which read as the section refusing the wheel
-// (user: stubborn at first, too much to give it). 5800 keeps the
-// scroll-lock property — a single hard flick still can't clear the
-// pin, the nearest-beat snap still settles every rest on a composed
-// pose — while shaving ~13% off every beat's scroll cost (entry beat
-// ~1360 → ~1190px).
-const PIN_DURATION_PX = 5800;
+// Pin length, viewport-relative (motion spec §3). Was a fixed 5800px, of
+// which ~1044px was dead entry and ~2200px padding. 4.0vh keeps the orbit at
+// the owner-approved ~0.068°/px and still can't be cleared by one hard
+// trackpad flick.
+const PIN_VH = 4.0;
+
+// LANDED pose: fully zoomed, booted CRT (= MacintoshScene THRESHOLDS.bootEnd,
+// which also gates the detail zoom). The magnet, the click-to-zoom CTA and
+// the menu/footer jump (data-jump-progress on the section) all land here.
+const LANDED_P = 0.76;
+// Direction-aware landed-pose MAGNET (replaces the 4-station directional
+// rail, which auto-played beats at 4-5x speed and trapped the exit by
+// pulling any rest in 0.85-1.0 back up). A rest inside the window for the
+// current scroll direction settles onto LANDED_P; every other rest is
+// user-paced. The narrow down-window tail (0.76-0.80) only catches a flick
+// that just overshot the landed pose, so there is no snap-back trap on the
+// way down, and a rest in the exit (>= 0.80) stays put.
+const MAGNET_DOWN: readonly [number, number] = [0.64, 0.8];
+const MAGNET_UP: readonly [number, number] = [0.72, 0.84];
+const MAGNET_DELAY_S = 0.12;
+const MAGNET_DURATION_S = { min: 0.35, max: 0.6 } as const;
+// "Projects" header fade across the descent: gone before the CRT fills
+// the frame. opacity = 1 - clamp((p - START) / SPAN).
+const HEADER_FADE_START = 0.38;
+const HEADER_FADE_SPAN = 0.2;
+// Click-to-zoom CTA glide cap (seconds; distance-scaled below it).
+const CTA_MAX_DURATION_S = 1.2;
+// Static-landed path (narrow / reduced motion): park inside the landed dwell
+// (0.76-0.88), NOT at 1.0, which is the end of the exit (collapsed CRT,
+// faded housing) now that the exit is scroll-bound.
+const STATIC_LANDED_P = 0.82;
 
 // ?tune=mac skips the pin so OrbitControls inside MacintoshScene can
 // drive the camera freely for re-framing.
@@ -70,7 +93,7 @@ const TUNE_MODE = isTuneMode("mac");
 
 // ?pin=<0..1> parks pinProgress at a fixed value WITHOUT pinning the
 // section: useful for QA-ing a specific beat (e.g. ?pin=0.10 to see
-// the float pose, ?pin=0.85 to see the landed CRT) without having to
+// the float pose, ?pin=0.80 to see the landed CRT) without having to
 // scroll through the full pin window. Differs from ?tune=mac in that
 // the orbit + Mac choreography STILL animates (it just reads from
 // this static value), so what you see is exactly what the user sees
@@ -192,14 +215,13 @@ export function Macintosh() {
     // "nothing happened, the list just vanished" (the reported broken
     // OPEN buttons, together with the pointer-events fix in the CSS).
     if (staticLanded) {
-      const stage = sectionRef.current?.querySelector(".mac-stage");
-      const reduce = window.matchMedia(
-        "(prefers-reduced-motion: reduce)",
-      ).matches;
-      stage?.scrollIntoView({
-        behavior: reduce ? "auto" : "smooth",
-        block: "center",
-      });
+      const stage = sectionRef.current?.querySelector<HTMLElement>(".mac-stage");
+      if (stage) {
+        // Centre the stage: glide preset (reduced motion cuts, in scrollToY).
+        const r = stage.getBoundingClientRect();
+        const y = window.scrollY + r.top + r.height / 2 - window.innerHeight / 2;
+        void scrollToY(y, { preset: "glide" });
+      }
     }
   };
   // Centralised close: clear the project, then restore focus to the
@@ -279,56 +301,59 @@ export function Macintosh() {
       id: "mac-pin",
       trigger: el,
       start: "top top",
-      end: `+=${PIN_DURATION_PX}`,
+      end: () => "+=" + Math.round(window.innerHeight * PIN_VH),
+      invalidateOnRefresh: true,
       pin: true,
       pinSpacing: true,
-      // Rate-limit: numeric scrub (~1s catch-up lerp) instead of scrub:true
-      // (instant 1:1) so a flick eases through the boot/orbit/land cinematic
-      // instead of teleporting; the snap below still settles on release.
-      scrub: 1,
-      anticipatePin: 1,
-      // Snap & settle on the NEAREST beat. Beats: STACK 0.00→0.22,
-      // ORBIT 0.22→0.55, LAND+EXPLORE 0.55→1.00 (0.9 = booted CRT with
-      // a buffer before release). The previous binary snap
-      // (`value < 0.18 ? 0 : 0.9`) teleported ~4500px the moment a
-      // settle landed past 18% of the pin — skipping the entire
-      // stack/orbit/boot cinematic and dumping the user on the project
-      // tiles (user: "broken, it just jumps to the photo part").
-      // Snapping to the nearest beat keeps the scroll-lock intent (the
-      // 6200px pin still can't be cleared in one flick, and every
-      // settle lands on a meaningful pose) without ever leaping more
-      // than ~one beat. Snap still fires only after wheel/touch
-      // velocity drops, so a deliberate sustained scroll plays the
-      // full cinematic and carries on through the release.
+      // No scrub (nothing is attached to this trigger, so a numeric scrub was
+      // inert) and no anticipatePin (it pinned early under Lenis smoothing).
       snap: {
-        // Land/settle beats. The final stop is the fully-landed, zoomed,
-        // booted CRT at 0.85 (was 0.9); it then dwells at full size until the
-        // exit-vanish window (0.95) so a gentle scroll settles back onto the
-        // readable Mac instead of sliding straight past it.
-        snapTo: [0, 0.22, 0.55, 0.85],
-        duration: { min: 0.3, max: 0.8 },
-        delay: 0.04,
-        ease: "power2.inOut",
+        // Function snapTo receives (naturalEnd, self); with inertia:false the
+        // natural end is the rest position itself, so `return v` never turns
+        // into a velocity-projected micro-tween.
+        snapTo: (v: number, self?: ScrollTrigger) => {
+          const dir = self?.direction ?? 0;
+          if (dir > 0 && v >= MAGNET_DOWN[0] && v <= MAGNET_DOWN[1]) return LANDED_P;
+          if (dir < 0 && v >= MAGNET_UP[0] && v <= MAGNET_UP[1]) return LANDED_P;
+          return v;
+        },
+        inertia: false,
+        delay: MAGNET_DELAY_S,
+        duration: MAGNET_DURATION_S,
+        ease: GSAP_EASE.settle,
       },
       onUpdate: (self) => {
         pinProgressRef.current = self.progress;
-        // Fade the "Projects" header out across the descent (0.5 → 0.78) so it
-        // has cleared before the CRT zoom fills the frame.
+        // Fade the "Projects" header out across the descent so it has cleared
+        // before the CRT zoom fills the frame. Written to a CSS var (no
+        // transition on it): the .is-detail-open fade owns .mac-col's own
+        // opacity, so the two never fight.
         const h = headerRef.current;
         if (h) {
-          const f = Math.min(1, Math.max(0, (self.progress - 0.5) / 0.28));
-          h.style.opacity = String(1 - f);
+          const f = Math.min(
+            1,
+            Math.max(0, (self.progress - HEADER_FADE_START) / HEADER_FADE_SPAN),
+          );
+          const v = (1 - f).toFixed(3);
+          if (h.style.getPropertyValue("--mac-head-fade") !== v) {
+            h.style.setProperty("--mac-head-fade", v);
+          }
         }
       },
     });
 
     // Click-to-zoom: the floating Mac dispatches `mac-zoom-request` (see the
-    // 3D hitbox in MacintoshScene). Auto-scroll to the landed/booted CRT — pin
-    // progress ≈ 0.85, the final snap beat — so a pointer user can dive straight
-    // in without dragging through the ~2-viewport pin. Normal scrolling still
-    // works; this is an additive shortcut. st.start/end are the pin's scroll px.
+    // 3D hitbox in MacintoshScene). Glide to the landed/booted CRT (LANDED_P)
+    // so a pointer user can dive straight in without dragging through the
+    // pin. Symmetric ease-in-out, duration scaled to distance (glide preset,
+    // capped at CTA_MAX_DURATION_S). Normal scrolling still works; this is an
+    // additive shortcut. st.start/end are the pin's scroll px.
     const onMacZoom = () => {
-      scrollToSection(st.start + 0.85 * (st.end - st.start), { duration: 1.3 });
+      void scrollToY(st.start + LANDED_P * (st.end - st.start), {
+        preset: "glide",
+        mode: "smooth",
+        maxDuration: CTA_MAX_DURATION_S,
+      });
     };
     window.addEventListener("mac-zoom-request", onMacZoom);
 
@@ -375,6 +400,9 @@ export function Macintosh() {
       stopLoaderWatch();
       stageST.kill();
       st.kill();
+      // Crossing into the static-landed path must not strand a mid-fade
+      // header (the var is only written while the pin exists).
+      headerRef.current?.style.removeProperty("--mac-head-fade");
       window.removeEventListener("mac-zoom-request", onMacZoom);
     };
   }, [staticLanded]);
@@ -384,9 +412,16 @@ export function Macintosh() {
   // booted CRT + clickable tiles even though scroll never drives it.
   useEffect(() => {
     if (staticLanded && PIN_FREEZE == null && !TUNE_MODE) {
-      pinProgressRef.current = 1;
+      pinProgressRef.current = STATIC_LANDED_P;
     }
-  }, [staticLanded]);
+    // Reduced motion on a WIDE viewport shows the landed, zoomed CRT with the
+    // header still in the absolute top-right rail, where it sits over the
+    // screen corner. Match the scroll path's landed frame (header faded).
+    // Narrow keeps its in-flow header.
+    const h = headerRef.current;
+    if (h && staticLanded && !narrow) h.style.setProperty("--mac-head-fade", "0");
+    else if (h && staticLanded) h.style.removeProperty("--mac-head-fade");
+  }, [staticLanded, narrow]);
 
   // In PIN_FREEZE dev mode, lift the stage to fixed-viewport so we
   // can verify the Mac pose without fighting Lenis to scroll into
@@ -398,7 +433,12 @@ export function Macintosh() {
       : undefined;
 
   return (
-    <section ref={sectionRef} className="portfolio-section portfolio-mac">
+    <section
+      ref={sectionRef}
+      className="portfolio-section portfolio-mac"
+      // Menu / footer jumps land on the landed CRT (scroll.ts jumpToSection).
+      data-jump-progress={LANDED_P}
+    >
       {/* Stage opacity is gated by `data-stage-visible` so the canvas
           doesn't peek into the About section above before the pin
           engages (set by the section-relative ScrollTrigger above, or forced on
