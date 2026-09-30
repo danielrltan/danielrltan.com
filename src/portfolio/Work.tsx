@@ -1,14 +1,41 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import "./sections.css";
 import "./work-timeline.css";
 import { ScrambleText } from "./ScrambleText";
-import { scrollToSection } from "./Keypad";
+import { getLenis, scrollToY } from "../scroll";
+import {
+  BREAKPOINT,
+  SCROLL,
+  presetDuration,
+  reducedMotion as reducedMotionPref,
+} from "../motion";
 import { track } from "../analytics";
 
 gsap.registerPlugin(ScrollTrigger);
+
+// ── Tunables (motion spec W3) ───────────────────────────────────────────────
+/** Desktop pin length per role, in viewport heights (3 roles = 1.86vh). */
+const PIN_VH_PER_ROW = 0.62;
+/**
+ * Band hysteresis, in pin progress. Band k opens only once progress is this
+ * far past its boundary, so resting near a boundary never flickers rows.
+ */
+const BAND_HYSTERESIS = 0.04;
+/** Pin progress a menu/footer jump lands on: the centre of row 0's band. */
+const JUMP_PROGRESS = 0.17;
+/** Click-jump guard: slack past the glide duration before it force-clears. */
+const JUMP_GUARD_SLACK_S = 0.25;
+/** Mobile tap anchoring is skipped if the page scrolled this recently (a fling). */
+const FLING_WINDOW_MS = 100;
 
 interface Stint {
   when: string;
@@ -80,45 +107,97 @@ const STINTS: Stint[] = [
   },
 ];
 
+const N = STINTS.length;
+
+/** Plain band for pin progress p (no hysteresis). */
+const plainBand = (p: number) => Math.min(N - 1, Math.max(0, Math.floor(p * N)));
+
 /**
- * Work: "The Ledger" — a CLICK-DRIVEN ACCORDION TIMELINE.
+ * Band index with hysteresis, starting from the last open band. Moving DOWN to
+ * band k needs p > k/N + H; moving UP to band k needs p < (k+1)/N - H. Loops, so
+ * a fast scroll or a cut that crosses several bands lands in one step.
+ */
+function bandWithHysteresis(p: number, last: number): number {
+  let k = Math.min(N - 1, Math.max(0, last));
+  while (k < N - 1 && p > (k + 1) / N + BAND_HYSTERESIS) k++;
+  while (k > 0 && p < k / N - BAND_HYSTERESIS) k--;
+  return k;
+}
+
+/** Spine geometry, all in px relative to the .work-acc list's top edge. */
+interface SpineGeo {
+  /** Centre of each role's node dot (the dot sits at 50% of .work-acc-node). */
+  nodes: number[];
+  spineTop: number;
+  spineLen: number;
+}
+
+/**
+ * Read the spine geometry. Only ever called from the ResizeObserver callback,
+ * which runs after layout and before paint, so every read here is free (no
+ * forced layout) and matches the frame about to be painted.
+ */
+function measureSpine(list: HTMLElement): SpineGeo {
+  const nodes: number[] = [];
+  for (const li of Array.from(list.children) as HTMLElement[]) {
+    const node = li.querySelector<HTMLElement>(".work-acc-node");
+    if (!node) continue;
+    // li and .work-acc-node are both position:relative, so each offsetTop is
+    // relative to its parent (the list, then the li).
+    nodes.push(li.offsetTop + node.offsetTop + node.offsetHeight / 2);
+  }
+  const after = getComputedStyle(list, "::after");
+  const top = parseFloat(after.top) || 0;
+  const bottom = parseFloat(after.bottom) || 0;
+  return {
+    nodes,
+    spineTop: top,
+    spineLen: Math.max(1, list.offsetHeight - top - bottom),
+  };
+}
+
+/**
+ * Work: "The Ledger", a pinned, scroll-driven accordion timeline (desktop).
  *
  * Every role is a node on a left spine and is always visible as a header
- * (dot-matrix year + sector + company + dates). Click any row to drop it open
- * (role, pull metric, bullets) — a single-open accordion, so opening one closes
- * the last, and re-clicking the open row collapses it. The whole row is the
- * button; it lifts a clear colour wash on hover so it unmistakably reads as
- * pressable. No scroll-pinning or scroll-scrub: the section flows with the page
- * and you navigate it purely by clicking (the old pinned scrub coupled "which
- * role is open" to scroll position, which read as unclickable / fighting the
- * scroll — replaced wholesale per user feedback).
+ * (dot-matrix year + sector + company + dates); the open role drops its detail
+ * (role, pull metric, bullets). It is a single-open accordion.
  *
- * Motion (Emil / impeccable): panels open on an ease-out height+fade, the
- * chevron rotates, bullets stagger in. prefers-reduced-motion opens every panel
- * and drops the transitions for a static, readable résumé.
+ * Desktop (>900px, motion allowed): the section pins for PIN_VH_PER_ROW
+ * viewports per role (id "work-pin"). Pin progress picks the open role (with
+ * BAND_HYSTERESIS so resting on a boundary never flickers) and drives the
+ * accent spine fill, which is tied to the node dots' real geometry. Clicking a
+ * role opens it at once and glides the scroll to the centre of its band; the
+ * scroll never re-picks a role mid-glide (jumpingRef).
+ *
+ * Mobile (<=900px) and reduced motion: no pin. Mobile is a tap-to-expand
+ * stack that keeps the tapped header under the finger; reduced motion opens
+ * every panel for a static, readable résumé.
+ *
+ * Motion (work-timeline.css): rows rise in once on entry (.is-entered), panels
+ * morph on --t-morph / --ease-in-out with a faster fade-out on close, and
+ * bullets stagger in after the panel is half open and fade out on close.
  */
 export function Work() {
   const sectionRef = useRef<HTMLElement>(null);
-  const [entered, setEntered] = useState(false);
+  const listRef = useRef<HTMLOListElement>(null);
+  const itemRefs = useRef<Array<HTMLLIElement | null>>([]);
+  const headRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  const [reducedMotion] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  // Live prefers-reduced-motion: an OS toggle tears the pin down / rebuilds it.
+  const reducedMotion = useSyncExternalStore(
+    reducedMotionPref.subscribe,
+    () => reducedMotionPref.value,
+    () => false,
   );
+  const [entered, setEntered] = useState(reducedMotion);
 
-  // Mobile (<=900px): the narrow accordion already stacks full-width, and the
-  // smooth scrollIntoView nudge on open reads as a jarring page-jerk on a phone
-  // (the row is already in view). Let panels expand in place there; desktop
-  // keeps the scroll-into-view so a lower row's detail isn't left below the
-  // fold. Read once at mount — a viewport-class flip is rare enough that not
-  // re-subscribing is fine, and avoids a listener for a one-line guard.
+  // Narrow (<=900px): no pin, tap-to-expand in place. Read once at mount.
   const [isMobile] = useState(
     () =>
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
-      window.matchMedia("(max-width: 900px)").matches,
+      window.matchMedia(`(max-width: ${BREAKPOINT.narrow}px)`).matches,
   );
 
   // Single-open accordion. Current role open first so the section never reads as
@@ -129,8 +208,7 @@ export function Work() {
   );
   const [openIndex, setOpenIndex] = useState<number | null>(firstOpen);
 
-  // Entrance reveal once the section scrolls into view (replaces the old GSAP
-  // pin's onEnter). One-shot, and a no-op default-visible under reduced motion.
+  // One-shot entrance (.is-entered) once the section scrolls into view.
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
@@ -151,66 +229,188 @@ export function Work() {
     return () => io.disconnect();
   }, [reducedMotion]);
 
-  // DESKTOP GUIDED TIMELINE: pin the section and roll the scroll THROUGH the
-  // timeline — each entry auto-opens in turn and the vertical spine fills with
-  // accent (--work-fill 0..1) so you can see yourself traversing down it. A
-  // click jumps the SCROLL to that entry's band (handleActivate), so the click
-  // and the scrub agree instead of fighting (the reason the old pin was pulled).
-  // Skipped on mobile / reduced-motion: those keep the plain click-accordion.
+  // ── Desktop pinned timeline ───────────────────────────────────────────────
   const stRef = useRef<ScrollTrigger | null>(null);
-  const pinPxRef = useRef(0);
+  /** The pin's open band (hysteresis state). */
+  const lastIdxRef = useRef(firstOpen);
+  /** True while a click-jump glides; onUpdate then leaves the open row alone. */
+  const jumpingRef = useRef(false);
+  const clearJumpRef = useRef<((resync: boolean) => void) | null>(null);
+  const progressRef = useRef(0);
+  const geoRef = useRef<SpineGeo | null>(null);
+  const fillRef = useRef(-1);
+
   useEffect(() => {
     if (isMobile || reducedMotion) return;
     const el = sectionRef.current;
-    if (!el) return;
-    const N = STINTS.length;
-    // ~0.62 viewport of scroll per entry: enough dwell to read each before the
-    // next opens, short enough that the pin never feels like a scroll-trap.
-    const pinPx = Math.round(N * (window.innerHeight || 800) * 0.62);
-    pinPxRef.current = pinPx;
-    el.style.setProperty("--work-fill", "0");
+    const list = listRef.current;
+    if (!el || !list) return;
+
+    // Spine fill: the tip sits on the node dot of the plain band at the band's
+    // start and reaches the next node (or the spine's end) at the band's end.
+    // Scroll-linked, so there is no CSS transition on it. Uses the plain band
+    // rather than the hysteresis band so the tip is continuous in scroll even
+    // mid-jump; the geometry is live (ResizeObserver below), so while the
+    // accordion morphs the tip rides the node dots as they move.
+    const renderFill = () => {
+      const g = geoRef.current;
+      if (!g || g.nodes.length === 0) return;
+      const p = progressRef.current;
+      const b = Math.min(plainBand(p), g.nodes.length - 1);
+      const local = Math.min(1, Math.max(0, p * N - b));
+      const from = g.nodes[b];
+      const to = b + 1 < g.nodes.length ? g.nodes[b + 1] : g.spineTop + g.spineLen;
+      const tip = from + local * (to - from);
+      const fill = Math.min(1, Math.max(0, (tip - g.spineTop) / g.spineLen));
+      if (Math.abs(fill - fillRef.current) < 1e-4) return;
+      fillRef.current = fill;
+      el.style.setProperty("--work-fill", fill.toFixed(4));
+    };
+
+    const applyProgress = (p: number) => {
+      progressRef.current = p;
+      renderFill();
+      if (jumpingRef.current) return;
+      const k = bandWithHysteresis(p, lastIdxRef.current);
+      if (k !== lastIdxRef.current) {
+        lastIdxRef.current = k;
+        setOpenIndex(k);
+      }
+    };
+
     const st = ScrollTrigger.create({
+      id: "work-pin",
       trigger: el,
       start: "top top",
-      end: `+=${pinPx}`,
+      end: () => "+=" + Math.round(N * window.innerHeight * PIN_VH_PER_ROW),
       pin: true,
       pinSpacing: true,
-      onUpdate: (self) => {
-        const p = self.progress;
-        const idx = Math.min(N - 1, Math.max(0, Math.floor(p * N)));
-        setOpenIndex(idx);
-        // Fill leads the active node a touch so the spine reads "ahead of" the
-        // open row rather than lagging it.
-        el.style.setProperty("--work-fill", Math.min(1, p + 0.5 / N).toFixed(3));
-      },
+      invalidateOnRefresh: true,
+      onUpdate: (self) => applyProgress(self.progress),
+      onRefresh: (self) => applyProgress(self.progress),
     });
     stRef.current = st;
+    applyProgress(st.progress);
+
+    // Geometry for the fill. The observer fires on every frame of an accordion
+    // morph (the panels resize) and on real resizes / font swaps, always after
+    // layout; the final delivery is the settled layout. onUpdate never reads
+    // layout.
+    const ro = new ResizeObserver(() => {
+      geoRef.current = measureSpine(list);
+      fillRef.current = -1;
+      renderFill();
+    });
+    ro.observe(list);
+    list.querySelectorAll(".work-acc-panel").forEach((p) => ro.observe(p));
+
     const stopLoaderWatch = refreshScrollOnLoaderLift();
     return () => {
       stopLoaderWatch();
+      ro.disconnect();
+      clearJumpRef.current?.(false);
       st.kill();
       stRef.current = null;
+      geoRef.current = null;
+      fillRef.current = -1;
+      el.style.removeProperty("--work-fill");
     };
-    // Re-create when the breakpoint flips so the pin is added/torn down to match.
   }, [isMobile, reducedMotion]);
 
-  // Open a row. On the desktop guided timeline this JUMPS the scroll to that
-  // entry's band (the pin's onUpdate then opens it + advances the fill, so the
-  // click and the scroll never disagree). Mobile / reduced-motion just toggle
-  // open in place (no pin, no scroll-jack).
+  // Click-jump (desktop pin): open the row NOW, then glide to its band centre.
+  // jumpingRef keeps onUpdate from re-picking rows the glide passes through.
+  // It clears on arrival or supersede (the promise), on the user taking over
+  // (wheel / touch / key), or after the glide duration + slack; the hysteresis
+  // state is then seeded to the clicked row and re-synced to where we are.
+  const startJump = (i: number, st: ScrollTrigger) => {
+    clearJumpRef.current?.(false);
+    const y = st.start + ((i + 0.5) / N) * (st.end - st.start);
+    const from = getLenis()?.animatedScroll ?? window.scrollY;
+    const dur = presetDuration(y - from, window.innerHeight || 1, SCROLL.glide);
+    let cleared = false;
+    const clear = (resync: boolean) => {
+      if (cleared) return;
+      cleared = true;
+      window.clearTimeout(timer);
+      window.removeEventListener("wheel", onUser);
+      window.removeEventListener("touchstart", onUser);
+      window.removeEventListener("keydown", onUser);
+      if (clearJumpRef.current === clear) clearJumpRef.current = null;
+      jumpingRef.current = false;
+      lastIdxRef.current = i;
+      if (!resync || stRef.current !== st) return;
+      const k = bandWithHysteresis(st.progress, i);
+      if (k !== i) {
+        lastIdxRef.current = k;
+        setOpenIndex(k);
+      }
+    };
+    const onUser = () => clear(true);
+    const timer = window.setTimeout(onUser, (dur + JUMP_GUARD_SLACK_S) * 1000);
+    window.addEventListener("wheel", onUser, { passive: true });
+    window.addEventListener("touchstart", onUser, { passive: true });
+    window.addEventListener("keydown", onUser);
+    clearJumpRef.current = clear;
+    jumpingRef.current = true;
+    lastIdxRef.current = i;
+    void scrollToY(y, { preset: "glide", onComplete: onUser }).then(onUser);
+  };
+
+  // ── Mobile tap anchoring ──────────────────────────────────────────────────
+  // Opening a row collapses the one above it, which would throw the tapped
+  // header up the screen. Record its y before the change, then (before paint)
+  // collapse the previous panel instantly and scroll by the difference so the
+  // header stays under the finger. Only the new panel animates.
+  const anchorRef = useRef<{ i: number; prev: number | null; top: number } | null>(
+    null,
+  );
+  const lastScrollAtRef = useRef(-Infinity);
+  useEffect(() => {
+    if (!isMobile) return;
+    const onScroll = () => {
+      lastScrollAtRef.current = performance.now();
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [isMobile]);
+
+  useLayoutEffect(() => {
+    const a = anchorRef.current;
+    anchorRef.current = null;
+    if (!a || a.i !== openIndex) return;
+    const head = headRefs.current[a.i];
+    if (!head) return;
+    // A previous panel BELOW the tapped row can't move its header: let it
+    // morph closed normally.
+    const prevItem = a.prev != null && a.prev < a.i ? itemRefs.current[a.prev] : null;
+    prevItem?.classList.add("no-anim");
+    const d = head.getBoundingClientRect().top - a.top; // forces the no-anim layout
+    if (Math.abs(d) >= 0.5) {
+      const lenis = getLenis();
+      if (lenis) lenis.scrollTo(window.scrollY + d, { immediate: true, force: true });
+      else window.scrollBy(0, d);
+    }
+    if (prevItem) requestAnimationFrame(() => prevItem.classList.remove("no-anim"));
+  }, [openIndex]);
+
   const handleActivate = (i: number) => {
-    if (i === openIndex && (isMobile || reducedMotion)) return;
     if (isMobile || reducedMotion) {
+      if (i === openIndex) return;
+      const head = headRefs.current[i];
+      if (
+        isMobile &&
+        !reducedMotion &&
+        head &&
+        performance.now() - lastScrollAtRef.current > FLING_WINDOW_MS
+      ) {
+        anchorRef.current = { i, prev: openIndex, top: head.getBoundingClientRect().top };
+      }
       setOpenIndex(i);
       return;
     }
     const st = stRef.current;
-    if (!st) {
-      setOpenIndex(i);
-      return;
-    }
-    const N = STINTS.length;
-    scrollToSection(st.start + ((i + 0.5) / N) * pinPxRef.current);
+    setOpenIndex(i);
+    if (st) startJump(i, st);
   };
 
   const isOpen = (i: number) => reducedMotion || i === openIndex;
@@ -219,6 +419,7 @@ export function Work() {
     <section
       ref={sectionRef}
       aria-label="Work experience timeline"
+      data-jump-progress={JUMP_PROGRESS}
       className={`portfolio-section portfolio-work${entered ? " is-entered" : ""}${reducedMotion ? " is-reduced-motion" : ""}`}
     >
       <div className="work-ledger">
@@ -253,16 +454,23 @@ export function Work() {
           </a>
         </header>
 
-        <ol className="work-acc">
+        <ol ref={listRef} className="work-acc">
           {STINTS.map((s, i) => {
             const open = isOpen(i);
             const panelId = `work-panel-${i}`;
             return (
               <li
                 key={i}
+                ref={(node) => {
+                  itemRefs.current[i] = node;
+                }}
+                style={{ ["--row-i" as string]: i }}
                 className={`work-acc-item${open ? " is-open" : ""}${s.current ? " is-current" : ""}${openIndex != null && i < openIndex ? " is-past" : ""}`}
               >
                 <button
+                  ref={(node) => {
+                    headRefs.current[i] = node;
+                  }}
                   type="button"
                   className="work-acc-head"
                   aria-expanded={open}
@@ -305,45 +513,50 @@ export function Work() {
 
                 <div id={panelId} className="work-acc-panel" role="region">
                   <div className="work-acc-panel-inner">
-                    <div className="work-acc-meta">
-                      {s.role && <span className="work-acc-role">{s.role}</span>}
-                      {s.location && (
-                        <span className="work-acc-locgroup">
-                          <span className="work-acc-sep" aria-hidden>
-                            /
+                    {/* The body carries the bottom padding: padding on the
+                        clipped grid item itself survives a 0fr row, so a
+                        collapsed panel would keep a residual strip. */}
+                    <div className="work-acc-panel-body">
+                      <div className="work-acc-meta">
+                        {s.role && <span className="work-acc-role">{s.role}</span>}
+                        {s.location && (
+                          <span className="work-acc-locgroup">
+                            <span className="work-acc-sep" aria-hidden>
+                              /
+                            </span>
+                            {s.location}
                           </span>
-                          {s.location}
-                        </span>
-                      )}
-                    </div>
-
-                    {s.pull.metric && (
-                      <div className="work-acc-pull">
-                        <div className="work-acc-pull-metric">
-                          {s.pull.metric}
-                        </div>
-                        {s.pull.caption && (
-                          <p className="work-acc-pull-caption">
-                            {s.pull.caption}
-                          </p>
                         )}
                       </div>
-                    )}
 
-                    <ul className="work-acc-bullets">
-                      {s.bullets.map((b, j) => (
-                        <li
-                          key={j}
-                          className="work-acc-bullet"
-                          style={{ ["--bullet-i" as string]: j }}
-                        >
-                          <span className="work-acc-bullet-num">
-                            {String(j + 1).padStart(2, "0")}
-                          </span>
-                          <span className="work-acc-bullet-text">{b}</span>
-                        </li>
-                      ))}
-                    </ul>
+                      {s.pull.metric && (
+                        <div className="work-acc-pull">
+                          <div className="work-acc-pull-metric">
+                            {s.pull.metric}
+                          </div>
+                          {s.pull.caption && (
+                            <p className="work-acc-pull-caption">
+                              {s.pull.caption}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <ul className="work-acc-bullets">
+                        {s.bullets.map((b, j) => (
+                          <li
+                            key={j}
+                            className="work-acc-bullet"
+                            style={{ ["--i" as string]: j }}
+                          >
+                            <span className="work-acc-bullet-num">
+                              {String(j + 1).padStart(2, "0")}
+                            </span>
+                            <span className="work-acc-bullet-text">{b}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </li>
