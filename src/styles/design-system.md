@@ -102,7 +102,7 @@ Section headers share `--hdr-num` (the tiny section number) and
 - **Spacing:** `--space-1` 4, `--space-2` 8, `--space-3` 12, `--space-4` 16, `--space-4h` 20, `--space-5` 24, `--space-6` 32, `--space-7` 48, `--space-8` 64.
 - **Radii:** none. Every surface is sharp-cornered (`border-radius: 0`).
 - **Easings:** `--ease-out` `cubic-bezier(0.22, 1, 0.36, 1)`, `--ease-soft` `cubic-bezier(0.2, 0.7, 0.2, 1)`.
-- **Durations:** `--t-fast` 180ms, `--t-base` 280ms, `--t-slow` 540ms.
+- **Durations:** `--t-fast` 180ms, `--t-base` 280ms, `--t-slow` 540ms (full motion scale in **Motion** below).
 
 ---
 
@@ -177,3 +177,76 @@ explicitly rejected warm cream as the top-priority colour issue:
 > the place with no design system in place."
 
 That's the brief. Cool white + ink + orange. Hold the line.
+
+---
+
+## Motion
+
+The full plan and rationale live in the motion spec (`.scratch/motion-spec.md`,
+§0 rules, §1 tokens, §2 scroll core). CSS tokens are on `:root` in
+`src/index.css`; the JS mirror is `src/motion.ts` (same names, seconds).
+Programmatic scroll goes through `src/scroll.ts`.
+
+### The five rules
+
+1. **One smoother per signal.** Lenis (0.6 s expo-out) is the only wheel
+   smoother. No numeric ScrollTrigger `scrub`, no CSS `transition` on any
+   property JS writes every scroll frame, no chasing lerps stacked on scroll.
+   Rate caps are fine.
+2. **Scroll-linked or time-based, never both on one element.** Things you can
+   rest halfway through (the hero dive, the Mac orbit, trains, the Work fill)
+   are scroll-linked. Arrivals and acknowledgements (reveals, handoffs, drops,
+   HUD) are time-based, triggered once by a threshold.
+3. **Programmatic scroll never uses the wheel curve.** Use `scrollToY()` /
+   `jumpToSection()` presets (ease-in-out, duration scaled to distance).
+   Jumps over 3 viewports cut behind `.scroll-cover`. Native
+   `behavior: "smooth"` is banned.
+4. **Every JS follower is dt-based:** `damp(cur, target, DECAY.x, dt)` with
+   `dt <= 0.1 s` (`clampDt`), `stepSpring` for springs. No per-frame lerp
+   constants, so 60 Hz and 120 Hz feel the same.
+5. **Tokens are additive.** Never change an existing token's value; add a new
+   name. Owners migrate their own call sites.
+
+### Tokens
+
+| token | value | use |
+|---|---|---|
+| `--t-press` | 120ms | press/active feedback, tiny hover fills |
+| `--t-fast` | 180ms | hovers (`--hover-dur`), exits (`--exit-dur`) |
+| `--t-base` | 280ms | HUD/chrome entrances (`--chrome-dur`) |
+| `--t-med` | 400ms | mid reveal step |
+| `--t-morph` | 420ms | layout morphs (grid rows, height) |
+| `--t-slow` | 540ms | reveals (`--reveal-dur`) |
+| `--t-handoff` | 320ms | hero to About clear |
+| `--t-cover-in` / `--t-cover-out` | 120ms / 200ms | scroll cover |
+| `--ease-out` | `cubic-bezier(0.22, 1, 0.36, 1)` | default: entrances, hovers, reveals |
+| `--ease-in-out` | `cubic-bezier(0.65, 0, 0.35, 1)` | both ends on screen: morphs, travel |
+| `--ease-in` | `cubic-bezier(0.55, 0, 1, 0.45)` | exits (`--exit-ease`) |
+| `--ease-bounce` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | overshoot pop |
+| `--ease-steps-4` | `steps(4, jump-end)` | pixel-voice opacity steps |
+| `--stagger` / `--stagger-max` | 60ms / 5 | `delay = min(var(--i), var(--stagger-max)) * var(--stagger)` |
+| `--reveal-lift` / `--chrome-lift` | 16px / 8px | reveal and chrome travel |
+
+`--ease-soft` and `--ease-entrance` are legacy: keep them, but use
+`--reveal-ease` / `--ease-out` in new CSS.
+
+Snap rule for an ad-hoc duration: <=150ms `--t-press`, 151-220 `--t-fast`,
+221-320 `--t-base`, 321-450 `--t-med` (layout morphs `--t-morph`), 451-700
+`--t-slow`. Ambient loops (marquees, bobs, stepped dither) are exempt.
+
+Stagger idiom:
+`transition-delay: calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));`
+
+### Scroll core (`src/scroll.ts`)
+
+- `scrollToY(y | el, { preset })`: `"glide"` (default, inOutCubic, 0.45-0.9 s
+  by distance), `"nudge"` (short outCubic), `"jump"` (glide under 3 viewports,
+  covered cut beyond).
+- `jumpToSection(indexOrLabel)`: lands on the section's pin at its
+  `data-jump-progress` attribute (wins) or the registry `jumpProgress`.
+- `lockScroll(reason)` / `unlockScroll(reason)`: named locks ("loader",
+  "menu", "jump"). A smooth request while locked becomes an instant cut.
+- `onScrollJump(cb)`: on a cut's `end`, snap followers to the target in the
+  same frame.
+- Reduced motion: every programmatic scroll is instant, no cover, and Lenis
+  wheel smoothing is off. The global CSS net zeroes durations and delays.

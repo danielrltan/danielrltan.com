@@ -119,6 +119,7 @@ function initScript(sections) {
   const attach = () => new MutationObserver((recs) => {
     for (const r of recs) {
       if (r.attributeName === "style") {
+        if (mt.heroFromMirror) continue;
         const hv = html.style.getPropertyValue("--hero-to-about");
         const last = mt.heroCurve[mt.heroCurve.length - 1];
         if (hv && (!last || last.v !== hv) && mt.heroCurve.length < 4000)
@@ -147,6 +148,24 @@ function initScript(sections) {
     });
     mo.observe(document, { childList: true });
   }
+  // Hero dive curve from the hero's debug mirror (spec §5 O8). The observer
+  // above only sees --hero-to-about while the hero writes it on <html style>;
+  // a hero that scopes its vars never fires it, so poll window.__heroMotion
+  // every frame and push on change. The observer stays as the fallback for
+  // baseline builds without the mirror (once the mirror exists the poll owns
+  // heroCurve, so the two never both push).
+  const pollHero = () => {
+    const hm = window.__heroMotion;
+    if (hm && typeof hm.dive === "number") {
+      mt.heroFromMirror = true;
+      const v = String(hm.dive);
+      const last = mt.heroCurve[mt.heroCurve.length - 1];
+      if ((!last || last.v !== v) && mt.heroCurve.length < 4000)
+        mt.heroCurve.push({ t: performance.now(), y: window.scrollY, v });
+    }
+    requestAnimationFrame(pollHero);
+  };
+  requestAnimationFrame(pollHero);
 
   addEventListener("scroll", () => (mt.y = window.scrollY), { passive: true, capture: true });
   addEventListener(

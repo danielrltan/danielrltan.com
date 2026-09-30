@@ -20,7 +20,7 @@ import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 
-const PORT = 4173;
+const PORT = process.env.PORT || 5310;
 const URL = process.env.URL || `http://localhost:${PORT}/`;
 const SHOTS = process.env.SHOTS || "";
 const TIER = process.env.TIER || "";

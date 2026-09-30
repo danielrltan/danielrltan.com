@@ -70,13 +70,21 @@ for (const speed of SPEEDS) {
     const t0 = performance.now();
     const cs = () => getComputedStyle(document.documentElement);
     const tick = () => {
-      const s = cs();
-      log.push({
-        t: performance.now() - t0,
-        y: window.scrollY,
-        dive: s.getPropertyValue("--hero-to-about").trim(),
-        op: s.getPropertyValue("--hero-opacity").trim(),
-      });
+      // Prefer the hero's debug mirror (spec §5 O8): once the hero stops
+      // writing per-frame vars on :root the computed vars go flat. Fall back
+      // to the vars for baseline builds that predate the mirror.
+      const hm = window.__heroMotion;
+      const row = { t: performance.now() - t0, y: window.scrollY };
+      if (hm) {
+        row.dive = String(hm.dive);
+        row.op = String(hm.opacity);
+        if (hm.phase) row.phase = hm.phase;
+      } else {
+        const s = cs();
+        row.dive = s.getPropertyValue("--hero-to-about").trim();
+        row.op = s.getPropertyValue("--hero-opacity").trim();
+      }
+      log.push(row);
       if (log.length < 20000) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
