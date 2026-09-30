@@ -72,12 +72,30 @@ export function getLenis(): Lenis | null {
 }
 
 /**
- * Create the Lenis singleton (idempotent). Lenis tuning lives in motion.ts
- * `LENIS` (0.6 s expo-out, wheelMultiplier 1, syncTouch off so touch uses the
- * OS's native momentum scroll; see the history in that file's comments).
+ * Create the Lenis singleton (idempotent). The tuning values live in
+ * motion.ts `LENIS`; the history behind them is recorded below.
  */
 export function ensureLenis(): void {
   if (lenisInstance || typeof window === "undefined") return;
+  // Lenis tuning (values in motion.ts LENIS) balances smoothness against
+  // responsiveness. PERF / FEEL: duration dropped 0.95s → 0.6s after the owner
+  // reported the page feeling "laggy and unusable". The longer duration was
+  // amplifying perceived jank: every wheel impulse spread its work over ~57
+  // frames, and any per-frame stall during that window read as the entire
+  // page hitching. 0.6s still feels glided (vs. the bare-OS 0ms native scroll)
+  // while keeping each impulse resolved in ~36 frames: fewer chances for an
+  // outlier frame to register.
+  //
+  // wheelMultiplier bumped 0.85 → 1.0 so a single wheel notch moves a sensible
+  // distance even though each impulse is shorter.
+  //
+  // TOUCH: smooth-scroll is intentionally OFF on touch. `syncTouch:false`
+  // means a finger drag uses the OS's native momentum/rubber-band scrolling,
+  // which on mobile GPUs feels crisper and lower-latency than re-interpolating
+  // every touch delta through Lenis's lerp (that path reads as laggy on a
+  // phone). GSAP ScrollTrigger still updates from the native scroll, so the
+  // pinned keypad/Mac/footer sections stay in sync. touchMultiplier stays at
+  // the neutral 1 (it only scales deltas when syncTouch is on).
   const lenis = new Lenis({
     ...LENIS,
     // Reduced motion: no wheel smoothing (spec §2.2.1); kept live below.
@@ -187,11 +205,44 @@ function getCover(): HTMLDivElement {
     coverEl.className = "scroll-cover";
     coverEl.setAttribute("aria-hidden", "true");
     document.body.appendChild(coverEl);
+    // Flush style so the element's opacity-0 start state is committed before
+    // the caller adds .is-on; otherwise the first cover on a page skips its
+    // stepped transition and pops straight to opacity 1.
+    void coverEl.offsetWidth;
   }
   return coverEl;
 }
 
-const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
+// Slack past DUR.coverIn before the cover-in wait gives up on transitionend
+// (the CSS transition only starts at the next style recalc, so it ends a
+// frame or so after the nominal duration).
+const COVER_IN_SAFETY_MS = 50;
+
+/**
+ * Resolve once the cover is actually OPAQUE: on the opacity transitionend, or
+ * immediately if it's already at 1 (a second cut while the first holds it),
+ * or after DUR.coverIn + COVER_IN_SAFETY_MS as a safety net. Awaiting a plain
+ * DUR.coverIn from classList.add is not enough: the transition starts at the
+ * next recalc and steps(3, jump-end) only reaches 1 at its very end, so the
+ * cut frame would paint the jump through a 0.67 cover.
+ */
+function coverOpaque(el: HTMLElement): Promise<void> {
+  if (getComputedStyle(el).opacity === "1") return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let timer = 0;
+    const done = () => {
+      el.removeEventListener("transitionend", onEnd);
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const onEnd = (e: TransitionEvent) => {
+      if (e.target === el && e.propertyName === "opacity") done();
+    };
+    el.addEventListener("transitionend", onEnd);
+    timer = window.setTimeout(done, DUR.coverIn * 1000 + COVER_IN_SAFETY_MS);
+  });
+}
+
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
 // ── Geometry helpers ────────────────────────────────────────────────────────
@@ -225,6 +276,14 @@ function resolveY(target: number | HTMLElement, offset = 0): number {
 // the next scroll.
 let settleActiveSmooth: (() => void) | null = null;
 
+// Bumped by every scrollToY call. A covered cut still waiting on its cover
+// checks it before cutting, so a newer programmatic scroll supersedes it
+// instead of being overridden by a late teleport.
+let scrollSeq = 0;
+// Which covered cut currently owns the cover; only the owner lifts it, so an
+// older cut's cleanup can't drop the cover out from under a newer one.
+let coverOwner = 0;
+
 /** Instant jump + ScrollTrigger.update + synchronous `end` emit. */
 function cutNow(y: number, from: number) {
   if (lenisInstance) lenisInstance.scrollTo(y, { immediate: true, force: true });
@@ -250,6 +309,7 @@ function cutNow(y: number, from: number) {
 export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   settleActiveSmooth?.();
+  const seq = ++scrollSeq;
   const presetName = opts.preset ?? "glide";
   const preset = presetName === "nudge" ? SCROLL.nudge : SCROLL.glide;
   const from = currentY();
@@ -283,17 +343,30 @@ export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): 
     }
     return (async () => {
       const el = getCover();
+      coverOwner = seq;
       el.classList.add("is-on");
-      await wait(DUR.coverIn * 1000);
+      // Wait until the cover is fully opaque, then one more frame so at least
+      // one opaque frame is on screen before the teleport. The cut runs in a
+      // rAF callback, so the frame that paints the new scrollY is covered.
+      await coverOpaque(el);
+      await nextFrame();
+      if (seq !== scrollSeq) {
+        // Superseded while covering: the newer scroll owns the page. Lift the
+        // cover only if no newer covered cut has taken it over.
+        if (coverOwner === seq) el.classList.remove("is-on");
+        return;
+      }
       lockScroll("jump");
       try {
         // Re-resolve: layout can shift under the cover (lazy sections).
         cutNow(resolveY(target, opts.offset), from);
+        // Two frames under the opaque cover so ScrollTrigger followers and the
+        // WebGL scenes render the new position before the reveal.
         await nextFrame();
         await nextFrame();
       } finally {
         unlockScroll("jump");
-        el.classList.remove("is-on");
+        if (coverOwner === seq) el.classList.remove("is-on");
       }
       opts.onComplete?.();
     })();
@@ -316,24 +389,31 @@ export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): 
   return new Promise<void>((resolve) => {
     let done = false;
     let timer = 0;
-    const finish = () => {
+    // `end` is emitted and the promise resolves on every exit (arrival,
+    // supersede, cancel), but the caller's onComplete means ARRIVAL only,
+    // as with lenis.scrollTo's own onComplete (spec §2.2.3).
+    const finish = (arrived: boolean) => {
       if (done) return;
       done = true;
       window.clearTimeout(timer);
-      if (settleActiveSmooth === finish) settleActiveSmooth = null;
+      if (settleActiveSmooth === settle) settleActiveSmooth = null;
       emit({ phase: "end", mode: "smooth", from, to: y });
-      opts.onComplete?.();
+      if (arrived) opts.onComplete?.();
       resolve();
     };
-    // Covers a user wheel cancelling the tween (onComplete never fires then).
-    timer = window.setTimeout(finish, (duration + 0.25) * 1000);
-    settleActiveSmooth = finish;
+    const atTarget = () => Math.abs(currentY() - y) <= 1;
+    // Supersede / safety timeout: arrived only if we're actually there. The
+    // timeout covers a user wheel cancelling the tween (Lenis's onComplete
+    // never fires then).
+    const settle = () => finish(atTarget());
+    timer = window.setTimeout(settle, (duration + 0.25) * 1000);
+    settleActiveSmooth = settle;
     lenis.scrollTo(y, {
       duration,
       easing,
       force: opts.force ?? true,
       lock: opts.lock ?? false,
-      onComplete: finish,
+      onComplete: () => finish(true),
     });
   });
 }
@@ -387,7 +467,10 @@ export function scrollToSection(
  * (no lerp) via the shared Lenis singleton, so the autoscroll tracks the
  * caller's own running target at a direct, snappy, predictable rate. Routing
  * through Lenis (rather than window.scrollTo, which Lenis would lerp straight
- * back) keeps GSAP ScrollTrigger + the pinned sections in sync.
+ * back) keeps GSAP ScrollTrigger + the pinned sections in sync. The caller owns
+ * the target (accumulating it frame to frame) so nothing compounds: reading
+ * Lenis's smoothed `.scroll` back each frame scrolled ~3x too fast.
+ * ensureLenis() is idempotent.
  */
 export function panScrollTo(y: number): void {
   if (typeof window === "undefined") return;

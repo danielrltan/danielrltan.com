@@ -182,10 +182,12 @@ That's the brief. Cool white + ink + orange. Hold the line.
 
 ## Motion
 
-The full plan and rationale live in the motion spec (`.scratch/motion-spec.md`,
-§0 rules, §1 tokens, §2 scroll core). CSS tokens are on `:root` in
-`src/index.css`; the JS mirror is `src/motion.ts` (same names, seconds).
-Programmatic scroll goes through `src/scroll.ts`.
+The rules below are the durable summary of the 2026 motion overhaul. (Its
+working spec, `.scratch/motion-spec.md`, is a local planning file and is not
+committed; everything a contributor needs is here and in the code comments.)
+CSS tokens are on `:root` in `src/index.css`; the JS mirror is
+`src/motion.ts` (same names, seconds). Programmatic scroll goes through
+`src/scroll.ts`, which also records the Lenis tuning history.
 
 ### The five rules
 

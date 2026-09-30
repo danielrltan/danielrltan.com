@@ -332,39 +332,40 @@ export function Macintosh() {
     };
     window.addEventListener("mac-zoom-request", onMacZoom);
 
-    // Reveal the Mac stage while the SECTION is on screen (section-relative,
-    // replaces the absolute STAGE_REVEAL_VH = 2.25 scrollY gate, which broke as
-    // soon as a pin above changed length). Active from just before the
-    // section's top enters the viewport bottom until its bottom leaves the top
-    // AFTER the pin. The end is explicit because this trigger's element is the pinned
-    // element itself and starts before the pin, so GSAP would not add the
-    // pin's spacing to a plain "bottom top" end (the stage would go dark ~one
-    // section height into the pin). `st` is created first, so it has already
-    // refreshed when this end is re-evaluated.
+    // Reveal the Mac stage once the SECTION is about to arrive, and keep it on
+    // for everything below (section-relative; replaces the absolute
+    // STAGE_REVEAL_VH = 2.25 scrollY gate, which broke as soon as a pin above
+    // changed length). Same semantics as that gate: on from the trigger start
+    // onward, off only when scrolling back above it. Nothing needs hiding
+    // below the section because the stage is clipped to its own box, and
+    // staying on means a cut INTO Projects from further down (footer jump,
+    // menu, JumpToTop) never lands on a CRT still fading up from opacity 0.
     const stage = el.querySelector(".mac-stage") as HTMLElement | null;
     const setStageVisible = (v: boolean) =>
       stage?.setAttribute("data-stage-visible", String(v));
-    // STAGE_LEAD_VH: reveal a little BEFORE the section enters so the stage's
-    // opacity fade (macintosh.css) finishes off screen and the section never
-    // arrives blank or mid-fade (the old absolute gate also led by ~0.64vh at
-    // 1440x900). The stage is clipped to its own box, so the lead can't show
-    // through About.
-    const STAGE_LEAD_VH = 0.5;
+    // STAGE_LEAD_VH: reveal a full viewport BEFORE the section's top reaches
+    // the viewport bottom, so the stage's opacity fade (macintosh.css,
+    // --t-med) finishes off screen even on a fast flick at short viewports
+    // (0.5 left it visibly mid-fade at 1280x720; the old absolute gate led by
+    // ~0.64vh at 900px tall and ~1.0vh at 720px). The stage is clipped to its
+    // own box, so the lead can't show through About.
+    const STAGE_LEAD_VH = 1.0;
     const stageST = ScrollTrigger.create({
       trigger: el,
       start: () => `top bottom+=${Math.round(window.innerHeight * STAGE_LEAD_VH)}`,
-      end: () =>
-        "+=" +
-        Math.round(
-          st.end - st.start + el.offsetHeight + window.innerHeight * (1 + STAGE_LEAD_VH),
-        ),
+      // "max": the range runs to the bottom of the page. Only the start edge
+      // matters; onEnter/onLeaveBack below fire on it (GSAP fires onEnter
+      // even when one update jumps from above the start straight to the end).
+      end: "max",
       invalidateOnRefresh: true,
-      onToggle: (s) => setStageVisible(s.isActive),
+      onEnter: () => setStageVisible(true),
+      onLeaveBack: () => setStageVisible(false),
+      // Callbacks don't fire for state changes made during a refresh (layout
+      // shift, resize, loader lift), so re-seed from progress there too.
+      onRefresh: (s) => setStageVisible(s.progress > 0),
     });
-    // Seed (refresh-at-offset). isActive is undefined until the trigger's
-    // first update, so coerce; the post-refresh update fires onToggle if a
-    // mid-page reload lands inside the range.
-    setStageVisible(!!stageST.isActive);
+    // Seed (refresh-at-offset, e.g. a mid-page reload).
+    setStageVisible(stageST.progress > 0 || !!stageST.isActive);
 
     // Refresh once loading-active drops: pin positions shift during
     // initial layout.
