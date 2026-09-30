@@ -379,7 +379,9 @@ export function installHeroWipe(): void {
         fadeOpacity = 1;
         writeFade();
       }
-      const inRange = y > 0.5 && y < vh;
+      // Torn down a beat after About pins (1.1vh, not 1.0) so the teardown
+      // never lands in the same frame as the pin engage + HUD mount.
+      const inRange = y > 0.5 && y < vh * 1.1;
       if (inRange && !built) build();
       else if (!inRange && built) teardown();
       if (built) {
