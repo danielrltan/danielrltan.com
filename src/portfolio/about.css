@@ -40,6 +40,16 @@
   background-color: var(--bg-page, #eef0f3);
 }
 
+/* HERO → ABOUT iris: while the hero's pixel iris is open (0 < scrollY < 1vh,
+   html[data-hero-wipe] from src/hero/heroWipe.ts) the stage is
+   counter-translated up so it sits still under the hole. Let it paint above
+   the section's top edge for that window only (overflow-y visible); x stays
+   clipped so nothing can spill sideways. Back to hidden once pinned. */
+html[data-hero-wipe] .portfolio-about {
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
 /* Faint warm pool behind the centerpiece so the orange room reads as a
    light source. Pure decoration, no hue beyond the brand orange. The outer
    dark vignette was removed alongside the dot-grid: it darkened the section

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { heroState } from "./heroState";
 import * as THREE from "three";
 
 /**
@@ -490,24 +491,20 @@ function RingScene({
   // listener flips it, no per-frame layout reads.
   const offscreenRef = useRef(false);
   // Timestamp (ms) of the last scroll — used to PAUSE the 2-pass render during
-  // active NON-DIVE scroll (during the dive the ring must keep rendering so the
-  // tile-grid coarsening animates).
+  // active scroll (including the hero -> About pixel iris, which composites the
+  // ring's last frame).
   const lastScrollRef = useRef(0);
-  // Base tile grid (cols, rows) derived from the canvas size. The hero->about
-  // dive coarsens DOWN from this so the ASCII pixels enlarge + the field's
-  // resolution degrades as you zoom through the type (the user-loved look).
+  // Base tile grid (cols, rows) derived from the canvas size.
   const baseGridRef = useRef<THREE.Vector2 | null>(null);
   useEffect(() => {
-    // Cull only AFTER the dive has fully faded (--hero-opacity ends ~1.12vh): the
-    // ring now coarsens its pixels right through the dive, so culling at 0.85vh
-    // (the old value) would pop the chunky field out before the fade finished.
-    // Past 1.15vh the composition is fully transparent, so there's nothing to
-    // show — reclaim the GPU there.
+    // Cull once the hero is gone: heroWipe.ts flags heroState.culled when the
+    // pixel iris has cleared the frame (0.9vh) or the mobile / reduced-motion
+    // fade has finished; the ratio check is a belt-and-braces backstop.
     const OFFSCREEN_VH = 1.15;
     let raf = 0;
     const apply = () => {
       const ratio = window.scrollY / Math.max(1, window.innerHeight);
-      offscreenRef.current = ratio >= OFFSCREEN_VH;
+      offscreenRef.current = ratio >= OFFSCREEN_VH || heroState.culled;
     };
     const onScroll = () => {
       lastScrollRef.current = performance.now();
@@ -707,26 +704,18 @@ function RingScene({
       return;
     }
 
-    // Eased dive progress (0..1), read from the --hero-to-about inline CSS var
-    // App.tsx writes each frame. Inline-style read = cheap (no computed style /
-    // layout). Drives the pixel-enlarge below AND gates the scroll-pause.
-    const diveRaw = document.documentElement.style.getPropertyValue(
-      "--hero-to-about",
-    );
-    const dive = diveRaw ? Math.max(0, Math.min(1, parseFloat(diveRaw) || 0)) : 0;
+    if (heroState.culled) {
+      lastTRef.current = performance.now() / 1000;
+      return;
+    }
 
-    // PERF: pause the 2-pass render during ACTIVE scroll — but ONLY when NOT
-    // diving. During the hero->about dive the ring MUST keep rendering: its tile
-    // grid coarsens as the dive deepens so the ASCII pixels enlarge and the
-    // field's resolution degrades (the effect the user loves), which only
-    // animates if the post pass runs every frame. Outside the dive the slow 26s
-    // spin is imperceptible, so the scroll-event pause still frees the GPU.
-    // (The earlier data-hero-diving HARD freeze that lived here FROZE the ring
-    // mid-dive — user: "freezing everything" — and is gone. The dive's cost is
-    // the cheap 2-pass shader, not the long-removed main-thread SVG mosaic, so
-    // rendering through it is fine.)
+    // PERF: pause the 2-pass render during ACTIVE scroll. This now also FREEZES
+    // the ring through the hero -> About pixel iris: the iris + push-in are
+    // compositor transforms/clips of whatever the ring last drew, so a still
+    // ring can't judder at 24fps inside a layer moving at display rate (the old
+    // dive's tile-grid coarsening, which reshuffled the field every frame, is
+    // gone). Outside scroll the slow 26s spin resumes.
     if (
-      dive <= 0.001 &&
       revealedRef.current &&
       performance.now() - lastScrollRef.current < 140
     ) {
@@ -773,23 +762,6 @@ function RingScene({
     u.uTime!.value = now;
     // Drift the abstract orange haze in the post field (slow morph).
     pipeline.postMaterial.uniforms.uTime!.value = now;
-
-    // PIXEL-ZOOM (user-loved): coarsen the tile grid as the dive deepens, so the
-    // ASCII cells grow bigger and bigger and the field's resolution visibly
-    // degrades as you zoom through it (then the wrapper fades). GPU-cheap — it's
-    // only the post grid uniform: the render target keeps its resolution and
-    // pass 2 just samples it more sparsely into chunkier cells. dive 0 = base
-    // grid (no change); dive 1 = ~8x bigger cells. Replaces the old per-frame
-    // main-thread SVG feMorphology mosaic (the real lag source), which stays
-    // gone, so this is the cheap way back to the look.
-    const bg = baseGridRef.current;
-    if (bg) {
-      const coarse = 1 - dive * 0.88; // 1 -> 0.12
-      (pipeline.postMaterial.uniforms.uGrid!.value as THREE.Vector2).set(
-        Math.max(3, Math.round(bg.x * coarse)),
-        Math.max(3, Math.round(bg.y * coarse)),
-      );
-    }
 
     // CURSOR PAINT TRAIL: decay every point, then lay fresh points along the
     // cursor's movement this frame. The head reads from the RAW cursor (no

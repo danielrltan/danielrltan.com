@@ -417,9 +417,13 @@ export function HeroSignature() {
         </div>
       </div>
 
+      {/* Pixel-iris rim (hero -> About handoff). Styled + animated only while
+          the iris is open; see heroWipe.ts / hero-composition.css. */}
+      <div className="hero-iris-rim" aria-hidden="true" />
+
       {/* Scroll cue: a pixel down-chevron, lower-middle, bobbing frame-by-frame.
-          Sibling of .hero-composition so the dive transform/pixelation doesn't
-          scale it; fades the instant the dive begins (--hero-to-about). */}
+          Sibling of .hero-composition so the iris push-in doesn't scale it;
+          fades the instant you leave the resting hero (data-hero-diving). */}
       <div className="hero-scroll-cue" aria-hidden="true">
         <svg width="46" height="26" viewBox="0 0 9 5" fill="#ffffff" shapeRendering="crispEdges">
           <rect x="0" y="0" width="1" height="1" />

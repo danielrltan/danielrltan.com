@@ -63,9 +63,14 @@ interface Cell {
 
 /* Reveal order = boot-up order. Mobile re-spaces these off a tighter base
    while preserving the sequence, so the column still reveals top-to-bottom. */
+/* The ARRIVAL TRIO (header, name card, room render) is revealed up front on
+   desktop (at: 0): the hero hands off through a pixel iris that opens onto
+   this stage while it sits still under the hero, so About must already be
+   populated when the hole opens, never a blank grey field. The rest of the
+   dashboard keeps its boot-up beats through the pin. */
 const CELLS: Cell[] = [
-  { key: "name", at: 0.1 },
-  { key: "render", at: 0.18 },
+  { key: "name", at: 0 },
+  { key: "render", at: 0 },
   { key: "portrait", at: 0.24 },
   { key: "now", at: 0.3 },
   { key: "explore", at: 0.36 },
@@ -74,14 +79,26 @@ const CELLS: Cell[] = [
   { key: "loc", at: 0.56 },
 ];
 
-/* Topbar / crumb lights up first; its own early beat. */
-const HEADER_AT = 0.06;
+/* Topbar / crumb: part of the arrival trio (see CELLS). Its "ABOUT" decode is
+   cued by the hero iris instead (hero-wipe-reveal). */
+const HEADER_AT = 0;
 const MOBILE_HEADER_AT = 0.08;
 
 export function About() {
   const sectionRef = useRef<HTMLElement>(null);
   const [progress, setProgress] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
+  /* The hero's pixel iris dispatches hero-wipe-reveal once it is ~a third open;
+     the "ABOUT" decode plays through the hole from then on. */
+  const [wipeRevealed, setWipeRevealed] = useState(
+    () => typeof window !== "undefined" && window.scrollY > window.innerHeight * 0.3,
+  );
+  useEffect(() => {
+    if (wipeRevealed) return;
+    const on = () => setWipeRevealed(true);
+    window.addEventListener("hero-wipe-reveal", on);
+    return () => window.removeEventListener("hero-wipe-reveal", on);
+  }, [wipeRevealed]);
   /* Mirror the CSS bento breakpoint (≤900px collapses to one column) so the
      reveal schedule matches the layout the user actually sees. Initialised
      synchronously to avoid a desktop→mobile flash on first paint. Aligned to
@@ -147,7 +164,11 @@ export function About() {
       // locked 1:1 to scroll). Without the numeric scrub a fast flick would
       // teleport the dashboard in; now the cells ease up through the band.
       scrub: 1,
-      anticipatePin: 1,
+      // 0, not 1: the hero iris counter-translates the stage right up to this
+      // pin's start (heroWipe.ts), so an EARLY pin (anticipation) would show the
+      // stage offset for a few frames. Lenis scroll is main-thread, so the pin
+      // engages in the same frame anyway.
+      anticipatePin: 0,
       onUpdate: (self) => setProgress(self.progress),
     });
     // Refresh after THIS pin is (re)created — not only after the loading
@@ -203,7 +224,10 @@ export function About() {
             <span className="about-banner-domain">danielrltan.com</span>
           </div>
           <p className="about-banner-title">
-            <ScrambleText text="About" play={headerRevealed} />
+            <ScrambleText
+              text="About"
+              play={headerRevealed && (wipeRevealed || mobile)}
+            />
           </p>
         </header>
 
