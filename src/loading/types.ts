@@ -1,4 +1,5 @@
 // src/loading/types.ts
+import { DUR, toMs } from "../motion";
 
 export interface AssemblyState {
   /** 0..1: what the visible counter shows. Elapsed / TIMELINE_FLOOR_MS since
@@ -47,16 +48,25 @@ export const UNLOCK_FAILSAFE_MS = 5000;
  *  locked until that's done). HERO_HOLD_MS: the minimum the "100" sits on screen
  *  after it reaches 100 before the reveal can start (it ALSO waits for the
  *  `hero-composed` signal, whichever is later). LOADER_FADE_MS: the scrim
- *  fade-out duration (keep in sync with the .boot-loader CSS transition).
- *  REVEAL_FAILSAFE_MS: reveal anyway if `hero-composed` never arrives. */
-export const HERO_HOLD_MS = 700;
-export const LOADER_FADE_MS = 560;
+ *  fade-out duration, one shared token with the .boot-loader CSS transition
+ *  (DUR.slow = --t-slow, 540 ms). REVEAL_FAILSAFE_MS: reveal anyway if
+ *  `hero-composed` never arrives.
+ *
+ *  HERO_HOLD_MS 700 → 500 (motion spec §4.13): the hero's entrance now plays
+ *  OVER the fading scrim (`loader-reveal-start`), so the "100" needs less
+ *  standing time before the crossfade reads as deliberate. Owner-tunable. */
+export const HERO_HOLD_MS = 500;
+export const LOADER_FADE_MS = toMs(DUR.slow);
 export const REVEAL_FAILSAFE_MS = 2600;
 /** Scroll stays LOCKED this long AFTER the loader has fully faded out (the hero
  *  is already revealed), so the user can settle into the hero and process it
  *  before scrolling becomes possible — instead of being "launched abruptly" the
- *  instant the fade ends (owner-flagged). Tunable beat. */
-export const POST_REVEAL_HOLD_MS = 900;
+ *  instant the fade ends (owner-flagged). Tunable beat.
+ *
+ *  900 → 400 (motion spec §4.13): shortened, not removed. With the hero
+ *  entrance now visible through the fade, a 900 ms lock after all motion had
+ *  stopped read as a dead page. Owner-tunable. */
+export const POST_REVEAL_HOLD_MS = 400;
 /** Max time to keep waiting for STABLE_FRAMES_REQUIRED smooth frames AFTER
  *  the timeline floor is satisfied. The smooth-frames gate is a
  *  reveal-without-jank *preference*; on weak hardware the hero ring may
@@ -69,5 +79,10 @@ export const STABLE_WAIT_TIMEOUT_MS = 600;
  *  throttled background tab). Healthy loads finish in ~3-4s, far under
  *  this; a last-resort backstop so a visitor is never stuck indefinitely. */
 export const HARD_CEILING_MS = 15000;
+/** STALE NAMES, kept to avoid churn: there is no "climax" animation or HUD fade
+ *  any more. Their only job is their SUM: `climaxDone` (useAssemblyProgress)
+ *  fires CLIMAX_DURATION_MS + POST_CLIMAX_HUD_FADE_MS (720 ms) after
+ *  climaxReady, and that is purely the progress loop's terminal early-out. It
+ *  gates nothing visible (the page unlock rides `loader-revealed`). */
 export const CLIMAX_DURATION_MS = 400;
 export const POST_CLIMAX_HUD_FADE_MS = 320;

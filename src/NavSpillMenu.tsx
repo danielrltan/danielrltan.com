@@ -1,23 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import * as THREE from "three";
-import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
+import { SECTION_REGISTRY } from "./sectionRegistry";
 import { useIsMobile } from "./useIsMobile";
-import { scrollToSection, setScrollLocked } from "./portfolio/Keypad";
+import { jumpToSection, lockScroll, unlockScroll } from "./scroll";
+import { DUR, ease, reducedMotion, toMs } from "./motion";
 import { clamp01 } from "./math";
 import { MercuryAura, type CursorState, type AuraTarget } from "./MercuryAura";
-import {
-  houseGeom,
-  questionGeom,
-  macGeom,
-  briefcaseGeom,
-  playGeom,
-  trophyGeom,
-  cameraGeom,
-  planeGeom,
-} from "./menuGeometries";
+import { getMenuGeometry, warmMenuGeometries } from "./menuGeometries";
 import "./crt-channel-menu.css";
 
 /**
@@ -116,9 +107,10 @@ function hashF(n: number): number {
   return s - Math.floor(s);
 }
 
-// One geometry + size + idle-spin per section (index matches SECTION_REGISTRY).
+// Size + idle-spin per section (index matches SECTION_REGISTRY). The icon
+// geometry itself comes from the module-scope cache in menuGeometries.ts
+// (getMenuGeometry(i)), so opens never re-triangulate the shapes.
 interface Spec {
-  geom: () => THREE.BufferGeometry;
   size: number;
   spin: [number, number, number];
 }
@@ -130,16 +122,7 @@ const _up = new THREE.Vector3();
 // Thematic low-poly object per section (index matches SECTION_REGISTRY):
 // Hero=house, About=?, Projects=Mac, Work=briefcase, Play=▶, Honours=trophy,
 // Recents=camera, Contact=paper plane. Each is a chunky shape the label sits on.
-const SPECS: Spec[] = [
-  { geom: houseGeom, size: 0.95, spin: [0, 0, 0] }, // 00 Hero
-  { geom: questionGeom, size: 0.95, spin: [0, 0, 0] }, // 01 About
-  { geom: macGeom, size: 0.95, spin: [0, 0, 0] }, // 02 Projects
-  { geom: briefcaseGeom, size: 0.95, spin: [0, 0, 0] }, // 03 Work
-  { geom: playGeom, size: 0.95, spin: [0, 0, 0] }, // 04 Play
-  { geom: trophyGeom, size: 0.95, spin: [0, 0, 0] }, // 05 Honours (trophy wall)
-  { geom: cameraGeom, size: 0.95, spin: [0, 0, 0] }, // 06 Recents
-  { geom: planeGeom, size: 0.95, spin: [0, 0, 0] }, // 07 Contact
-];
+const SPECS: Spec[] = SECTION_REGISTRY.map(() => ({ size: 0.95, spin: [0, 0, 0] }));
 // A CLOCKWISE ring centred on screen with index 0 (Hero) at top-centre
 // (12 o'clock); subsequent sections step clockwise around the circle.
 const RING_RADIUS = 2.25;
@@ -155,14 +138,34 @@ function ringTarget(i: number, n: number): THREE.Vector3 {
 // Objects BURST out from the centre to their ring positions.
 const SPILL_ORIGIN = new THREE.Vector3(0, 0, 0.6);
 
-// On OPEN, hold the icons at the centre (invisible, scale 0) for this long
-// BEFORE the spill begins, so the white background establishes FIRST and the
-// icons spiral out against it (instead of bursting in together, which read "too
-// instant"). A full mirror of the close would be ~610ms (scrim fade 260 + a
-// 350ms hold), but that dead hold felt like too big a gap — so we keep just the
-// scrim-establish beat (~260ms) plus a hair, and drop most of the hold. Enough
-// to read "background, THEN spiral" without the wait.
-const SPILL_LEAD_MS = 340;
+// ── Open / close timeline (motion spec W7.2-W7.4) ──────────────────────────
+// Every beat is a named constant so the feel can be tuned in one place.
+//
+// OPEN: the scrim fades in over DUR.fast (CSS: .navx-spill-root), and the
+// icons hold at the centre for SPILL_LEAD_MS before spiralling out, so the page
+// tone establishes FIRST and the spill reads against it. The lead now overlaps
+// the tail of the scrim fade (was 340 ms, a dead beat after the scrim had
+// already landed). The spill clock is stamped on the canvas's FIRST rendered
+// frame (max(openedAt + lead, firstFrame)), so a slow shader compile delays
+// the spill instead of eating its opening frames.
+const SPILL_LEAD_MS = 160;
+/** Spill-out duration (s): easeOutQuart position, easeOutBack radius. */
+const SPILL_S = 0.45;
+// CLOSE: the time-reversed spiral retracts over RETRACT_S on ease.inCubic
+// (accelerating into the centre). No empty hold after it any more.
+const RETRACT_S = 0.38;
+const RETRACT_MS = toMs(RETRACT_S);
+/** Scrim fade (both directions); mirrors .navx-spill-root in crt-channel-menu.css. */
+const SCRIM_FADE_MS = toMs(DUR.fast);
+/** Plain close (Esc / X / outside): scroll unlocks and the scrim starts fading
+ *  this long into the retract, so the fade overlaps the last of the retract. */
+const CLOSE_FADE_AT_MS = 280;
+/** Slack after the scrim fade before the canvas unmounts. */
+const UNMOUNT_PAD_MS = 20;
+/** Menu canvas DPR cap, every tier. The full-screen MercuryAura shader runs
+ *  ~15 noise evaluations per pixel; at DPR 2 on a 1440×900 Retina panel that
+ *  is ~5.2M px per frame. 1.5 keeps the pixel-dither crisp at ~56% the cost. */
+const MENU_DPR: [number, number] = [1, 1.5];
 
 // SETTLE DRIFT — after the spill spirals out, the field COASTS a few degrees in
 // the SAME rotational direction the spill opened (the objects sweep clockwise
@@ -183,7 +186,7 @@ function SpillObject({
   label,
   active,
   armed,
-  startMs,
+  startMsRef,
   reduced,
   onSelect,
   posEntry,
@@ -199,7 +202,9 @@ function SpillObject({
   label: string;
   active: boolean;
   armed: boolean;
-  startMs: number;
+  /** Spill start (performance.now ms). +Infinity until SpillField stamps it on
+   *  the canvas's first frame, so the icons hold at the centre until then. */
+  startMsRef: React.MutableRefObject<number>;
   reduced: boolean;
   onSelect: () => void;
   posEntry: AuraTarget;
@@ -223,7 +228,7 @@ function SpillObject({
   const tiltRef = useRef(0); // eased hover-parallax weight (0 → 1 on hover)
 
   const spec = SPECS[index]!;
-  const geometry = useMemo(() => spec.geom(), [spec]);
+  const geometry = getMenuGeometry(index);
   // Generous, forgiving hit area: a sphere sized to the object's bounds (padded)
   // carries the hover/click instead of the detailed, holey mesh. Without it you
   // could only arm an icon while exactly over its geometry — drift into a gap
@@ -290,14 +295,18 @@ function SpillObject({
       p = closing ? 0 : 1;
       radFrac = clamp01(p);
     } else if (closing) {
-      // True time-reverse of the open: easeOutQuart(1 - τ) (NOT 1 -
-      // easeOutQuart(τ), which isn't the reverse). p runs 1 → 0 and ACCELERATES
-      // into the centre, mirroring the open. No stagger — all retract together.
+      // Retract: the spiral run backwards, p → 0 on ease.inCubic, so it
+      // ACCELERATES into the centre (an exit) over RETRACT_S. It starts from
+      // wherever the spill had got to when the close began (a close mid-spill
+      // no longer snaps the ring fully open first). No stagger: all retract
+      // together.
+      const openT = (closeMsRef.current - startMsRef.current) / 1000 / SPILL_S;
+      const pAtClose = Number.isFinite(openT) ? easeOutQuart(clamp01(openT)) : 0;
       const ce = (now - closeMsRef.current) / 1000;
-      p = easeOutQuart(1 - clamp01(ce / 0.5));
+      p = pAtClose * (1 - ease.inCubic(clamp01(ce / RETRACT_S)));
       radFrac = clamp01(p);
     } else {
-      const tRaw = clamp01((now - startMs) / 1000 / 0.5);
+      const tRaw = clamp01((now - startMsRef.current) / 1000 / SPILL_S);
       p = easeOutQuart(tRaw);
       radFrac = easeOutBack(tRaw);
     }
@@ -412,7 +421,9 @@ function SpillObject({
     if (lab) {
       const lo = clamp01((p - 0.55) / 0.35);
       lab.style.opacity = lo.toFixed(3);
-      lab.style.pointerEvents = lo > 0.5 ? "auto" : "none";
+      // No clicks once the retract has begun (a second pick mid-close would
+      // re-aim a jump that's already under way).
+      lab.style.pointerEvents = lo > 0.5 && !closing ? "auto" : "none";
     }
   });
 
@@ -467,7 +478,8 @@ function SpillField({
   activeIdx,
   armed,
   setArmed,
-  startMs,
+  startMsRef,
+  spillClockRef,
   reduced,
   pointer,
   cursor,
@@ -483,7 +495,9 @@ function SpillField({
   activeIdx: number;
   armed: number;
   setArmed: (i: number) => void;
-  startMs: number;
+  startMsRef: React.MutableRefObject<number>;
+  /** Open timestamp + "stamp the spill clock on the next frame" flag. */
+  spillClockRef: React.MutableRefObject<{ openedAt: number; pending: boolean }>;
   reduced: boolean;
   pointer: React.MutableRefObject<{ x: number; y: number }>;
   cursor: React.MutableRefObject<CursorState>;
@@ -549,12 +563,25 @@ function SpillField({
     // matches the open's last frame exactly); the objects retract to centre
     // regardless, and driftRef resets fresh on the next open (the menu unmounts
     // between opens). Only reduced-motion forces it flat.
+    // Spill clock: stamped on the first frame this canvas renders after an
+    // open (children's useFrame callbacks run before this one, so they read
+    // +Infinity on that frame and hold at the centre). A warm canvas starts
+    // the spill SPILL_LEAD_MS after the open; a cold one (context + shader
+    // compile took longer than the lead) starts on its first real frame, so
+    // the stall delays the spill instead of eating its opening frames.
+    const clock = spillClockRef.current;
+    if (clock.pending) {
+      clock.pending = false;
+      startMsRef.current = Math.max(clock.openedAt + SPILL_LEAD_MS, now);
+      driftRef.current.kicked = false;
+    }
+
     const dr = driftRef.current;
     if (reduced) {
       dr.z = 0;
       dr.v = 0;
     } else {
-      if (!dr.kicked && now >= startMs) {
+      if (!dr.kicked && now >= startMsRef.current) {
         dr.v = DRIFT_KICK;
         dr.kicked = true;
       }
@@ -616,7 +643,7 @@ function SpillField({
           label={MENU_LABELS[s.number] ?? s.label}
           active={i === activeIdx}
           armed={i === armed}
-          startMs={startMs}
+          startMsRef={startMsRef}
           reduced={reduced}
           onSelect={() => select(i)}
           posEntry={positionsRef.current[i]!}
@@ -669,8 +696,16 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
   // releases back to -1. It must NOT default to activeIdx, or the current
   // section spawns permanently enlarged with no way to shrink it.
   const [armed, setArmed] = useState(-1);
-  const startMsRef = useRef(0);
+  // Spill clock. startMsRef is +Infinity (icons held at the centre) until
+  // SpillField stamps it on the canvas's first frame after an open.
+  const startMsRef = useRef(Number.POSITIVE_INFINITY);
+  const spillClockRef = useRef({ openedAt: 0, pending: false });
   const closeMsRef = useRef(0);
+  // Section picked from the menu, consumed by the close effect: >= 0 runs the
+  // jump timeline, -1 a plain close. Set by select() BEFORE it calls onClose().
+  const pendingJumpRef = useRef(-1);
+  const openRef = useRef(open);
+  openRef.current = open;
   const pointer = useRef({ x: 0, y: 0 });
   // Cursor in screen UV (0..1, y-down) for the rice pool that follows it.
   const cursor = useRef<CursorState>({ x: 0.5, y: 0.5, active: false });
@@ -682,9 +717,22 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
       r: 0,
     })),
   );
-  const reduced =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduced = reducedMotion.value;
+
+  // Build the icon geometries during the idle warm (this component mounts
+  // CLOSED on idle), so the first open doesn't triangulate them mid-spill.
+  useEffect(() => {
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(warmMenuGeometries);
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(warmMenuGeometries, 200);
+    return () => window.clearTimeout(t);
+  }, []);
 
   // Stamp the close-start time SYNCHRONOUSLY on the open→close transition,
   // during the SAME render that flips `closing` true for the canvas. The
@@ -704,43 +752,103 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
 
   useEffect(() => {
     if (open) {
-      // Lead with the background: delay the spill so the scrim establishes
-      // first, then the icons spiral out against it (see SPILL_LEAD_MS).
-      startMsRef.current = performance.now() + SPILL_LEAD_MS;
+      // The spill clock is stamped by SpillField on the canvas's first frame
+      // (see SPILL_LEAD_MS); until then the icons hold at the centre.
+      spillClockRef.current = { openedAt: performance.now(), pending: true };
+      startMsRef.current = Number.POSITIVE_INFINITY;
+      pendingJumpRef.current = -1;
       setArmed(-1); // open with nothing enlarged; hover is what arms an object
       cursor.current.active = false;
       unmountPendingRef.current = false;
       if (!mounted) canvasCreatedRef.current = false;
       setMounted(true);
-      setScrollLocked(true); // page can't be scrolled under the open menu
-      const r = requestAnimationFrame(() => setShown(true));
-      return () => cancelAnimationFrame(r);
+      lockScroll("menu"); // page can't be scrolled under the open menu
+      return; // the scrim fade-in is started by the effect below
     }
-    setScrollLocked(false);
-    if (mounted) {
-      // closeMsRef is stamped synchronously on the open→close transition
-      // (see prevOpenRef above) so the first closing frame never reads a
-      // stale timestamp; here we only own the fade/unmount timeouts.
-      // Background opacity stays CONSTANT (shown=true) through the entire
-      // spin-away — no drop. Only ONCE the objects have spun/retracted away
-      // (~0.85s) do we flip shown=false for a single clean fade, then unmount.
-      const fadeT = window.setTimeout(() => setShown(false), 850);
-      const unmountT = window.setTimeout(() => {
-        // Never tear the canvas down mid-creation (see canvasCreatedRef).
-        if (canvasCreatedRef.current) setMounted(false);
-        else unmountPendingRef.current = true;
-      }, 1160);
-      return () => {
-        window.clearTimeout(fadeT);
-        window.clearTimeout(unmountT);
-        unmountPendingRef.current = false;
+    if (!mounted) return;
+
+    // ── CLOSE ──────────────────────────────────────────────────────────────
+    // closeMsRef was stamped synchronously on the open→close transition (see
+    // prevOpenRef above); the retract runs from it in the canvas. This effect
+    // owns the scroll unlock, the scrim fade and the unmount.
+    const rm = reducedMotion.value;
+    const jumpIdx = pendingJumpRef.current;
+    pendingJumpRef.current = -1;
+    let cancelled = false;
+    const timers: number[] = [];
+    const rafs: number[] = [];
+    const later = (fn: () => void, ms: number) => {
+      timers.push(window.setTimeout(fn, ms));
+    };
+    const unmount = () => {
+      // Never tear the canvas down mid-creation (see canvasCreatedRef).
+      if (canvasCreatedRef.current) setMounted(false);
+      else unmountPendingRef.current = true;
+    };
+    // Unlock scroll, fade the scrim out (DUR.fast; 0 under reduced motion,
+    // where the CSS net zeroes the transition), then unmount just after.
+    const release = () => {
+      unlockScroll("menu");
+      setShown(false);
+      later(unmount, (rm ? 0 : SCRIM_FADE_MS) + UNMOUNT_PAD_MS);
+    };
+
+    if (jumpIdx >= 0) {
+      // JUMP (spec W7.3): the retract plays with scroll still locked; at its end
+      // the page TELEPORTS under the opaque scrim (a cut: immediate, runs
+      // ScrollTrigger.update and emits the jump `end` so followers snap). A
+      // smooth scroll here would never be seen, and it would blast every pin and
+      // canvas mount between origin and destination through ~6 frames while the
+      // retract animates. Two frames later, once the destination has rendered
+      // under the scrim, scroll unlocks and the scrim fades to reveal it.
+      const doJump = () => {
+        if (cancelled) return;
+        void jumpToSection(jumpIdx, { mode: "cut", cover: false }).then(() => {
+          if (cancelled) return;
+          rafs.push(
+            requestAnimationFrame(() => {
+              rafs.push(
+                requestAnimationFrame(() => {
+                  if (!cancelled) release();
+                }),
+              );
+            }),
+          );
+        });
       };
+      if (rm) doJump();
+      else later(doJump, RETRACT_MS);
+    } else {
+      // PLAIN CLOSE (Esc / X / outside click): the scrim fade overlaps the tail
+      // of the retract. No empty hold on a blank scrim.
+      later(release, rm ? 0 : CLOSE_FADE_AT_MS);
     }
+    return () => {
+      // Reopened mid-close: drop the pending jump/fade/unmount. The menu lock
+      // is still held (or re-taken by the open branch), so nothing leaks.
+      cancelled = true;
+      timers.forEach((t) => window.clearTimeout(t));
+      rafs.forEach((r) => cancelAnimationFrame(r));
+      unmountPendingRef.current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Scrim fade-in. Once the root is in the DOM (hidden), commit that hidden
+  // style with one computed-style read, THEN flip data-open, so the DUR.fast
+  // fade actually runs from 0. (Flipping on the next rAF was not enough: the
+  // root's first style resolve already saw data-open=true and the scrim
+  // popped in with no fade.) One style read per open.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open || !mounted || shown) return;
+    const root = rootRef.current;
+    if (root) void getComputedStyle(root).opacity;
+    setShown(true);
+  }, [open, mounted, shown]);
+
   // Safety: always unlock scroll if the menu unmounts while open.
-  useEffect(() => () => setScrollLocked(false), []);
+  useEffect(() => () => unlockScroll("menu"), []);
 
   // Pointer: cursor (rice) + parallax + Escape.
   useEffect(() => {
@@ -769,25 +877,14 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
     };
   }, [mounted, onClose, isMobile]);
 
+  // Pick a section: analytics now, then close with the jump queued. The close
+  // effect runs the retract → cut-under-the-scrim → reveal timeline. Ignored
+  // once a close is under way. jumpToSection lands on the section's pin beat
+  // (data-jump-progress / registry jumpProgress) or its top.
   const select = (i: number) => {
+    if (!openRef.current) return;
     onJump?.(SECTION_REGISTRY[i]?.label ?? "");
-    const opts = reduced ? { immediate: true } : { duration: 1.1 };
-    // Beat-aware jump: if the section parks a sub-beat (Play → the "Some
-    // interests" reel inside the Other pin), scroll to that fraction of the
-    // named pin instead of the section top, so the jump lands on the right
-    // beat. Falls back to the section element if the pin isn't live yet.
-    const entry = SECTION_REGISTRY[i];
-    if (entry?.pinId && entry.jumpProgress != null) {
-      const st = ScrollTrigger.getById(entry.pinId);
-      if (st) {
-        const y = st.start + entry.jumpProgress * (st.end - st.start);
-        scrollToSection(y, opts);
-        onClose();
-        return;
-      }
-    }
-    const el = (findSectionElements()[i]?.el as HTMLElement | null) ?? null;
-    if (el) scrollToSection(el, opts);
+    pendingJumpRef.current = i;
     onClose();
   };
 
@@ -838,7 +935,7 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
   const objScale = isMobile ? 0.78 - narrow * 0.22 : 1;
 
   return (
-    <div className="navx-spill-root" data-open={shown ? "true" : "false"}>
+    <div className="navx-spill-root" ref={rootRef} data-open={shown ? "true" : "false"}>
       <div className="navx-spill-scrim" onClick={onClose} aria-hidden />
       <button
         className="navx-close"
@@ -856,7 +953,7 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
         <Canvas
           className="navx-spill-canvas"
           camera={{ position: [0, 0, camZ], fov: camFov }}
-          dpr={[1, 2]}
+          dpr={MENU_DPR}
           gl={{ alpha: true, antialias: true }}
           onPointerMissed={onClose}
           onCreated={onCanvasCreated}
@@ -874,7 +971,8 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
             activeIdx={activeIdx}
             armed={armed}
             setArmed={setArmed}
-            startMs={startMsRef.current}
+            startMsRef={startMsRef}
+            spillClockRef={spillClockRef}
             reduced={reduced}
             pointer={pointer}
             cursor={cursor}

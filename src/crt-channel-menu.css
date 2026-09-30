@@ -32,8 +32,13 @@
      highlight) rather than snapping/slamming in (which read like a click). */
   outline: 2px solid transparent;
   outline-offset: 3px;
-  transition: background 130ms ease, outline-color 220ms ease,
-    box-shadow 240ms ease, transform 220ms cubic-bezier(0.2, 0.9, 0.25, 1);
+  /* Hover/press props + the HUD entrance/exit list (--hud-tr, see HUD CHROME
+     below). One list so neither overrides the other. */
+  transition: background var(--t-press) var(--ease-out),
+    outline-color var(--hover-dur) var(--hover-ease),
+    box-shadow var(--hover-dur) var(--hover-ease),
+    transform var(--hover-dur) var(--hover-ease),
+    var(--hud-tr, opacity 0s);
 }
 /* Click reaction: the number block flashes deep-orange (a tactile press),
    with NO downward shift. This is the PRESS cue — kept distinct from hover. */
@@ -132,7 +137,7 @@
   padding: 0 12px;
   background: rgba(255, 79, 0, 0.1);
   border-left: 1px solid rgba(13, 14, 16, 0.12);
-  transition: background 130ms ease;
+  transition: background var(--t-press) var(--ease-out);
 }
 .snc-dial-grid {
   display: grid;
@@ -143,7 +148,7 @@
 .snc-dial-grid > i {
   display: block;
   background: var(--navx-accent);
-  transition: background 130ms ease;
+  transition: background var(--t-press) var(--ease-out);
 }
 .snc-dial:hover .snc-dial-trigger,
 .snc-dial[aria-expanded="true"] .snc-dial-trigger {
@@ -204,6 +209,82 @@
   }
 }
 
+/* Dial label crossfade: the incoming label and the outgoing ghost share one
+   grid cell, so the body is as wide as the wider of the two for the swap. */
+.snc-dial-body {
+  display: grid;
+  grid-template-columns: minmax(0, auto); /* shrinkable, so mobile ellipsis still works */
+  align-content: center;
+}
+.snc-dial-label,
+.snc-dial-label-ghost {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+.snc-dial-label-ghost {
+  font: 650 15px/1 "Geist", system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--navx-ink);
+  opacity: 0;
+  pointer-events: none;
+}
+.snc-dial[data-mobile="true"] .snc-dial-label-ghost {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ========================= HUD CHROME ENTRANCE ========================
+ * One coordinated entrance for the fixed chrome (brand tile, dial,
+ * jump-to-top): opacity + an individual `translate` lift (so it composes with
+ * each element's own hover/press `transform`) over --chrome-dur, the dial and
+ * jump-to-top a --stagger behind the brand. Elements carry `.hud-chrome` and a
+ * data-hud state; each element's own `transition` list appends var(--hud-tr),
+ * so the state lists below never clobber its hover/press transitions.
+ *   hidden: opacity 0, visibility hidden AFTER the fade, lifted by --hud-lift.
+ *   menu:   the dial steps aside for the spill menu's close X (fast, no lift).
+ *   shown:  resting state; --hud-delay staggers the entrance. */
+.hud-chrome {
+  --hud-lift: calc(-1 * var(--chrome-lift)); /* top chrome drops in from above */
+  --hud-delay: 0s;
+  --hud-tr: opacity var(--chrome-dur) var(--ease-out) var(--hud-delay),
+    translate var(--chrome-dur) var(--ease-out) var(--hud-delay),
+    visibility 0s linear 0s;
+}
+.hud-chrome--rise {
+  --hud-lift: var(--chrome-lift); /* bottom chrome rises from below */
+}
+.hud-chrome--plain {
+  transition: var(--hud-tr);
+}
+.hud-chrome[data-hud="hidden"] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  translate: 0 var(--hud-lift);
+  --hud-tr: opacity var(--chrome-dur) var(--ease-out),
+    translate var(--chrome-dur) var(--ease-out),
+    visibility 0s linear var(--chrome-dur);
+}
+.hud-chrome[data-hud="menu"] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  --hud-tr: opacity var(--t-fast) var(--ease-out), translate 0s,
+    visibility 0s linear var(--t-fast);
+}
+/* JumpToTop is a .hud-btn: restate its hover/press list (index.css) with the
+   HUD list appended, since one `transition` declaration wins. */
+.hud-btn.hud-chrome {
+  transition: background var(--hover-dur) var(--hover-ease),
+    border-color var(--hover-dur) var(--hover-ease),
+    color var(--hover-dur) var(--hover-ease),
+    transform var(--t-press) var(--ease-out),
+    box-shadow var(--hover-dur) var(--hover-ease),
+    var(--hud-tr);
+}
+
 /* ===================== NAV SPILL MENU (3D objects) ==================== */
 .navx-spill-root {
   position: fixed;
@@ -211,14 +292,15 @@
   z-index: 60;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 260ms ease;
+  /* Scrim fade, both directions: DUR.fast (NavSpillMenu SCRIM_FADE_MS). */
+  transition: opacity var(--t-fast) var(--ease-out);
 }
 .navx-spill-root[data-open="true"] {
   opacity: 1;
 }
 /* No close-fade delay/hack: the component keeps data-open=true (opacity held
-   at 1) through the whole spin-away, then flips it once for a single clean
-   260ms fade right at the end. So the background never "drops a bit" mid-spin. */
+   at 1) through the retract (a jump teleports under it), then flips it once
+   for a single clean fade. So the background never "drops a bit" mid-spin. */
 /* Full-screen blur behind the shapes: the whole page is blurred + softly
    washed while the menu is open, so the sharp 3D objects pop against it. */
 .navx-spill-scrim {
@@ -270,13 +352,17 @@
   cursor: pointer;
   pointer-events: auto;
   opacity: 0;
-  transform: translateY(-8px);
-  transition: opacity 200ms ease 140ms, transform 200ms ease 140ms,
-    background 130ms ease, border-color 130ms ease;
+  transform: translateY(calc(-1 * var(--chrome-lift)));
+  /* Leaves promptly with the scrim; arrives a --t-press behind it (below). */
+  transition: opacity var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out),
+    background var(--t-press) var(--ease-out),
+    border-color var(--t-press) var(--ease-out);
 }
 .navx-spill-root[data-open="true"] .navx-close {
   opacity: 1;
   transform: translateY(0);
+  transition-delay: var(--t-press), var(--t-press), 0s, 0s;
 }
 .navx-close::before,
 .navx-close::after {
@@ -341,7 +427,7 @@
      off any object beneath it. */
   -webkit-text-stroke: 4.5px var(--navx-ink);
   paint-order: stroke fill;
-  transition: transform 130ms cubic-bezier(0.2, 0.9, 0.25, 1.05), color 130ms ease;
+  transition: transform var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out);
 }
 /* ACTIVE = "you are here NOW": orange text. Orange is reserved for this state
    (hover never recolours), so it's the you-are-here cue on its own. */

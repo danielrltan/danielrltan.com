@@ -1,66 +1,76 @@
 import { useEffect, useState } from "react";
 import { ArrowUp } from "lucide-react";
 import { track } from "./analytics";
+import { HERO } from "./motion";
+import { scrollToY } from "./scroll";
+import { useShownAfterPaint } from "./RoomHUD";
+import "./crt-channel-menu.css"; // HUD CHROME entrance states (.hud-chrome)
 
-/** Persistent jump-to-top pill, bottom-right. Visible after the hero. */
-const SHOW_AT_PROGRESS = 0.08;
+/**
+ * Persistent jump-to-top pill, bottom-right.
+ *
+ * Shown while `visible` (App's HUD reveal; defaults to true so a plain mount
+ * keeps working) AND the page is past the hero: scrollY >= HERO.hudRevealVh
+ * viewports, the same line the HUD reveals on, so the brand, dial and this
+ * button enter together (it used to wait for 8% of the whole document,
+ * ~1.5-1.9vh, and arrive on its own). It hides again back over the hero, where
+ * there's nowhere to jump to.
+ *
+ * Entrance/exit: the shared HUD CHROME transition (crt-channel-menu.css),
+ * rising from +--chrome-lift, a --stagger behind the brand.
+ */
+interface Props {
+  visible?: boolean;
+}
 
-export function JumpToTop() {
-  // OLD: consumed useScrollProgress()'s continuous 0..1 value, so the button
-  // re-rendered on every scroll frame the float changed (~per frame).
-  // NEW: own rAF/scroll handler computes only the boolean and setState's
-  // solely when it flips — at most 2 re-renders for the whole page scroll.
-  // Mirrors useScrollProgress's progress = scrollY / max(1, scrollHeight - innerHeight).
-  const [visible, setVisible] = useState(false);
+/** Past-the-hero test, no layout read (innerHeight only changes on resize). */
+function pastHeroNow(): boolean {
+  return window.scrollY >= HERO.hudRevealVh * (window.innerHeight || 1);
+}
+
+export function JumpToTop({ visible = true }: Props) {
+  // Own rAF-coalesced scroll handler computing only the boolean; setState
+  // fires solely when it flips.
+  const [pastHero, setPastHero] = useState(() =>
+    typeof window === "undefined" ? false : pastHeroNow(),
+  );
   useEffect(() => {
     let raf = 0;
-    // PERF: cache the scrollY THRESHOLD at which the button appears, instead of
-    // reading documentElement.scrollHeight (a forced reflow) on every scroll
-    // frame. scrollHeight only changes on resize / content-mount / loader-lift,
-    // so it's recomputed there (resize + a body ResizeObserver), never on scroll.
-    let thresholdY = Infinity;
-    const recompute = () => {
-      const max = Math.max(
-        1,
-        document.documentElement.scrollHeight - window.innerHeight,
-      );
-      thresholdY = SHOW_AT_PROGRESS * max;
-      update();
-    };
     const update = () => {
-      const next = window.scrollY >= thresholdY; // no layout read
-      setVisible((prev) => (prev === next ? prev : next));
+      raf = 0;
+      const next = pastHeroNow();
+      setPastHero((prev) => (prev === next ? prev : next));
     };
     const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
+      if (!raf) raf = requestAnimationFrame(update);
     };
-    recompute();
+    update();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", recompute, { passive: true });
-    let ro: ResizeObserver | undefined;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(() => recompute());
-      ro.observe(document.body);
-    }
+    window.addEventListener("resize", onScroll, { passive: true });
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", recompute);
-      ro?.disconnect();
-      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
     };
   }, []);
+
+  const shown = useShownAfterPaint(visible && pastHero);
 
   return (
     <button
       type="button"
-      className="hud-btn"
+      className="hud-btn hud-chrome hud-chrome--rise"
+      data-hud={shown ? "shown" : "hidden"}
+      inert={!shown}
       aria-label="Jump to top"
       onClick={() => {
         track("jump_to_top");
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        // Glide under 3 viewports, a covered cut beyond (so the pins aren't
+        // whipped past), instant under reduced motion. See scroll.ts.
+        void scrollToY(0, { preset: "jump" });
       }}
       style={{
+        ["--hud-delay" as string]: "var(--stagger)",
         position: "fixed",
         // Safe-area aware bottom-right so the button clears the home
         // indicator / rounded corner on phones (viewport-fit=cover).
@@ -82,11 +92,6 @@ export function JumpToTop() {
         boxShadow: "0 8px 24px -16px rgba(13, 14, 16, 0.25)",
         color: "var(--ink)",
         cursor: "pointer",
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(8px)",
-        pointerEvents: visible ? "auto" : "none",
-        transition:
-          "opacity 220ms ease, transform 220ms cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
       <ArrowUp size={15} strokeWidth={2} />
