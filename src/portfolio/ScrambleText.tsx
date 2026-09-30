@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useLayoutEffect, useRef } from "react";
+import { reducedMotion } from "../motion";
 
 /**
  * Decode-scramble for the pixel display titles: glyphs flicker through
@@ -7,9 +8,15 @@ import { Fragment, useEffect, useRef } from "react";
  * reads as a CRT/firmware boot, which is the whole joke).
  *
  * Mechanics:
- *   - Plays ONCE per mount, triggered by IntersectionObserver (or
- *     suppressed until `play` flips true, for titles whose reveal is
- *     gated elsewhere, e.g. the About wordmark's opacity gate).
+ *   - Plays ONCE per mount, triggered by IntersectionObserver (default
+ *     `play=true`). Titles whose reveal is gated elsewhere (About's header,
+ *     Play's one-shot header reveal) pass `play`: while it is false the
+ *     final text sits still; on its false -> true EDGE the decode starts in
+ *     that same commit if the title is on screen (so the first glyph change
+ *     lands with the caller's fade-in, not after an IO round-trip, and even
+ *     if the IO already fired). If the gate opens while the title is off
+ *     screen (a cut jump past it, a reload below it) it falls back to the
+ *     IO, so the decode is never burned unseen.
  *   - Time-based rAF (NOT scroll-bound), per the project's fixed-rate
  *     animation rule: char i locks at LOCK_BASE_MS + i * LOCK_STEP_MS;
  *     unlocked chars re-roll a random glyph every FLICKER_MS.
@@ -43,11 +50,17 @@ export function ScrambleText({
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   const doneRef = useRef(false);
+  // True once `play` has been seen false: the caller gates the decode, so a
+  // later true is an explicit "start now" edge rather than the default.
+  const gatedRef = useRef(!play);
+  if (!play) gatedRef.current = true;
 
-  useEffect(() => {
+  // Layout effect: on a gate edge the decode's first rAF is requested before
+  // the commit paints, i.e. in the same frame as the caller's class change.
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el || doneRef.current || !play) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (reducedMotion.value) {
       doneRef.current = true;
       return;
     }
@@ -128,21 +141,31 @@ export function ScrambleText({
       }
     };
 
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting && !doneRef.current && !raf) {
-            io.disconnect();
-            startDecode();
+    // Gate edge with the title on screen: start now, no IO round-trip.
+    let io: IntersectionObserver | null = null;
+    const onScreen = () => {
+      const r = el.getBoundingClientRect();
+      return r.bottom > 0 && r.top < window.innerHeight && r.width > 0;
+    };
+    if (gatedRef.current && onScreen()) {
+      startDecode();
+    } else {
+      io = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting && !doneRef.current && !raf) {
+              io?.disconnect();
+              startDecode();
+            }
           }
-        }
-      },
-      { threshold: 0.3 },
-    );
-    io.observe(el);
+        },
+        { threshold: 0.3 },
+      );
+      io.observe(el);
+    }
 
     return () => {
-      io.disconnect();
+      io?.disconnect();
       if (raf) cancelAnimationFrame(raf);
       // If unmounted/re-gated mid-decode, never leave garbage behind.
       if (pinned) release();

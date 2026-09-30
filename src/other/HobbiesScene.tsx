@@ -336,6 +336,9 @@ function HobbyMesh({
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
   const hoverLerpRef = useRef(0);
+  // Last label weight written to the DOM (-1 = never), so an idle cluster
+  // issues zero label style writes per frame.
+  const labelWRef = useRef(-1);
   const tiltRef = useRef({ x: 0, y: 0 });
 
   const layout = LAYOUT[hobby.id]!;
@@ -410,16 +413,30 @@ function HobbyMesh({
 
     // Label-over-object (jump-menu style): fade + lift the name in as the
     // object focuses. Driven by the same hover weight so it never desyncs.
-    if (labelRef.current) {
-      if (mobile) {
-        // STATIC on phones (no hover on touch): the name tag is always on, fixed
-        // over the object so it never jitters with the sway. Placement/no-overlap
-        // is owned by the portrait LAYOUT spacing + the wander being off on mobile.
-        labelRef.current.style.opacity = "1";
-        labelRef.current.style.transform = "translateY(0) scale(1)";
-      } else {
-        labelRef.current.style.opacity = hw.toFixed(3);
-        labelRef.current.style.transform = `translateY(${(-6 - 10 * hw).toFixed(1)}px) scale(${(0.92 + 0.08 * hw).toFixed(3)})`;
+    // Written only when the weight moves by > 0.001 (the hover lerp decays
+    // asymptotically, so without the cache all ten labels were rewritten
+    // every frame at hw ~ 0). Below 0.001 the label is visibility:hidden, so
+    // drei's <Html> layer has nothing to composite.
+    // STATIC on phones (no hover on touch): the name tag is always on, fixed
+    // over the object so it never jitters with the sway (written once).
+    // Placement/no-overlap is owned by the portrait LAYOUT spacing + the
+    // wander being off on mobile.
+    const label = labelRef.current;
+    if (label) {
+      const w = mobile ? 1 : hw < 0.001 ? 0 : hw;
+      const last = labelWRef.current;
+      if (Math.abs(w - last) > 0.001 || (w === 0) !== (last === 0)) {
+        labelWRef.current = w;
+        if (w === 0) {
+          label.style.opacity = "0";
+          label.style.visibility = "hidden";
+        } else {
+          label.style.visibility = "";
+          label.style.opacity = w.toFixed(3);
+          label.style.transform = mobile
+            ? "translateY(0) scale(1)"
+            : `translateY(${(-6 - 10 * w).toFixed(1)}px) scale(${(0.92 + 0.08 * w).toFixed(3)})`;
+        }
       }
     }
   });

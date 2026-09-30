@@ -1,15 +1,33 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import "./sections.css";
 import "./bits-and-pieces.css";
 import { ScrambleText } from "./ScrambleText";
+import { useReveal } from "./useReveal";
+import { ease, reducedMotion } from "../motion";
+
+gsap.registerPlugin(ScrollTrigger);
 
 /**
  * Bits and Pieces: full-bleed accomplishments spread. Stats band
- * (count-up numbers), a category marquee that ticks with scroll, and
- * a uniform card grid led by a hero row of the three marquee wins
+ * (count-up numbers), a ghosted category marquee that slides with scroll,
+ * and a uniform card grid led by a hero row of the three marquee wins
  * (same width as the rest, but taller with a bigger pulled-out metric).
- * Cards reveal via IntersectionObserver as they enter viewport.
+ *
+ * Header, stats and every card use the shared `[data-reveal]` primitive
+ * (useReveal + sections.css): a batch-staggered rise, latched once. The
+ * count-up starts on the stats' reveal and writes textContent directly, so
+ * the section never re-renders after mount.
  */
+
+/** Count-up duration (ms): exempt "character" timing (spec §1.3). */
+const COUNT_UP_MS = 1100;
+/**
+ * Ghost marquee travel as a fraction of the strip's width over the section's
+ * full pass through the viewport (spec W5.6: 0.10, was 0.36). Tune here.
+ */
+const GHOST_TRAVEL = 0.1;
 
 type Category =
   | "Hackathon"
@@ -135,35 +153,18 @@ function formatMoney(n: number): string {
   return `$${n}`;
 }
 
-interface CountUpProps {
-  to: number;
-  active: boolean;
-  format?: (n: number) => string;
-}
+type CountFormat = "money" | "int";
+const FORMATS: Record<CountFormat, (n: number) => string> = {
+  money: formatMoney,
+  int: (n) => `${n}`,
+};
 
 /**
- * Per-card reveal tile. Reveal state is driven by the PARENT's shared
- * IntersectionObserver (passed in as `revealed` prop) rather than each
- * tile creating its own observer. This eliminates 12 separate IO instances.
- * OLD: O(n) observers (one per tile). NEW: O(1) — single shared observer.
+ * Per-card tile. The reveal class is written imperatively by useReveal on the
+ * [data-reveal] node, so the className here must stay reveal-free (a re-render
+ * would otherwise drop `.is-revealed`).
  */
-function BpTile({
-  entry,
-  direction,
-  delaySteps,
-  revealed,
-  tileRef,
-}: {
-  entry: Entry;
-  direction: "left" | "right";
-  /** Per-card reveal-stagger step count (visual reading order, 0-based).
-      Delay resolves to calc(var(--stagger) * delaySteps) so it rides the
-      shared motion-spine token instead of a hardcoded ms value. */
-  delaySteps: number;
-  revealed: boolean;
-  tileRef: (el: HTMLLIElement | null) => void;
-}) {
-
+function BpTile({ entry }: { entry: Entry }) {
   // Single accessible label per card so a screen reader announces the
   // whole accomplishment as one unit ("Hackathon. Hack The 6ix.
   // Finalist, Top finalist · 400+.") rather than four disconnected
@@ -180,24 +181,14 @@ function BpTile({
 
   return (
     <li
-      ref={tileRef}
+      data-reveal=""
       className={[
         "bp-tile",
         `bp-tile--${entry.category.toLowerCase()}`,
         entry.featured ? "bp-tile--featured" : "",
-        `bp-tile--from-${direction}`,
-        revealed ? "is-revealed" : "",
       ]
         .filter(Boolean)
         .join(" ")}
-      style={{
-        // Stagger rides the --stagger spine token. delaySteps is the card's
-        // VISUAL reading-order position (row-then-column), recomputed from the
-        // resolved grid in the parent — so the reveal sweeps in screen order
-        // even though grid-auto-flow:dense + span-3 featured cards make the
-        // visual order diverge from DOM order.
-        transitionDelay: `calc(var(--stagger) * ${delaySteps})`,
-      }}
     >
       <article className="bp-tile-inner" aria-label={label}>
         <span className="bp-tile-cat" aria-hidden>
@@ -226,295 +217,115 @@ function BpTile({
   );
 }
 
-function CountUp({ to, active, format = (n) => `${n}` }: CountUpProps) {
-  const reduceMotion =
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  // Reduced motion: skip the tween, render the final value immediately.
-  const [n, setN] = useState(reduceMotion ? to : 0);
-  useEffect(() => {
-    if (!active) return;
-    if (reduceMotion) {
-      setN(to);
-      return;
-    }
-    let raf = 0;
-    const start = performance.now();
-    const dur = 1100;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / dur);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setN(Math.round(to * eased));
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [to, active, reduceMotion]);
-  // The animating digits are aria-hidden: a live count-up would spam
-  // the SR with intermediate numbers. The static final value is exposed
-  // via aria-label on the stat (see markup below).
+/**
+ * Count-up digits. Rendered once at 0 (final value under reduced motion);
+ * runCountUps() animates the text node when the stats reveal. The animating
+ * digits are aria-hidden: a live count-up would spam the SR with intermediate
+ * numbers. The static final value is exposed via aria-label on the stat.
+ */
+function CountUp({ to, format = "int" }: { to: number; format?: CountFormat }) {
+  const initial = reducedMotion.value ? to : 0;
   return (
-    <span aria-hidden>{format(n)}</span>
+    <span aria-hidden data-count-to={to} data-count-format={format}>
+      {FORMATS[format](initial)}
+    </span>
   );
 }
 
-/** Per-card reveal choreography derived from the RESOLVED grid layout
-    (not DOM index). `direction` is the edge the card sweeps in from;
-    `delaySteps` is its visual reading-order position (× --stagger). */
-interface TileChoreo {
-  direction: "left" | "right";
-  delaySteps: number;
+/** Animate every [data-count-to] under `root` from 0 (time-based, ease-out
+ *  cubic), writing textContent only when the formatted string changes. */
+function runCountUps(root: Element): () => void {
+  const nodes = Array.from(root.querySelectorAll<HTMLElement>("[data-count-to]")).map(
+    (el) => ({
+      el,
+      to: Number(el.dataset.countTo) || 0,
+      fmt: FORMATS[el.dataset.countFormat as CountFormat] ?? FORMATS.int,
+      last: el.textContent ?? "",
+    }),
+  );
+  const write = (t: number) => {
+    for (const n of nodes) {
+      const text = n.fmt(Math.round(n.to * t));
+      if (text !== n.last) {
+        n.last = text;
+        n.el.textContent = text;
+      }
+    }
+  };
+  if (reducedMotion.value) {
+    write(1);
+    return () => {};
+  }
+  let raf = 0;
+  const start = performance.now();
+  const tick = (now: number) => {
+    const t = Math.min(1, Math.max(0, (now - start) / COUNT_UP_MS));
+    write(ease.outCubic(t));
+    if (t < 1) raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  return () => cancelAnimationFrame(raf);
 }
 
 export function BitsAndPieces() {
   const sectionRef = useRef<HTMLElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
-  const [statsActive, setStatsActive] = useState(false);
+  const stopCountRef = useRef<() => void>(() => {});
 
-  // ONE shared IntersectionObserver for all tile reveal latches.
-  // OLD: 12 observers (one per BpTile), each created + torn down independently.
-  // NEW: O(1) observers total; per-tile cost is one observe() call, one unobserve().
-  const [revealedSet, setRevealedSet] = useState<ReadonlySet<number>>(new Set());
-  const tileEls = useRef<(HTMLLIElement | null)[]>([]);
-  const sharedIoRef = useRef<IntersectionObserver | null>(null);
-
-  // Reveal choreography per tile, keyed by DOM index. Defaults to a sane
-  // DOM-order sweep (alternating edges, sequential stagger) so the first
-  // paint is never un-choreographed; the layout effect below replaces it
-  // with grid-position-aware values once the resolved layout is readable.
-  const [choreo, setChoreo] = useState<readonly TileChoreo[]>(() =>
-    ENTRIES.map((_, i) => ({
-      direction: i % 2 === 0 ? "left" : "right",
-      delaySteps: i % 6,
-    })),
-  );
-
-  // Stable ref-callback factory so tile elements register into tileEls by index.
-  // useCallback with a stable closure prevents React from recreating the
-  // callback identity on each parent render (which would unmount/remount
-  // the ref every cycle and re-observe already-revealed tiles).
-  const makeTileRef = useCallback(
-    (i: number) => (el: HTMLLIElement | null) => {
-      tileEls.current[i] = el;
-      if (el && sharedIoRef.current) sharedIoRef.current.observe(el);
-    },
-    [],
-  );
-
-  useEffect(() => {
-    // Mobile (<=768px): the tile entrance is gated OFF in CSS (tiles render in
-    // place), so the reveal observer would do nothing visible. Skip attaching
-    // it entirely — calmer + cheaper on a phone. makeTileRef no-ops its
-    // observe() while sharedIoRef stays null; the CSS override keeps every tile
-    // visible. Desktop keeps the shared reveal observer.
-    if (
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(max-width: 768px)").matches
-    ) {
-      return;
+  // Shared reveal primitive over the whole section (header, stats, tiles).
+  // The count-up starts on the stats' own reveal.
+  const onReveal = useCallback((el: Element) => {
+    if (el.classList.contains("bp-stats")) {
+      stopCountRef.current();
+      stopCountRef.current = runCountUps(el);
     }
-    // Same rootMargin as the old per-tile observer.
-    const io = new IntersectionObserver(
-      (entries) => {
-        const entered: number[] = [];
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const idx = tileEls.current.indexOf(entry.target as HTMLLIElement);
-            if (idx !== -1) {
-              entered.push(idx);
-              io.unobserve(entry.target);
-            }
-          }
-        }
-        if (entered.length === 0) return;
-        // Functional update: this callback lives in a []-dep effect, so a
-        // closed-over `revealedSet` would be the stale initial Set and every
-        // later batch would REPLACE the set (un-revealing earlier tiles).
-        setRevealedSet((prev) => {
-          let next: Set<number> | null = null;
-          for (const idx of entered) {
-            if (!prev.has(idx)) {
-              next ??= new Set(prev);
-              next.add(idx);
-            }
-          }
-          return next ?? prev;
-        });
-      },
-      { rootMargin: "0px 0px -10% 0px" },
-    );
-    sharedIoRef.current = io;
-    // Observe any tile elements already mounted (handles StrictMode double-mount).
-    for (const el of tileEls.current) {
-      if (el) io.observe(el);
-    }
-    return () => {
-      io.disconnect();
-      sharedIoRef.current = null;
-    };
   }, []);
+  useReveal(sectionRef, { onReveal });
+  useEffect(() => () => stopCountRef.current(), []);
 
-  // Recompute reveal direction + stagger from the RESOLVED layout GEOMETRY,
-  // so the sweep follows on-screen position rather than DOM order. With
-  // grid-auto-flow:dense and span-3 featured cards the two diverge: a card
-  // late in the DOM can pack into an early visual slot.
-  //
-  // NB: we measure with getBoundingClientRect(), NOT getComputedStyle()'s
-  // gridColumnStart/gridRowStart — for AUTO-PLACED grid items the latter
-  // returns the specified track string ("span 2"/"span 3"/"auto"), never the
-  // browser-resolved line, so it can't tell us where a card actually landed.
-  // The rect gives us real pixel x/y. We bucket cards into visual rows by
-  // rounded top (subpixel jitter would otherwise split one row in two),
-  // order by row-then-x for the stagger, and pick the sweep edge from which
-  // half of the grid's width the card's center sits in. Re-runs on resize
-  // (breakpoints change the column count, hence the packing).
-  useEffect(() => {
-    const computeChoreo = () => {
-      const placements = tileEls.current
-        .map((el, i) => {
-          if (!el) return null;
-          const r = el.getBoundingClientRect();
-          return { i, centerX: r.left + r.width / 2, rowKey: Math.round(r.top) };
-        })
-        .filter((p): p is { i: number; centerX: number; rowKey: number } => p !== null);
-      if (placements.length === 0) return;
-      // Grid horizontal center from the spread of tile centers (no extra ref
-      // needed): cards left of it sweep in from the left, the rest from right.
-      const minX = placements.reduce((m, p) => Math.min(m, p.centerX), Infinity);
-      const maxX = placements.reduce((m, p) => Math.max(m, p.centerX), -Infinity);
-      const centerX = (minX + maxX) / 2;
-      // Visual reading order → stagger step: sort a copy by row then x.
-      const ordered = [...placements].sort((a, b) =>
-        a.rowKey !== b.rowKey ? a.rowKey - b.rowKey : a.centerX - b.centerX,
-      );
-      const stepByIndex = new Map<number, number>();
-      ordered.forEach((p, order) => stepByIndex.set(p.i, order % 6));
-      const next: TileChoreo[] = ENTRIES.map((_, i) => ({
-        // Single-column breakpoints collapse minX===maxX===centerX; "<" is
-        // false for all, so every card sweeps from the right — fine for a
-        // 1-col stack where there is no left/right axis to honour.
-        direction: (placements.find((p) => p.i === i)?.centerX ?? centerX) < centerX
-          ? "left"
-          : "right",
-        delaySteps: stepByIndex.get(i) ?? i % 6,
-      }));
-      setChoreo(next);
-    };
-
-    // Defer one frame so the grid has resolved before we read it.
-    let raf = requestAnimationFrame(computeChoreo);
-    const onResize = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(computeChoreo);
-    };
-    window.addEventListener("resize", onResize, { passive: true });
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", onResize);
-    };
-  }, []);
-
+  // Ghost marquee: slides the giant category strip sideways with the
+  // section's pass through the viewport. Driven by ScrollTrigger (the site's
+  // single scroll clock, already Lenis-smoothed: no scrub, no second
+  // smoother) through a gsap.quickSetter; no window scroll listener, no
+  // per-frame layout reads. The strip width is cached on every
+  // ScrollTrigger refresh. Rounded to device pixels, not to a coarse grid
+  // (the old 12px quantisation juddered in Lenis's deceleration tail).
+  // Skipped (strip stays at rest) under reduced motion, on coarse pointers,
+  // and <=768px, where the strip is trimmed/hidden in CSS.
   useEffect(() => {
     const el = sectionRef.current;
-    if (!el) return;
-
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setStatsActive(true);
-            io.disconnect();
-            return;
-          }
-        }
-      },
-      { rootMargin: "-20% 0px" },
-    );
-    io.observe(el);
-
-    // Marquee slides horizontally driven by the section's vertical
-    // scroll progress against the viewport. rAF-paced, direct
-    // transform write: no React reconcile per scroll tick.
-    // Honour prefers-reduced-motion: skip the scroll listener entirely
-    // so the decorative strip stays static.
-    // #23 PERF: also skip on COARSE pointers (touch). The marquee is a
-    // barely-perceptible ghost strip; on phones it's trimmed/hidden via CSS,
-    // and the scroll-coupled getBoundingClientRect + transform write per
-    // frame isn't worth the battery for an effect the user can't see. Leave
-    // the strip at its resting transform.
-    const reduceMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
+    const strip = marqueeRef.current;
+    if (!el || !strip) return;
     const coarsePointer =
       window.matchMedia?.("(hover: none), (pointer: coarse)").matches ?? false;
-    // <=768px: the marquee is trimmed/hidden in CSS, so don't pay the
-    // per-frame getBoundingClientRect + transform write to slide a strip the
-    // phone barely shows. Leave it at its resting transform. (Covers the rare
-    // narrow-but-fine-pointer case the coarsePointer guard misses.)
-    const narrow =
-      window.matchMedia?.("(max-width: 768px)").matches ?? false;
-    if (reduceMotion || coarsePointer || narrow) {
-      return () => io.disconnect();
-    }
+    const narrow = window.matchMedia?.("(max-width: 768px)").matches ?? false;
+    if (reducedMotion.value || coarsePointer || narrow) return;
 
-    let raf = 0;
-    // Only do the per-scroll-frame rect read + transform write while the
-    // section is near the viewport. The marquee sits near the bottom of the
-    // page, so for most of the scroll it was reading getBoundingClientRect
-    // every frame for nothing. A persistent observer gates it; entering the
-    // viewport schedules one refresh so the transform is never stale.
-    let marqueeVisible = false;
-    // PIXEL-STEPPED slide (sitewide pixel-motion language): the strip's
-    // scroll-coupled travel is snapped to a 12px grid before it touches
-    // the DOM, so the giant ghost categories TICK across the section in
-    // discrete jumps instead of gliding sub-pixel. Strip width is cached
-    // (scrollWidth forces layout; once + on resize is free), and the
-    // transform is only written when the snapped value changes.
-    const MARQUEE_GRID = 12;
-    let stripW = 0;
-    let lastQ = NaN;
-    const measureStrip = () => {
-      stripW = marqueeRef.current?.scrollWidth ?? 0;
-    };
-    const update = () => {
-      if (!marqueeVisible) return;
-      if (stripW === 0) measureStrip();
-      const r = el.getBoundingClientRect();
-      const vh = window.innerHeight || 1;
-      const p = (vh - r.top) / (vh + r.height);
-      const clamped = Math.max(0, Math.min(1, p));
-      const q =
-        Math.round((clamped * 0.36 * stripW) / MARQUEE_GRID) * MARQUEE_GRID;
-      if (q !== lastQ && marqueeRef.current) {
-        lastQ = q;
-        marqueeRef.current.style.transform = `translate3d(${-q}px, 0, 0)`;
+    const setX = gsap.quickSetter(strip, "x", "px") as (v: number) => void;
+    let stripW = strip.scrollWidth;
+    let lastX = NaN;
+    const apply = (progress: number) => {
+      const dpr = window.devicePixelRatio || 1;
+      const x = Math.round(-progress * GHOST_TRAVEL * stripW * dpr) / dpr;
+      if (x !== lastX) {
+        lastX = x;
+        setX(x);
       }
     };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-    const onResize = () => {
-      measureStrip();
-      onScroll();
-    };
-    const visIo = new IntersectionObserver(
-      (entries) => {
-        const wasVisible = marqueeVisible;
-        for (const entry of entries) marqueeVisible = entry.isIntersecting;
-        if (marqueeVisible && !wasVisible) onScroll();
+    const st = ScrollTrigger.create({
+      trigger: el,
+      start: "top bottom",
+      end: "bottom top",
+      onRefresh: (self) => {
+        stripW = strip.scrollWidth;
+        apply(self.progress);
       },
-      { rootMargin: "25% 0px 25% 0px" },
-    );
-    visIo.observe(el);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onResize, { passive: true });
+      onUpdate: (self) => apply(self.progress),
+    });
+    apply(st.progress);
     return () => {
-      io.disconnect();
-      visIo.disconnect();
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onResize);
-      cancelAnimationFrame(raf);
+      st.kill();
+      gsap.set(strip, { clearProps: "transform" });
     };
   }, []);
 
@@ -532,7 +343,7 @@ export function BitsAndPieces() {
       </div>
 
       <div className="bp-layout">
-        <header className="bp-head">
+        <header className="bp-head" data-reveal="">
           <span className="section-marker bp-marker">05</span>
           <span className="section-index bp-index">
             05 / 07 &middot; Honours
@@ -548,17 +359,13 @@ export function BitsAndPieces() {
         {/* Summary metrics as a definition list: the animated digits
             are aria-hidden (see CountUp), so each stat carries a static
             aria-label with the final value for assistive tech. */}
-        <dl className="bp-stats">
+        <dl className="bp-stats" data-reveal="">
           <div
             className="bp-stat"
             aria-label={`${formatMoney(TOTAL_GRANTS_USD)} in awards and funding`}
           >
             <dd className="bp-stat-num">
-              <CountUp
-                to={TOTAL_GRANTS_USD}
-                active={statsActive}
-                format={formatMoney}
-              />
+              <CountUp to={TOTAL_GRANTS_USD} format="money" />
             </dd>
             <dt className="bp-stat-label">in awards &amp; funding</dt>
           </div>
@@ -568,7 +375,7 @@ export function BitsAndPieces() {
             aria-label={`${TOTAL_WINS} competition placements`}
           >
             <dd className="bp-stat-num">
-              <CountUp to={TOTAL_WINS} active={statsActive} />
+              <CountUp to={TOTAL_WINS} />
             </dd>
             <dt className="bp-stat-label">competition placements</dt>
           </div>
@@ -578,26 +385,16 @@ export function BitsAndPieces() {
             aria-label={`${TOTAL_LEADERSHIP} leadership roles`}
           >
             <dd className="bp-stat-num">
-              <CountUp to={TOTAL_LEADERSHIP} active={statsActive} />
+              <CountUp to={TOTAL_LEADERSHIP} />
             </dd>
             <dt className="bp-stat-label">leadership roles</dt>
           </div>
         </dl>
 
         <ul className="bp-grid" aria-label="Awards, grants, scholarships and leadership roles">
-          {ENTRIES.map((e, i) => {
-            const c = choreo[i] ?? { direction: "left" as const, delaySteps: 0 };
-            return (
-              <BpTile
-                key={i}
-                entry={e}
-                direction={c.direction}
-                delaySteps={c.delaySteps}
-                revealed={revealedSet.has(i)}
-                tileRef={makeTileRef(i)}
-              />
-            );
-          })}
+          {ENTRIES.map((e, i) => (
+            <BpTile key={i} entry={e} />
+          ))}
         </ul>
       </div>
     </section>
