@@ -411,11 +411,11 @@ export function HeroGlyphRing({
     <div className="hero-glyph-ring" aria-hidden>
       <Canvas
         // CRITICAL: measure layout size (offsetWidth), NOT the
-        // transformed bounding box. The hero composition scales up to
-        // 3x during the dive-out; R3F's default measurement uses
-        // getBoundingClientRect, which INCLUDES that ancestor scale, so
-        // the canvas would "resize" to ~3x mid-dive and back. offsetSize
-        // keeps the canvas pinned to the untransformed 130vw box.
+        // transformed bounding box. The hero composition pushes in (scale
+        // up to 1.12) during the hero -> About iris; R3F's default
+        // measurement uses getBoundingClientRect, which INCLUDES that
+        // ancestor scale, so the canvas would "resize" mid-wipe and back.
+        // offsetSize keeps the canvas pinned to the untransformed 130vw box.
         resize={{ offsetSize: true }}
         gl={{
           antialias: false, // pass 1 is a data buffer; AA would blur the encoding
@@ -491,8 +491,7 @@ function RingScene({
   // listener flips it, no per-frame layout reads.
   const offscreenRef = useRef(false);
   // Timestamp (ms) of the last scroll — used to PAUSE the 2-pass render during
-  // active scroll (including the hero -> About pixel iris, which composites the
-  // ring's last frame).
+  // active scroll outside the hero -> About pixel iris (heroState.wiping).
   const lastScrollRef = useRef(0);
   // Base tile grid (cols, rows) derived from the canvas size.
   const baseGridRef = useRef<THREE.Vector2 | null>(null);
@@ -709,13 +708,21 @@ function RingScene({
       return;
     }
 
-    // PERF: pause the 2-pass render during ACTIVE scroll. This now also FREEZES
-    // the ring through the hero -> About pixel iris: the iris + push-in are
-    // compositor transforms/clips of whatever the ring last drew, so a still
-    // ring can't judder at 24fps inside a layer moving at display rate (the old
-    // dive's tile-grid coarsening, which reshuffled the field every frame, is
-    // gone). Outside scroll the slow 26s spin resumes.
+    // The hero -> About pixel iris is on screen (heroWipe.ts): the ring keeps
+    // spinning THROUGH it, at display rate. It is the live field the hole
+    // opens in, and a ring that stops (or ticks at 24fps inside a clip and a
+    // push-in moving at display rate) reads as the page freezing.
+    // (The earlier data-hero-diving HARD freeze that lived here FROZE the ring
+    // mid-dive — user: "freezing everything" — and is gone. The dive's cost is
+    // the cheap 2-pass shader, not the long-removed main-thread SVG mosaic, so
+    // rendering through it is fine.)
+    const wiping = heroState.wiping;
+
+    // PERF: pause the 2-pass render during ACTIVE scroll — but ONLY when NOT
+    // wiping. Outside the iris the slow 26s spin is imperceptible, so the
+    // scroll-event pause still frees the GPU.
     if (
+      !wiping &&
       revealedRef.current &&
       performance.now() - lastScrollRef.current < 140
     ) {
@@ -724,9 +731,10 @@ function RingScene({
     }
 
     const now = performance.now() / 1000;
-    // ~24fps cap (was 30): the ring is a slow 26s spin, imperceptible at 24, and
-    // every skipped frame saves the whole RT + fullscreen-post pipeline.
-    if (now - lastRenderRef.current < 1 / 24) return;
+    // ~24fps cap at rest (was 30): the ring is a slow 26s spin, imperceptible
+    // at 24, and every skipped frame saves the whole RT + fullscreen-post
+    // pipeline. Uncapped only while the iris is on screen (spec Q2).
+    if (!wiping && now - lastRenderRef.current < 1 / 24) return;
     lastRenderRef.current = now;
     const dt = Math.min(0.05, now - lastTRef.current);
     lastTRef.current = now;

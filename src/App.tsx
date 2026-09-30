@@ -17,58 +17,26 @@ import { installHeroWipe } from "./hero/heroWipe";
 import { useIsMobile } from "./useIsMobile";
 import { StatusBar } from "./StatusBar";
 import { isLowTier, demoteTier } from "./capabilityTier";
-import { clamp01 } from "./math";
+import { HERO } from "./motion";
 
 /*
- * App shell: the fixed hero layer, the scroll choreography that drives it
- * (CSS vars, no React re-renders on scroll), the sections, and the HUD. The
- * hero hands straight off to the opaque About section below it; About's
- * bento carries the room render (.about-room).
+ * App shell: the fixed hero layer, the sections, and the HUD. The hero hands
+ * off to the opaque About section parked underneath it (src/hero/heroWipe.ts:
+ * a compositor-only pixel iris bound 1:1 to the Lenis-smoothed scroll, with no
+ * second ease and no settle snap); About's bento carries the room render
+ * (.about-room). Nothing here writes :root vars per frame (spec §5 O7): the
+ * old --content-opacity ramp is gone (.portfolio-col falls back to 1).
  */
 
-// HERO -> ABOUT lives in src/hero/heroWipe.ts now (compositor-only pixel iris,
-// bound 1:1 to the Lenis-smoothed scroll; no second ease, no settle snap, and
-// the hero hides only once the iris has cleared the frame). What remains here
-// is the page-level choreography that is NOT the hero handoff.
-
-// Content opacity ramp window (page scroll fraction).
-const CONTENT_FADE_START = 0.07;
-const CONTENT_FADE_END = 0.105;
-
-// Rate-limit for the scroll-driven content fade so a fast flick can't teleport
-// it to its end state (~400ms to settle).
-const PROGRESS_EASE_RATE = 2.5;
-// Clamp per-frame dt so a long idle / tab-switch doesn't produce one giant
-// catch-up jump on the next tick.
-const MAX_TICK_DT = 0.05;
-
 /**
- * rAF loop for the non-hero scroll signals (--content-opacity) plus the
- * data-hero-lite capability flag and the adaptive slow-frame degrade. Sleeps
- * once settled; a passive scroll/resize listener wakes it. Writes only on
- * change, so the root var is untouched outside its (far-down) window.
+ * data-hero-lite capability flag plus the adaptive slow-frame degrade. A rAF
+ * loop runs only while scroll/resize input is recent (SETTLE_MS), then sleeps;
+ * a passive scroll/resize listener wakes it. It writes nothing per frame.
  */
 function installScrollChoreography(): void {
   if (typeof window === "undefined") return;
 
   const root = document.documentElement;
-  const isMobileQuery = window.matchMedia("(max-width: 768px)");
-
-  // PERF: cache layout reads (scrollHeight/innerHeight) — they change on
-  // resize/content-mount, NOT on scroll.
-  let vhCache = window.innerHeight || 1;
-  let scrollMax = Math.max(1, root.scrollHeight - vhCache);
-  const recomputeLayout = () => {
-    vhCache = window.innerHeight || 1;
-    scrollMax = Math.max(1, root.scrollHeight - vhCache);
-  };
-
-  const lastVar: Record<string, string> = {};
-  const setVar = (k: string, v: string) => {
-    if (lastVar[k] === v) return;
-    lastVar[k] = v;
-    root.style.setProperty(k, v);
-  };
 
   // data-hero-lite drops the resting wordmark keyline (SVG feMorphology, the
   // one software-rasterized piece of the hero) and the ring's cursor trail.
@@ -83,37 +51,16 @@ function installScrollChoreography(): void {
   };
   updateHeroLite();
 
-  const targetContent = () =>
-    clamp01(
-      (clamp01(window.scrollY / scrollMax) - CONTENT_FADE_START) /
-        (CONTENT_FADE_END - CONTENT_FADE_START),
-    );
-  let contentOpacity = targetContent();
-  let convergenceDelta = 1;
-
-  const tick = (dt: number) => {
-    const target = targetContent();
-    contentOpacity +=
-      (target - contentOpacity) * (1 - Math.exp(-dt * PROGRESS_EASE_RATE));
-    setVar(
-      "--content-opacity",
-      isMobileQuery.matches ? "1" : contentOpacity.toFixed(3),
-    );
-    convergenceDelta = Math.abs(target - contentOpacity);
-  };
-  tick(MAX_TICK_DT * 100);
-
   const SETTLE_MS = 650;
-  const CONVERGE_EPS = 0.0004;
   let lastTs = performance.now();
   let lastInput = lastTs;
   let running = false;
 
   const loop = (ts: number) => {
+    // Raw frame time, deliberately NOT clampDt'd: a long frame is exactly what
+    // this loop exists to detect.
     const rawDt = (ts - lastTs) / 1000;
-    const dt = Math.min(MAX_TICK_DT, rawDt);
     lastTs = ts;
-    tick(dt);
     // Adaptive degrade: if frames run consistently slow during active scroll,
     // latch the lite path for the rest of the session and persist a one-way
     // tier demote for the next load.
@@ -128,10 +75,7 @@ function installScrollChoreography(): void {
         slowFrames--;
       }
     }
-    if (
-      performance.now() - lastInput < SETTLE_MS ||
-      convergenceDelta > CONVERGE_EPS
-    ) {
+    if (performance.now() - lastInput < SETTLE_MS) {
       requestAnimationFrame(loop);
     } else {
       running = false;
@@ -146,15 +90,11 @@ function installScrollChoreography(): void {
     }
   };
   const onResize = () => {
-    recomputeLayout();
     updateHeroLite();
     wake();
   };
   window.addEventListener("scroll", wake, { passive: true });
   window.addEventListener("resize", onResize, { passive: true });
-  if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver(() => recomputeLayout()).observe(document.body);
-  }
 }
 
 export default function App() {
@@ -184,14 +124,14 @@ export default function App() {
     choreoInstalled.current = true;
     installScrollChoreography();
     // Hero -> About pixel iris (compositor-only, scroll-bound; see heroWipe.ts).
-    // The old scroll-end settle snap is gone: the iris resolves by 0.9vh, a
-    // resting state mid-iris is a clean porthole (no ghosted bleed), and About's
-    // pin holds the landing.
+    // The old scroll-end settle snap (installHeroSettle) is deleted: the iris
+    // resolves by 0.9vh, every resting position mid-iris is a clean porthole
+    // (no ghosted bleed), and About's pin holds the landing.
     installHeroWipe();
   }
 
-  // Lenis smooth scroll is owned by src/portfolio/Keypad.tsx via a module-scope
-  // singleton (initializing a second here would have two engines fighting).
+  // Lenis smooth scroll is owned by src/scroll.ts via a module-scope singleton
+  // (initializing a second here would have two engines fighting).
 
   // Mark ready when the loading screen lifts. (loading-active is owned by
   // AssemblyProvider — see useAssemblyProgress; many sections also key
@@ -212,13 +152,16 @@ export default function App() {
     return () => obs.disconnect();
   }, []);
 
-  // Reveal the HUD once ready and the user has fully landed on About (>=1.0vh,
-  // after the iris resolves at 0.9vh) so it never pops in over the transition.
+  // Reveal the HUD once ready and the user has fully landed on About
+  // (HERO.hudRevealVh = 1.0vh, after the iris resolves at 0.9vh) so it never
+  // pops in over the transition. Latches; room_entered fires at that moment,
+  // never at mount. (Phase B, the pre-mount with visible={hudVisible}, is an
+  // integration follow-up once W7's event-driven StatusBar lands.)
   useEffect(() => {
     if (!ready || hudVisible) return;
     const check = () => {
       const vhRatio = window.scrollY / Math.max(1, window.innerHeight);
-      if (vhRatio >= 1.0) {
+      if (vhRatio >= HERO.hudRevealVh) {
         setHudVisible(true);
         track("room_entered");
       }
@@ -390,7 +333,7 @@ export default function App() {
             pointerEvents: "none",
             // ABOVE the content (main is z-10) so the hero is a full-screen
             // OPAQUE field (see .scroll-layer--hero background in index.css) that
-            // About sits BEHIND (held still by heroWipe's counter-translate) —
+            // About sits BEHIND (parked still under it; about.css / heroWipe) —
             // then a pixel iris opens in the hero to reveal it. Stays below the
             // HUD (z-40) and cursors (z-10000); pointer-events:none + hidden
             // once the iris clears, so it never blocks interaction past the hero.

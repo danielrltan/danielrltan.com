@@ -60,11 +60,12 @@
  * ────────────────────────────────────────────────────────────────────
  * The old dive (CSS scale 1 → 3.4 of a pre-rasterized bitmap, a coarsening
  * shader grid, stepped contrast() buckets) is gone. The handoff is now a
- * pixel-art circle cut into .scroll-layer--hero (clip-path), a one-cell white
- * rim (.hero-iris-rim), and a gentle push-in of this composition (the
- * individual `scale` property, 1 → 1.12). All three are scroll-driven WAAPI
- * animations created only while 0 < scrollY < 1vh, so at rest this
- * composition has no transform, no promoted layer and its native raster.
+ * pixel-art circle cut into .scroll-layer--hero (clip-path), seeded right of
+ * the wordmark, a sparse half-cell white rim (.hero-iris-rim), and a gentle
+ * push-in of this composition about the seed (the individual `scale`
+ * property, 1 → 1.12). All are scroll-driven WAAPI animations created only
+ * while 0 < scrollY < 1.1vh, so at rest this composition has no transform, no
+ * promoted layer and its native raster.
  * ─────────────────────────────────────────────────────────────────── */
 /* Fallback (no ScrollTimeline): the scrubbed animation is paused, so hint the
    promotion for the duration of the wipe only. */
@@ -112,7 +113,7 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
         load-in, matching the keyframe end (no discontinuity). */
 .hero-composition.is-visible {
   opacity: 1;
-  animation: hero-composition-fade-in 600ms var(--ease-soft) none;
+  animation: hero-composition-fade-in var(--t-slow) var(--ease-out) none;
 }
 @keyframes hero-composition-fade-in {
   from { opacity: 0; }
@@ -189,7 +190,7 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
   z-index: 6;
   pointer-events: none;
   opacity: 1;
-  transition: opacity 180ms var(--ease-out, ease-out);
+  transition: opacity var(--t-fast) var(--ease-out);
   animation: hero-cue-bob 1.15s steps(1, end) infinite;
 }
 .hero-scroll-cue svg {
