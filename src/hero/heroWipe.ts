@@ -322,8 +322,8 @@ export function installHeroWipe(): void {
 
   let vh = window.innerHeight || 1;
   let geo: Geometry | null = null;
-  let driven: Driven[] = [];
-  let parkDriven: Driven[] = [];
+  const driven: Driven[] = [];
+  const parkDriven: Driven[] = [];
   let built = false;
   let irisHidden = false;
   let parked: string | null = null;
@@ -662,11 +662,14 @@ export function installHeroWipe(): void {
         irisHidden = false; // snapFade cleared the layer's visibility
       }
       // About parked (and allowed to paint above its section box) until its
-      // pin takes over at 1.0vh.
-      setPark(ratio < 1 ? (cssPark ? "" : "manual") : null);
+      // pin takes over at 1.0vh. The translate is 0 from 1.0vh on; the flag
+      // (overflow) and the fallback animations are released with the iris at
+      // TEARDOWN_VH, so none of it lands in the pin-engage + HUD-mount frame.
+      const parkRange = ratio < TEARDOWN_VH;
+      setPark(parkRange ? (cssPark ? "" : "manual") : null);
       if (!cssPark) {
-        if (ratio < 1 && parkDriven.length === 0) buildPark();
-        else if (ratio >= 1 && parkDriven.length) cancelAll(parkDriven);
+        if (parkRange && parkDriven.length === 0) buildPark();
+        else if (!parkRange && parkDriven.length) cancelAll(parkDriven);
         scrub(parkDriven, y);
       }
 

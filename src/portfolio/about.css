@@ -73,10 +73,12 @@
     translate: 0 0;
   }
 }
-/* While parked (heroWipe sets html[data-hero-park] below 1.0vh, iris mode
+/* While parked (heroWipe sets html[data-hero-park] below 1.1vh, iris mode
    only) the stage paints above the section's own top edge, so let it
    (overflow-y visible); x stays clipped so nothing can spill sideways. Back to
-   hidden once pinned. */
+   hidden a beat after the pin engages (the translate is already 0 at 1.0vh,
+   so the 1.0-1.1vh overlap is invisible; it keeps the overflow flip out of the
+   pin-engage frame). */
 html[data-hero-park] .portfolio-about {
   overflow-x: clip;
   overflow-y: visible;
