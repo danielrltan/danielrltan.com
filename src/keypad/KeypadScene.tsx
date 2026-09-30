@@ -92,8 +92,8 @@ const FLOAT_ROLL_AMP = THREE.MathUtils.degToRad(1.3);
 const FLOAT_FADE_S = 1.0; // float amplitude fade-in after the landing
 
 // DROP-IN (motion spec W6): a time-based timeline, armed by Keypad.tsx when
-// the section top crosses 0.45vh, advanced by frame dt (frame-rate
-// independent). 600 ms total:
+// the section top crosses DROP_TRIGGER_VH (held while an overlay covers the
+// page), advanced by clamped frame dt (frame-rate independent). 600 ms total:
 //   0 -> 340 ms   FALL: from DROP_HEIGHT above rest, ease.inCubic (GSAP
 //                 power2.in), so it accelerates INTO the landing: a drop, not
 //                 a soft glide.
@@ -125,9 +125,6 @@ const DROP_REBOUND = 0.1; // contact overshoot below rest, recovered by outBack
 const LAND_SQUASH = 0.06; // scaleY 1 - 0.06 = 0.94, XZ 1 + 0.03 = 1.03
 const LAND_PULSE = { strength: 1.35, x: 0.5, y: 0.58 } as const; // thud ripple
 const LAND_DIAL_KICK = 12; // rad/s added to the dial at contact
-// Per-frame cap on drop time. Tighter than MAX_DT: a mount/compile hitch
-// mid-fall stretches the drop instead of teleporting past the contact beat.
-const DROP_MAX_DT = 1 / 30;
 
 /** Model Y offset (world units, 0 = rest) at drop time t (s), falling from
  *  `height`. Continuous at the contact (both branches give -DROP_REBOUND)
@@ -184,11 +181,13 @@ function dropStartHeight(
   return Math.min(DROP_HEIGHT_MAX, Math.max(DROP_HEIGHT, need));
 }
 
-/** Measurement mirror for the e2e probes (like window.__heroMotion). Written
- *  only at the arm, contact and settle beats: no steady-state cost. */
+/** Measurement mirror for the e2e probes (like window.__heroMotion). A cheap
+ *  frame counter ticks on every visible frame; the payloads (trigger, contact
+ *  and settle bboxes) are written only at those beats. */
 interface KeypadMotionDebug {
   frame: number;
   triggerTop: number | null;
+  coverWaitMs?: number | null;
   startHeight?: number;
   contact: null | {
     frame: number;
@@ -600,9 +599,11 @@ function SceneContents({
   // contact frame so the knob spins off the impact, then DIAL_DAMP (in
   // KeypadModel) winds it down.
   const kickDialRef = useRef<((v: number) => void) | null>(null);
-  // Skip the drop clock on the scene's first rendered frame: its dt spans
-  // the mount/shader-compile hitch, not animation time.
+  // Skip the drop clock on the scene's first rendered frame and on the first
+  // armed frame: their dt spans the mount/shader-compile hitch or the idle
+  // demand loop's gap before the arm wake-up, not animation time.
   const firstFrameRef = useRef(true);
+  const startedRef = useRef(false);
   // performance.now() stamp of the last knob press (-1 = idle); drives
   // the whole-keypad cartoony wobble in the frame loop.
   const wobbleStartRef = useRef(-1);
@@ -696,8 +697,15 @@ function SceneContents({
       d.t = Math.max(d.t, DROP_TOTAL_S);
       d.contactFired = true;
     } else if (d.armed && d.t < DROP_TOTAL_S) {
-      if (!firstFrameRef.current) d.t += Math.min(clampDt(dt), DROP_MAX_DT);
-      if (dbg.triggerTop == null) dbg.triggerTop = d.triggerTop;
+      // Plain clampDt (MAX_DT 0.1 s): the drop keeps its 600 ms wall-clock
+      // length down to 10 fps. Contact is a latch, so a large step still
+      // fires it, just on that frame.
+      if (!firstFrameRef.current && startedRef.current) d.t += clampDt(dt);
+      startedRef.current = true;
+      if (dbg.triggerTop == null) {
+        dbg.triggerTop = d.triggerTop;
+        dbg.coverWaitMs = d.coverWaitMs;
+      }
     }
     firstFrameRef.current = false;
     const dropT = d.t;

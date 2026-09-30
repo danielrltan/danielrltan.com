@@ -32,8 +32,10 @@ gsap.registerPlugin(ScrollTrigger);
  *     RiceBlob wash, which fades in at λ 2.2, so the stage is already
  *     blooming when the model falls (no "empty stage").
  *   - DROP: a second observer ARMS a one-shot, time-based drop once the
- *     section top crosses DROP_TRIGGER_VH of the viewport, so the landing
- *     plays on screen instead of below the fold. The timeline itself (fall,
+ *     section top crosses DROP_TRIGGER_VH of the viewport. If an overlay
+ *     (menu scrim, scroll-cover) still hides the page, the drop holds at
+ *     t = 0 until it clears, so a menu jump shows the fall instead of a
+ *     keypad that already landed behind the scrim. The timeline itself (fall,
  *     thud + dial kick at contact, squash, rebound) lives in KeypadScene and
  *     advances by frame dt. Time-based on purpose: the owner found a
  *     scroll-bound drop "overwhelming" (it arrived exactly as fast as they
@@ -65,14 +67,47 @@ const TUNE_MODE = isTuneMode("keypad");
  *  600 ms drop lands inside the pin at scroll speeds up to ~1500 px/s. */
 const PIN_VH = 0.6;
 /** The drop arms when the section top crosses this fraction of the viewport
- *  height. Applied as an IO bottom inset. Spec: 0.45 (405 px at 900 tall,
- *  ±30 px). Measured on a real GPU at 1440x900, the landed model spans
- *  section-relative y ≈ 90-750, so at 600 px/s the contact frame clipped
- *  ~65 px below the fold at 0.45. 0.42 (378 px) is the low edge of the
- *  spec band and buys ~27 px of that back. */
-const DROP_TRIGGER_VH = 0.42;
+ *  height (spec W6.2: 0.45, i.e. 405 px at 900 tall, band 375-435 px).
+ *  Applied as an IO bottom inset; the IO callback lands about a frame after
+ *  the crossing, so fast scrolls read a few px under the line.
+ *
+ *  Owner history: an early tuning armed late and made a fast scroll to
+ *  Contact read as ~1.2-2.2 s of empty section "loading in" (the owner's
+ *  "queued in wrong / delaying it" report). The glow still releases on
+ *  approach (GLOW_APPROACH_MARGIN) so the stage is never dead, and the drop
+ *  is a fixed 600 ms from this line, never scroll-bound.
+ *
+ *  OWNER DECISION PENDING: at 1440x900 the landed model spans section y
+ *  ~89-751, so a user who stops right on this line (or scrolls slower than
+ *  ~600 px/s) sees the landing with its lower ~150-200 px below the fold.
+ *  Arming lower (~0.15-0.2) keeps the whole landing in view but lengthens
+ *  the empty-stage wait above. */
+const DROP_TRIGGER_VH = 0.45;
 /** The glow releases earlier, on approach (section top within 1.1vh). */
 const GLOW_APPROACH_MARGIN = "0px 0px 10% 0px";
+/** A full-screen overlay that hides the page: the section menu (while open
+ *  or still fading out) and the scroll-cover of a covered cut jump. A menu
+ *  jump to Contact lands at pin start while the menu scrim is still up, so
+ *  the drop waits behind this gate and plays once the page is visible. */
+const MENU_ROOT_SELECTOR = ".navx-spill-root";
+const SCROLL_COVER_ON_SELECTOR = ".scroll-cover.is-on";
+/** The menu root counts as covering until its fade-out drops below this.
+ *  The scroll-cover releases as soon as it starts its 200 ms fade-out: the
+ *  fall's slow inCubic head (model still above the canvas top) overlaps it,
+ *  and contact lands well after the cover has cleared. */
+const COVER_OPACITY_EPS = 0.05;
+/** Safety cap on the cover wait, so a renamed overlay can never strand the
+ *  keypad at its pre-drop pose. */
+const COVER_WAIT_MAX_MS = 2500;
+
+/** True while an overlay hides the page (see MENU_ROOT_SELECTOR). */
+function pageCovered(): boolean {
+  if (document.querySelector(SCROLL_COVER_ON_SELECTOR)) return true;
+  const menu = document.querySelector<HTMLElement>(MENU_ROOT_SELECTOR);
+  if (!menu) return false;
+  if (menu.dataset.open === "true") return true;
+  return Number(getComputedStyle(menu).opacity) > COVER_OPACITY_EPS;
+}
 
 /**
  * Drop timeline state shared with KeypadScene. Keypad.tsx arms it; the scene
@@ -85,8 +120,10 @@ export interface KeypadDropState {
   t: number;
   /** Latched when the contact beat (thud + dial kick) has fired. */
   contactFired: boolean;
-  /** Section top (px) when the drop armed. Debug/measurement only. */
+  /** Section top (px) when the trigger line was crossed. Debug only. */
   triggerTop: number | null;
+  /** ms the drop waited behind an overlay after the trigger. Debug only. */
+  coverWaitMs: number | null;
 }
 
 export function Keypad() {
@@ -120,6 +157,7 @@ export function Keypad() {
     t: TUNE_MODE ? 60 : 0,
     contactFired: TUNE_MODE,
     triggerTop: null,
+    coverWaitMs: null,
   });
 
   // RiceBlob's orange glow target opacity 0..1 (its shader eases toward it).
@@ -138,6 +176,18 @@ export function Keypad() {
       },
       { rootMargin: GLOW_APPROACH_MARGIN },
     );
+    // The drop arms at the trigger line, but only once the page is visible:
+    // after a menu or covered jump the timeline holds at t = 0 until the
+    // overlay has cleared (rAF poll, capped at COVER_WAIT_MAX_MS).
+    let coverRaf = 0;
+    const arm = (waitedMs: number) => {
+      const d = dropRef.current;
+      if (d.armed) return;
+      d.armed = true;
+      d.coverWaitMs = waitedMs;
+      // Wake the scene's demand loop if it is already mounted and idle.
+      window.dispatchEvent(new Event("keypad-drop-armed"));
+    };
     const dropIO = new IntersectionObserver(
       (entries) => {
         const hit = entries.find((e) => e.isIntersecting);
@@ -145,13 +195,21 @@ export function Keypad() {
         dropIO.disconnect();
         const d = dropRef.current;
         if (d.armed) return;
-        d.armed = true;
         d.triggerTop = Math.round(hit.boundingClientRect.top);
-        // Wake the scene's demand loop if it is already mounted and idle.
-        window.dispatchEvent(new Event("keypad-drop-armed"));
+        if (!pageCovered()) return arm(0);
+        const t0 = performance.now();
+        const poll = () => {
+          const waited = performance.now() - t0;
+          if (!pageCovered() || waited >= COVER_WAIT_MAX_MS) {
+            coverRaf = 0;
+            arm(Math.round(waited));
+          } else coverRaf = requestAnimationFrame(poll);
+        };
+        coverRaf = requestAnimationFrame(poll);
       },
       {
-        rootMargin: `0px 0px -${Math.round((1 - DROP_TRIGGER_VH) * 100)}% 0px`,
+        // No integer rounding: 0.425 must stay 57.5%, not snap to 57/58%.
+        rootMargin: `0px 0px -${((1 - DROP_TRIGGER_VH) * 100).toFixed(1)}% 0px`,
       },
     );
     glowIO.observe(el);
@@ -159,6 +217,7 @@ export function Keypad() {
     return () => {
       glowIO.disconnect();
       dropIO.disconnect();
+      cancelAnimationFrame(coverRaf);
     };
   }, []);
 
@@ -173,7 +232,7 @@ export function Keypad() {
   }, []);
 
   // The dwell pin. Pure hold: nothing reads its progress. The drop is armed
-  // by the observer above, so it plays during the approach and lands in view.
+  // by the observer above and runs on its own clock during the approach.
   useEffect(() => {
     if (TUNE_MODE) return;
     ensureLenis();
@@ -211,8 +270,9 @@ export function Keypad() {
     <section
       ref={sectionRef}
       className="portfolio-section keypad-section"
-      // jumpToSection() lands a menu/footer jump at the pin START, so the drop
-      // (armed at DROP_TRIGGER_VH) plays in view on arrival.
+      // jumpToSection() lands a menu/footer jump at the pin START; the drop
+      // (armed at DROP_TRIGGER_VH, held until any overlay clears) plays in
+      // view on arrival.
       data-jump-progress="0"
     >
       {/* Hidden semantic content for AT / keyboard / SEO. Driven from the
