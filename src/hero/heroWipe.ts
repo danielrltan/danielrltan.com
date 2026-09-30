@@ -75,8 +75,10 @@ const NAME_GUARD_P = 1 / 3;
 const K_MIN = 1.15;
 const K_MAX = 1.8;
 /** Rim: rings of HALF cells hugging the staircase, each painted to this
- *  fraction by a fixed 4x4 Bayer matrix (a given cell never reshuffles). */
-const RIM_LEVELS = [5 / 16, 1.5 / 16];
+ *  fraction by a fixed 4x4 Bayer matrix (a given cell never reshuffles).
+ *  ~77 squares (~460 clip vertices, prototype parity): denser rims cost
+ *  clip-path work every frame. */
+const RIM_LEVELS = [4 / 16, 1 / 16];
 /** Rim opacity over the iris progress: in quickly, out over the last quarter. */
 const RIM_OPACITY: Keyframe[] = [
   { opacity: 0, offset: 0 },
@@ -85,8 +87,14 @@ const RIM_OPACITY: Keyframe[] = [
   { opacity: 0, offset: 0.95 },
   { opacity: 0, offset: 1 },
 ];
-/** ABOUT decode cue: iris progress at which the header scramble starts. */
+/** ABOUT decode cue: the header scramble starts as the hole's edge reaches
+ *  the "ABOUT" title (measured per layout, so the decode plays where it is
+ *  seen: with the off-centre seed the top-left title is uncovered late),
+ *  clamped to [CUE_P_MIN, CUE_P_MAX] of the iris. CUE_P_MIN is the ~1/3-open
+ *  floor; CUE_P is the fallback before the first measure. */
 const CUE_P = 1 / 3;
+const CUE_P_MIN = 1 / 3;
+const CUE_P_MAX = 0.85;
 /** Hero composition push-in at the end of the wipe. */
 const HERO_PUSH = 1.12;
 /** About's pull-back start scale (pinned bento, >900px only). */
@@ -229,6 +237,7 @@ type Geometry = {
   rimFrom: string;
   rimTo: string;
   cellEasing: string;
+  cueP: number;
 };
 
 const f1 = (v: number) => (Math.round(v * 10) / 10).toString();
@@ -356,6 +365,23 @@ export function installHeroWipe(): void {
         : Math.min(K_MAX, Math.max(K_MIN, Math.log(allowed / rEnd) / Math.log(NAME_GUARD_P)));
     const stage = q<HTMLElement>(".portfolio-about .about-stage");
     const stageLeft = stage ? stage.getBoundingClientRect().left : 0;
+    // Decode cue: the iris progress at which the hole first touches the
+    // parked "ABOUT" title (its rect at rest is its on-screen spot under the
+    // hero while parked).
+    let cueP = CUE_P;
+    const title = q<HTMLElement>(".portfolio-about .about-banner-title");
+    if (title) {
+      // The <p> is full-width; measure the glyphs (a Range over its text).
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      const t = range.getBoundingClientRect();
+      if (t.width > 0 && t.bottom > 0 && t.top < vh) {
+        const tx = Math.max(t.left, Math.min(sx, t.right));
+        const ty = Math.max(t.top, Math.min(sy, t.bottom));
+        const d = Math.hypot(sx - tx, sy - ty);
+        cueP = Math.min(CUE_P_MAX, Math.max(CUE_P_MIN, Math.pow(Math.min(1, d / rEnd), 1 / k)));
+      }
+    }
     const g0 = { sx, sy };
     return {
       w,
@@ -365,6 +391,7 @@ export function installHeroWipe(): void {
       cellEnd,
       k,
       stageLeft,
+      cueP,
       holeFrom: holeClip(g0, 0),
       holeTo: holeClip(g0, cellEnd),
       rimFrom: rimClip(g0, 0),
@@ -531,20 +558,40 @@ export function installHeroWipe(): void {
   // cut). Once per session, when the scroll is far enough in to tell the two
   // mappings apart, compare the hole clip's live (linear, keyframe-eased)
   // progress with scrollY; on a mismatch, rebuild on the manual path.
+  // The expected progress is derived from the TIMELINE's own current time
+  // (the scroll offset it sampled at the start of this frame), not from
+  // window.scrollY: Lenis moves the scroll inside rAF, after the timeline has
+  // ticked, so during a fast glide scrollY runs a frame ahead and a naive
+  // comparison would demote a working engine. Two consecutive mismatches are
+  // required.
   let rangesVerified = false;
-  const verifyRanges = (y: number) => {
+  let rangeMisses = 0;
+  const verifyRanges = () => {
     if (rangesVerified || !built || !hasScrollTimeline) return;
     const d = driven[0];
     if (!d || d.anim.pending) return;
-    const expected = (y - d.start) / Math.max(1, d.end - d.start);
-    if (expected < 0.25 || expected > 0.9) return;
-    rangesVerified = true;
+    const ct = (d.anim.timeline?.currentTime ?? null) as unknown;
+    const pct =
+      typeof ct === "number"
+        ? ct
+        : ct && typeof (ct as { value?: unknown }).value === "number"
+          ? (ct as { value: number }).value
+          : null;
+    if (pct == null) return;
+    const se = document.scrollingElement || root;
+    const offset = (pct / 100) * Math.max(1, se.scrollHeight - se.clientHeight);
+    const expected = (offset - d.start) / Math.max(1, d.end - d.start);
+    if (expected < 0.2 || expected > 0.9) return;
     const actual = d.anim.effect?.getComputedTiming().progress;
-    if (actual == null || Math.abs(actual - expected) > 0.15) {
-      hasScrollTimeline = false;
-      teardown();
-      build();
+    if (actual != null && Math.abs(actual - expected) <= 0.1) {
+      rangesVerified = true;
+      return;
     }
+    if (++rangeMisses < 2) return;
+    rangesVerified = true;
+    hasScrollTimeline = false;
+    teardown();
+    build();
   };
 
   // ── Fade path (mobile / reduced motion) ───────────────────────────────────
@@ -627,11 +674,11 @@ export function installHeroWipe(): void {
       if (inRange && !built) build();
       else if (!inRange && built) teardown();
       if (built) {
-        verifyRanges(y);
+        verifyRanges();
         if (!hasScrollTimeline) scrub(driven, y);
       }
       heroState.wiping = built && ratio < IRIS_END_VH;
-      if (ratio >= IRIS_START_VH + (IRIS_END_VH - IRIS_START_VH) * CUE_P) heroHandoff.set("cue");
+      if (ratio >= IRIS_START_VH + (IRIS_END_VH - IRIS_START_VH) * (geo?.cueP ?? CUE_P)) heroHandoff.set("cue");
       setIrisHidden(ratio >= IRIS_END_VH);
     } else {
       const fromIris = built || irisHidden;
@@ -683,7 +730,7 @@ export function installHeroWipe(): void {
       return "cleared";
     },
     get seed() {
-      return geo ? { x: geo.sx, y: geo.sy, k: geo.k, cellEnd: geo.cellEnd } : null;
+      return geo ? { x: geo.sx, y: geo.sy, k: geo.k, cellEnd: geo.cellEnd, cueP: geo.cueP } : null;
     },
   };
   Object.defineProperty(window, "__heroMotion", { configurable: true, value: mirror });

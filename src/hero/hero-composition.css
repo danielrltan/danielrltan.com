@@ -72,6 +72,14 @@
 html[data-hero-wipe="manual"] .hero-composition {
   will-change: scale;
 }
+/* ...and drop the wordmark keyline (SVG feMorphology, software-rasterized) for
+   the manual wipe only: a main-thread scale can re-raster the composition
+   each frame there. On the scroll-driven path the push-in is a compositor
+   animation that rasters the composition once, so the keyline stays and the
+   wordmark doesn't visibly change on the first scroll px. */
+html[data-hero-wipe="manual"] .hero-mega-fill {
+  filter: none;
+}
 
 /* White pixel rim riding the iris edge. Its clip-path (the next pixel circle
    out) is animated by heroWipe.ts; the hero layer's hole clips its inside, so

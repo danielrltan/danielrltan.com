@@ -183,7 +183,9 @@ export function About() {
     let stage = 0;
     const apply = (progress: number) => {
       let next = stage;
-      while (next < BEATS.length && progress >= BEATS[next]![1]) next++;
+      // +1e-3: a jump to data-jump-progress 0.5 lands on the last beat
+      // exactly; float error must not leave "Location" unrevealed.
+      while (next < BEATS.length && progress + 1e-3 >= BEATS[next]![1]) next++;
       if (next <= stage) return; // latched: never un-reveal
       for (let i = stage; i < next; i++) reveal(cells[i], i - stage);
       stage = next;
