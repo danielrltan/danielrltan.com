@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
-import { smoothstep } from "../math";
+import { reducedMotion } from "../motion";
 import "./sections.css";
 import "./other.css";
 import { ScrambleText } from "./ScrambleText";
@@ -27,31 +27,18 @@ gsap.registerPlugin(ScrollTrigger);
  * scroll-jack, no per-hobby focus, and no dot strip; the objects are the whole
  * show. Hovering (or tapping) an object surfaces its label via a tooltip.
  *
- * The only scroll-driven motion is a light entrance reveal of the editorial
- * header as the section rises into view (and a `live` gate that wakes the heavy
- * 3D render loop only when the section is near). The accessible + crawlable
- * interests list (sr-only) remains the source of truth for screen readers,
+ * The header arrives with a one-shot, time-based reveal (eyebrow, then title
+ * with its pixel decode) once the section is well into view, and a `live`
+ * gate wakes the heavy 3D render loop only while the section is on screen.
+ * The accessible + crawlable interests list (sr-only) remains the source of
+ * truth for screen readers,
  * keyboard users, and search crawlers, since the visible objects live in a
  * decorative <canvas>.
  */
 
-// prefers-reduced-motion: skip the entrance scrub and reveal the header
-// statically with the 3D cluster live (the scene parks itself static too). Read
-// once at mount; stable for the page lifetime.
-const PREFERS_REDUCED_MOTION =
-  typeof window !== "undefined" &&
-  typeof window.matchMedia === "function" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-// Write the editorial header reveal STRAIGHT to CSS custom props on the header
-// element (no React state → the section never re-renders on a scrub tick). Fed
-// by GSAP's smoothed scrub on the Lenis-synced gsap.ticker, so it's rate-limited
-// on the same clock as the pins (project rule: never bind CSS to RAW scroll).
-function applyHead(el: HTMLElement | null, p: number) {
-  if (!el) return;
-  el.style.setProperty("--head-eye", String(smoothstep(0, 0.3, p)));
-  el.style.setProperty("--head-title", String(smoothstep(0.2, 0.6, p)));
-}
+// Play header reveal line: the wrapper's top crossing 65% of the viewport
+// (about a third of the section is on screen, the title is well in view).
+const HEADER_REVEAL_START = "top 65%";
 
 export function Other() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -72,47 +59,27 @@ export function Other() {
     mountVh: 3.5,
     unmountVh: 5,
   });
-  // Header reveal is written straight to CSS vars via applyHead (no per-tick
-  // setState). headerRef points at the editorial corner header.
+  // Editorial corner header. `.is-in` (one-shot, latched) starts its CSS
+  // reveal; `inView` opens the title's ScrambleText gate in the same pass.
   const headerRef = useRef<HTMLElement>(null);
   // Sticky-hold wrapper around the section (see other.css .other-pin-wrap).
   const wrapRef = useRef<HTMLDivElement>(null);
-  // Gates the heavy 3D render loop: flipped true as the section approaches so
-  // the scene doesn't render at full rate while far off-screen. setState with
-  // an unchanged value bails, so calling it per tick is free.
+  const [inView, setInView] = useState(false);
+  // Gates the heavy 3D render loop: true only while the section is on screen
+  // (both directions). setState with an unchanged value bails.
   const [live, setLive] = useState(false);
 
   useEffect(() => {
-    // prefers-reduced-motion: no scrub. Header up, scene live (static cluster).
-    if (PREFERS_REDUCED_MOTION) {
-      applyHead(headerRef.current, 1);
-      setLive(true);
-      return;
-    }
-
     // Triggers measure the WRAPPER, not the sticky section: the wrapper's
     // top/bottom are fixed in the document (the section's rect moves while it
     // is stuck), and its bottom marks the end of the hold.
     const el = wrapRef.current;
     if (!el) return;
 
-    // Entrance reveal: fade the editorial header up as the section RISES into
-    // view, and warm the 3D scene so its first on-screen frame is ready. No pin,
-    // no scroll-jack — just a cross-dissolve at the Work→Play seam. Reverses on
-    // scroll-up.
-    const entrance = ScrollTrigger.create({
-      trigger: el,
-      start: "top bottom",
-      end: "top top",
-      // scrub:1 (was true): GSAP eases progress on the Lenis-synced ticker, so
-      // applyHead writes a rate-limited value, not the raw scroll position.
-      scrub: 1,
-      onUpdate: (self) => {
-        const e = self.progress;
-        applyHead(headerRef.current, e);
-        setLive(e > 0.05);
-      },
-    });
+    const revealHeader = () => {
+      headerRef.current?.classList.add("is-in");
+      setInView(true);
+    };
 
     // SCROLL STOP: the hold is pure CSS — `.other-pin-wrap` is taller than the
     // section by --other-stop and the section is `position: sticky; top: 0`
@@ -123,19 +90,32 @@ export function Other() {
     // the native scroll, so the section glides to the top and simply stays —
     // no engagement frame, nothing to snap.
 
-    // Hold the header up + scene live while the section is anywhere on screen
-    // (after the entrance completes the section sits pinned-free in view).
+    // Header entrance: ONE time-based reveal, latched (once). end:"max" keeps
+    // it active from the reveal line to the page end, so a load or cut jump
+    // anywhere below the line still reveals it on the first update. Reduced
+    // motion: revealed at mount (CSS parks it static; the scramble shows the
+    // final text).
+    let entrance: ScrollTrigger | null = null;
+    if (reducedMotion.value) {
+      revealHeader();
+    } else {
+      entrance = ScrollTrigger.create({
+        trigger: el,
+        start: HEADER_REVEAL_START,
+        end: "max",
+        once: true,
+        onEnter: revealHeader,
+      });
+    }
+
+    // Render-loop gate: live exactly while any of the wrapper is on screen.
     const presence = ScrollTrigger.create({
       trigger: el,
-      start: "top center",
+      start: "top bottom",
       end: "bottom top",
-      onToggle: (self) => {
-        if (self.isActive) {
-          applyHead(headerRef.current, 1);
-          setLive(true);
-        }
-      },
+      onToggle: (self) => setLive(self.isActive),
     });
+    if (presence.isActive) setLive(true);
 
     // Refresh after the loading screen lifts: layout can shift during initial
     // paint. Same pattern as the other sections.
@@ -143,7 +123,7 @@ export function Other() {
 
     return () => {
       stopLoaderWatch();
-      entrance.kill();
+      entrance?.kill();
       presence.kill();
     };
   }, []);
@@ -179,24 +159,18 @@ export function Other() {
       </ul>
 
       {/* Editorial corner header: tiny "04" tag + GIANT shared-scale wordmark.
-          Floats over the full-bleed cluster (pointer-events:none). Per-element
-          fade-up is driven by --head-* custom props poked from the entrance. */}
+          Floats over the full-bleed cluster (pointer-events:none). `.is-in`
+          (added once by the entrance trigger) runs the eyebrow -> title
+          reveal; the title's pixel decode starts on the same edge. */}
       <header
         ref={headerRef}
-        className="other-header"
-        style={
-          {
-            // Initial state only; applyHead writes these imperatively after mount.
-            "--head-eye": PREFERS_REDUCED_MOTION ? "1" : "0",
-            "--head-title": PREFERS_REDUCED_MOTION ? "1" : "0",
-          } as React.CSSProperties
-        }
+        className={inView ? "other-header is-in" : "other-header"}
       >
         <div className="other-eyebrow">
           <span className="other-section-num">04</span>
         </div>
         <h2 className="other-title">
-          <ScrambleText text="Some interests" />
+          <ScrambleText text="Some interests" play={inView} />
         </h2>
       </header>
 

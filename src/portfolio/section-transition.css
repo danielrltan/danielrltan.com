@@ -32,12 +32,21 @@
   align-items: center;
   white-space: nowrap;
   width: max-content;
-  /* steps() instead of linear: the loop advances in 320 discrete jumps
-     (≈8px each at desktop track width, scaling with the type), so the
-     giant pixel-font phrase TICKS across the band like a hardware
-     marquee instead of gliding sub-pixel. Same distance + duration, so
-     the read speed is unchanged. */
-  animation: st-marquee-scroll 38s steps(320) infinite;
+  /* Hardware-marquee tick, kept (owner intent) but at an LED-matrix rate:
+     steps(640) over 38s = 16.8 ticks/s, ~5px per tick at 1440w (was
+     steps(320) = 8.4 ticks/s of ~10px, which read as dropped frames beside
+     the smooth Lenis scroll). Same distance + duration, so the read speed is
+     unchanged. Tune here: raise --st-marquee-steps for a finer tick; the
+     one-line fallback if it still reads as stutter is `linear` in place of
+     the steps() below. */
+  --st-marquee-dur: 38s;
+  --st-marquee-steps: 640;
+  animation: st-marquee-scroll var(--st-marquee-dur) steps(var(--st-marquee-steps)) infinite;
+}
+/* Paused while the band is off screen (SectionTransition.tsx toggles
+   .is-paused from an IntersectionObserver). */
+.section-transition.is-paused .st-track {
+  animation-play-state: paused;
 }
 
 @keyframes st-marquee-scroll {

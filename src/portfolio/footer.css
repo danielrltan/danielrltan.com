@@ -130,15 +130,12 @@
   cursor: pointer;
   text-decoration: none;
   width: max-content;
-  /* Two roles for this transition:
-       1. hover/focus colour + translate feedback (--t-fast).
-       2. the scroll-in reveal — the opacity/translateY settle uses the
-          slower --t-med on --ease-entrance, staggered per item by --i
-          (see .footer-reveal below). Both share the property list so the
-          reveal and the hover use one declaration. */
-  transition: color var(--t-fast) var(--ease-out),
-    transform var(--t-fast) var(--ease-out),
-    opacity var(--t-med) var(--ease-entrance);
+  /* Hover/focus feedback: colour + the `transform` nudge, NO delay, so
+     hover-in and hover-out are both immediate on every row. The scroll-in
+     reveal animates the separate `translate` property + opacity (below), so
+     its stagger delay can never leak into the hover. */
+  transition: color var(--hover-dur) var(--hover-ease),
+    transform var(--hover-dur) var(--hover-ease);
 }
 .footer-link:hover {
   /* International Orange (--accent #ff4f00), not the lighter --accent-hot
@@ -168,7 +165,7 @@
   color: var(--accent-text);
   font-weight: 500;
   min-width: 18px;
-  transition: color var(--t-fast) var(--ease-out);
+  transition: color var(--hover-dur) var(--hover-ease);
 }
 .footer-link:hover .footer-link-num,
 .footer-link:focus-visible .footer-link-num {
@@ -176,26 +173,25 @@
 }
 
 /* Scroll-in reveal: Footer.tsx adds .footer-revealed once the band
-   enters the viewport. Items start lifted + transparent and settle on
-   --ease-entrance, each delayed by its --i × --stagger (rows 0..n give
-   the 0/60/120/180/240/300ms cascade the proposal calls for), bringing
-   the footer's affordances up to the choreography of the sections above. */
+   enters the viewport. Items start lifted (individual `translate`, so the
+   hover's `transform` stays independent) + transparent and settle over
+   --reveal-dur on --reveal-ease. The stagger delay (--i, capped at
+   --stagger-max steps) sits ONLY on the translate/opacity entries of the
+   transition list; color/transform (hover) keep 0 delay. */
 .footer-nav .footer-link {
   opacity: 0;
-  transform: translateY(8px);
+  translate: 0 var(--chrome-lift);
+  transition:
+    color var(--hover-dur) var(--hover-ease),
+    transform var(--hover-dur) var(--hover-ease),
+    translate var(--reveal-dur) var(--reveal-ease)
+      calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger)),
+    opacity var(--reveal-dur) var(--reveal-ease)
+      calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));
 }
 .footer-revealed .footer-nav .footer-link {
   opacity: 1;
-  transform: translateY(0);
-  transition-delay: calc(var(--stagger) * var(--i, 0));
-}
-/* Re-assert the hover nudge above the revealed rule's transform (which
-   has higher specificity than the base .footer-link:hover). Opacity is
-   already settled, so only the per-property transform matters; clear the
-   reveal's transition-delay so the hover responds instantly. */
-.footer-revealed .footer-nav .footer-link:hover {
-  transform: translateX(3px);
-  transition-delay: 0s;
+  translate: 0 0;
 }
 
 /* Colophon is now a real description list (<dl> of <dt>/<dd> pairs)
@@ -364,7 +360,6 @@
   .footer-nav .footer-link,
   .footer-revealed .footer-nav .footer-link {
     opacity: 1;
-    transform: none;
-    transition-delay: 0s;
+    translate: none;
   }
 }

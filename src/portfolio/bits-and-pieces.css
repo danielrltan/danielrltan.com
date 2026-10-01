@@ -192,39 +192,15 @@
   padding: 0;
 }
 
-/* Grid item: handles span + the scroll-reveal transform. The visual
-   card lives in .bp-tile-inner so list semantics stay clean. */
+/* Grid item: handles span. The visual card lives in .bp-tile-inner so list
+   semantics stay clean. The entrance is the shared [data-reveal] primitive
+   (sections.css + useReveal): a --reveal-lift rise + fade, staggered by the
+   tile's index within its reveal batch, so every row starts at 0 ms. No
+   blur, no scale, no side sweep (the filter re-rastered every tile per
+   frame, and the per-edge direction was computed from transformed rects).
+   `.bp-tile.is-revealed` is still the latched class (smoke test). */
 .bp-tile {
   display: flex;
-  /* Initial state: out of place + blurred + invisible. The
-     direction (left/right) is set per-card via the from-left
-     /from-right modifiers so the reveal sweeps from alternating
-     edges as the user scrolls in. */
-  opacity: 0;
-  filter: blur(4px);
-  transform: translate3d(var(--bp-from-x, 0), var(--space-5), 0) scale(0.97);
-  /* Reveal sweep folded onto the motion spine: longest-reveal --t-slow
-     (540) for opacity/transform, --t-med (400) for the blur clear, all on
-     --ease-entrance (the gentle reveal-in/up curve). Replaces the ad-hoc
-     620/720/520ms + bare --ease-soft fallbacks. */
-  transition:
-    opacity var(--t-slow) var(--ease-entrance),
-    transform var(--t-slow) var(--ease-entrance),
-    filter var(--t-med) var(--ease-entrance);
-  /* PERF: `filter` is intentionally NOT hinted — a will-change:filter pins a
-     software filter-backed compositor layer per tile PERMANENTLY (VRAM + paint
-     cost on weak GPUs), for a one-time blur-in. opacity/transform are the cheap
-     hints worth keeping, and only until the tile has settled (released below). */
-  will-change: opacity, transform;
-}
-.bp-tile--from-left { --bp-from-x: -28px; }
-.bp-tile--from-right { --bp-from-x: 28px; }
-.bp-tile.is-revealed {
-  opacity: 1;
-  filter: blur(0);
-  transform: translate3d(0, 0, 0) scale(1);
-  /* Reveal done — drop the compositor hint so the layer is reclaimed. */
-  will-change: auto;
 }
 
 /* The visible card surface. Slightly translucent cool white over a
@@ -246,8 +222,8 @@
   gap: var(--space-1); /* 4, on-grid */
   overflow: hidden;
   transition:
-    box-shadow var(--t-base) ease,
-    border-color var(--t-base) ease;
+    box-shadow var(--t-base) var(--ease-out),
+    border-color var(--t-base) var(--ease-out);
 }
 
 /* Featured tiles are the hero row: same one-column width as the rest, but a
@@ -298,7 +274,7 @@
       transparent 0% 50%
     );
     background-size: 16px 16px; /* 8px checker cells */
-    transition: opacity var(--t-fast) ease;
+    transition: opacity var(--t-fast) var(--ease-out);
   }
   .bp-tile--featured .bp-tile-inner:hover::after {
     opacity: 0.14;
@@ -421,17 +397,9 @@
     padding: 8vh 6vw;
   }
 
-  /* Render tiles IN PLACE — no per-card blur/slide/scale entrance. The
-     choreographed sweep is desktop polish; on mobile it's a calmer,
-     cheaper render (and avoids any blank-until-revealed risk in hidden/
-     headless tabs). prefers-reduced-motion still applies via its own
-     block below. Desktop keeps the full choreography untouched. */
-  .bp-tile {
-    opacity: 1;
-    filter: none;
-    transform: none;
-    transition: none;
-  }
+  /* Tiles render IN PLACE on phones: the [data-reveal] primitive is parked
+     static at <=768 (sections.css) and useReveal reveals everything at mount,
+     so there is no blank-until-revealed risk in hidden/headless tabs. */
 
   /* #23 PERF: trim the ghosted marquee (dropped entirely <480px below). */
   .bp-marquee {
@@ -645,17 +613,11 @@
   }
 }
 
-/* prefers-reduced-motion: cards appear in place (no blur/slide/scale
-   sweep) and the marquee JS is skipped in the component. Anything that
-   was mid-transition snaps to its resolved state. */
+/* prefers-reduced-motion: cards appear in place (the [data-reveal]
+   primitive's own reduced-motion block) and the marquee JS is skipped in the
+   component. */
 @media (prefers-reduced-motion: reduce) {
-  .bp-tile {
-    opacity: 1;
-    filter: none;
-    transform: none;
-    transition: none;
-  }
   .bp-tile-inner {
-    transition: border-color var(--t-base) ease;
+    transition: border-color var(--t-base) var(--ease-out);
   }
 }

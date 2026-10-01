@@ -6,8 +6,8 @@
    all ten interest objects together as one dense, overlapping cluster
    suspended in open space. The editorial corner header (tiny "04" tag +
    giant wordmark) floats on top; hovering an object surfaces its label as an
-   in-canvas tag. The only scroll-driven motion is a light entrance fade-up
-   of the header.
+   in-canvas tag. The header arrives with a one-shot, time-based reveal
+   (Other.tsx adds .is-in once; nothing here is scroll-written).
 
    The Recents photo trains that used to be this section's opening beat now
    live in photos.css.
@@ -32,8 +32,9 @@
 
 /* ======================================================================
    Header: eyebrow + big title. Spans the full top edge with generous side
-   gutter; per-element fade-up is driven by the --head-eye / --head-title
-   custom props poked from React.
+   gutter. One-shot reveal: both start lifted by --reveal-lift and
+   transparent; .other-header.is-in (latched) settles them over
+   --reveal-dur on --reveal-ease, the title one --stagger behind.
    ====================================================================== */
 
 .other-header {
@@ -57,10 +58,10 @@
   grid-row: 1;
   display: inline-flex;
   align-items: baseline;
-  opacity: var(--head-eye, 1);
-  transform: translateY(calc((1 - var(--head-eye, 1)) * 8px));
-  transition: opacity var(--t-med) var(--ease-entrance),
-              transform var(--t-med) var(--ease-entrance);
+  opacity: 0;
+  transform: translateY(var(--reveal-lift));
+  transition: opacity var(--reveal-dur) var(--reveal-ease),
+              transform var(--reveal-dur) var(--reveal-ease);
 }
 /* Two-digit section number in the dot face on the shared --hdr-num scale:
    now a SMALL tag (same tiny number size as Work "03" / Photos "05").
@@ -100,11 +101,17 @@
   min-width: 0;
   overflow-wrap: break-word;
   word-break: break-word;
-  opacity: var(--head-title, 1);
-  transform: translateY(calc((1 - var(--head-title, 1)) * 22px));
-  /* Title is the slowest reveal so it lands last + most deliberately. */
-  transition: opacity var(--t-slow) var(--ease-entrance),
-              transform var(--t-slow) var(--ease-entrance);
+  opacity: 0;
+  transform: translateY(var(--reveal-lift));
+  /* Title lands one stagger step after the eyebrow; its ScrambleText decode
+     starts on the same frame the fade begins (Other.tsx play gate). */
+  transition: opacity var(--reveal-dur) var(--reveal-ease) var(--stagger),
+              transform var(--reveal-dur) var(--reveal-ease) var(--stagger);
+}
+.other-header.is-in .other-eyebrow,
+.portfolio-other .other-header.is-in .other-title {
+  opacity: 1;
+  transform: none;
 }
 
 /* Short-viewport guard: this section is full-bleed with the 3D cluster
@@ -261,14 +268,13 @@
 /* ======================================================================
    prefers-reduced-motion: static fallback
    ----------------------------------------------------------------------
-   Other.tsx reveals the header statically (no entrance scrub) and the 3D
-   HobbiesScene parks itself static (no bob, sway, or parallax) under reduced
-   motion. Here we kill the residual CSS-driven header fade-up transitions so
-   nothing tweens.
+   Other.tsx reveals the header at mount and the 3D HobbiesScene parks
+   itself static (no bob, sway, or parallax) under reduced motion. Here the
+   header sits at its final pose with no transition, even before .is-in.
    ====================================================================== */
 @media (prefers-reduced-motion: reduce) {
   .other-header .other-eyebrow,
-  .other-header .other-title {
+  .portfolio-other .other-header .other-title {
     transition: none;
     transform: none;
     opacity: 1;

@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { FooterSignature } from "./FooterSignature";
 import { track } from "../analytics";
 import { SECTION_REGISTRY } from "../sectionRegistry";
+import { jumpToSection, scrollToY } from "../scroll";
 import "./footer.css";
 
 interface JumpLink {
   number: string;
+  /** Registry label: the jumpToSection() key. */
   label: string;
-  /** Stable section class selector, or "top" for scroll-to-top. */
-  selector: string;
+  /** The hero entry scrolls to the very top. */
+  top: boolean;
 }
 
 interface ElsewhereLink {
@@ -21,13 +23,12 @@ interface ElsewhereLink {
   aria: string;
 }
 
-/* Jump targets come from the shared section registry (same numbers, labels
-   and stable class selectors the dial + spill menu use). The hero link scrolls
-   to the very top. */
+/* Jump targets come from the shared section registry (same numbers and
+   labels the dial + spill menu use). The hero link scrolls to the very top. */
 const JUMP_LINKS: JumpLink[] = SECTION_REGISTRY.map((entry, i) => ({
   number: entry.number,
   label: entry.label,
-  selector: i === 0 ? "top" : entry.selector,
+  top: i === 0,
 }));
 
 const ELSEWHERE: ElsewhereLink[] = [
@@ -57,32 +58,19 @@ const ELSEWHERE: ElsewhereLink[] = [
   },
 ];
 
-function prefersReducedMotion() {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
-function jumpTo(selector: string) {
-  // Honour prefers-reduced-motion: scrollIntoView's "smooth" overrides
-  // the CSS `scroll-behavior: auto` reset, so we branch in JS instead.
-  const behavior: ScrollBehavior = prefersReducedMotion() ? "auto" : "smooth";
-  if (selector === "top") {
-    window.scrollTo({ top: 0, behavior });
-    return;
-  }
-  const el = document.querySelector(selector);
-  if (el instanceof HTMLElement) {
-    el.scrollIntoView({ behavior, block: "start" });
-  }
+/* Index jumps go through the shared scroll core (src/scroll.ts), the same
+   routing the spill menu uses: pinned sections land on their registered beat
+   (data-jump-progress / registry jumpProgress through the pin's
+   ScrollTrigger), short hops glide on the SCROLL.glide preset, anything past
+   3 viewports cuts behind the CRT cover, and reduced motion is an instant
+   cut. Never native smooth scroll. */
+function jumpTo(link: JumpLink) {
+  if (link.top) void scrollToY(0, { preset: "jump" });
+  else void jumpToSection(link.label);
 }
 
 export function Footer() {
   const year = new Date().getFullYear();
-  // jumpTo is module-level/stable, so an empty dep array is sound; this
-  // keeps a single stable handler instead of allocating one closure per link.
-  const handleJumpClick = useCallback((selector: string) => jumpTo(selector), []);
 
   // Scroll-in reveal: add .footer-revealed once the band enters the
   // viewport so the nav links cascade in (CSS owns the stagger via --i ×
@@ -195,7 +183,7 @@ export function Footer() {
                   aria-label={`Jump to ${l.label}`}
                   onClick={() => {
                     track("nav_jump", { section: l.label, source: "footer" });
-                    handleJumpClick(l.selector);
+                    jumpTo(l);
                   }}
                   // --i drives the CSS reveal stagger (i × --stagger).
                   style={{ "--i": i } as CSSProperties}

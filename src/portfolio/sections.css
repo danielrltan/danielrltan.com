@@ -78,9 +78,9 @@
   min-height: 100vh;
 }
 
-/* Right-column gutter (Macintosh). Content opacity follows --content-opacity
-   from App.tsx's scroll choreography so section text only fades in once the
-   hero has cleared. */
+/* Right-column gutter (Macintosh). Fully opaque: the old --content-opacity
+   consumer (a root var App.tsx wrote every scroll frame during the hero dive)
+   is gone; the hero owns its own clear now (motion spec §5 O7). */
 .portfolio-col {
   margin-left: 50vw;
   width: 50vw;
@@ -91,10 +91,6 @@
   pointer-events: auto;
   color: var(--ink);
   position: relative;
-  opacity: var(--content-opacity, 1);
-}
-.portfolio-section--hero .portfolio-col {
-  opacity: 1;
 }
 
 /* Section number: TE-style "03" tag. Sits on the shared corner-header
@@ -190,7 +186,7 @@
   color: var(--accent);
   text-decoration: none;
   border-bottom: 1px solid currentColor;
-  transition: opacity var(--t-fast, 180ms) var(--ease-out, ease);
+  transition: opacity var(--hover-dur) var(--hover-ease);
 }
 .portfolio-section a:hover {
   opacity: 0.7;
@@ -237,5 +233,44 @@
   .portfolio-section h2 {
     letter-spacing: 0.01em;
     margin-bottom: 32px;
+  }
+}
+
+/* ----------------------------------------------------------------------
+   SHARED REVEAL PRIMITIVE (motion spec W5.1-2)
+   ----------------------------------------------------------------------
+   One entrance language for the back half: an element marked
+   [data-reveal] rises --reveal-lift and fades in over --reveal-dur on
+   --reveal-ease once useReveal() (src/portfolio/useReveal.ts) latches
+   .is-revealed. --i is the element's index within its reveal BATCH, so
+   each row that crosses the line together starts at 0 ms; the stagger is
+   capped at --stagger-max steps. Rise only: no filter, no scale, no side
+   sweep (filters re-raster per frame). */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(var(--reveal-lift));
+  transition:
+    opacity var(--reveal-dur) var(--reveal-ease),
+    transform var(--reveal-dur) var(--reveal-ease);
+  transition-delay: calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));
+}
+[data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+}
+/* Phones render in place (useReveal also reveals everything at mount there);
+   no mount-time fade. */
+@media (max-width: 768px) {
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
 }
