@@ -45,148 +45,80 @@
   box-sizing: border-box;
   color: var(--ink);
   /* Load-in is gated on .is-visible (toggled by React when the loader
-     clears). Default opacity 0; visible state lets the calc-driven
-     opacity in the dive-in rule below take over. The wordmark has its
-     own keyframe entrance (hero-mega-in), so no need for a wrapper opacity
-     transition that would conflict with the scroll-bound calc.
-     IMPORTANT: no `transition: opacity ...` here, as it would smooth
-     out scroll-bound opacity changes and make the dive feel laggy. */
+     clears). Default opacity 0; .is-visible below sets 1 after a one-shot
+     fade-in. The wordmark has its own keyframe entrance (hero-mega-in).
+     IMPORTANT: no `transition` on opacity/transform here: the iris
+     push-in (heroWipe.ts) is scroll-bound and must not be smoothed. */
   opacity: 0;
   overflow: hidden; /* clip the oversized ASCII ring at the viewport edge */
   transform-origin: 50% 50%;
 }
-html[data-hero-diving] .hero-composition {
-  /* PERF: promote the composition layer ONLY while diving (App.tsx sets
-     data-hero-diving from the first scroll). A PERMANENT will-change pins a
-     full-viewport compositor backing texture (VRAM) for the whole session,
-     which starves weak integrated GPUs and can itself cause the scroll jank;
-     the compositor promotes on demand for the brief dive and releases it at
-     rest. */
-  will-change: transform, opacity;
-}
-
 /* ─────────────────────────────────────────────────────────────────────
- * HERO → ABOUT: DIVE-IN (--hero-to-about: 0..1)
+ * HERO → ABOUT: PIXEL IRIS (see src/hero/heroWipe.ts)
  * ────────────────────────────────────────────────────────────────────
- * ONE cohesive gesture. The entire hero composition (wordmark + ring)
- * participates as a single visual body: it scales up (1 → 3.0) from the
- * centre as if the camera is diving INTO the type, translates DOWN
- * slightly, blurs by a touch as it leaves focus, and fades to reveal the
- * About section underneath.
- *
- * The previous iteration chained four independent effects (wordmark
- * mask-erosion, outline ghost lag, ring contract/rotate, orange scan-
- * band) at offset progress windows. User feedback: "looks tacky with
- * the gradient fade" and "looks glued together". This replacement
- * uses a single transform + opacity + filter on the composition
- * itself; every child element moves as one rigid body. No mask
- * gradients, no scan bands, no per-element progress vars.
- *
- * Curve: smoothstep (t² · (3 − 2t)) on --hero-to-about. Visually
- * matches easeInOutCubic for this range, and cheap to compute in a
- * single calc(). Soft on both ends: the dive accelerates through
- * the middle and decelerates as the hero clears the frame so About
- * underneath has a calm hand-off.
- *
- * Reduced motion (handled below): --hero-to-about is forced to 0 so
- * the composition stays at rest; the wrapper's --hero-opacity fade
- * (from .scroll-layer--hero in App.tsx) does the work instead.
+ * The old dive (CSS scale 1 → 3.4 of a pre-rasterized bitmap, a coarsening
+ * shader grid, stepped contrast() buckets) is gone. The handoff is now a
+ * pixel-art circle cut into .scroll-layer--hero (clip-path), seeded right of
+ * the wordmark, a sparse half-cell white rim (.hero-iris-rim), and a gentle
+ * push-in of this composition about the seed (the individual `scale`
+ * property, 1 → 1.12). All are scroll-driven WAAPI animations created only
+ * while 0 < scrollY < 1.1vh, so at rest this composition has no transform, no
+ * promoted layer and its native raster.
  * ─────────────────────────────────────────────────────────────────── */
-.hero-composition {
-  /* Smoothstep curve. Reused by transform / opacity / mask below. */
-  --p: calc(
-    var(--hero-to-about, 0) * var(--hero-to-about, 0) *
-    (3 - 2 * var(--hero-to-about, 0))
-  );
-  /* Scale: 1 → 3.4. Camera-dive feel: composition fills, then
-     overflows, the frame. Past p=1 the composition is fully off-
-     screen and faded. SMOOTH on purpose: an earlier pass quantised
-     this into 14 steps for a "pixelated zoom", but each step was a
-     ~0.14 scale jump on a 130vw body (~376px-wide pops, measured),
-     which read as the ring glitching during the scroll-up ease-back.
-     The pixel identity lives entirely in the stepped mosaic filter
-     below; geometry stays continuous. */
-  --hero-scale: calc(1 + var(--p) * 2.4);
-  /* Slight downward push (2vh max) so the dive isn't perfectly
-     symmetric, which adds the sense that the viewer is sinking THROUGH
-     the type, not staring at it pulling apart. */
-  --hero-shift-y: calc(var(--p) * 2vh);
-
-  transform: translate3d(0, var(--hero-shift-y), 0) scale(var(--hero-scale));
-  /* Depth cue: the stepped mosaic filter below (real blur-then-
-     downsample of the composition's own pixels), not a blur alone and
-     not a dither texture. */
+/* Fallback (no ScrollTimeline): the scrubbed animation is paused, so hint the
+   promotion for the duration of the wipe only. */
+html[data-hero-wipe="manual"] .hero-composition {
+  will-change: scale;
+}
+/* ...and drop the wordmark keyline (SVG feMorphology, software-rasterized) for
+   the manual wipe only: a main-thread scale can re-raster the composition
+   each frame there. On the scroll-driven path the push-in is a compositor
+   animation that rasters the composition once, so the keyline stays and the
+   wordmark doesn't visibly change on the first scroll px. */
+html[data-hero-wipe="manual"] .hero-mega-fill {
+  filter: none;
 }
 
-/* PIXEL-ZOOM DISSOLVE — GPU-cheap, universal.
-   App.tsx steps `data-hero-px` on <html> as the eased dive progress crosses the
-   HERO_PX_STEPS thresholds. Each bucket HARDENS the composition with a stepped
-   contrast() tick — a color-matrix filter the GPU accelerates — so the type
-   visibly "crunches" at each boundary on top of the continuous scale-up. Bucket
-   0 = attribute absent = no filter, so the resting hero pays nothing.
-
-   PERF (why no SVG mosaic anymore): earlier buckets also ran a
-   feGaussianBlur+feTile+feMorphology MOSAIC filter (since deleted from
-   HeroSignature.tsx). feMorphology + feTile have NO GPU path in
-   Chromium, so applying url() to this full-viewport composition — which contains
-   a live WebGL ring <canvas> — forced the WHOLE subtree to software-rasterize on
-   the MAIN THREAD every scroll frame as it scaled 1→3.4×. Measured on a DPR-1.25
-   display: ~31fps at 4× CPU throttle and ~19fps at 6×, with visible hitches even
-   un-throttled — and the DPR>1.4 / adaptive-degrade gates never caught the
-   common mid-range case. Dropped for ALL users: contrast() + the scale transform
-   composite on the GPU and still read as a dive (the type scales + hardens as you
-   punch through it). See the A/B in the perf notes: dropping url() ~tripled FPS. */
-html[data-hero-px="1"] .hero-composition { filter: contrast(1.05); }
-html[data-hero-px="2"] .hero-composition { filter: contrast(1.09); }
-html[data-hero-px="3"] .hero-composition { filter: contrast(1.13); }
-html[data-hero-px="4"] .hero-composition { filter: contrast(1.17); }
-html[data-hero-px="5"] .hero-composition { filter: contrast(1.2); }
-/* MOBILE: calm the hero exit — NO pixel-zoom DIVE. The 1->3.4x scale + contrast
-   crunch read as an interrupting "takeover" while you scroll the first screen on
-   a phone (owner-flagged). Here the composition holds at rest and the wrapper's
-   --hero-opacity does a clean cross-fade to About instead. */
-@media (max-width: 768px) {
-  .hero-composition {
-    --hero-scale: 1;
-    --hero-shift-y: 0;
-  }
-  html[data-hero-px] .hero-composition,
-  html[data-hero-diving] .hero-composition {
-    filter: none;
+/* White pixel rim riding the iris edge. Its clip-path (the next pixel circle
+   out) is animated by heroWipe.ts; the hero layer's hole clips its inside, so
+   only a one-cell ring shows. Absent at rest. */
+.hero-iris-rim {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: #ffffff;
+}
+html[data-hero-wipe] .hero-iris-rim {
+  display: block;
+}
+@media (max-width: 900px), (prefers-reduced-motion: reduce) {
+  .hero-iris-rim,
+  html[data-hero-wipe] .hero-iris-rim {
+    display: none;
   }
 }
-/* During the dive, drop the wordmark's ASCII-outline keyline (its own
-   feMorphology) so it doesn't software-raster while the composition scales. */
-html[data-hero-px] .hero-mega-fill { filter: none; }
 
-/* PERF — the wordmark keyline (SVG feMorphology) re-rasterizes on the MAIN
-   THREAD at device pixels every scroll frame and is imperceptible mid-dive, so
-   drop it the instant the dive begins (App.tsx sets data-hero-diving from the
-   first non-zero progress — covers the scroll-in BEFORE bucket 1). */
-html[data-hero-diving] .hero-mega-fill { filter: none; }
-
-/* HI-DPR / browser-zoom: the RESTING wordmark keyline (#hero-ascii-outline, also
-   feMorphology) rasterizes at DEVICE pixels (~DPR² cost). data-hero-lite (App.tsx,
-   devicePixelRatio > 1.4, re-checked on resize/zoom) drops that one-time keyline
-   raster for hi-DPR / zoomed users. The dive itself is now GPU-cheap for everyone,
-   so it needs no separate lite path. */
+/* HI-DPR / browser-zoom / low tier / slow-frame degrade: drop the RESTING
+   wordmark keyline (#hero-ascii-outline, SVG feMorphology — rasterized at
+   DEVICE pixels, ~DPR² cost). data-hero-lite is set by App.tsx. */
 html[data-hero-lite] .hero-mega-fill { filter: none; }
 /* Opacity hand-off:
      1) LOAD-IN (0→1 over 600ms): a one-shot CSS animation on
         .is-visible runs at higher priority than normal cascade.
-     2) DIVE-OUT: the composition stays FULLY OPAQUE through the zoom
-        (opacity:1) so the pixel-zoom is actually SEEN — it scales and
-        pixelates at full presence. The dissolve is owned solely by the
-        WRAPPER (.scroll-layer--hero's --hero-opacity in App.tsx, which
-        fades late). Coupling the composition's own opacity to the dive
-        (the old `calc(1 - var(--p))`) faded it out BEFORE the dramatic
-        2.4×→3.4× part of the zoom, so the zoom played invisibly and only
-        the next section sliding up was visible (the "card push over"
-        bug). animation-fill-mode `none` reverts to opacity:1 after the
-        load-in, matching the keyframe end (no discontinuity). */
+     2) HERO → ABOUT: the composition never fades. It stays FULLY OPAQUE
+        while the pixel iris (a clip-path on the WRAPPER,
+        .scroll-layer--hero, owned by heroWipe.ts) opens a hole onto the
+        parked About, and only pushes in (scale 1 → 1.12, HERO_PUSH) about
+        the iris seed. The wrapper is hidden once the iris has cleared the
+        viewport. On the fade path (≤900 / reduced motion) the wrapper's
+        opacity does the hand-off instead. animation-fill-mode `none`
+        reverts to opacity:1 after the load-in, matching the keyframe end
+        (no discontinuity). */
 .hero-composition.is-visible {
   opacity: 1;
-  animation: hero-composition-fade-in 600ms var(--ease-soft) none;
+  animation: hero-composition-fade-in var(--t-slow) var(--ease-out) none;
 }
 @keyframes hero-composition-fade-in {
   from { opacity: 0; }
@@ -196,7 +128,7 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
 /* ASCII ring wrapper. Deliberately oversized: 130vw wide, 130vh
    tall, centered. The visible ring lands as a tilted disc that clips
    off the left & right edges of the viewport. Sits BEHIND the
-   wordmark. The dive-in scale is applied to the composition root;
+   wordmark. The iris push-in scale is applied to the composition root;
    the ring participates automatically. */
 .hero-ring-wrap {
   position: absolute;
@@ -233,7 +165,7 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
    The capture is the VISIBLE viewport crop of the live ring, so it's sized to
    the viewport (100vw×100vh) and centred inside the 130vw×130vh wrap — matching
    the live ring's on-screen framing 1:1. It inherits the wrap's 0.7 opacity and
-   rides the composition's dive transform, so the hero→About zoom still reads. */
+   rides the composition's iris push-in like the live ring. */
 .hero-ring-static {
   position: absolute;
   top: 50%;
@@ -250,7 +182,7 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
 
 /* Scroll cue: pixel down-chevron, bottom-centre of the hero, bobbing in
    DISCRETE frame-by-frame steps (held % ranges = jumps, not a smooth glide).
-   Fades out as soon as the dive starts. */
+   Fades out as soon as you leave the resting hero (html[data-hero-diving]). */
 .hero-scroll-cue {
   position: absolute;
   left: 50%;
@@ -262,7 +194,8 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
   bottom: max(20px, calc(5.5svh + var(--safe-bottom, 0px)));
   z-index: 6;
   pointer-events: none;
-  opacity: clamp(0, calc(1 - var(--hero-to-about, 0) * 5), 1);
+  opacity: 1;
+  transition: opacity var(--t-fast) var(--ease-out);
   animation: hero-cue-bob 1.15s steps(1, end) infinite;
 }
 .hero-scroll-cue svg {
@@ -284,6 +217,11 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
   75%, 99% { transform: translateY(3px); }
 }
 
+/* Fades the moment you leave the resting hero (data-hero-diving latches). */
+html[data-hero-diving] .hero-scroll-cue {
+  opacity: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hero-scroll-cue {
     animation: none;
@@ -291,10 +229,9 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Reduced motion: collapse the dive transform to identity. The
-     wrapper's --hero-opacity (from .scroll-layer--hero in App.tsx)
-     still handles the hero-to-about handoff for these users:
-     quiet linear opacity, no transforms, no blur. */
+  /* Reduced motion: no iris and no push-in (identity transform). The
+     wrapper (.scroll-layer--hero, heroWipe.ts) clears in one frame at
+     0.78vh for these users: no transforms, no blur, no fade. */
   .hero-composition {
     transform: none !important;
     filter: none !important;
@@ -340,7 +277,7 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
   align-items: flex-start;
   padding-left: 4vw;
   /* Hit-testable only while the hero is actually visible: the scroll
-     choreography drops this to `none` once --hero-opacity fades, so the
+     choreography (heroWipe.ts) drops this to `none` once you leave the hero, so the
      invisible wordmark can't swallow pointers from sections lower on
      the page (main is a pointer-events:none pass-through). */
   pointer-events: var(--hero-pointer-events, auto);
@@ -422,7 +359,7 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
      of post-compose delay is pure perceived lag. The wordmark still trails
      the ring/signature, just sooner. */
   animation-delay: 0.25s;
-  /* No scroll-bound transform/mask here. The dive-in is driven by
+  /* No scroll-bound transform/mask here. The iris push-in is driven by
      the .hero-composition root, so the wordmark moves as part of
      the single rigid body. The previous mask-image erosion and
      per-element scale/letter-spacing ramp were removed per user

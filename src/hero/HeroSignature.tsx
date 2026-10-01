@@ -11,6 +11,7 @@ const HeroGlyphRing = lazy(() =>
 import { loadSignatureData, type SignatureData } from "./signatureGeometry";
 import { useAssembly } from "../loading";
 import { useTier } from "../capabilityTier";
+import { DECAY, damp } from "../motion";
 import "./hero-composition.css";
 
 // LOW tier (weak GPU/CPU) or an explicit reduced-motion preference get a static,
@@ -70,11 +71,23 @@ export function HeroSignature() {
   // single combined effect re-ran on phase change, React's cleanup
   // cleared the timeout before it could fire, stranding the page
   // in `transition` forever.
+  // Loader seam (spec §5 O9): the loader announces the START of its scrim
+  // fade with `loader-reveal-start`, so the composition fade + wordmark
+  // entrance play OVER the fading scrim instead of behind it. loaderDone stays
+  // the fallback (no event = the previous timing, unchanged).
+  const [revealStarted, setRevealStarted] = useState(false);
+  useEffect(() => {
+    if (revealStarted) return;
+    const on = () => setRevealStarted(true);
+    window.addEventListener("loader-reveal-start", on, { once: true });
+    return () => window.removeEventListener("loader-reveal-start", on);
+  }, [revealStarted]);
+  const loaderLifting = assembly.loaderDone || revealStarted;
   useEffect(() => {
     if (phase !== "drawing") return;
-    if (!assembly.loaderDone) return;
+    if (!loaderLifting) return;
     setPhase("transition");
-  }, [phase, assembly.loaderDone]);
+  }, [phase, loaderLifting]);
   useEffect(() => {
     if (phase !== "transition") return;
     const t = window.setTimeout(() => setPhase("settled"), 520);
@@ -241,10 +254,15 @@ export function HeroSignature() {
     // glyph. The fractional scale lift (1→1.05) was removed with the
     // smoothing: non-integer scaling of pixel glyphs blurs their blocks,
     // which is the exact effect this rework is killing.
-    const tick = () => {
+    // dt-based (DECAY.standard, τ 100ms): the same feel at 60 and 120 Hz
+    // (was a 0.16-per-frame lerp, twice as fast on a 120 Hz display).
+    let lastTick = 0;
+    const tick = (now: number) => {
+      const dt = lastTick ? (now - lastTick) / 1000 : 1 / 60;
+      lastTick = now;
       let moving = false;
       for (const g of glyphs) {
-        g.cur += (g.tgt - g.cur) * 0.16;
+        g.cur = damp(g.cur, g.tgt, DECAY.standard, dt);
         if (Math.abs(g.tgt - g.cur) > 0.05) moving = true;
         const qx = Math.round(g.cur / GRID) * GRID;
         if (qx !== g.qx) {
@@ -262,6 +280,7 @@ export function HeroSignature() {
           g.el.style.transform = "translate3d(0,0,0)";
         }
         rafId = 0;
+        lastTick = 0;
       }
     };
     const schedule = () => {
@@ -364,7 +383,7 @@ export function HeroSignature() {
         <HeroSignature2D
           data={data}
           opacity={twoDOpacity}
-          start={assembly.loaderDone}
+          start={loaderLifting}
         />
       )}
       <div
@@ -417,9 +436,13 @@ export function HeroSignature() {
         </div>
       </div>
 
+      {/* Pixel-iris rim (hero -> About handoff). Styled + animated only while
+          the iris is open; see heroWipe.ts / hero-composition.css. */}
+      <div className="hero-iris-rim" aria-hidden="true" />
+
       {/* Scroll cue: a pixel down-chevron, lower-middle, bobbing frame-by-frame.
-          Sibling of .hero-composition so the dive transform/pixelation doesn't
-          scale it; fades the instant the dive begins (--hero-to-about). */}
+          Sibling of .hero-composition so the iris push-in doesn't scale it;
+          fades the instant you leave the resting hero (data-hero-diving). */}
       <div className="hero-scroll-cue" aria-hidden="true">
         <svg width="46" height="26" viewBox="0 0 9 5" fill="#ffffff" shapeRendering="crispEdges">
           <rect x="0" y="0" width="1" height="1" />

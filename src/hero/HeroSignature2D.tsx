@@ -334,7 +334,7 @@ export function HeroSignature2D({ data, start, opacity }: Props) {
         zIndex: 5,
         pointerEvents: "none",
         opacity,
-        transition: "opacity 360ms ease",
+        transition: "opacity var(--t-med) var(--ease-out)",
       }}
     />
   );

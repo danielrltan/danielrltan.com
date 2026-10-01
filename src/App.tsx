@@ -13,388 +13,69 @@ import { AssemblyProvider } from "./loading";
 import { BootLoader } from "./loading/BootLoader";
 import { HeroSignature } from "./hero/HeroSignature";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
-import { scrollToSection } from "./portfolio/Keypad";
+import { installHeroWipe } from "./hero/heroWipe";
 import { useIsMobile } from "./useIsMobile";
 import { StatusBar } from "./StatusBar";
 import { isLowTier, demoteTier } from "./capabilityTier";
-import { clamp01 } from "./math";
+import { HERO } from "./motion";
 
 /*
- * App shell: the fixed hero layer, the scroll choreography that drives it
- * (CSS vars, no React re-renders on scroll), the sections, and the HUD. The
- * hero hands straight off to the opaque About section below it; About's
- * bento carries the room render (.about-room).
+ * App shell: the fixed hero layer, the sections, and the HUD. The hero hands
+ * off to the opaque About section parked underneath it (src/hero/heroWipe.ts:
+ * a compositor-only pixel iris bound 1:1 to the Lenis-smoothed scroll, with no
+ * second ease and no settle snap); About's bento carries the room render
+ * (.about-room). Nothing here writes :root vars per frame (spec §5 O7): the
+ * old --content-opacity ramp is gone (.portfolio-col falls back to 1).
  */
 
-// Hero wrapper opacity is a TIME-BASED one-shot fade, NOT a scroll-position ramp.
-// The composition is held FULL through the pixel-zoom (so the zoom is SEEN), then
-// dissolves once About has fully arrived.
-//
-// Why time-based and not a scroll-linked window: a scroll-POSITION ramp means any
-// scroll range where the opacity is partial is a range you can REST in — and since
-// the hero sits over a fully-risen About there, you see it ghosted/garbled over the
-// section (the "fadeaway bleeds too much into About, can't see things at first"
-// bug). But collapsing that window to a near-cut to kill the bleed removed the
-// transition entirely — the hero just SNAPPED away after the zoom.
-//
-// The fix is a binary TARGET (hero fully SHOWN below the hide threshold, fully
-// HIDDEN above it) that tick() eases toward over ~330ms. Crossing About's arrival
-// therefore fades the hero out over a fixed ~330ms that COMPLETES on its own no
-// matter where you stop scrolling — so there's no partial state to rest in (no
-// bleed) AND it's a smooth dissolve after the zoom (no snap). Scroll back up past
-// the show threshold fades it back in the same way. Hysteresis (hide at 1.0vh =
-// About's top at the viewport top, since the hero spacer is 100vh; show again only
-// below 0.96vh) stops it flickering if you jitter right at the boundary.
-const HERO_HIDE_VH = 1.0;
-const HERO_SHOW_VH = 0.96;
-const HERO_FADE_RATE = 9; // exp ease rate → ~330ms dissolve, independent of scroll speed
-// Pixel-zoom dive window: the composition scales up + steps through the SVG
-// mosaic from 0.30vh → 0.75vh. Compressed (was 1.00vh) because the next section
-// covers on RAW scroll while this dive is rAF-EASED (it lags); at 1.00vh the
-// deep-pixelation climax (+ chromatic tick) landed only after the section had
-// already risen over it. Finishing by 0.75vh lands the climax while the hero is
-// still on top.
-const HERO_DISSOLVE_START_VH = 0.3;
-const HERO_DISSOLVE_END_VH = 0.75;
-// Content opacity ramp window (page scroll fraction).
-const CONTENT_FADE_START = 0.07;
-const CONTENT_FADE_END = 0.105;
-
-// Rate-limit for the scroll-driven reveal signals so a fast flick can't
-// teleport the hero dissolve / render fade straight to their end state. Each
-// eased signal chases its raw target at this fixed exponential rate (~400ms to
-// settle, matching GSAP `scrub: 1`). Thresholds/windows/sequence are untouched.
-const PROGRESS_EASE_RATE = 2.5;
-// Clamp per-frame dt so a long idle / tab-switch doesn't produce one giant
-// catch-up jump on the next tick.
-const MAX_TICK_DT = 0.05;
-// Stepped pixelation buckets for the hero dive (data-hero-px 1..5 contrast
-// steps in hero-composition.css).
-// Front-loaded (was [0.08, 0.26, 0.44, 0.62, 0.8]) so the chunky buckets 3/4/5
-// land while the hero is still opaque and uncovered, not at the very end
-// when the next section has already risen over it.
-const HERO_PX_STEPS = [0.05, 0.18, 0.34, 0.52, 0.72];
-
-// ── Hero → About "settle to the top" ─────────────────────────────────────────
-// The bug this fixes: the pixel-zoom dive + the opacity fade are driven by
-// CONTINUED downward scroll, so scroll momentum carries you PAST About's header
-// before the fade resolves — you can't tune your way out of it because the cause
-// is scroll-POSITION coupling, not fade timing. The fix arrests the scroll
-// exactly at About's top when you decelerate while leaving the hero, so the
-// transition resolves IN PLACE there instead of racing past the header.
-//
-// About's flow-top == ONE viewport (Hero.tsx is a bare 100vh spacer), so the
-// landing target is simply window.innerHeight — no layout measurement. The
-// settle routes through the existing Lenis-synced scrollToSection() (Keypad.tsx)
-// so it can't be lerped back and stays in sync with GSAP ScrollTrigger / the
-// downstream pins. The dive (--hero-to-about) and fade (--hero-opacity) math are
-// left completely untouched: once Lenis parks scrollY at 1.0vh, ratio stops
-// climbing and the existing time-based fade completes where it sits.
-//
-// It is a ONE-SHOT, fired only on scroll-end (debounced) while DESCENDING inside
-// a commit band, re-armed only after you clearly leave that band. No scroll-lock
-// — Lenis cancels a non-locked tween on any fresh wheel/touch, so a deliberate
-// read-scroll always wins (it never jails you). Reduced-motion jumps instantly.
-const HERO_SETTLE_BAND_LO = 0.55; // fire only once the dive is well underway
-const HERO_SETTLE_BAND_HI = 1.1; // ...and before About's header has scrolled off
-const HERO_SETTLE_DURATION = 0.5; // desktop Lenis tween, seconds
-const HERO_SETTLE_IDLE_MS = 90; // scroll-quiesced debounce == "scroll ended"
-// The hero→About settle is DESKTOP-ONLY: mobile native momentum can't be
-// cleanly arrested and yanking the page to a section top read as janky
-// (owner-flagged); settle() returns early there. The intro instead locks scroll
-// until the hero has faded in, so the user always starts at the top.
-// Re-arm the one-shot only after clearly leaving the band (back above the hero,
-// or committed down into About's body) so it never re-fires mid-band.
-const HERO_SETTLE_REARM_LO = 0.4;
-const HERO_SETTLE_REARM_HI = 1.3;
-
 /**
- * Installs the hero→About settle. SEPARATE from installScrollChoreography's rAF
- * loop (that loop must stay a pure per-frame reader/writer of scroll-derived CSS
- * vars); this is an event-driven, debounced one-shot that only ever issues a
- * single scrollTo. Idempotent install is the caller's responsibility.
- */
-function installHeroSettle(): void {
-  if (typeof window === "undefined") return;
-
-  let vh = window.innerHeight || 1;
-  const mobileQuery = window.matchMedia("(max-width: 768px)");
-  const reduceQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-
-  let lastY = window.scrollY;
-  let lastDir = 1; // 1 = descending, -1 = ascending
-  // Seed the one-shot from the load position: a refresh-at-offset already inside
-  // the band must NOT fire a surprise snap on the user's first scroll.
-  let settledOnce = window.scrollY / vh >= HERO_SETTLE_BAND_LO;
-  let idleTimer: ReturnType<typeof setTimeout> | undefined;
-
-  const settle = () => {
-    if (settledOnce || lastDir < 0) return; // one-shot spent, or ascending
-    // NO mobile pull. Native momentum can't be cleanly arrested, and yanking the
-    // page to a section top reads as janky (owner: "ghetto"). Instead the intro
-    // locks scroll until the hero has faded in, so the user always STARTS at the
-    // top; after that mobile scrolls natively with no settle. Desktop keeps the
-    // subtle Lenis-arrested near-miss correction (it can actually arrest a wheel).
-    if (mobileQuery.matches) return;
-    const ratio = window.scrollY / vh;
-    if (ratio < HERO_SETTLE_BAND_LO || ratio > HERO_SETTLE_BAND_HI) return;
-    settledOnce = true; // latch regardless of whether we actually move
-    if (Math.abs(window.scrollY - vh) <= 2) return; // already at About-top
-    if (reduceQuery.matches) {
-      scrollToSection(vh, { immediate: true });
-    } else {
-      scrollToSection(vh, { duration: HERO_SETTLE_DURATION });
-    }
-  };
-
-  const onScroll = () => {
-    const y = window.scrollY;
-    if (y !== lastY) lastDir = y > lastY ? 1 : -1;
-    lastY = y;
-    const ratio = y / vh;
-    if (ratio < HERO_SETTLE_REARM_LO || ratio > HERO_SETTLE_REARM_HI) {
-      settledOnce = false; // re-arm only once clearly out of the band
-    }
-    // Fire on scroll-END: each event resets the idle timer; it only resolves
-    // once the wheel/Lenis ease (or a touch fling) has quiesced.
-    if (idleTimer !== undefined) clearTimeout(idleTimer);
-    idleTimer = setTimeout(settle, HERO_SETTLE_IDLE_MS);
-  };
-
-  window.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener(
-    "resize",
-    () => {
-      vh = window.innerHeight || 1;
-    },
-    { passive: true },
-  );
-}
-
-/**
- * Single continuous rAF loop. Each frame it recomputes the raw scroll-derived
- * targets and eases the reveal signals toward them at a fixed rate so a fast
- * flick can't teleport through the reveals — only the SPEED is capped. Writes
- * all derived fade/progress values to CSS variables on documentElement; DOM
- * layers bind opacity to `var(--*-opacity)`, so App never re-renders on scroll.
+ * data-hero-lite capability flag plus the adaptive slow-frame degrade. A rAF
+ * loop runs only while scroll/resize input is recent (SETTLE_MS), then sleeps;
+ * a passive scroll/resize listener wakes it. It writes nothing per frame.
  */
 function installScrollChoreography(): void {
   if (typeof window === "undefined") return;
 
   const root = document.documentElement;
-  const isMobileQuery = window.matchMedia("(max-width: 768px)");
 
-  // PERF: cache layout reads (scrollHeight/innerHeight) — they change on
-  // resize/content-mount, NOT on scroll. Reading scrollHeight every frame forces
-  // a synchronous reflow, costly with the scaled + SVG-filtered hero subtree.
-  let vhCache = window.innerHeight || 1;
-  let scrollMax = Math.max(1, root.scrollHeight - vhCache);
-  const recomputeLayout = () => {
-    vhCache = window.innerHeight || 1;
-    scrollMax = Math.max(1, root.scrollHeight - vhCache);
-  };
-
-  // PERF: write a CSS custom property only when its value actually changed, so we
-  // don't invalidate style on the scaled + filtered hero subtree every frame.
-  const lastVar: Record<string, string> = {};
-  const setVar = (k: string, v: string) => {
-    if (lastVar[k] === v) return;
-    lastVar[k] = v;
-    root.style.setProperty(k, v);
-  };
-
-  // HI-DPR / browser-zoom escape hatch: the hero's SVG feMorphology filters
-  // software-rasterize at DEVICE pixels (cost ~DPR²), so zoom + scroll tanks weak
-  // GPUs. data-hero-lite drops those url() filters (CSS keeps the cheap stepped
-  // contrast + the scale, so the pixel-zoom dive still reads). Browser zoom fires
-  // a resize, so we re-check devicePixelRatio there.
-  // Latched once frames run slow during scroll (adaptive degrade — see loop()).
+  // data-hero-lite drops the resting wordmark keyline (SVG feMorphology, the
+  // one software-rasterized piece of the hero) and the ring's cursor trail.
+  // Driven by the capability tier, HiDPI/zoom, and the latched slow-frame
+  // degrade below.
   let perfLocked = false;
   let slowFrames = 0;
-  // data-hero-lite drops the cheap resting SVG keyline filter (its only effect)
-  // — invisible on capable hardware, a real save on weak ones. Driven by the
-  // capability tier (low → always lite, so weak DPR=1.0 laptops the DPR-only gate
-  // missed finally pre-drop the software-rasterized feMorphology keyline), plus
-  // the HiDPI/zoom case and the latched slow-frame degrade below.
   const updateHeroLite = () => {
     if (perfLocked || isLowTier() || (window.devicePixelRatio || 1) > 1.4)
       root.setAttribute("data-hero-lite", "");
     else root.removeAttribute("data-hero-lite");
   };
   updateHeroLite();
-  let lastDiving = false;
-  // Hero shown/hidden LATCH (hysteresis) driving the time-based opacity fade.
-  // Seeded from the current scroll so a refresh-at-offset past the hero starts
-  // hidden (no fade-in flash on load). computeTargets() flips it across the
-  // hide/show thresholds; tick() eases the real opacity toward heroShown?1:0.
-  let heroShown = window.scrollY / vhCache < HERO_HIDE_VH;
 
-  type Targets = {
-    heroOpacity: number;
-    heroToAbout: number;
-    contentOpacity: number;
-    isMobile: boolean;
-  };
-
-  const computeTargets = (): Targets => {
-    const vh = vhCache;
-    const ratio = window.scrollY / vh;
-    const scrollProgress = clamp01(window.scrollY / scrollMax);
-
-    // BINARY opacity target with hysteresis: fade OUT once About has fully arrived
-    // (ratio >= hide), fade back IN only after scrolling back up past the lower
-    // show threshold. tick() eases toward this over ~330ms, so the fade is a
-    // time-based dissolve that always completes — never a rest-able partial state
-    // (no bleed) and never a scroll-linked snap.
-    if (heroShown && ratio >= HERO_HIDE_VH) heroShown = false;
-    else if (!heroShown && ratio < HERO_SHOW_VH) heroShown = true;
-    const heroOpacity = heroShown ? 1 : 0;
-
-    const heroToAbout = clamp01(
-      (ratio - HERO_DISSOLVE_START_VH) /
-        (HERO_DISSOLVE_END_VH - HERO_DISSOLVE_START_VH),
-    );
-
-    const contentOpacity = clamp01(
-      (scrollProgress - CONTENT_FADE_START) /
-        (CONTENT_FADE_END - CONTENT_FADE_START),
-    );
-
-    const isMobile = isMobileQuery.matches;
-    return { heroOpacity, heroToAbout, contentOpacity, isMobile };
-  };
-
-  // Seed from the first target so there's no ease-in flash on load / refresh-at-offset.
-  const seed = computeTargets();
-  const prevEased = {
-    heroOpacity: seed.heroOpacity,
-    heroToAbout: seed.heroToAbout,
-    contentOpacity: seed.contentOpacity,
-  };
-
-  const ease = (prev: number, target: number, dt: number) =>
-    prev + (target - prev) * (1 - Math.exp(-dt * PROGRESS_EASE_RATE));
-
-  let lastHeroPx = -1;
-  const applyHeroPx = (p: number) => {
-    let bucket = 0;
-    for (let i = 0; i < HERO_PX_STEPS.length; i++) {
-      if (p > HERO_PX_STEPS[i]!) bucket = i + 1;
-    }
-    if (bucket === lastHeroPx) return;
-    lastHeroPx = bucket;
-    if (bucket === 0) root.removeAttribute("data-hero-px");
-    else root.setAttribute("data-hero-px", String(bucket));
-  };
-
-  let convergenceDelta = 1;
-
-  const tick = (dt: number) => {
-    const t = computeTargets();
-
-    // Hero opacity: ease toward the BINARY target (1 shown / 0 hidden) at a fixed
-    // rate so crossing About's arrival plays a ~330ms time-based dissolve that
-    // completes on its own — a smooth fade after the zoom, with no scroll range to
-    // rest in half-faded (no bleed). Snap to the endpoints so it fully clears
-    // (pointer-events + no lingering 0.004 ghost) and fully arrives.
-    let heroOpacity =
-      prevEased.heroOpacity +
-      (t.heroOpacity - prevEased.heroOpacity) *
-        (1 - Math.exp(-dt * HERO_FADE_RATE));
-    if (t.heroOpacity === 0 && heroOpacity < 0.01) heroOpacity = 0;
-    else if (t.heroOpacity === 1 && heroOpacity > 0.99) heroOpacity = 1;
-    const heroToAbout = ease(prevEased.heroToAbout, t.heroToAbout, dt);
-    const contentOpacity = ease(prevEased.contentOpacity, t.contentOpacity, dt);
-
-    prevEased.heroOpacity = heroOpacity;
-    prevEased.heroToAbout = heroToAbout;
-    prevEased.contentOpacity = contentOpacity;
-
-    setVar("--hero-opacity", heroOpacity.toFixed(3));
-    setVar("--hero-to-about", heroToAbout.toFixed(3));
-    // Stop the (z-11, near-full-viewport) hero wordmark from swallowing clicks
-    // the INSTANT the dive begins — NOT when its opacity fade finishes. The
-    // opacity fade only starts at HERO_HIDE_VH (1.0vh) while the About
-    // pin already sits under it at ratio ~1.0, so a fade-gated value left the
-    // still-semi-visible wordmark stealing clicks from the top ~100px of About
-    // (its upper Reach links were dead). heroToAbout>0.004 latches through the
-    // rest of the page (it saturates at 1 past the hero), which is exactly what
-    // we want here: once you've started diving, the hero is never the intended
-    // click target again.
-    setVar(
-      "--hero-pointer-events",
-      heroToAbout > 0.004 || heroOpacity < 0.05 ? "none" : "auto",
-    );
-    applyHeroPx(heroToAbout);
-    // ⚠️ LATCH SEMANTICS — read before adding a consumer of data-hero-diving /
-    // data-hero-px / data-hero-lite. heroToAbout = clamp01((ratio-0.3)/0.45)
-    // SATURATES at 1 for the WHOLE page below ~0.75vh and only clears if you
-    // scroll back to the very top. So data-hero-diving is effectively "on for the
-    // rest of the page after the hero," NOT a momentary "currently diving" pulse
-    // (data-hero-px latches at "5", data-hero-lite latches permanently). Every
-    // current consumer WANTS that (drop the hero's own keyline/filter/pointer
-    // events for good once you've left it) — but a consumer that reads these
-    // expecting "only during the brief dive" will silently disable its feature
-    // for the rest of the page (this already bit MoveableCursor's spark). If you
-    // ever need a true dive-only signal, derive it under a NEW attribute as
-    // `heroToAbout > 0.004 && heroToAbout < 0.999` so the two can't be confused.
-    // Drop the wordmark keyline filter the instant the dive begins (any DPR) — it
-    // re-rasterizes every scroll frame and is imperceptible mid-dive.
-    const diving = heroToAbout > 0.004;
-    if (diving !== lastDiving) {
-      lastDiving = diving;
-      if (diving) root.setAttribute("data-hero-diving", "");
-      else root.removeAttribute("data-hero-diving");
-    }
-    setVar("--content-opacity", t.isMobile ? "1" : contentOpacity.toFixed(3));
-
-    convergenceDelta = Math.max(
-      Math.abs(t.heroOpacity - heroOpacity),
-      Math.abs(t.heroToAbout - heroToAbout),
-      Math.abs(t.contentOpacity - contentOpacity),
-    );
-  };
-
-  // Seed CSS vars from the initial target with dt large enough to land on it.
-  tick(MAX_TICK_DT);
-
-  // Drive tick() from a rAF loop that EASES toward the target, then SLEEPS once
-  // settled AND no scroll/resize happened recently (so we don't read layout
-  // every frame for the page lifetime). A passive scroll/resize listener wakes
-  // it; it keeps ticking for SETTLE_MS after the last input AND until converged.
   const SETTLE_MS = 650;
-  const CONVERGE_EPS = 0.0004;
   let lastTs = performance.now();
   let lastInput = lastTs;
   let running = false;
 
   const loop = (ts: number) => {
+    // Raw frame time, deliberately NOT clampDt'd: a long frame is exactly what
+    // this loop exists to detect.
     const rawDt = (ts - lastTs) / 1000;
-    const dt = Math.min(MAX_TICK_DT, rawDt);
     lastTs = ts;
-    tick(dt);
-    // Adaptive degrade: if frames run consistently slow (>~18fps) during active
-    // scroll, latch the lite path (drop the expensive SVG dive filters) for the
-    // rest of the session — fixes weak laptops at any DPR, not just zoom.
+    // Adaptive degrade: if frames run consistently slow during active scroll,
+    // latch the lite path for the rest of the session and persist a one-way
+    // tier demote for the next load.
     if (!perfLocked && performance.now() - lastInput < SETTLE_MS) {
       if (rawDt > 0.055) {
         if (++slowFrames >= 8) {
           perfLocked = true;
           root.setAttribute("data-hero-lite", "");
-          // Safety net for a machine the static probe rated too high: persist a
-          // ONE-WAY demote (→ standard → low) so the NEXT load drops to the
-          // cheaper static-ring path. We don't yank the live ring mid-session
-          // here (jarring) — data-hero-lite already trims this session's cost.
           demoteTier();
         }
       } else if (slowFrames > 0) {
         slowFrames--;
       }
     }
-    if (
-      performance.now() - lastInput < SETTLE_MS ||
-      convergenceDelta > CONVERGE_EPS
-    ) {
+    if (performance.now() - lastInput < SETTLE_MS) {
       requestAnimationFrame(loop);
     } else {
       running = false;
@@ -409,17 +90,11 @@ function installScrollChoreography(): void {
     }
   };
   const onResize = () => {
-    recomputeLayout();
     updateHeroLite();
     wake();
   };
   window.addEventListener("scroll", wake, { passive: true });
   window.addEventListener("resize", onResize, { passive: true });
-  // Page-height changes (content mount, loader lift, font swap) refresh the
-  // cached scrollMax without per-frame scrollHeight reads.
-  if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver(() => recomputeLayout()).observe(document.body);
-  }
 }
 
 export default function App() {
@@ -448,14 +123,15 @@ export default function App() {
   if (!choreoInstalled.current) {
     choreoInstalled.current = true;
     installScrollChoreography();
-    // Arrest the scroll at About's top when you decelerate leaving the hero, so
-    // the pixel-zoom fade resolves in place instead of momentum sailing past the
-    // header (see installHeroSettle). Separate from the rAF choreography above.
-    installHeroSettle();
+    // Hero -> About pixel iris (compositor-only, scroll-bound; see heroWipe.ts).
+    // The old scroll-end settle snap (installHeroSettle) is deleted: the iris
+    // resolves by 0.9vh, every resting position mid-iris is a clean porthole
+    // (no ghosted bleed), and About's pin holds the landing.
+    installHeroWipe();
   }
 
-  // Lenis smooth scroll is owned by src/portfolio/Keypad.tsx via a module-scope
-  // singleton (initializing a second here would have two engines fighting).
+  // Lenis smooth scroll is owned by src/scroll.ts via a module-scope singleton
+  // (initializing a second here would have two engines fighting).
 
   // Mark ready when the loading screen lifts. (loading-active is owned by
   // AssemblyProvider — see useAssemblyProgress; many sections also key
@@ -476,12 +152,16 @@ export default function App() {
     return () => obs.disconnect();
   }, []);
 
-  // Reveal the HUD once ready and the user scrolls past ~0.75vh (off the hero).
+  // Reveal the HUD once ready and the user has fully landed on About
+  // (HERO.hudRevealVh = 1.0vh, after the iris resolves at 0.9vh) so it never
+  // pops in over the transition. Latches; room_entered fires at that moment,
+  // never at mount. (Phase B, the pre-mount with visible={hudVisible}, is an
+  // integration follow-up once W7's event-driven StatusBar lands.)
   useEffect(() => {
     if (!ready || hudVisible) return;
     const check = () => {
       const vhRatio = window.scrollY / Math.max(1, window.innerHeight);
-      if (vhRatio >= 0.75) {
+      if (vhRatio >= HERO.hudRevealVh) {
         setHudVisible(true);
         track("room_entered");
       }
@@ -638,9 +318,10 @@ export default function App() {
             the hero signature draws onto the bare orange scrim beneath. */}
         <BootLoader />
 
-        {/* Hero signature: fixed full viewport, between the render layer (z 0)
-            and the HUD. Opacity driven by --hero-opacity from the scroll
-            choreography (no CSS transition — it's already eased per-frame). */}
+        {/* Hero signature: fixed full viewport, between the content and the
+            HUD. The hero -> About pixel iris (clip-path), its visibility and
+            the mobile / reduced-motion fade are owned by src/hero/heroWipe.ts,
+            written on this element only. */}
         <div
           className="scroll-layer--hero"
           style={{
@@ -652,12 +333,10 @@ export default function App() {
             pointerEvents: "none",
             // ABOVE the content (main is z-10) so the hero is a full-screen
             // OPAQUE field (see .scroll-layer--hero background in index.css) that
-            // the next section rises BEHIND — then the hero pixel-zooms and
-            // DISSOLVES (--hero-opacity) to reveal it. Previously z-2 (below
-            // content), so the opaque About section slid up OVER the hero like a
-            // wall instead of the hero dissolving away. Stays below the HUD (z-40)
-            // and cursors (z-10000); pointer-events:none + it fades to 0, so it
-            // never blocks interaction once you're past the hero.
+            // About sits BEHIND (parked still under it; about.css / heroWipe) —
+            // then a pixel iris opens in the hero to reveal it. Stays below the
+            // HUD (z-40) and cursors (z-10000); pointer-events:none + hidden
+            // once the iris clears, so it never blocks interaction past the hero.
             zIndex: 11,
           }}
         >

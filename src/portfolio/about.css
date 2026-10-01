@@ -40,6 +40,63 @@
   background-color: var(--bg-page, #eef0f3);
 }
 
+/* HERO → ABOUT PARKING. For the whole first viewport (scrollY 0 → 1vh) the
+   stage and its warm pool are counter-translated so they sit STILL at the
+   viewport top, under the opaque hero: the hero's pixel iris opens a porthole
+   onto a still room (not a page sliding past), and About's pin takes over at
+   1.0vh with a zero offset. It holds at REST too, so the stage is painted (and
+   the room render decoded) under the settled hero, never on the iris's first
+   frames.
+   - Scroll-driven CSS where supported (no JS, compositor). The fill mode is
+     `none`, so past 1vh nothing is left animating or promoted.
+   - Otherwise src/hero/heroWipe.ts scrubs the same translate from Lenis
+     (html[data-hero-park="manual"] turns this block off).
+   - The media query is the exact complement of heroWipe's iris mode
+     (≤900 = BREAKPOINT.narrow, About's stacked unpinned layout, and reduced
+     motion fade the hero instead; About is not parked).
+   Keep the range in sync with the hero spacer (100vh, Hero.tsx) and About's
+   pin start. */
+@supports (animation-timeline: scroll()) and (animation-range: 0px 100vh) {
+  @media (width > 900px) and (prefers-reduced-motion: no-preference) {
+    html:not([data-hero-park="manual"]) .portfolio-about .about-stage,
+    html:not([data-hero-park="manual"]) .portfolio-about::after {
+      animation: about-park linear none;
+      animation-timeline: scroll(root block);
+      animation-range: 0px 100vh;
+    }
+  }
+}
+@keyframes about-park {
+  from {
+    translate: 0 -100vh;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+/* While parked (heroWipe sets html[data-hero-park] below 1.1vh, iris mode
+   only) the stage paints above the section's own top edge, so let it
+   (overflow visible). Both axes: Chromium clips HIT-TESTING to the box in y
+   too when only x is clipped (overflow-x: clip + overflow-y: visible), which
+   left the part of the porthole above the section's top unclickable.
+   Sideways spill (the 1.06 pull-back) is already clipped by body's
+   overflow-x: clip (index.css). Back to hidden a beat after the pin engages
+   (the translate is already 0 at 1.0vh, so the 1.0-1.1vh overlap is
+   invisible; it keeps the overflow flip out of the pin-engage frame). */
+html[data-hero-park] .portfolio-about {
+  overflow: visible;
+}
+/* Fade path (≤900 / reduced motion: no park, no iris) keeps the hero LAYER a
+   pass-through (a full-viewport hit box would fight touch scrolling), so
+   About itself stops taking pointers while the hero still covers it
+   (html[data-hero-covering], heroWipe.ts): otherwise links that have scrolled
+   into the viewport under the opaque field (e.g. Ivey at 0.7vh, 1440 reduced
+   motion) take invisible clicks. Iris mode always has data-hero-park while
+   covering, and makes the layer itself the hit target instead. */
+html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
+  pointer-events: none;
+}
+
 /* Faint warm pool behind the centerpiece so the orange room reads as a
    light source. Pure decoration, no hue beyond the brand orange. The outer
    dark vignette was removed alongside the dot-grid: it darkened the section
@@ -100,12 +157,14 @@
   flex-direction: column;
   gap: 10px;
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(var(--reveal-lift));
   /* Match the card reveal: strong ease-out, brisk --t-med, so the banner
-     leads the bento boot-up crisply instead of drifting in. */
+     leads the bento boot-up crisply instead of drifting in. --reveal-order is
+     set by About.tsx for elements revealed in the same update (stagger). */
   transition:
-    opacity var(--t-med, 400ms) var(--ease-out),
-    transform var(--t-med, 400ms) var(--ease-out);
+    opacity var(--t-med) var(--ease-out),
+    transform var(--t-med) var(--ease-out);
+  transition-delay: calc(min(var(--reveal-order, 0), 4) * var(--stagger));
 }
 .about-banner.is-revealed {
   opacity: 1;
@@ -217,25 +276,19 @@
   /* Per-cell reveal: starts slightly down + transparent, rises into place
      when its progress threshold trips (.is-revealed from About.tsx). */
   opacity: 0;
-  transform: translateY(16px);
+  transform: translateY(var(--reveal-lift));
   /* Reveal is an ENTERING element: a strong ease-out (responsive front-loaded
      move that settles) reads crisper than the gentle --ease-soft, and 400ms
      lands it with intention instead of drifting for 540ms. (Emil: ease-out
-     for entrances, custom curve, keep it brisk.) */
+     for entrances, custom curve, keep it brisk.) Cells crossed in the same
+     scroll update cascade by --reveal-order (About.tsx), capped at 4 steps. */
   transition:
-    opacity var(--t-med, 400ms) var(--ease-out),
-    transform var(--t-med, 400ms) var(--ease-out);
-  /* will-change is desktop-only choreography (the GSAP-scrubbed per-cell
-     reveal). It lives in the @media (min-width: 901px) block below so mobile —
-     where every cell is force-revealed up front and there is no scrub — never
-     pays the compositor-layer cost. Desktop is unchanged. */
-}
-/* Desktop-only: promote the cards to their own layer for the scrubbed reveal.
-   Gated at min-width:901px so it's a no-op on the mobile single column. */
-@media (min-width: 901px) {
-  .card {
-    will-change: transform, opacity;
-  }
+    opacity var(--t-med) var(--ease-out),
+    transform var(--t-med) var(--ease-out);
+  transition-delay: calc(min(var(--reveal-order, 0), 4) * var(--stagger));
+  /* No permanent will-change: the reveal is a one-shot, latched transition,
+     and the compositor promotes a card only while its transition runs, then
+     releases it. A standing will-change pinned ~8 layers for the session. */
 }
 .card.is-revealed {
   opacity: 1;
@@ -389,6 +442,16 @@
   /* Gentle vertical bob — the room floats. Lives here (not on .c-render) so it
      never collides with the cell's reveal translateY. */
   animation: about-room-bob 6.5s ease-in-out infinite;
+}
+/* The bob is ambient: it only runs while About is on screen (.is-onscreen is
+   an IntersectionObserver toggle in About.tsx) AND the hero has cleared
+   (html[data-hero-covering], heroWipe.ts, is set while the hero layer is
+   visible). The parked stage counts as on screen under the hero, so without
+   the second guard the bob would run behind the opaque field at rest; it
+   also keeps the porthole onto a still room during the iris. */
+.portfolio-about:not(.is-onscreen) .render-frame,
+html[data-hero-covering] .render-frame {
+  animation-play-state: paused;
 }
 @keyframes about-room-bob {
   0%,
@@ -614,7 +677,7 @@
      "vibe-coded" hover; a straight opacity fade of the orange fill (text inverts
      to white below) is quieter and more intentional. */
   opacity: 0;
-  transition: opacity 180ms var(--ease-out, ease);
+  transition: opacity var(--hover-dur) var(--hover-ease);
 }
 .c-reach .ch a:hover::before,
 .c-reach .ch a:focus-visible::before {
@@ -637,14 +700,14 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--accent-deep, #c23d00);
-  transition: color 150ms ease;
+  transition: color var(--hover-dur) var(--hover-ease);
 }
 .c-reach .ch-handle {
   flex: 1;
   font-family: var(--font-body, "Geist", sans-serif);
   font-size: 12.5px;
   color: var(--ink, #0d0e10);
-  transition: color 150ms ease;
+  transition: color var(--hover-dur) var(--hover-ease);
 }
 .c-reach .ch-go {
   flex: 0 0 auto;
@@ -653,8 +716,8 @@
   line-height: 1;
   color: var(--ink-faint, rgba(13, 14, 16, 0.4));
   transition:
-    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    color 150ms ease;
+    transform var(--hover-dur) var(--hover-ease),
+    color var(--hover-dur) var(--hover-ease);
 }
 .c-reach .ch a:hover .ch-name,
 .c-reach .ch a:hover .ch-handle,

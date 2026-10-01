@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { requestScrollRefresh, refreshScrollOnLoaderLift } from "./scrollRefresh";
@@ -6,101 +6,92 @@ import "./sections.css";
 import "./about.css";
 import { ScrambleText } from "./ScrambleText";
 import { track } from "../analytics";
+import { reducedMotion as reducedMotionPref } from "../motion";
+import { heroHandoff } from "../hero/heroState";
 
 gsap.registerPlugin(ScrollTrigger);
 
 /**
  * About: GSAP-pinned BENTO DASHBOARD reveal.
  *
- * The section is an opaque light-grey bento grid (faint dot-grid bg) that
- * "boots up" as the pin scrubs. The isometric room render (/render.webp) is
- * the feature centerpiece; two info cards sit BEHIND it (the room's
- * transparent margins let them peek through, the room silhouette occludes
- * the rest) and two chips float IN FRONT. As pin progress climbs, each cell
- * crosses an increasing threshold and fades+rises into place — a dashboard
- * powering on, panel by panel.
+ * The section is an opaque light-grey bento grid that "boots up" panel by
+ * panel. The isometric room render (/render.webp) is the feature centerpiece;
+ * two info cards sit BEHIND it (the room's transparent margins let them peek
+ * through, the room silhouette occludes the rest).
  *
- * DESKTOP pin progress beats (kept in sync with the CELLS thresholds below):
- *   0.06   topbar / crumb header lights up
- *   0.10   NAME + lede card
- *   0.18   feature render (the centerpiece)
- *   0.24   portrait
- *   0.30   "Currently" (behind, peeks under render's left margin)
- *   0.36   "Exploring" (behind, peeks under render's right margin)
- *   0.44   "Studying"
- *   0.50   "Reach"
- *   0.56   "Location"
- *   0.62   "Focus / 3D" dark card
- *   0.70   "Building things that feel alive" front chip
- *   0.76   "SCENE / VERTS" front chip
+ * ARRIVAL TRIO (banner, name card, room render): revealed while About is still
+ * parked under the opaque, settled hero (heroHandoff.armed, set by the hero
+ * wipe controller; the `about-arrive` trigger is the fallback), so the hero's
+ * pixel iris opens onto a populated room and its first frames carry no React
+ * commit and no image first paint. The banner's "ABOUT" decode is cued
+ * separately (heroHandoff.cue: iris about a third open / hero fade start) so it
+ * plays where it can be seen.
+ *
+ * DESKTOP pin (1.25vh, viewport-relative) progress beats, the rest of the
+ * boot-up (BEATS below):
+ *   0.08 portrait   0.16 "Currently"   0.24 "Exploring"
+ *   0.34 "Studying" 0.42 "Reach"       0.50 "Location"
+ *   0.50 -> 1.0 hold (the finished dashboard)
+ * Reveals are imperative class toggles (zero React renders per scroll frame)
+ * and LATCH: coming back up from the Mac shows the finished dashboard, never
+ * a blank sheet. Cells crossed in one update stagger by --reveal-order.
  *
  * MOBILE (≤900px) SKIPS the pin entirely (mirrors Work's staticLayout): a
  * pinned, internally-scrolling stage was a nested scroll-trap inside the
- * page pin. The bento collapses to a single readable column (render is a
- * smaller hero at the top, cards stack full-width) that flows + scrolls with
- * the page, and every cell is force-revealed up front (no scrub dependency).
+ * page pin. The bento collapses to a single readable column that flows +
+ * scrolls with the page, and every cell is force-revealed up front.
  *
- * prefers-reduced-motion: every cell is force-revealed (no transforms),
- * so the dashboard is fully readable without the scrub choreography. The
- * scroll-pin itself still works (structural, not decorative).
+ * prefers-reduced-motion: every cell is force-revealed (no transforms), so
+ * the dashboard is fully readable without the choreography. The scroll-pin
+ * itself still works (structural, not decorative).
  */
 
-const PIN_DURATION_PX = 1700;
+/** Pin length in viewports (spec §3: 1.25vh). */
+const PIN_VH = 1.25;
 
-/* Mobile reveal band: everything lands in a tight 0.18 → 0.66 window so a
-   thumb-scrub powers the whole dashboard up as one block. Cells keep their
-   ORDER (via the CELLS index) but ride this compressed base + step. */
-const MOBILE_REVEAL_START = 0.18;
-const MOBILE_REVEAL_STEP = 0.045;
-
-/** A bento cell's identity, layout class, and pin-progress reveal beat. */
-interface Cell {
-  /** stable key + CSS class suffix (.c-<key>). */
-  key: string;
-  /** pin-progress threshold at which this cell is fully revealed (desktop). */
-  at: number;
-}
-
-/* Reveal order = boot-up order. Mobile re-spaces these off a tighter base
-   while preserving the sequence, so the column still reveals top-to-bottom. */
-const CELLS: Cell[] = [
-  { key: "name", at: 0.1 },
-  { key: "render", at: 0.18 },
-  { key: "portrait", at: 0.24 },
-  { key: "now", at: 0.3 },
-  { key: "explore", at: 0.36 },
-  { key: "study", at: 0.44 },
-  { key: "reach", at: 0.5 },
-  { key: "loc", at: 0.56 },
+/** The boot-up beats (pin progress), in reveal order. */
+const BEATS: ReadonlyArray<readonly [key: string, at: number]> = [
+  ["portrait", 0.08],
+  ["now", 0.16],
+  ["explore", 0.24],
+  ["study", 0.34],
+  ["reach", 0.42],
+  ["loc", 0.5],
 ];
 
-/* Topbar / crumb lights up first; its own early beat. */
-const HEADER_AT = 0.06;
-const MOBILE_HEADER_AT = 0.08;
+/** Arrival trio selectors, in reveal (stagger) order. */
+const ARRIVAL = [".about-banner", ".card.c-name", ".card.c-render"];
+
+/** Latch one element revealed, staggered by `order` (--reveal-order). */
+function reveal(el: Element | null | undefined, order: number) {
+  if (!el || el.classList.contains("is-revealed")) return;
+  (el as HTMLElement).style.setProperty("--reveal-order", String(order));
+  el.classList.add("is-revealed");
+}
+
+const readMobile = () =>
+  typeof window !== "undefined" && window.matchMedia
+    ? window.matchMedia("(max-width: 900px)").matches
+    : false;
 
 export function About() {
   const sectionRef = useRef<HTMLElement>(null);
-  const [progress, setProgress] = useState(0);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const roomRef = useRef<HTMLImageElement>(null);
+  const [reducedMotion, setReducedMotion] = useState(() => reducedMotionPref.value);
   /* Mirror the CSS bento breakpoint (≤900px collapses to one column) so the
      reveal schedule matches the layout the user actually sees. Initialised
      synchronously to avoid a desktop→mobile flash on first paint. Aligned to
      900px (Work's breakpoint) so the 769-900 tablet band gets the stacked
      column too. */
-  const [mobile, setMobile] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia("(max-width: 900px)").matches
-      : false,
+  const [mobile, setMobile] = useState(readMobile);
+  /* The ONLY React state left in the reveal: the header decode cue. */
+  const cue = useSyncExternalStore(
+    heroHandoff.subscribe,
+    () => heroHandoff.cue,
+    () => false,
   );
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const apply = () => setReducedMotion(mql.matches);
-    apply();
-    mql.addEventListener("change", apply);
-    return () => mql.removeEventListener("change", apply);
-  }, []);
+  useEffect(() => reducedMotionPref.subscribe(setReducedMotion), []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -116,6 +107,57 @@ export function About() {
     return () => mql.removeEventListener("change", apply);
   }, []);
 
+  /* Warm the room render's decode so its first paint (under the parked,
+     covered stage) never lands on a scroll frame. */
+  useEffect(() => {
+    roomRef.current?.decode?.().catch(() => {});
+  }, []);
+
+  /* Arrival trio: reveal once the hero wipe controller arms it (the hero is
+     settled and opaque above), or on the about-arrive fallback trigger. */
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    const revealArrival = () =>
+      ARRIVAL.forEach((sel, i) => reveal(el.querySelector(sel), i));
+    if (heroHandoff.armed) revealArrival();
+    const unsub = heroHandoff.subscribe(() => {
+      if (heroHandoff.armed) revealArrival();
+    });
+    const arrive = ScrollTrigger.create({
+      id: "about-arrive",
+      trigger: el,
+      start: "top 92%",
+      // Active from the arrival point to the page end, so a load at or below
+      // it fires onEnter on the first refresh (reveal immediately).
+      end: "max",
+      onEnter: () => heroHandoff.set("armed"),
+    });
+    return () => {
+      unsub();
+      arrive.kill();
+    };
+  }, []);
+
+  /* Mobile / reduced motion: force-reveal every cell up front (no stagger). */
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || !(mobile || reducedMotion)) return;
+    el.querySelectorAll(".about-banner, .card").forEach((c) => reveal(c, 0));
+  }, [mobile, reducedMotion]);
+
+  /* Room bob runs only while the section is on screen (about.css pauses it
+     otherwise). */
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([entry]) => {
+      el.classList.toggle("is-onscreen", !!entry?.isIntersecting);
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
@@ -124,9 +166,8 @@ export function About() {
     // pinned bento on a phone created a nested scroll-trap — a full-height
     // internally-scrolling stage captured inside the page pin (rubber-band).
     // On mobile the bento is a plain stacked single column that scrolls with
-    // the page; the cells force-reveal up front so nothing depends on scrub.
+    // the page; the cells force-reveal up front (effect above).
     if (mobile) {
-      setProgress(1);
       // A breakpoint flip from desktop→mobile kills the old pin; refresh so
       // every pin BELOW (Work, Other, Keypad) recomputes its start now that
       // this section no longer contributes a pin spacer.
@@ -137,18 +178,35 @@ export function About() {
       return;
     }
 
+    // Boot-up cells in beat order; `stage` = how many beats are revealed.
+    const cells = BEATS.map(([key]) => el.querySelector(`.card.c-${key}`));
+    let stage = 0;
+    const apply = (progress: number) => {
+      let next = stage;
+      // +1e-3: a jump to data-jump-progress 0.5 lands on the last beat
+      // exactly; float error must not leave "Location" unrevealed.
+      while (next < BEATS.length && progress + 1e-3 >= BEATS[next]![1]) next++;
+      if (next <= stage) return; // latched: never un-reveal
+      for (let i = stage; i < next; i++) reveal(cells[i], i - stage);
+      stage = next;
+    };
+
     const st = ScrollTrigger.create({
+      id: "about-pin",
       trigger: el,
       start: "top top",
-      end: `+=${PIN_DURATION_PX}`,
+      // Viewport-relative (spec §3), recomputed on every refresh.
+      end: () => "+=" + Math.round(window.innerHeight * PIN_VH),
+      invalidateOnRefresh: true,
       pin: true,
       pinSpacing: true,
-      // Rate-limit: scrub:1 (a ~1s catch-up lerp), NOT scrub:true (instant,
-      // locked 1:1 to scroll). Without the numeric scrub a fast flick would
-      // teleport the dashboard in; now the cells ease up through the band.
-      scrub: 1,
-      anticipatePin: 1,
-      onUpdate: (self) => setProgress(self.progress),
+      // No numeric scrub (it was inert: no animation is attached) and no
+      // anticipatePin: Lenis drives ScrollTrigger.update in the same frame it
+      // scrolls, and the stage is parked under the hero right up to this
+      // pin's start (about.css), so an EARLY pin would shift the parked stage
+      // for a few frames.
+      onUpdate: (self) => apply(self.progress),
+      onRefresh: (self) => apply(self.progress),
     });
     // Refresh after THIS pin is (re)created — not only after the loading
     // scrim clears. When the breakpoint flips mid-session (rotation), the
@@ -165,45 +223,24 @@ export function About() {
     // matches (mirrors the Work/Keypad pattern).
   }, [mobile]);
 
-  /* Reveal gate. reduced-motion → everything revealed up front. Otherwise a
-     cell is revealed once progress crosses its threshold; mobile re-spaces
-     each cell off a tighter base by its order index so the stack reveals
-     top-to-bottom in a short scrub band. The CSS handles the rise/fade. */
-  const headerAt = mobile ? MOBILE_HEADER_AT : HEADER_AT;
-  const headerRevealed = reducedMotion || progress >= headerAt;
-
-  const cellAt = (index: number, desktopAt: number) =>
-    mobile ? MOBILE_REVEAL_START + index * MOBILE_REVEAL_STEP : desktopAt;
-
-  const revealed = (index: number, desktopAt: number) =>
-    reducedMotion || progress >= cellAt(index, desktopAt);
-
-  /* Look a cell up by key so the JSX can ask for its class without tracking
-     indices by hand (the array order IS the boot order). */
-  const cellClass = (key: string) => {
-    const index = CELLS.findIndex((c) => c.key === key);
-    const cell = CELLS[index];
-    const on = revealed(index, cell.at) ? " is-revealed" : "";
-    return `card c-${key}${on}`;
-  };
-
   return (
-    <section ref={sectionRef} className="portfolio-section portfolio-about">
+    <section
+      ref={sectionRef}
+      className="portfolio-section portfolio-about"
+      data-jump-progress="0.5"
+    >
       <div className="about-stage">
         {/* TOP CHROME: wayfinding crumb + status. The big "ABOUT" wordmark
             is aria-hidden chrome; the real <h2> below carries the heading
             for assistive tech / SEO. */}
-        <header
-          className={`about-banner${headerRevealed ? " is-revealed" : ""}`}
-          aria-hidden="true"
-        >
+        <header className="about-banner" aria-hidden="true">
           <div className="about-banner-meta">
             <span className="about-crumb-idx">01</span>
             <span className="about-crumb-rule" />
             <span className="about-banner-domain">danielrltan.com</span>
           </div>
           <p className="about-banner-title">
-            <ScrambleText text="About" play={headerRevealed} />
+            <ScrambleText text="About" play={cue} />
           </p>
         </header>
 
@@ -218,7 +255,7 @@ export function About() {
             (high z-index). */}
         <div className="about-grid">
           {/* NAME + LEDE */}
-          <div className={cellClass("name")}>
+          <div className="card c-name">
             <div className="pad">
               <div className="c-name-top">
                 <span className="label">Software developer / Toronto</span>
@@ -240,14 +277,14 @@ export function About() {
           {/* FEATURE RENDER — the centerpiece. Cell is transparent so only
               the room art paints; the transparent PNG margins let the behind
               cards show through, while the room silhouette occludes them. */}
-          <div className={cellClass("render")}>
+          <div className="card c-render">
             <div className="render-frame">
-              <img className="about-room" src="/render.webp" alt="" />
+              <img ref={roomRef} className="about-room" src="/render.webp" alt="" />
             </div>
           </div>
 
           {/* PORTRAIT */}
-          <div className={cellClass("portrait")}>
+          <div className="card c-portrait">
             {/* Photo + caption STACKED and hugging the right edge so the central
                 floating room only overlaps the empty inner half, never the
                 portrait. */}
@@ -269,7 +306,7 @@ export function About() {
           </div>
 
           {/* CURRENTLY — behind, peeks under the render's LEFT margin. */}
-          <dl className={`${cellClass("now")} c-info behind`}>
+          <dl className="card c-now c-info behind">
             <div className="pad">
               <dt className="label">Currently</dt>
               <dd className="c-info-body">
@@ -299,7 +336,7 @@ export function About() {
           </dl>
 
           {/* EXPLORING — behind, peeks under the render's RIGHT margin. */}
-          <dl className={`${cellClass("explore")} c-info behind`}>
+          <dl className="card c-explore c-info behind">
             <div className="pad">
               <dt className="label">Exploring</dt>
               <dd className="c-info-body">
@@ -317,7 +354,7 @@ export function About() {
           </dl>
 
           {/* STUDYING */}
-          <dl className={`${cellClass("study")} c-info`}>
+          <dl className="card c-study c-info">
             <div className="pad">
               <dt className="label">Studying</dt>
               <dd className="c-info-body">
@@ -337,7 +374,7 @@ export function About() {
           </dl>
 
           {/* REACH */}
-          <dl className={`${cellClass("reach")} c-info`}>
+          <dl className="card c-reach c-info">
             <div className="pad">
               <dt className="label">Reach</dt>
               <dd className="c-info-body">
@@ -426,7 +463,7 @@ export function About() {
           </dl>
 
           {/* LOCATION */}
-          <dl className={`${cellClass("loc")} c-info`}>
+          <dl className="card c-loc c-info">
             <div className="pad">
               <dt className="label">Location</dt>
               <dd className="c-info-body">
