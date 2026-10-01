@@ -10,11 +10,10 @@
  *     "pixels growing" (the owner-loved signature) while the motion itself is
  *     continuous, never stepped in time. The iris open progress IS the hero's
  *     "dive" (window.__heroMotion.dive).
- *   - the iris is SEEDED off-centre, right of the left-aligned wordmark over
- *     the room render, and its radius accelerates (p^k, k fitted per layout),
- *     so the hole opens onto About's centrepiece first and only reaches
- *     "DANIEL TAN" in the back half of the gesture: it never bites the name
- *     in the first third.
+ *   - the iris is SEEDED on the centre of About's room render (owner request:
+ *     it opens straight onto the room), and its radius accelerates (p^k, k
+ *     fitted per layout to keep the hole off "DANIEL TAN" for as long as the
+ *     geometry allows), so the room is revealed first.
  *   - a sparse half-cell white rim dithers the edge (the wordmark's white) and
  *     fades out over the last quarter so the late, big arc never reads as a
  *     loading spinner.
@@ -41,8 +40,8 @@
  * untouched) and past the hero nothing is left composited. The hero hides
  * (visibility) once the orange left on screen falls below HIDE_REMAIN of the
  * viewport (measured on the real cell staircase, per layout; ~0.84vh at
- * 1440x900), never later than IRIS_END_VH. With the seed right of centre the
- * far-left corner clears last, and its final few percent are only a thin
+ * 1440x900), never later than IRIS_END_VH. The corner farthest from the seed
+ * clears last, and its final few percent are only a thin
  * edge strip over a fully readable About that, at rest, read as a rendering
  * glitch rather than the end of the iris. The climax (the hole sweeping the
  * name and the room) is long over by then.
@@ -98,10 +97,12 @@ export const IRIS_END_VH = 0.9;
 const HIDE_REMAIN = 0.03;
 /** Cells per radius of the pixel circle. */
 const IRIS_CELLS = 15;
-/** Seed x: this fraction of the way from the wordmark's right edge to the
- *  viewport's right edge (lands over the room render's right half). */
+/** The iris is seeded on the centre of About's room render (measured at rest,
+ *  where the parked About sits under the hero), so the hole opens straight
+ *  onto the room. Fallback seed, used only if the room hasn't laid out yet:
+ *  SEED_X_BIAS of the way from the wordmark's right edge to the viewport's
+ *  right edge, at SEED_Y of the viewport height. */
 const SEED_X_BIAS = 0.4;
-/** Seed y as a fraction of the viewport height. */
 const SEED_Y = 0.46;
 /** The name must be untouched (hole + rim) up to this iris progress. */
 const NAME_GUARD_P = 1 / 3;
@@ -413,8 +414,21 @@ export function installHeroWipe(): void {
     const T = Math.min(a.top, b ? b.top : a.top);
     const R = Math.max(a.right, b ? b.right : a.right);
     const B = Math.max(a.bottom, b ? b.bottom : a.bottom);
-    const sx = Math.min(w * 0.88, Math.max(w * 0.5, R + (w - R) * SEED_X_BIAS));
-    const sy = vh * SEED_Y;
+    // Seed on the room render's centre (its rect at rest is its on-screen spot
+    // under the hero while parked, same as the title cue below).
+    // Measured at hero-composed, the room's card can still be mid reveal
+    // (about.css .card rises from translateY(--reveal-lift)), so take its
+    // current reveal offset back out to get the room's resting spot.
+    const roomEl = q<HTMLElement>(".portfolio-about .about-room");
+    const room = roomEl?.getBoundingClientRect();
+    const roomOk = !!room && room.width > 0 && room.bottom > 0 && room.top < vh;
+    const card = roomEl?.closest<HTMLElement>(".card");
+    const cardT = card ? getComputedStyle(card).transform : "none";
+    const lift = cardT && cardT !== "none" ? new DOMMatrixReadOnly(cardT).m42 : 0;
+    const sx = roomOk
+      ? room.left + room.width / 2
+      : Math.min(w * 0.88, Math.max(w * 0.5, R + (w - R) * SEED_X_BIAS));
+    const sy = roomOk ? room.top + room.height / 2 - lift : vh * SEED_Y;
     const cellEnd = coverCell(sx, sy, w, vh) * 1.01;
     const rEnd = cellEnd * IRIS_CELLS;
     // Nearest point of the name block to the seed; the hole plus its rim (two
