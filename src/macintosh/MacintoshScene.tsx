@@ -311,10 +311,21 @@ const DOLLY_Z_ENTRY = 9.0;
 // Sub-beats, as fractions of the exit window (exitT 0..1):
 const EXIT_START = 0.88;
 const EXIT_END = 1.0;
-//   Double blink (two brief picture drop-outs) inside exitT 0.05 → 0.15.
-const EXIT_BLINKS: ReadonlyArray<readonly [number, number]> = [
-  [0.065, 0.09],
-  [0.11, 0.135],
+//   Double blink (two brief picture drop-outs), ARMED at exitT 0.05, just
+//   ahead of the collapse at 0.15. Deliberate exception to "no timers": the
+//   blink is a one-shot, TIME-based acknowledgement fired when exitT first
+//   crosses EXIT_BLINK_ARM going down. Mapping it to scroll (the spec's exitT
+//   0.05-0.15 windows, ~11 px each) made it 0-2 frames while scrolling
+//   (invisible) and left the screen stuck at the dim level when a rest landed
+//   inside a window. A time-based blink always reads, and every rest ends on
+//   a lit screen. The collapse and housing fade stay scroll-bound.
+//   Re-arms only once exitT drops back below EXIT_BLINK_ARM; dropping below
+//   it also cancels a blink in flight.
+const EXIT_BLINK_ARM = 0.05;
+// [startMs, endMs) picture drop-outs after the arm crossing.
+const EXIT_BLINK_PATTERN_MS: ReadonlyArray<readonly [number, number]> = [
+  [0, 60],
+  [110, 170],
 ];
 const EXIT_BLINK_OPACITY = 0.1;
 //   CRT power-off collapse (uPowerOff 0 → 1: hot line → dot → black).
@@ -2332,6 +2343,11 @@ function Scene({
   // Last opacity written to the canvas element by the exit fade ("" = none),
   // so the per-frame loop only touches the style when the value changes.
   const canvasFadeRef = useRef("");
+  // Exit double-blink one-shot: previous frame's exitT (NaN until the first
+  // frame, so a reload that lands mid-exit doesn't fire it) and the start
+  // time of the blink in flight (-1 = none / armed).
+  const prevExitTRef = useRef(Number.NaN);
+  const blinkStartRef = useRef(-1);
   // Tilt group sits between the Y-translation group (macGroupRef) and
   // the spin group (macSpinRef). It holds the keypad-style float pose
   // (X/Y/Z euler from MAC_FLOAT_TILT_*) and unwinds to 0 during the
@@ -2813,11 +2829,25 @@ function Scene({
       // overlay carries the boot type-in + desktop. Opacity = max(on, boot
       // ramp) so it's always at full while floating and through boot/desktop.
       const screenOn = 1;
-      // RETRO POWER-OFF, scroll-bound across the exit window: a DOUBLE BLINK
-      // (EXIT_BLINKS), then the collapse to a hot line -> centre dot -> black
-      // (uPowerOff over EXIT_POWER_OFF_START..END). Scrolling back reverses
-      // it exactly; there is no timer to restart.
-      const blinkOff = EXIT_BLINKS.some(([a, b]) => exitT >= a && exitT < b);
+      // RETRO POWER-OFF: a one-shot timed DOUBLE BLINK fired as exitT crosses
+      // EXIT_BLINK_ARM going down (see EXIT_BLINK_PATTERN_MS), then the
+      // scroll-bound collapse to a hot line -> centre dot -> black (uPowerOff
+      // over EXIT_POWER_OFF_START..END). Scrolling back reverses the collapse
+      // exactly; the blink only ever dims for its ~170 ms, so no rest can
+      // freeze the screen dim.
+      const nowMs = performance.now();
+      const prevExitT = prevExitTRef.current;
+      prevExitTRef.current = exitT;
+      if (exitT < EXIT_BLINK_ARM) {
+        blinkStartRef.current = -1;
+      } else if (prevExitT < EXIT_BLINK_ARM && blinkStartRef.current < 0) {
+        blinkStartRef.current = nowMs;
+      }
+      const blinkT =
+        blinkStartRef.current < 0 ? -1 : nowMs - blinkStartRef.current;
+      const blinkOff =
+        blinkT >= 0 &&
+        EXIT_BLINK_PATTERN_MS.some(([a, b]) => blinkT >= a && blinkT < b);
       const targetOpacity = blinkOff
         ? EXIT_BLINK_OPACITY
         : Math.max(screenOn, newBoot);

@@ -289,10 +289,33 @@ export function Macintosh() {
   // GSAP ScrollTrigger pin. Skipped at narrow widths (stacked layout)
   // and in the dev freeze/tune modes. Re-runs when `narrow` flips so
   // crossing the breakpoint creates or tears down the pin cleanly.
+  // Set once the pin has been created, so a later re-creation (breakpoint
+  // round trip) knows to re-sort the trigger list.
+  const pinCreatedRef = useRef(false);
   useEffect(() => {
     if (TUNE_MODE || PIN_FREEZE != null || staticLanded) return;
     const el = sectionRef.current;
     if (!el) return;
+    // Everything scroll progress drives outside the 3D scene. Shared by
+    // onUpdate and onRefresh so a refresh can't leave either one stale.
+    const syncProgress = (p: number) => {
+      pinProgressRef.current = p;
+      // Fade the "Projects" header out across the descent so it has cleared
+      // before the CRT zoom fills the frame. Written to a CSS var (no
+      // transition on it): the .is-detail-open fade owns .mac-col's own
+      // opacity, so the two never fight.
+      const h = headerRef.current;
+      if (h) {
+        const f = Math.min(
+          1,
+          Math.max(0, (p - HEADER_FADE_START) / HEADER_FADE_SPAN),
+        );
+        const v = (1 - f).toFixed(3);
+        if (h.style.getPropertyValue("--mac-head-fade") !== v) {
+          h.style.setProperty("--mac-head-fade", v);
+        }
+      }
+    };
     const st = ScrollTrigger.create({
       // Named so a nav/dial jump can target a specific beat of this pin
       // (see sectionRegistry "Projects" → pinId:"mac-pin", jumpProgress:0.85)
@@ -322,24 +345,14 @@ export function Macintosh() {
         duration: MAGNET_DURATION_S,
         ease: GSAP_EASE.settle,
       },
-      onUpdate: (self) => {
-        pinProgressRef.current = self.progress;
-        // Fade the "Projects" header out across the descent so it has cleared
-        // before the CRT zoom fills the frame. Written to a CSS var (no
-        // transition on it): the .is-detail-open fade owns .mac-col's own
-        // opacity, so the two never fight.
-        const h = headerRef.current;
-        if (h) {
-          const f = Math.min(
-            1,
-            Math.max(0, (self.progress - HEADER_FADE_START) / HEADER_FADE_SPAN),
-          );
-          const v = (1 - f).toFixed(3);
-          if (h.style.getPropertyValue("--mac-head-fade") !== v) {
-            h.style.setProperty("--mac-head-fade", v);
-          }
-        }
-      },
+      onUpdate: (self) => syncProgress(self.progress),
+      // onUpdate does not fire when a refresh moves progress (a desktop resize
+      // changes this vh-relative pin's px length, so the same scrollY maps to
+      // a new progress). Without this the scene kept drawing the old pose,
+      // e.g. the landed CRT left on screen past the pin end, which then
+      // hard-cut off the top edge instead of playing the exit. Also seeds
+      // progress for a trigger created mid-page (it refreshes on create).
+      onRefresh: (self) => syncProgress(self.progress),
     });
 
     // Click-to-zoom: the floating Mac dispatches `mac-zoom-request` (see the
@@ -391,6 +404,18 @@ export function Macintosh() {
     });
     // Seed (refresh-at-offset, e.g. a mid-page reload).
     setStageVisible(stageST.progress > 0 || !!stageST.isActive);
+
+    // Re-creation after a breakpoint round trip (wide -> narrow -> wide, or a
+    // reduced-motion toggle): these triggers are appended AFTER the ones for
+    // the sections below (Work, Photos...), so a refresh would measure those
+    // before this pin's spacer exists and Work would pin over Projects.
+    // Restore document order, then re-measure. First mount is already in DOM
+    // order, so it skips this.
+    if (pinCreatedRef.current) {
+      ScrollTrigger.sort();
+      ScrollTrigger.refresh();
+    }
+    pinCreatedRef.current = true;
 
     // Refresh once loading-active drops: pin positions shift during
     // initial layout.
