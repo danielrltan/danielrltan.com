@@ -7,7 +7,7 @@ import {
 } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { refreshScrollOnLoaderLift } from "./scrollRefresh";
+import { refreshScrollOnLoaderLift, requestScrollRefresh } from "./scrollRefresh";
 import "./sections.css";
 import "./work-timeline.css";
 import { ScrambleText } from "./ScrambleText";
@@ -34,8 +34,40 @@ const BAND_HYSTERESIS = 0.04;
 const JUMP_PROGRESS = 0.17;
 /** Click-jump guard: slack past the glide duration before it force-clears. */
 const JUMP_GUARD_SLACK_S = 0.25;
-/** Mobile tap anchoring is skipped if the page scrolled this recently (a fling). */
-const FLING_WINDOW_MS = 100;
+/**
+ * Click-jump takeover (owner-tunable). The glide is locked against the wheel;
+ * only a DELIBERATE scroll takes over. Wheel input this soon after the click is
+ * always the click's own tail (trackpad inertia, the end of a flick).
+ */
+const JUMP_GRACE_MS = 150;
+/** After the grace, a wheel delta smaller than this (px) is inertia, not a takeover. */
+const JUMP_TAKEOVER_MIN_DELTA = 8;
+/**
+ * A same-direction wheel event this soon after the previous one, and no larger
+ * than it, continues a decaying inertia run (macOS momentum), not a takeover.
+ * Momentum events arrive every ~16 ms, but a busy main thread (the morph and
+ * the glide run together) delivers them 40-130 ms apart, so the window is
+ * generous: a new deliberate swipe is caught by its GROWING deltas, or by the
+ * pause before it, or by a change of direction.
+ */
+const INERTIA_RUN_GAP_MS = 150;
+/**
+ * Lenis 1.3 keeps reset() and the isLocked setter private in its typings, but
+ * both are stable runtime API (reset() is what its own start()/stop() and
+ * lock:true tweens use). Narrow access for the click-jump lock only.
+ */
+type LenisLockControl = { isLocked: boolean; reset(): void };
+const lockControl = (l: object | null) => l as unknown as LenisLockControl | null;
+/** Keys that scroll the page natively; pressing one during a glide takes over. */
+const SCROLL_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+  " ",
+]);
 
 interface Stint {
   when: string;
@@ -250,8 +282,14 @@ export function Work() {
     // start and reaches the next node (or the spine's end) at the band's end.
     // Scroll-linked, so there is no CSS transition on it. Uses the plain band
     // rather than the hysteresis band so the tip is continuous in scroll even
-    // mid-jump; the geometry is live (ResizeObserver below), so while the
-    // accordion morphs the tip rides the node dots as they move.
+    // mid-jump.
+    // DELIBERATE SPEC DEVIATION (W3.11 says "measure after transitionend"):
+    // the geometry is live (ResizeObserver below), so while the accordion
+    // morphs the tip rides the node dots as they move, instead of jumping to
+    // the new layout at transitionend. The tip can therefore ease back a little
+    // during a 420 ms morph while the scroll holds still or moves forward.
+    // Written on the list (.work-acc), whose ::after reads it, so each write
+    // restyles only the accordion subtree.
     const renderFill = () => {
       const g = geoRef.current;
       if (!g || g.nodes.length === 0) return;
@@ -264,7 +302,7 @@ export function Work() {
       const fill = Math.min(1, Math.max(0, (tip - g.spineTop) / g.spineLen));
       if (Math.abs(fill - fillRef.current) < 1e-4) return;
       fillRef.current = fill;
-      el.style.setProperty("--work-fill", fill.toFixed(4));
+      list.style.setProperty("--work-fill", fill.toFixed(4));
     };
 
     const applyProgress = (p: number) => {
@@ -313,29 +351,51 @@ export function Work() {
       stRef.current = null;
       geoRef.current = null;
       fillRef.current = -1;
-      el.style.removeProperty("--work-fill");
+      list.style.removeProperty("--work-fill");
+      // A live reduced-motion toggle removes the pin spacer (1.86vh of page):
+      // re-measure every downstream trigger. Rebuilding refreshes through
+      // refreshScrollOnLoaderLift(); both are coalesced into one rAF refresh.
+      requestScrollRefresh();
     };
   }, [isMobile, reducedMotion]);
 
   // Click-jump (desktop pin): open the row NOW, then glide to its band centre.
   // jumpingRef keeps onUpdate from re-picking rows the glide passes through.
-  // It clears on arrival or supersede (the promise), on the user taking over
-  // (wheel / touch / key), or after the glide duration + slack; the hysteresis
-  // state is then seeded to the clicked row and re-synced to where we are.
+  //
+  // The glide is LOCKED against the wheel (Lenis lock:true). Unlocked, the
+  // first wheel event of a trackpad inertia tail replaced the glide with a
+  // few-px user scroll, and the resync then reverted the clicked row to the
+  // scroll band's row ~150 ms later (an open-then-revert double morph). Now:
+  //   - wheel within JUMP_GRACE_MS of the click is always ignored (the tail);
+  //   - after that, tiny deltas and decaying same-direction runs are inertia;
+  //   - anything else, touchstart, or a scroll key is a deliberate TAKEOVER:
+  //     the glide is cancelled (lenis.reset()) and the user scrolls from here.
+  // It clears on arrival or supersede (the promise), on takeover, or after the
+  // glide duration + slack; the hysteresis state is then seeded to the clicked
+  // row and re-synced to where we are.
   const startJump = (i: number, st: ScrollTrigger) => {
     clearJumpRef.current?.(false);
+    const lenis = getLenis();
+    const lock = lockControl(lenis);
     const y = st.start + ((i + 0.5) / N) * (st.end - st.start);
-    const from = getLenis()?.animatedScroll ?? window.scrollY;
+    const from = lenis?.animatedScroll ?? window.scrollY;
     const dur = presetDuration(y - from, window.innerHeight || 1, SCROLL.glide);
+    const t0 = performance.now();
+    let lastWheelAt = -Infinity;
+    let lastDelta = 0;
     let cleared = false;
-    const clear = (resync: boolean) => {
+    // takeover=true: the user's input already owns the scroll (the glide was
+    // reset). Otherwise (arrival, supersede, timeout, teardown) release our
+    // wheel lock: a superseding tween without lock leaves isLocked set.
+    const clear = (resync: boolean, takeover = false) => {
       if (cleared) return;
       cleared = true;
       window.clearTimeout(timer);
-      window.removeEventListener("wheel", onUser);
-      window.removeEventListener("touchstart", onUser);
-      window.removeEventListener("keydown", onUser);
+      offVirtual();
+      window.removeEventListener("touchstart", onTouch);
+      window.removeEventListener("keydown", onKey);
       if (clearJumpRef.current === clear) clearJumpRef.current = null;
+      if (!takeover && lock?.isLocked) lock.isLocked = false;
       jumpingRef.current = false;
       lastIdxRef.current = i;
       if (!resync || stRef.current !== st) return;
@@ -345,15 +405,43 @@ export function Work() {
         setOpenIndex(k);
       }
     };
-    const onUser = () => clear(true);
-    const timer = window.setTimeout(onUser, (dur + JUMP_GUARD_SLACK_S) * 1000);
-    window.addEventListener("wheel", onUser, { passive: true });
-    window.addEventListener("touchstart", onUser, { passive: true });
-    window.addEventListener("keydown", onUser);
+    const settle = () => clear(true);
+    const takeOver = () => {
+      // reset() unlocks and stops the glide; inside the virtual-scroll handler
+      // Lenis then processes this same event, so the first delta scrolls.
+      lock?.reset();
+      clear(true, true);
+    };
+    // Lenis emits virtual-scroll BEFORE its lock check, for wheel and touch.
+    const onVirtual = ({ deltaY, event }: { deltaY: number; event: Event }) => {
+      if (event.type !== "wheel" || (event as WheelEvent).ctrlKey || deltaY === 0) return;
+      const now = performance.now();
+      const mag = Math.abs(deltaY);
+      const decaying =
+        now - lastWheelAt < INERTIA_RUN_GAP_MS &&
+        Math.sign(deltaY) === Math.sign(lastDelta) &&
+        mag <= Math.abs(lastDelta);
+      lastWheelAt = now;
+      lastDelta = deltaY;
+      if (now - t0 < JUMP_GRACE_MS || mag < JUMP_TAKEOVER_MIN_DELTA || decaying) return;
+      takeOver();
+    };
+    const onTouch = () => takeOver();
+    const onKey = (e: KeyboardEvent) => {
+      if (!SCROLL_KEYS.has(e.key)) return;
+      // Space on a button / field activates it rather than scrolling.
+      const t = e.target as HTMLElement | null;
+      if (e.key === " " && t?.closest("button, input, textarea, select, [contenteditable]")) return;
+      takeOver();
+    };
+    const offVirtual = lenis ? lenis.on("virtual-scroll", onVirtual) : () => {};
+    const timer = window.setTimeout(settle, (dur + JUMP_GUARD_SLACK_S) * 1000);
+    window.addEventListener("touchstart", onTouch, { passive: true });
+    window.addEventListener("keydown", onKey);
     clearJumpRef.current = clear;
     jumpingRef.current = true;
     lastIdxRef.current = i;
-    void scrollToY(y, { preset: "glide", onComplete: onUser }).then(onUser);
+    void scrollToY(y, { preset: "glide", lock: true, onComplete: settle }).then(settle);
   };
 
   // ── Mobile tap anchoring ──────────────────────────────────────────────────
@@ -361,18 +449,14 @@ export function Work() {
   // header up the screen. Record its y before the change, then (before paint)
   // collapse the previous panel instantly and scroll by the difference so the
   // header stays under the finger. Only the new panel animates.
+  // DELIBERATE SPEC DEVIATION (W3.16 "skip while a touch fling is active"):
+  // compensation always runs. On touch devices a touch during momentum stops
+  // the fling and fires no click, so any tap that does reach here lands on a
+  // settled page; the skip only ever fired just AFTER a fling and threw the
+  // tapped header up by the height of the closing panel (-918 px at 390x844).
   const anchorRef = useRef<{ i: number; prev: number | null; top: number } | null>(
     null,
   );
-  const lastScrollAtRef = useRef(-Infinity);
-  useEffect(() => {
-    if (!isMobile) return;
-    const onScroll = () => {
-      lastScrollAtRef.current = performance.now();
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [isMobile]);
 
   useLayoutEffect(() => {
     const a = anchorRef.current;
@@ -397,12 +481,7 @@ export function Work() {
     if (isMobile || reducedMotion) {
       if (i === openIndex) return;
       const head = headRefs.current[i];
-      if (
-        isMobile &&
-        !reducedMotion &&
-        head &&
-        performance.now() - lastScrollAtRef.current > FLING_WINDOW_MS
-      ) {
+      if (isMobile && !reducedMotion && head) {
         anchorRef.current = { i, prev: openIndex, top: head.getBoundingClientRect().top };
       }
       setOpenIndex(i);

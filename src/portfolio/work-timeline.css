@@ -143,7 +143,10 @@
    company and metric by the viewport HEIGHT too (min(vw, vh)) so wide-short
    windows fit; the rows keep their roomy padding (owner request), and
    collapsed rows no longer carry a 20px residual. The spec's 920px bound was
-   raised to 1100 because 920-1000px-tall viewports overflowed by 25-36px.
+   raised to 1100 because 920-1000px-tall viewports overflowed by 25-36px
+   (OWNER REVIEW). The wordmark keeps the base 116px cap and is limited by
+   10.5vh alone, so tall screens barely change (1920×1080: 113px, was 116)
+   while 900-tall ones come down (1440×900: 94.5px).
    The ≤800 block below tightens further and wins where both match. */
 @media (max-height: 1100px) and (min-width: 901px) {
   .work-ledger {
@@ -155,7 +158,7 @@
     padding-bottom: clamp(10px, 1.4vh, 18px);
   }
   .portfolio-work .work-ledger-title {
-    font-size: clamp(40px, min(6.4vw, 10.5vh), 96px);
+    font-size: clamp(40px, min(7.5vw, 10.5vh), 116px);
   }
   .portfolio-work .work-acc-company {
     font-size: clamp(26px, min(3.4vw, 5.6vh), 50px);
@@ -525,7 +528,7 @@
   /* NO ring. The bordered circle read as "this little button is the click
      target" while the whole row is the control — misleading (user). A bare
      chevron that rotates + goes accent on hover/open is the honest affordance. */
-  transition: transform var(--t-morph) var(--ease-in-out),
+  transition: transform var(--t-base) var(--ease-out),
     color var(--hover-dur) var(--hover-ease);
 }
 .work-acc-head:hover .work-acc-chevron {
