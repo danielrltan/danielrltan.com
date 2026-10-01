@@ -302,9 +302,11 @@ export function RiceBlob({ cursorRef, glowOpacityRef, isMobile = false }: Props)
     const ak = 1 - Math.exp(-dtc * 8);
     mat.uniforms.uActive.value += ((tgt.active ? 1 : 0) - active) * ak;
 
-    // Reveal fade-in (driven by Keypad.tsx once the drop-in completes).
+    // Reveal fade-in. Keypad.tsx releases it on APPROACH (before the drop),
+    // so at λ 2.2 the stage is already blooming when the model falls.
+    // Clamped dt: the demand loop can resume after a long idle gap.
     const targetReveal = glowOpacityRef?.current ?? 1;
-    const rk = 1 - Math.exp(-dt * 2.2);
+    const rk = 1 - Math.exp(-dtc * 2.2);
     mat.uniforms.uReveal.value +=
       (targetReveal - (mat.uniforms.uReveal.value as number)) * rk;
 
