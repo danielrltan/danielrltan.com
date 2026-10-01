@@ -201,6 +201,40 @@
     gap: clamp(4px, 0.6vh, 8px);
   }
 }
+/* HUD clearance. The pinned frame holds the header at the top of the viewport
+   for the whole pin, and the fixed HUD brand tile sits over the top-left corner
+   at x 22-122, y 20-74 (RoomHUD TOP_STRIP_TOP 20 + TOP_STRIP_CHIP_H 54). The
+   header's left edge is max(0, (100vw - 1280px) / 2) + clamp(28px, 6vw, 96px).
+   That edge only clears the tile from about 1382px wide, so below that width
+   the "03" tag, the "03 / 07 · WORK" eyebrow and the top of the wordmark sat
+   under the tile (1280x720: header at y17). In that width band the frame's top
+   padding is raised to 84px (tile bottom 74 + 10px gap). On wider screens the
+   tile sits in the side margin and costs no height. Placed after the height
+   blocks so it wins at equal specificity. */
+@media (min-width: 901px) and (max-width: 1380px) {
+  .work-ledger {
+    padding-top: max(84px, clamp(40px, 7vh, 96px));
+  }
+}
+/* Short frames in that band also get back the ~65px the clearance adds, so the
+   last row stays above the fold for the whole pin (1280x720: last row at 661
+   of 720 before the clearance). The wordmark shrinks a step and the header's
+   internal gaps tighten. The rows and the open panel stay as they were. */
+@media (min-width: 901px) and (max-width: 1380px) and (max-height: 800px) {
+  .work-ledger {
+    padding-bottom: clamp(6px, 1vh, 12px);
+  }
+  .work-ledger-head {
+    padding-bottom: clamp(6px, 0.9vh, 10px);
+  }
+  .work-ledger-head-text {
+    gap: 4px;
+  }
+  .portfolio-work .work-ledger-title {
+    font-size: clamp(34px, min(4.5vw, 6.2vh), 64px);
+    margin-top: 0;
+  }
+}
 
 /* ----- Résumé CTA (top-right of the frame) --------------------- */
 

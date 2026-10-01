@@ -31,6 +31,27 @@ const MOBILE_QUERY = "(max-width: 768px)";
  */
 const MIN_MOUNTED_MS = 4000;
 
+/**
+ * The floor above is a time guess, and a loaded machine can blow through it
+ * (swiftshader context creation + a lazy scene chunk under a load average of
+ * 15-40 measured past 4 s in the smoke run). So the release also checks the
+ * real state: a gated scene tags its <Canvas> wrapper with
+ * `data-section-canvas` (R3F spreads unknown props onto that div) and calls
+ * markSectionCanvasCreated(gl.domElement) from onCreated. While a tagged
+ * wrapper inside the section is still uncreated the unmount re-polls, up to
+ * CREATE_WAIT_CAP_MS after mount (a context that never comes up, e.g. a lost
+ * GPU, never calls onCreated and so never connects either: safe to drop).
+ */
+const CREATED_ATTR = "data-section-canvas-created";
+const PENDING_SEL = `[data-section-canvas]:not([${CREATED_ATTR}])`;
+const CREATE_POLL_MS = 500;
+const CREATE_WAIT_CAP_MS = 30_000;
+
+/** Call from a gated scene's <Canvas onCreated>: marks its wrapper created. */
+export function markSectionCanvasCreated(canvas: HTMLCanvasElement): void {
+  canvas.closest("[data-section-canvas]")?.setAttribute(CREATED_ATTR, "");
+}
+
 function isMobileViewport(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -179,10 +200,18 @@ export function useSectionCanvasMount(
           // MIN_MOUNTED_MS): stretch the debounce to cover the remainder.
           const sinceMount = performance.now() - mountedAt;
           const delay = Math.max(unmountDelayMs, MIN_MOUNTED_MS - sinceMount);
-          unmountTimer = window.setTimeout(() => {
+          const release = () => {
+            if (
+              el.querySelector(PENDING_SEL) &&
+              performance.now() - mountedAt < CREATE_WAIT_CAP_MS
+            ) {
+              unmountTimer = window.setTimeout(release, CREATE_POLL_MS);
+              return;
+            }
             unmountTimer = 0;
             setMounted(false);
-          }, delay);
+          };
+          unmountTimer = window.setTimeout(release, delay);
         }
       },
       { rootMargin: `${Math.round(unmountVh * 100)}% 0px ${Math.round(unmountVh * 100)}% 0px` },

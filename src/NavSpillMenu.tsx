@@ -706,6 +706,9 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
   const pendingJumpRef = useRef(-1);
   const openRef = useRef(open);
   openRef.current = open;
+  // Keyboard focus (a11y): the element that had focus when the menu opened
+  // (normally the dial), restored on a plain close.
+  const openerRef = useRef<HTMLElement | null>(null);
   const pointer = useRef({ x: 0, y: 0 });
   // Cursor in screen UV (0..1, y-down) for the rice pool that follows it.
   const cursor = useRef<CursorState>({ x: 0.5, y: 0.5, active: false });
@@ -752,6 +755,12 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
 
   useEffect(() => {
     if (open) {
+      // Remember the opener (the dial, or whatever had focus for the "m"
+      // hotkey). A reopen mid-close keeps the earlier opener.
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && ae !== document.body && !rootRef.current?.contains(ae)) {
+        openerRef.current = ae;
+      }
       // The spill clock is stamped by SpillField on the canvas's first frame
       // (see SPILL_LEAD_MS); until then the icons hold at the centre.
       spillClockRef.current = { openedAt: performance.now(), pending: true };
@@ -774,6 +783,11 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
     const rm = reducedMotion.value;
     const jumpIdx = pendingJumpRef.current;
     pendingJumpRef.current = -1;
+    // Hand focus back NOW, while the close button and labels still exist (they
+    // stay mounted through the retract; once they unmount focus drops to
+    // <body>). Plain close: back to the opener. Jump: the dial, never a page
+    // element the cut is about to scroll away from.
+    restoreFocus(jumpIdx >= 0);
     let cancelled = false;
     const timers: number[] = [];
     const rafs: number[] = [];
@@ -847,6 +861,14 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
     setShown(true);
   }, [open, mounted, shown]);
 
+  // Move focus into the menu once it is in the DOM (the first open renders
+  // null until `mounted` lands): the close button is first in the Tab order.
+  useEffect(() => {
+    if (!open || !mounted) return;
+    const close = rootRef.current?.querySelector<HTMLElement>(".navx-close");
+    close?.focus({ preventScroll: true });
+  }, [open, mounted]);
+
   // Safety: always unlock scroll if the menu unmounts while open.
   useEffect(() => () => unlockScroll("menu"), []);
 
@@ -862,6 +884,7 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      else if (e.key === "Tab" && openRef.current) trapTab(e);
     };
     // Touch has no hovering cursor, so the cursor-driven effects don't apply:
     // skip pointer/parallax tracking entirely on mobile (the ring's icons won't
@@ -876,6 +899,45 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
       document.body.style.cursor = "";
     };
   }, [mounted, onClose, isMobile]);
+
+  // Focus trap while open: Tab wraps from the last label to the close button
+  // (and Shift-Tab back), so focus never walks behind the opaque scrim. The
+  // drei <Html> labels mount after the canvas, so the list is read per key.
+  const trapTab = (e: KeyboardEvent) => {
+    const root = rootRef.current;
+    if (!root) return;
+    const items = Array.from(
+      root.querySelectorAll<HTMLElement>("button:not([disabled])"),
+    );
+    if (items.length === 0) return;
+    const first = items[0]!;
+    const last = items[items.length - 1]!;
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    let next: HTMLElement | null = null;
+    if (e.shiftKey) {
+      if (idx <= 0) next = last;
+    } else if (idx === -1 || idx === items.length - 1) {
+      next = first;
+    }
+    if (next) {
+      e.preventDefault();
+      next.focus({ preventScroll: true });
+    }
+  };
+
+  // Return focus on close. Only when focus is inside the menu (or was dropped
+  // to <body>), so a close never steals focus from somewhere the user moved it.
+  function restoreFocus(toDial: boolean) {
+    const ae = document.activeElement;
+    const root = rootRef.current;
+    if (ae && ae !== document.body && !(root && root.contains(ae))) return;
+    const dial = document.querySelector<HTMLElement>(".snc-dial");
+    const opener = openerRef.current;
+    openerRef.current = null;
+    const target =
+      !toDial && opener && opener.isConnected ? opener : dial;
+    target?.focus({ preventScroll: true });
+  }
 
   // Pick a section: analytics now, then close with the jump queued. The close
   // effect runs the retract → cut-under-the-scrim → reveal timeline. Ignored

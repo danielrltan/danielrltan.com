@@ -587,6 +587,17 @@ html.loading-active body {
     animation-delay: 0s !important;
     scroll-behavior: auto !important;
   }
+  /* ...except GSAP pins. ScrollTrigger.refresh() writes a pin-spacer's
+     padding/height (and the pinned element's box) and then measures every
+     LATER trigger synchronously. Under the net above those writes became
+     0.01ms transitions, so the measurement still saw the old box: each pin
+     below About started one About-pin length early (the Contact jump landed
+     on Recents, and the keypad pinned over the photos). transition-property
+     none makes the writes land immediately. */
+  .pin-spacer,
+  .pin-spacer > * {
+    transition-property: none !important;
+  }
 }
 
 /* Scroll cover (src/scroll.ts): long programmatic jumps (> 3 viewports) cut

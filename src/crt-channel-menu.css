@@ -267,12 +267,13 @@
     translate var(--chrome-dur) var(--ease-out),
     visibility 0s linear var(--chrome-dur);
 }
+/* Menu open: fade only. NO visibility:hidden here: hiding the dial blurs it
+   (focus fell to <body> with a keyboard open, and Esc could not return to it).
+   NavSpillMenu moves focus into the menu and back to the dial on close. */
 .hud-chrome[data-hud="menu"] {
   opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-  --hud-tr: opacity var(--t-fast) var(--ease-out), translate 0s,
-    visibility 0s linear var(--t-fast);
+  --hud-tr: opacity var(--t-fast) var(--ease-out), translate 0s;
 }
 /* JumpToTop is a .hud-btn: restate its hover/press list (index.css) with the
    HUD list appended, since one `transition` declaration wins. */

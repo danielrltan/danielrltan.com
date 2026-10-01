@@ -246,29 +246,36 @@
    each row that crosses the line together starts at 0 ms; the stagger is
    capped at --stagger-max steps. Rise only: no filter, no scale, no side
    sweep (filters re-raster per frame). */
-[data-reveal] {
+/* The hidden pose applies only under a root useReveal has ARMED
+   (data-reveal-armed, set before paint in the animated desktop mode), so
+   a marked node that no hook is watching still renders. The hide carries
+   no transition (arming can never fade a painted node out); the reveal
+   transition lives on .is-revealed, the after-change style. */
+[data-reveal-armed] [data-reveal]:not(.is-revealed) {
   opacity: 0;
   transform: translateY(var(--reveal-lift));
+}
+[data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
   transition:
     opacity var(--reveal-dur) var(--reveal-ease),
     transform var(--reveal-dur) var(--reveal-ease);
   transition-delay: calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));
 }
-[data-reveal].is-revealed {
-  opacity: 1;
-  transform: none;
-}
-/* Phones render in place (useReveal also reveals everything at mount there);
-   no mount-time fade. */
+/* Phones render in place (useReveal never arms there and reveals everything
+   at mount); no mount-time fade, even if a desktop-armed root is resized. */
 @media (max-width: 768px) {
-  [data-reveal] {
+  [data-reveal-armed] [data-reveal]:not(.is-revealed),
+  [data-reveal].is-revealed {
     opacity: 1;
     transform: none;
     transition: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-reveal] {
+  [data-reveal-armed] [data-reveal]:not(.is-revealed),
+  [data-reveal].is-revealed {
     opacity: 1;
     transform: none;
     transition: none;

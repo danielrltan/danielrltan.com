@@ -39,8 +39,24 @@
  * The hero-side animations only EXIST while 0 < scrollY < 1.1vh: at the very
  * top the hero is pristine (no mask, no promoted layers, resting raster
  * untouched) and past the hero nothing is left composited. The hero hides
- * (visibility) the moment the iris has covered the viewport, so the hide can
- * never cut the climax.
+ * (visibility) once the orange left on screen falls below HIDE_REMAIN of the
+ * viewport (measured on the real cell staircase, per layout; ~0.84vh at
+ * 1440x900), never later than IRIS_END_VH. With the seed right of centre the
+ * far-left corner clears last, and its final few percent are only a thin
+ * edge strip over a fully readable About that, at rest, read as a rendering
+ * glitch rather than the end of the iris. The climax (the hole sweeping the
+ * name and the room) is long over by then.
+ *
+ * OWNER REVIEW (spec §5 O1, flick cap): on ScrollTimeline engines the iris is
+ * bound 1:1 to the (Lenis-smoothed) scroll on the compositor, so it has no
+ * rate cap: a ~3000 px/s wheel flick runs the whole dive in ~280 ms, under
+ * O1's 350 ms floor (1 / HERO.diveMinSec). Waived for the compositor iris,
+ * not implemented: a rate-capped iris lags the scroll, so it would still be
+ * open when About pins at 1.0vh and the position-keyed hide would then cut
+ * it (the one invariant the iris exists to keep), and switching to the
+ * manual path mid-flick means cancelling and rebuilding every animation on
+ * the busiest frames of the gesture. Main lost the climax entirely at that
+ * speed; the iris always plays through.
  *
  * Narrow (<=900, BREAKPOINT.narrow: About's stacked, unpinned layout, where
  * there is no room render to open onto) and prefers-reduced-motion get no
@@ -71,10 +87,15 @@ import { heroHandoff, heroState } from "./heroState";
 
 /** Scroll (viewports) where the iris starts opening = the spec's dive start. */
 const IRIS_START_VH = HERO.diveStartVh;
-/** Scroll (viewports) where the iris has cleared the farthest corner. Exact
- *  cover: the last orange cell leaves here, so the hide is invisible. Must be
- *  <= HERO.clearByVh (0.98). */
+/** Scroll (viewports) where the iris has cleared the farthest corner (the
+ *  last orange cell leaves here). The hero hides a little earlier, at the
+ *  per-layout HIDE_REMAIN point, never later. Must be <= HERO.clearByVh
+ *  (0.98). */
 export const IRIS_END_VH = 0.9;
+/** Hide the hero once the orange still on screen is below this fraction of
+ *  the viewport (the iris's last sliver, see header). Owner tunable: 0 =
+ *  hide at exact cover (IRIS_END_VH). */
+const HIDE_REMAIN = 0.03;
 /** Cells per radius of the pixel circle. */
 const IRIS_CELLS = 15;
 /** Seed x: this fraction of the way from the wordmark's right edge to the
@@ -239,6 +260,26 @@ function coverCell(sx: number, sy: number, w: number, h: number): number {
   return hi;
 }
 
+/** Fraction of the w x h viewport still covered by the hero when the pixel
+ *  hole (centred on sx, sy) has cell size `cell`: the hole is a union of
+ *  disjoint columns, column i spanning sx +- [i, i+1] cells horizontally and
+ *  sy +- HEIGHTS[i] cells vertically (the circle is symmetric). */
+function remainingFraction(sx: number, sy: number, cell: number, w: number, h: number): number {
+  if (cell <= 0) return 1;
+  let hole = 0;
+  for (let i = 0; i < IRIS_CELLS; i++) {
+    const half = HEIGHTS[i]! * cell;
+    const ch = Math.max(0, Math.min(h, sy + half) - Math.max(0, sy - half));
+    if (ch <= 0) continue;
+    const a = i * cell;
+    const b = (i + 1) * cell;
+    const right = Math.max(0, Math.min(w, sx + b) - Math.max(0, sx + a));
+    const left = Math.max(0, Math.min(w, sx - a) - Math.max(0, sx - b));
+    hole += (right + left) * ch;
+  }
+  return Math.max(0, 1 - hole / (w * h));
+}
+
 /** Everything the iris needs for one layout, computed off the build frame. */
 type Geometry = {
   w: number;
@@ -254,6 +295,8 @@ type Geometry = {
   rimTo: string;
   cellEasing: string;
   cueP: number;
+  /** Scroll (viewports) at which the hero hides (HIDE_REMAIN; <= IRIS_END_VH). */
+  hideVh: number;
 };
 
 const f1 = (v: number) => (Math.round(v * 10) / 10).toString();
@@ -403,6 +446,19 @@ export function installHeroWipe(): void {
         cueP = Math.min(CUE_P_MAX, Math.max(CUE_P_MIN, Math.pow(Math.min(1, d / rEnd), 1 / k)));
       }
     }
+    // Hide point: the iris progress at which the staircase leaves less than
+    // HIDE_REMAIN of the viewport orange (cell = cellEnd * p^k, the same
+    // curve the clip animation runs). Coverage only falls as p grows.
+    let lo = 0;
+    let hi = 1;
+    if (HIDE_REMAIN > 0) {
+      for (let it = 0; it < 30; it++) {
+        const mid = (lo + hi) / 2;
+        if (remainingFraction(sx, sy, cellEnd * Math.pow(mid, k), w, vh) <= HIDE_REMAIN) hi = mid;
+        else lo = mid;
+      }
+    }
+    const hideVh = IRIS_START_VH + (IRIS_END_VH - IRIS_START_VH) * hi;
     const g0 = { sx, sy };
     return {
       w,
@@ -413,6 +469,7 @@ export function installHeroWipe(): void {
       k,
       stageLeft,
       cueP,
+      hideVh,
       holeFrom: holeClip(g0, 0),
       holeTo: holeClip(g0, cellEnd),
       rimFrom: rimClip(g0, 0),
@@ -720,9 +777,12 @@ export function installHeroWipe(): void {
         verifyRanges();
         if (!hasScrollTimeline) scrub(driven, y);
       }
-      heroState.wiping = built && ratio < IRIS_END_VH;
-      if (ratio >= IRIS_START_VH + (IRIS_END_VH - IRIS_START_VH) * (geo?.cueP ?? CUE_P)) heroHandoff.set("cue");
-      setIrisHidden(ratio >= IRIS_END_VH);
+      const hide = ratio >= (geo?.hideVh ?? IRIS_END_VH);
+      heroState.wiping = built && !hide;
+      // The cue can never trail the hide (it is <= CUE_P_MAX of the iris, but
+      // a layout's hide point is measured independently).
+      if (hide || ratio >= IRIS_START_VH + (IRIS_END_VH - IRIS_START_VH) * (geo?.cueP ?? CUE_P)) heroHandoff.set("cue");
+      setIrisHidden(hide);
       setCulled(irisHidden);
       // Opaque field = hit target; the hole (clip-path) lets About through.
       setLayerPointer(irisHidden ? "none" : "auto");
@@ -780,11 +840,13 @@ export function installHeroWipe(): void {
       }
       const r = this.r;
       if (r < IRIS_START_VH) return "rest";
-      if (r < IRIS_END_VH) return "dive";
+      if (r < IRIS_END_VH && !irisHidden) return "dive";
       return "cleared";
     },
     get seed() {
-      return geo ? { x: geo.sx, y: geo.sy, k: geo.k, cellEnd: geo.cellEnd, cueP: geo.cueP } : null;
+      return geo
+        ? { x: geo.sx, y: geo.sy, k: geo.k, cellEnd: geo.cellEnd, cueP: geo.cueP, hideVh: geo.hideVh }
+        : null;
     },
   };
   Object.defineProperty(window, "__heroMotion", { configurable: true, value: mirror });

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Hero } from "./Hero";
 import { About } from "./About";
 import { Macintosh } from "./Macintosh";
@@ -17,7 +18,9 @@ import { Footer } from "./Footer";
  * stays interactive. Individual sections re-enable pointer events on
  * their own elements.
  */
-export function PortfolioSections() {
+// memo: takes no props, so App's own state flips (the keypad cursor-hover
+// mirror, HUD reveal) no longer re-render every section and its canvases.
+export const PortfolioSections = memo(function PortfolioSections() {
   return (
     <main
       style={{
@@ -38,4 +41,4 @@ export function PortfolioSections() {
       <Footer />
     </main>
   );
-}
+});

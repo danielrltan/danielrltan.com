@@ -6,6 +6,8 @@ import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
 import { SectionDial, type DialHudState } from "./SectionDial";
 import { useShownAfterPaint } from "./RoomHUD";
 import { track } from "./analytics";
+import { isScrollLocked } from "./scroll";
+import { requestScrollRefresh } from "./portfolio/scrollRefresh";
 // NavSpillMenu pulls in three.js + @react-three/drei + gsap. Lazy-load it so
 // those deps leave the entry/first-paint bundle; warm the chunk on idle
 // (mounted but CLOSED, so NO WebGL context is created until the user actually
@@ -38,6 +40,12 @@ function lastIndexWithStartLE(starts: readonly number[], y: number): number {
   }
   return best;
 }
+
+/** Quiet time after the last page-height change before the one refresh. Longer
+ *  than the near-still opening of an accordion's in-out morph (one row closing
+ *  while another opens nets ~0px for the first ~180 ms), so a toggle costs one
+ *  refresh, not two. */
+const LAYOUT_SETTLE_MS = 250;
 
 /** One-off live measure (mount only): the same 45% rule from element rects. */
 function measureActiveNow(): number {
@@ -95,6 +103,22 @@ export function StatusBar({ visible = true }: Props) {
   // after any scroll, the second-largest source of forced style recalcs in
   // the wheel-scroll trace.
   const lastIdxRef = useRef(activeIdx);
+  // While the HUD is hidden (the hero dive, before the 1.0vh reveal) the dial
+  // is pre-mounted but nobody sees it, so section changes are NOT committed:
+  // no StatusBar render during 0-1.0vh. The skipped index is resolved from the
+  // cached starts in the render that flips `visible` (below), so the dial
+  // lands on the right face in that same commit, while its hud is still
+  // "hidden" and the drum snaps instead of rolling.
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const pendingResolveRef = useRef(false);
+  const resolveIdxRef = useRef<(() => number) | null>(null);
+  if (visible && pendingResolveRef.current && resolveIdxRef.current) {
+    pendingResolveRef.current = false;
+    const idx = resolveIdxRef.current();
+    lastIdxRef.current = idx;
+    if (idx !== activeIdx) setActiveIdx(idx);
+  }
   useEffect(() => {
     const found = findSectionElements();
     const starts: number[] = found.map(() => Number.POSITIVE_INFINITY);
@@ -108,6 +132,10 @@ export function StatusBar({ visible = true }: Props) {
         : null,
     );
     const setActive = (idx: number) => {
+      if (!visibleRef.current) {
+        if (idx !== lastIdxRef.current) pendingResolveRef.current = true;
+        return;
+      }
       if (idx === lastIdxRef.current) return;
       lastIdxRef.current = idx;
       setActiveIdx(idx);
@@ -117,22 +145,74 @@ export function StatusBar({ visible = true }: Props) {
         starts[i] = st ? st.start : Number.POSITIVE_INFINITY;
       });
     };
+    let lastScrollAt = 0;
     const page = ScrollTrigger.create({
       start: 0,
       end: "max",
       refreshPriority: -10,
-      onUpdate: (self) => setActive(lastIndexWithStartLE(starts, self.scroll())),
+      onUpdate: (self) => {
+        lastScrollAt = performance.now();
+        setActive(lastIndexWithStartLE(starts, self.scroll()));
+      },
     });
+
+    // Cached starts only move on a ScrollTrigger refresh, and nothing refreshes
+    // when the page height changes WITHOUT a resize (an accordion opening on
+    // the unpinned/mobile layout, a late section mount): every section below
+    // would switch late by the height delta. Watch the sections' container and
+    // refresh ONCE after its height settles: debounced past the last callback
+    // (an accordion morph fires one per frame), skipped while loading (the
+    // loader-lift refresh covers boot), deferred while scroll is locked or
+    // moving (menu open, a glide), and only if the height really differs from
+    // the one the last refresh measured (scrollbar/width toggles reflow back).
+    const container =
+      found.find((f) => f.el)?.el?.closest("main") ?? document.body;
+    // Border-box height on both sides of the compare (offsetHeight here, the
+    // observer's borderBoxSize below), so padding never reads as a change.
+    let measuredH = (container as HTMLElement).offsetHeight;
+    let observedH = measuredH;
+    let settleT = 0;
+    const settle = () => {
+      settleT = 0;
+      if (Math.abs(observedH - measuredH) <= 1) return;
+      if (
+        document.documentElement.classList.contains("loading-active") ||
+        isScrollLocked() ||
+        performance.now() - lastScrollAt < LAYOUT_SETTLE_MS
+      ) {
+        settleT = window.setTimeout(settle, LAYOUT_SETTLE_MS);
+        return;
+      }
+      requestScrollRefresh();
+    };
+    const ro = new ResizeObserver((entries) => {
+      const e = entries[entries.length - 1];
+      if (!e) return;
+      observedH = e.borderBoxSize?.[0]?.blockSize ?? e.contentRect.height;
+      if (Math.abs(observedH - measuredH) <= 1) return;
+      if (document.documentElement.classList.contains("loading-active")) return;
+      if (settleT) window.clearTimeout(settleT);
+      settleT = window.setTimeout(settle, LAYOUT_SETTLE_MS);
+    });
+    ro.observe(container);
+
     // A refresh moves the starts while the scroll position may not change
     // (pins resize, loader lift), so re-resolve on every refresh too.
     const onRefresh = () => {
       readStarts();
       setActive(lastIndexWithStartLE(starts, page.scroll()));
+      // Layout is clean right after a refresh: one cheap read.
+      measuredH = (container as HTMLElement).offsetHeight;
+      observedH = measuredH;
     };
     ScrollTrigger.addEventListener("refresh", onRefresh);
     onRefresh();
+    resolveIdxRef.current = () => lastIndexWithStartLE(starts, page.scroll());
     return () => {
+      resolveIdxRef.current = null;
       ScrollTrigger.removeEventListener("refresh", onRefresh);
+      ro.disconnect();
+      if (settleT) window.clearTimeout(settleT);
       page.kill();
       sectionSts.forEach((st) => st?.kill());
     };
@@ -155,8 +235,6 @@ export function StatusBar({ visible = true }: Props) {
   // typing in a field so it never eats input, and while the HUD is hidden
   // (there is no dial to open it from yet). Esc / outside-click close are
   // owned by NavSpillMenu itself.
-  const visibleRef = useRef(visible);
-  visibleRef.current = visible;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "m" && e.key !== "M" && e.key !== "/") return;

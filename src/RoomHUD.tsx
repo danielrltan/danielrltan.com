@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SignatureMark } from "./SignatureMark";
 import { useIsMobile } from "./useIsMobile";
 import { scrollToY } from "./scroll";
@@ -11,12 +11,35 @@ import "./crt-channel-menu.css"; // HUD CHROME entrance states (.hud-chrome)
  * the paint that shows the hidden state, the second flips it after. Hiding is
  * immediate. Shared by the HUD chrome (RoomHUD, StatusBar, JumpToTop) so the
  * three enter on the same frame.
+ *
+ * The double rAF only matters for a mount-with-visible. A component that has
+ * already been on screen (hidden) for a painted frame, like the HUD
+ * PRE-MOUNTED at `ready` (spec §5 O6 phase B), flips to shown in the effect
+ * right after `visible` turns true: ~33-50 ms sooner on the 1.0vh reveal.
  */
 export function useShownAfterPaint(visible: boolean): boolean {
   const [shown, setShown] = useState(false);
+  // True once the hidden state has been painted at least once since mount.
+  const paintedRef = useRef(false);
+  useEffect(() => {
+    let id2 = 0;
+    const id1 = requestAnimationFrame(() => {
+      id2 = requestAnimationFrame(() => {
+        paintedRef.current = true;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(id1);
+      cancelAnimationFrame(id2);
+    };
+  }, []);
   useEffect(() => {
     if (!visible) {
       setShown(false);
+      return;
+    }
+    if (paintedRef.current) {
+      setShown(true);
       return;
     }
     let id2 = 0;

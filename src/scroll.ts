@@ -12,11 +12,16 @@
 //   - Native `behavior: "smooth"` is never used (it ignores reduced motion and
 //     fights Lenis).
 //
-// Locks are a set of named reasons ("loader", "menu", "jump", ...). While any
-// is held Lenis is stopped and <html> carries an inline overflow:hidden (the
-// smoke test reads documentElement.style.overflow). Lenis's start() calls
-// reset(), which kills any in-flight tween, so a SMOOTH request made while a
-// lock is held is downgraded to an instant cut (see scrollToY).
+// Locks are a set of named reasons ("loader", "menu", "jump:<seq>", ...).
+// While any is held Lenis is stopped and <html> carries an inline
+// overflow:hidden (the smoke test reads documentElement.style.overflow).
+// Lenis's start() calls reset(), which kills any in-flight tween, so a SMOOTH
+// request made while a lock is held is downgraded to an instant cut (see
+// scrollToY).
+//
+// It also owns two page-wide ScrollTrigger refresh rules (see "Refresh
+// discipline" below): triggers refresh in DOM order whatever their creation
+// order, and a viewport resize keeps the reader on the same section beat.
 
 import Lenis from "lenis";
 import gsap from "gsap";
@@ -304,7 +309,7 @@ function cutNow(y: number, from: number) {
  *   uncovered cut (Lenis's start() would kill the tween on unlock).
  *
  * The decision and any uncovered cut run SYNCHRONOUSLY, so fire-and-forget
- * callers (the legacy scrollToSection) see the new position immediately.
+ * callers see the new position immediately.
  */
 export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
@@ -356,7 +361,11 @@ export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): 
         if (coverOwner === seq) el.classList.remove("is-on");
         return;
       }
-      lockScroll("jump");
+      // Owner-scoped reason: a newer covered cut that starts during this
+      // one's two-frame hold takes its own reason, so this cut's release
+      // below can't re-enable input under the newer cut.
+      const reason = `jump:${seq}`;
+      lockScroll(reason);
       try {
         // Re-resolve: layout can shift under the cover (lazy sections).
         cutNow(resolveY(target, opts.offset), from);
@@ -365,10 +374,11 @@ export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): 
         await nextFrame();
         await nextFrame();
       } finally {
-        unlockScroll("jump");
+        unlockScroll(reason);
         if (coverOwner === seq) el.classList.remove("is-on");
       }
-      opts.onComplete?.();
+      // Superseded during the hold: the newer scroll owns the landing.
+      if (seq === scrollSeq) opts.onComplete?.();
     })();
   }
 
@@ -442,25 +452,7 @@ export function jumpToSection(which: number | string, opts: ScrollOpts = {}): Pr
   return scrollToY(y, { preset: "jump", ...opts });
 }
 
-// ── Legacy API (kept for existing importers; re-exported from Keypad.tsx) ───
-
-/**
- * Smooth-scroll to an absolute Y (or an element). Now the SCROLL.glide preset
- * instead of the Lenis wheel curve. Callers that pass an explicit `duration`
- * keep the Lenis expo-out curve they were tuned against (Mac CTA, hero settle)
- * until their owners migrate to scrollToY.
- */
-export function scrollToSection(
-  target: number | HTMLElement,
-  opts?: { duration?: number; immediate?: boolean },
-): void {
-  void scrollToY(target, {
-    preset: "glide",
-    duration: opts?.duration,
-    easing: opts?.duration != null ? LENIS.easing : undefined,
-    immediate: opts?.immediate,
-  });
-}
+// ── Pan API ─────────────────────────────────────────────────────────────────
 
 /**
  * Middle-button PAN / auto-scroll: jump the page to an ABSOLUTE Y immediately
@@ -482,11 +474,206 @@ export function panScrollTo(y: number): void {
   }
 }
 
-/** = lockScroll("menu") / unlockScroll("menu"). */
-export function setScrollLocked(locked: boolean): void {
-  if (locked) lockScroll("menu");
-  else unlockScroll("menu");
+// ── Refresh discipline ──────────────────────────────────────────────────────
+//
+// 1. DOM-ORDER REFRESH. ScrollTrigger.refresh() re-measures triggers in its
+// internal array order, and a pin's start only includes the spacers of pins
+// refreshed BEFORE it. That array is creation order (or, once any trigger sets
+// refreshPriority, a sort on live getBoundingClientRect() tops, which is
+// wrong for a pin that is fixed mid-scroll). About, Mac and Work skip their
+// pins at <=900px, so after a narrow load + widen (an iPad rotation) those
+// pins are created AFTER the always-on Photos/Keypad pins, which then
+// refreshed first and pinned a whole About+Mac length early. Every refresh
+// now orders triggers by refreshPriority (desc), then document order
+// (ancestor before descendant); ties keep creation order (stable sort).
+// Overriding the static sort also covers the built-in no-argument call that
+// refresh makes when any trigger has a refreshPriority (StatusBar's -10s).
+
+function domOrder(a: ScrollTrigger, b: ScrollTrigger): number {
+  const pa = a.vars.refreshPriority ?? 0;
+  const pb = b.vars.refreshPriority ?? 0;
+  if (pa !== pb) return pb - pa;
+  // Same rule as GSAP's default: containerAnimation triggers refresh last.
+  const ca = a.vars.containerAnimation ? 1 : 0;
+  const cb = b.vars.containerAnimation ? 1 : 0;
+  if (ca !== cb) return ca - cb;
+  // Element-less / detached triggers (numeric starts) after element ones, so
+  // the comparator stays a total order.
+  const ea = a.trigger && a.trigger.isConnected ? a.trigger : null;
+  const eb = b.trigger && b.trigger.isConnected ? b.trigger : null;
+  if (!ea || !eb) return ea ? -1 : eb ? 1 : 0;
+  if (ea === eb) return 0;
+  const pos = ea.compareDocumentPosition(eb);
+  if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1; // incl. b inside a
+  if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+  return 0;
 }
+
+// 2. KEEP THE BEAT ACROSS A RESIZE. Pin lengths are viewport-relative (spec
+// §3), so a resize changes every spacer above the reader while ScrollTrigger
+// restores the same ABSOLUTE scrollY: 1440x900 -> 1280x720 at Work p0.5 used
+// to land in Play. The section geometry is cached after every refresh; when a
+// refresh follows a viewport change, the pre-resize position is located in
+// the cached geometry (registry section + pin progress, or the fraction of
+// the section after its pin) and restored in the new geometry with an
+// immediate cut. The intent survives the follow-up refreshes of a breakpoint
+// flip (pins re-created a frame later) for RESTORE_WINDOW_MS, and is dropped
+// by any user input or programmatic scroll. Height-only changes on a coarse
+// pointer (mobile URL bar, on-screen keyboard) never restore: that would
+// fight touch momentum.
+
+interface SectionGeom {
+  top: number;
+  pin: number;
+}
+type Geom = Array<SectionGeom | null>;
+interface BeatLoc {
+  i: number;
+  seg: "pin" | "rest";
+  /** fraction within the segment */
+  f: number;
+  /** fraction within the whole section (fallback when the pin came or went) */
+  s: number;
+}
+
+const RESTORE_WINDOW_MS = 2000;
+
+function measureGeom(): Geom {
+  return SECTION_REGISTRY.map((e) => {
+    const el = document.querySelector<HTMLElement>(e.selector);
+    if (!el) return null;
+    const st = e.pinId ? ScrollTrigger.getById(e.pinId) : undefined;
+    const pin = st && st.pin ? Math.max(0, st.end - st.start) : 0;
+    return { top: docTop(el), pin };
+  });
+}
+
+/** Section i's span: [top, pinEnd] is the pin, [pinEnd, next] the rest. */
+function span(g: Geom, i: number, max: number) {
+  const a = g[i]!;
+  let next = max;
+  for (let j = i + 1; j < g.length; j++) {
+    const b = g[j];
+    if (b) {
+      next = b.top;
+      break;
+    }
+  }
+  const pinEnd = a.top + a.pin;
+  return { top: a.top, pin: a.pin, pinEnd, next: Math.max(next, pinEnd) };
+}
+
+function locateBeat(y: number, g: Geom, max: number): BeatLoc | null {
+  let i = -1;
+  g.forEach((a, k) => {
+    if (a && a.top <= y + 0.5) i = k;
+  });
+  if (i < 0) return null;
+  const sp = span(g, i, max);
+  const s = (y - sp.top) / Math.max(1, sp.next - sp.top);
+  if (sp.pin > 0 && y <= sp.pinEnd) return { i, seg: "pin", f: (y - sp.top) / sp.pin, s };
+  const rest = sp.next - sp.pinEnd;
+  return { i, seg: "rest", f: rest > 0 ? (y - sp.pinEnd) / rest : 0, s };
+}
+
+function resolveBeat(loc: BeatLoc, g: Geom, max: number): number | null {
+  if (!g[loc.i]) return null;
+  const sp = span(g, loc.i, max);
+  if (loc.seg === "pin") {
+    return sp.pin > 0 ? sp.top + loc.f * sp.pin : sp.top + loc.s * (sp.next - sp.top);
+  }
+  return sp.pinEnd + loc.f * (sp.next - sp.pinEnd);
+}
+
+function docMax(): number {
+  return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+}
+
+let geomCache: { w: number; h: number; max: number; geom: Geom } | null = null;
+// Last scrollY seen while the viewport still matched geomCache.
+let stableY = 0;
+// User input after the viewport changed but before the refresh: the reader
+// has already moved in the new layout, so don't yank them back.
+let inputSinceResize = false;
+let restoreIntent: { loc: BeatLoc; until: number; seq: number } | null = null;
+
+function viewportChanged(): boolean {
+  if (!geomCache) return false;
+  if (window.innerWidth !== geomCache.w) return true;
+  if (window.innerHeight === geomCache.h) return false;
+  return !window.matchMedia("(pointer: coarse)").matches;
+}
+
+function hasJumpLock(): boolean {
+  for (const r of locks) if (r.startsWith("jump:")) return true;
+  return false;
+}
+
+function installRefreshDiscipline() {
+  const st = ScrollTrigger as unknown as { __danSort?: boolean };
+  if (typeof window === "undefined" || st.__danSort) return;
+  st.__danSort = true;
+
+  const baseSort = ScrollTrigger.sort.bind(ScrollTrigger);
+  ScrollTrigger.sort = ((func?: (a: ScrollTrigger, b: ScrollTrigger) => number) =>
+    baseSort(func ?? domOrder)) as typeof ScrollTrigger.sort;
+
+  ScrollTrigger.addEventListener("refreshInit", () => {
+    // Runs before refresh reverts and re-measures: order the array now (the
+    // built-in sort, when it runs, goes through the override above too).
+    ScrollTrigger.sort();
+    const now = performance.now();
+    if (geomCache && viewportChanged()) {
+      const loc = inputSinceResize ? null : locateBeat(stableY, geomCache.geom, geomCache.max);
+      restoreIntent = loc ? { loc, until: now + RESTORE_WINDOW_MS, seq: scrollSeq } : null;
+    } else if (restoreIntent && (now > restoreIntent.until || restoreIntent.seq !== scrollSeq)) {
+      restoreIntent = null;
+    }
+  });
+
+  ScrollTrigger.addEventListener("refresh", () => {
+    const geom = measureGeom();
+    const intent = restoreIntent;
+    if (
+      intent &&
+      performance.now() <= intent.until &&
+      intent.seq === scrollSeq &&
+      !settleActiveSmooth &&
+      !hasJumpLock()
+    ) {
+      // Lenis's own refresh listener may not have run yet; its limit clamps
+      // the cut.
+      lenisInstance?.resize();
+      const y = resolveBeat(intent.loc, geom, docMax());
+      if (y != null) {
+        const to = Math.round(Math.min(maxY(), Math.max(0, y)));
+        const from = currentY();
+        if (Math.abs(to - from) > 1) cutNow(to, from);
+      }
+    }
+    geomCache = { w: window.innerWidth, h: window.innerHeight, max: docMax(), geom };
+    stableY = window.scrollY;
+    inputSinceResize = false;
+  });
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (geomCache && window.innerWidth === geomCache.w && window.innerHeight === geomCache.h) {
+        stableY = window.scrollY;
+      }
+    },
+    { passive: true },
+  );
+  const onInput = () => {
+    restoreIntent = null;
+    if (viewportChanged()) inputSinceResize = true;
+  };
+  for (const type of ["wheel", "touchstart", "keydown", "pointerdown"]) {
+    window.addEventListener(type, onInput, { passive: true, capture: true });
+  }
+}
+installRefreshDiscipline();
 
 // Debug mirror for the measurement tools / e2e probes (like __heroMotion).
 if (typeof window !== "undefined") {
@@ -496,5 +683,6 @@ if (typeof window !== "undefined") {
     getLenis,
     isScrollLocked,
     onScrollJump,
+    ScrollTrigger,
   };
 }

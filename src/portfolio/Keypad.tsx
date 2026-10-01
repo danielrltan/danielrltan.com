@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, memo, Suspense, useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
@@ -15,10 +15,6 @@ import { useIsMobile } from "../useIsMobile";
 import { track } from "../analytics";
 import "./keypad.css";
 
-// Legacy scroll API: the Lenis singleton moved to src/scroll.ts; re-exported
-// here so existing importers keep working until they migrate.
-export { scrollToSection, panScrollTo, setScrollLocked } from "../scroll";
-
 gsap.registerPlugin(ScrollTrigger);
 
 /**
@@ -30,7 +26,10 @@ gsap.registerPlugin(ScrollTrigger);
  * Motion (motion spec W6). Nothing inside this section is scroll-linked:
  *   - GLOW: an approach observer (section top within 1.1vh) releases the
  *     RiceBlob wash, which fades in at λ 2.2, so the stage is already
- *     blooming when the model falls (no "empty stage").
+ *     blooming when the model falls.
+ *   - HOVER: until the drop arms, KeypadScene parks the model above its rest
+ *     pose with its lower body already in the canvas, bobbing. The section
+ *     never arrives as an empty stage ("hovering, then drops").
  *   - DROP: a second observer ARMS a one-shot, time-based drop once the
  *     section top crosses DROP_TRIGGER_VH of the viewport. If an overlay
  *     (menu scrim, scroll-cover) still hides the page, the drop holds at
@@ -39,7 +38,9 @@ gsap.registerPlugin(ScrollTrigger);
  *     thud + dial kick at contact, squash, rebound) lives in KeypadScene and
  *     advances by frame dt. Time-based on purpose: the owner found a
  *     scroll-bound drop "overwhelming" (it arrived exactly as fast as they
- *     scrolled) and an after-the-fact drop "empty".
+ *     scrolled) and an after-the-fact drop "empty". A late or fast arrival
+ *     (FAST_* below) plays the same timeline compressed to 420 ms so the
+ *     landing still happens inside the pin.
  *   - PIN: one GSAP pin (id "keypad-pin", start "top top", end +PIN_VH of the
  *     viewport) is a pure dwell beat before the footer. No scrub, no onUpdate.
  *
@@ -77,12 +78,27 @@ const PIN_VH = 0.6;
  *  approach (GLOW_APPROACH_MARGIN) so the stage is never dead, and the drop
  *  is a fixed 600 ms from this line, never scroll-bound.
  *
+ *  The keypad is not hidden while it waits: KeypadScene parks it in view,
+ *  hovering, from section entry, so the line only decides when it DROPS.
+ *
  *  OWNER DECISION PENDING: at 1440x900 the landed model spans section y
  *  ~89-751, so a user who stops right on this line (or scrolls slower than
  *  ~600 px/s) sees the landing with its lower ~150-200 px below the fold.
  *  Arming lower (~0.15-0.2) keeps the whole landing in view but lengthens
- *  the empty-stage wait above. */
+ *  the hover before the drop (and with it the time to the thud). */
 const DROP_TRIGGER_VH = 0.45;
+/** Late / fast arrival: compress the 600 ms timeline to FAST_TOTAL_S when the
+ *  trigger is seen with the section top already above FAST_LATE_VH (a late IO
+ *  delivery at speed), or the approach (glow line -> trigger line) ran faster
+ *  than FAST_APPROACH_PX_S. Above the 1500 px/s acceptance speed the full
+ *  600 ms settle would otherwise finish after the 0.6vh pin releases, with
+ *  the model scrolling off the top. The speed bar sits above 1500 so the
+ *  spec case (contact while pinned at 1500 px/s) plays the full timeline.
+ *  Never applied behind an overlay (menu / covered jumps). */
+const FAST_LATE_VH = 0.35;
+const FAST_APPROACH_PX_S = 1800;
+const FAST_TOTAL_S = 0.42;
+const DROP_TOTAL_S = 0.6; // mirrors KeypadScene's DROP_TOTAL_S
 /** The glow releases earlier, on approach (section top within 1.1vh). */
 const GLOW_APPROACH_MARGIN = "0px 0px 10% 0px";
 /** A full-screen overlay that hides the page: the section menu (while open
@@ -124,9 +140,22 @@ export interface KeypadDropState {
   triggerTop: number | null;
   /** ms the drop waited behind an overlay after the trigger. Debug only. */
   coverWaitMs: number | null;
+  /** Timeline playback rate: 1, or DROP_TOTAL_S / FAST_TOTAL_S for a late or
+   *  fast arrival. Set once, when the drop arms. */
+  rate: number;
+  /** Approach speed (px/s, glow line -> trigger line), when measurable. Debug. */
+  approachPxS: number | null;
 }
 
-export function Keypad() {
+/**
+ * Memoized (no props): App re-renders on every keypad hover flip (it mirrors
+ * `keypad-cursor-hover` into the custom cursor's state) and PortfolioSections
+ * passes that re-render down. Without memo it reached the keypad <Canvas>,
+ * whose reconfigure relinked all seven scene programs: a ~250 ms three.js
+ * frame plus ~300-400 ms of React work, landing right as the falling model
+ * first crossed a parked cursor.
+ */
+export const Keypad = memo(function Keypad() {
   const sectionRef = useRef<HTMLElement>(null);
   // MOBILE: the GSAP pin below is skipped on phones. The keypad <Canvas>
   // fills the whole section and inherits the global
@@ -158,6 +187,8 @@ export function Keypad() {
     contactFired: TUNE_MODE,
     triggerTop: null,
     coverWaitMs: null,
+    rate: 1,
+    approachPxS: null,
   });
 
   // RiceBlob's orange glow target opacity 0..1 (its shader eases toward it).
@@ -168,9 +199,13 @@ export function Keypad() {
     if (TUNE_MODE) return;
     const el = sectionRef.current;
     if (!el) return;
+    // The glow entry doubles as the approach-speed sample (time + top).
+    let glowAt: { time: number; top: number } | null = null;
     const glowIO = new IntersectionObserver(
       (entries) => {
-        if (!entries.some((e) => e.isIntersecting)) return;
+        const hit = entries.find((e) => e.isIntersecting);
+        if (!hit) return;
+        glowAt = { time: hit.time, top: hit.boundingClientRect.top };
         glowOpacityRef.current = 1;
         glowIO.disconnect();
       },
@@ -195,8 +230,18 @@ export function Keypad() {
         dropIO.disconnect();
         const d = dropRef.current;
         if (d.armed) return;
-        d.triggerTop = Math.round(hit.boundingClientRect.top);
-        if (!pageCovered()) return arm(0);
+        const top = hit.boundingClientRect.top;
+        d.triggerTop = Math.round(top);
+        if (!pageCovered()) {
+          // Late / fast arrival: compress the timeline (see FAST_*).
+          const dt = glowAt ? (hit.time - glowAt.time) / 1000 : 0;
+          const v = glowAt && dt > 0.05 ? (glowAt.top - top) / dt : null;
+          d.approachPxS = v == null ? null : Math.round(v);
+          const late = top < FAST_LATE_VH * window.innerHeight;
+          if (late || (v != null && v > FAST_APPROACH_PX_S))
+            d.rate = DROP_TOTAL_S / FAST_TOTAL_S;
+          return arm(0);
+        }
         const t0 = performance.now();
         const poll = () => {
           const waited = performance.now() - t0;
@@ -374,4 +419,4 @@ export function Keypad() {
       )}
     </section>
   );
-}
+});

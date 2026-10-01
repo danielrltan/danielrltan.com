@@ -9,6 +9,7 @@ import { clamp01 } from "../math";
 import { isTuneMode } from "../tuneMode";
 import { DECAY, damp, ease, isCoarsePointer } from "../motion";
 import { onScrollJump } from "../scroll";
+import { markSectionCanvasCreated } from "../useSectionCanvasMount";
 
 // Visit ?tune=mac to enter a free-camera, slider-driven positioning
 // view for re-framing the model.
@@ -332,8 +333,15 @@ const EXIT_BLINK_OPACITY = 0.1;
 //   CRT power-off collapse (uPowerOff 0 → 1: hot line → dot → black).
 const EXIT_POWER_OFF_START = 0.15;
 const EXIT_POWER_OFF_END = 0.55;
-//   Housing shrink + fade (ease.inQuad), overlapping the collapse tail.
-const EXIT_SHRINK_START = 0.45;
+//   Housing shrink + fade (ease.inQuad), overlapping the collapse.
+//   Starts at 0.30 (spec had 0.45): at the close dolly the screen fills the
+//   frame, so even a few % of shrink about the group origin swings the
+//   housing a long way on screen. Over 0.45 → 1 (~240 px) the inQuad tail
+//   made the vanish the biggest per-px jump on the page; 0.30 → 1 (~300 px)
+//   lowers the peak rate ~21% while inQuad still holds the housing near
+//   full size through the hot-line phase (~5% vanished at 0.45, ~13% as
+//   the CRT reaches its dot at 0.55).
+const EXIT_SHRINK_START = 0.3;
 // Scale the housing reaches at exitT 1 while its opacity reaches 0: it
 // recedes and fades rather than collapsing to a point on top of the CRT's
 // own line → dot collapse.
@@ -3139,6 +3147,7 @@ export function MacintoshScene(props: Props) {
   return (
     <div ref={wrapRef} style={{ position: "absolute", inset: 0 }}>
       <Canvas
+        data-section-canvas=""
         // Initial pose matches the wide FLOAT framing (the per-frame
         // dolly in Scene overwrites this every visible frame, but aligning
         // the initial values avoids a one-frame flash before useFrame
@@ -3169,6 +3178,7 @@ export function MacintoshScene(props: Props) {
           powerPreference: "high-performance",
         }}
         onCreated={({ camera, gl, invalidate }) => {
+          markSectionCanvasCreated(gl.domElement);
           camera.lookAt(0, DOLLY_LOOK_Y_WIDE, 0);
           gl.setClearColor(0x000000, 0);
           // Expose invalidate to the IO callback above. Re-entering

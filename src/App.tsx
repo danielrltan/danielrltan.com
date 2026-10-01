@@ -153,10 +153,12 @@ export default function App() {
   }, []);
 
   // Reveal the HUD once ready and the user has fully landed on About
-  // (HERO.hudRevealVh = 1.0vh, after the iris resolves at 0.9vh) so it never
-  // pops in over the transition. Latches; room_entered fires at that moment,
-  // never at mount. (Phase B, the pre-mount with visible={hudVisible}, is an
-  // integration follow-up once W7's event-driven StatusBar lands.)
+  // (HERO.hudRevealVh = 1.0vh, after the iris resolves) so it never pops in
+  // over the transition. Latches; room_entered fires at that moment, never at
+  // mount. The HUD components are PRE-MOUNTED at `ready` (spec §5 O6 phase B,
+  // below), so this flip is only a data-hud change: no mount, no new
+  // ScrollTriggers on the pin-engage frames. Checked straight in the scroll
+  // event (scrollY is not a layout read), not a rAF later.
   useEffect(() => {
     if (!ready || hudVisible) return;
     const check = () => {
@@ -166,10 +168,9 @@ export default function App() {
         track("room_entered");
       }
     };
-    const onScroll = () => requestAnimationFrame(check);
     check();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    window.addEventListener("scroll", check, { passive: true });
+    return () => window.removeEventListener("scroll", check);
   }, [ready, hudVisible]);
 
   /* Keypad canvas dispatches `keypad-cursor-hover`; mirror it into shared
@@ -357,11 +358,14 @@ export default function App() {
             small mark over the orange field read as redundant + unreadable). */}
         <RoomHUD visible={hudVisible} />
 
-        {/* Section indicator (dial) + jump-to-top, once past the hero. */}
-        {hudVisible && (
+        {/* Section indicator (dial) + jump-to-top. Pre-mounted at `ready`
+            (spec §5 O6 phase B) and revealed by `visible`: while hidden they
+            are inert and track the section silently, so the 1.0vh reveal is
+            a CSS state flip, not a mount landing on About's pin engage. */}
+        {ready && (
           <>
-            <StatusBar />
-            <JumpToTop />
+            <StatusBar visible={hudVisible} />
+            <JumpToTop visible={hudVisible} />
           </>
         )}
       </div>

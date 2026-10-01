@@ -7,6 +7,7 @@ import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.j
 import { isLowTier } from "../capabilityTier";
 import { track } from "../analytics";
 import { HOBBIES, type Hobby } from "./hobbies";
+import { markSectionCanvasCreated } from "../useSectionCanvasMount";
 
 // First-focus-per-page guard for hobby_focus analytics (module scope persists
 // across the scene's mount-on-approach remounts, so each interest fires once).
@@ -1017,6 +1018,7 @@ export const HobbiesScene = memo(function HobbiesScene({
   return (
     <div ref={containerRef} className="hobbies-canvas-wrap">
       <Canvas
+        data-section-canvas=""
         camera={{ position: [0, -0.06, 6], fov: VFOV_DEG, near: 0.1, far: 50 }}
         dpr={dprCap}
         gl={{
@@ -1025,7 +1027,8 @@ export const HobbiesScene = memo(function HobbiesScene({
           powerPreference: "high-performance",
         }}
         frameloop="demand"
-        onCreated={({ invalidate }) => {
+        onCreated={({ gl, invalidate }) => {
+          markSectionCanvasCreated(gl.domElement);
           canvasInvalidateRef.current = invalidate;
         }}
         onPointerMissed={handleMissed}

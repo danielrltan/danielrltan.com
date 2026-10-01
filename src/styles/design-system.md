@@ -247,8 +247,16 @@ Stagger idiom:
 - `jumpToSection(indexOrLabel)`: lands on the section's pin at its
   `data-jump-progress` attribute (wins) or the registry `jumpProgress`.
 - `lockScroll(reason)` / `unlockScroll(reason)`: named locks ("loader",
-  "menu", "jump"). A smooth request while locked becomes an instant cut.
+  "menu", "jump:<seq>"). A smooth request while locked becomes an instant cut.
 - `onScrollJump(cb)`: on a cut's `end`, snap followers to the target in the
   same frame.
 - Reduced motion: every programmatic scroll is instant, no cover, and Lenis
-  wheel smoothing is off. The global CSS net zeroes durations and delays.
+  wheel smoothing is off. The global CSS net zeroes durations and delays,
+  except on `.pin-spacer` and its pinned child (`transition-property: none`):
+  a 0.01 ms transition on a spacer's height made ScrollTrigger measure every
+  later pin one spacer early.
+- Refresh order: every `ScrollTrigger.refresh()` sorts triggers by
+  `refreshPriority`, then DOM order (scroll.ts), so pins created late by a
+  breakpoint flip still measure the spacers above them. Don't add per-pin
+  priorities. A viewport resize restores the same section beat (pin progress)
+  in one global handler; don't add per-section resize restores.

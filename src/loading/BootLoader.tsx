@@ -6,7 +6,7 @@ import {
   REVEAL_FAILSAFE_MS,
   TIMELINE_FLOOR_MS,
 } from "./types";
-import { ease, reducedMotion } from "../motion";
+import { reducedMotion } from "../motion";
 import { clamp01 } from "../math";
 import "./boot-loader.css";
 
@@ -31,6 +31,7 @@ import "./boot-loader.css";
 const COUNT_CAP_SLACK = 100 / TIMELINE_FLOOR_MS;
 /** The count never shows 100 until climaxReady actually lands. */
 const COUNT_PRE_CLIMAX_MAX = 0.99;
+const outQuad = (t: number) => 1 - (1 - t) * (1 - t);
 
 export function BootLoader() {
   const { combinedPct, climaxReady } = useAssembly();
@@ -48,7 +49,7 @@ export function BootLoader() {
   liveRef.current = { combinedPct, climaxReady };
 
   // Count clock (motion spec W7.13): elapsed-time driven, eased with
-  // ease.outCubic over TIMELINE_FLOOR_MS (it decelerates into 100 rather than
+  // outQuad (see below) over TIMELINE_FLOOR_MS (it decelerates into 100 rather than
   // chasing the provider's 8%-steps), capped so it never runs ahead of a
   // paused provider or reaches 100 early, forced to 100 at climaxReady.
   //
@@ -71,9 +72,16 @@ export function BootLoader() {
           clamp01((performance.now() - t0) / TIMELINE_FLOOR_MS),
           pct + COUNT_CAP_SLACK,
         );
-        p = Math.min(ease.outCubic(lin), COUNT_PRE_CLIMAX_MAX);
+        // SCALE (not clamp) into 0..0.99 and floor: a clamped outCubic
+        // saturated at lin ~0.75 and then sat on 99 for the last ~0.3 s of
+        // the floor plus the stable-frame wait. Scaled + floored, 99 only
+        // shows once the linear clock reaches the end of the floor. outQuad
+        // rather than outCubic: still decelerates into the top, but its tail
+        // is shallow enough that no integer below 99 holds for more than
+        // ~120 ms (outCubic held 98 for ~260 ms).
+        p = COUNT_PRE_CLIMAX_MAX * outQuad(lin);
       }
-      const n = Math.round(p * 100);
+      const n = done ? 100 : Math.floor(p * 100 + 1e-6);
       if (n !== shown && countRef.current) {
         shown = n; // at most one DOM write per displayed integer
         countRef.current.textContent = String(n);
