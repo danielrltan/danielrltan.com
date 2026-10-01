@@ -39,9 +39,10 @@ const TUNE_MODE = isTuneMode("mac");
  *   DWELL   (pin 0.76 → 0.88)
  *     Landed, booted, readable; the tile grid is clickable.
  *
- *   EXIT    (pin 0.88 → 1.00, scroll-bound so scrolling back reverses it
- *     exactly): double blink, CRT power-off collapse, then the housing
- *     shrinks and fades away (see EXIT_* below).
+ *   EXIT    (pin 0.88 → 1.00): a one-shot timed double blink as the exit
+ *     arms, then a scroll-bound CRT power-off collapse and housing
+ *     shrink + fade, so a rest holds the frame and scrolling back reverses
+ *     it exactly (see EXIT_* below).
  *
  * Composition mirrors the Keypad scene's framing: the Mac and orbit
  * float in empty space. The wrapper section has cool off-white
