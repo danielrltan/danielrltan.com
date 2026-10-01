@@ -92,13 +92,50 @@ for (const speed of SPEEDS) {
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 70, maxWidth: 960, everyNthFrame: 1 });
   await page.waitForTimeout(300);
   const target = 1.35 * H;
+  // Closed loop: keep wheeling at the profile's rhythm until the page has
+  // actually travelled `target`, not until we've SENT `target`. Headless
+  // Chromium at DPR2 delivers only about half of each wheel delta, so an
+  // open-loop count left the DPR2 run frozen mid-dive (maxY 660 of 1215).
+  // "Travelled" is Lenis's target (smoothing would make window.scrollY lag
+  // and overshoot) via the window.__scroll debug handle; builds without it
+  // (main baseline) fall back to scrollY once the smoothing has settled.
+  const scrollGoal = () =>
+    page.evaluate(() => {
+      const l = window.__scroll?.getLenis?.();
+      return l && Number.isFinite(l.targetScroll) ? { y: l.targetScroll, exact: true } : { y: window.scrollY, exact: false };
+    });
+  // Goal = what the open-loop phase travels at DPR1 (whole steps past target:
+  // 1320 fast / 1240 slow at H=900), so DPR1 and DPR2 films end at the same Y.
+  const goal = Math.ceil(target / step) * step;
   let sent = 0;
+  const wheelUntil = Date.now() + 15_000;
   while (sent < target) {
     await page.mouse.wheel(0, step);
     sent += step;
     await page.waitForTimeout(gap);
   }
-  console.log(speed, "wheeled", Date.now() - T0, "ms,", frames.length, "frames so far");
+  let first = await scrollGoal();
+  if (!first.exact) {
+    // Let the smoothing settle before trusting scrollY.
+    for (let i = 0, last = -1; i < 20 && first.y !== last; i++) {
+      last = first.y;
+      await page.waitForTimeout(100);
+      first = await scrollGoal();
+    }
+  }
+  // With Lenis's target, top up any shortfall. Without it, only top up a
+  // clear one (the DPR2 halving): a settled scrollY can sit wherever a
+  // baseline hero settle put it. Once topping up, go all the way to `goal`.
+  const short = first.exact ? first.y < goal - 1 : first.y < 0.6 * target;
+  while (short && Date.now() < wheelUntil) {
+    await page.mouse.wheel(0, step);
+    sent += step;
+    await page.waitForTimeout(gap);
+    const g = await scrollGoal();
+    if (g.y >= goal - 1) break;
+  }
+  const reached = await scrollGoal();
+  console.log(speed, "wheeled", Date.now() - T0, "ms,", frames.length, "frames so far; sent", sent, "goal", Math.round(reached.y), "of", goal);
   await page.waitForTimeout(2200); // settle / dissolve tail
   await cdp.send("Page.stopScreencast");
   const pageLog = await page.evaluate(() => window.__film);

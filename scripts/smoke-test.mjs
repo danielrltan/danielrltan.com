@@ -37,6 +37,18 @@ const SECTIONS = [
   "Contact",
 ];
 
+// Mirrors sectionRegistry selectors without importing app code.
+const SECTION_SEL = {
+  Hero: ".portfolio-section--hero",
+  About: ".portfolio-about",
+  Projects: ".portfolio-mac",
+  Work: ".portfolio-work",
+  Play: ".other-pin-wrap",
+  Honours: ".portfolio-bp",
+  Recents: ".portfolio-photos",
+  Contact: ".keypad-section",
+};
+
 let failures = 0;
 let passes = 0;
 function check(cond, msg) {
@@ -58,6 +70,21 @@ async function waitFor(page, fn, { timeout = 10_000, step = 100 } = {}) {
     await sleep(step);
   }
   return false;
+}
+
+// Resolve after `n` rendered frames (bounded, so a stalled compositor can't
+// hang the run).
+async function waitFrames(page, n, timeout = 5000) {
+  await page.evaluate(
+    ({ n, timeout }) =>
+      new Promise((resolve) => {
+        let k = 0;
+        const t = setTimeout(resolve, timeout);
+        const f = () => (++k >= n ? (clearTimeout(t), resolve()) : requestAnimationFrame(f));
+        requestAnimationFrame(f);
+      }),
+    { n, timeout },
+  );
 }
 
 async function scrollTo(page, y) {
@@ -84,10 +111,18 @@ async function settleScroll(page, { timeout = 6000 } = {}) {
   }
 }
 
-async function dialLabel(page) {
-  return page.evaluate(() =>
-    (document.querySelector(".snc-dial-label")?.textContent || "").trim(),
-  );
+// The dial's active section as both the visible label and the button's
+// aria-label ("Open section menu. Current: 06 Recents"). The aria-label is
+// written on the React commit; the visible label only after the drum spring
+// crosses its swap point, i.e. several more rAF frames. On a frame-starved
+// box (swiftshader under load: 0-5 rAF/s) the commit can land well before
+// the spring, so the sweep counts a section as reached on either. The menu
+// jump check below still asserts the VISIBLE label lands.
+function dialStateInPage() {
+  const label = (document.querySelector(".snc-dial-label")?.textContent || "").trim();
+  const aria = document.querySelector(".snc-dial")?.getAttribute("aria-label") || "";
+  const m = /Current:\s*\d+\s+(.+)$/.exec(aria);
+  return { label, aria: m ? m[1].trim() : "" };
 }
 
 async function runScenario(browser, name, { viewport, mobile, query }) {
@@ -147,21 +182,10 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
 
   // 2. Every registry section resolves to a DOM element (mirrors
   //    sectionRegistry.findSectionElements without importing app code).
-  const sectionEls = await page.evaluate(() => {
-    const sel = {
-      Hero: ".portfolio-section--hero",
-      About: ".portfolio-about",
-      Projects: ".portfolio-mac",
-      Work: ".portfolio-work",
-      Play: ".other-pin-wrap",
-      Honours: ".portfolio-bp",
-      Recents: ".portfolio-photos",
-      Contact: ".keypad-section",
-    };
-    return Object.fromEntries(
+  const sectionEls = await page.evaluate((sel) =>
+    Object.fromEntries(
       Object.entries(sel).map(([k, s]) => [k, !!document.querySelector(s)]),
-    );
-  });
+    ), SECTION_SEL);
   for (const s of SECTIONS) check(sectionEls[s], `section element: ${s}`);
 
   // 3. Scroll through the page; the dial must visit every section label in
@@ -172,19 +196,62 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
   let shot = 1;
   for (let y = 0; y <= docH; y += Math.round(vh * 0.6)) {
     await scrollTo(page, y);
-    seen.add(await dialLabel(page));
+    const st = await page.evaluate(dialStateInPage);
+    seen.add(st.label);
+    seen.add(st.aria);
     if (SHOTS && y % Math.round(vh * 1.8) < Math.round(vh * 0.6)) {
       await page.screenshot({
         path: `${SHOTS}/${name}-${String(shot++).padStart(2, "0")}-y${y}.png`,
       });
     }
   }
+  // The sweep samples each stop once after a fixed beat, so a section whose
+  // band is only a few stops long (pins were shortened in the motion overhaul)
+  // can be missed when the box is slow to produce frames: the dial label only
+  // changes on rAF (ScrollTrigger update -> React commit -> drum spring crosses
+  // LABEL_SWAP_AT). For any section the sweep did not see, park just past its
+  // activation line (section top at 45% of the viewport, measured on the pin
+  // spacer when it has one) and WAIT for the label instead of sampling once.
+  for (const s of SECTIONS.slice(1)) {
+    if (seen.has(s)) continue;
+    const y = await page.evaluate(({ sel, vhh }) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const box = el.closest(".pin-spacer") || el;
+      return Math.round(box.getBoundingClientRect().top + window.scrollY - vhh * 0.45 + vhh * 0.25);
+    }, { sel: SECTION_SEL[s], vhh: vh });
+    if (y == null) continue;
+    await page.evaluate((yy) => window.scrollTo(0, yy), y);
+    const want = JSON.stringify(s);
+    if (await waitFor(page, new Function(`const st = (${dialStateInPage})(); return st.label === ${want} || st.aria === ${want};`), { timeout: 15_000 })) {
+      seen.add(s);
+      console.log(`  info dial reached ${s} on the targeted pass (y=${y})`);
+    }
+  }
   for (const s of SECTIONS.slice(1)) check(seen.has(s), `dial reached: ${s}`);
 
   // The heavy scenes mount on approach and RELEASE their WebGL context once
   // scrolled away, so each one is checked while its section is in view.
-  await scrollToSelector(page, ".portfolio-mac");
-  await sleep(1500);
+  // Desktop lands on Projects the way the menu does (jumpToSection -> the
+  // pin's jump progress) when the debug handle exists: an element-top scroll
+  // from below now lands at mac-pin p=1, the exit beat, where the Mac is
+  // leaving. Older builds without window.__scroll fall back to element top.
+  // `immediate` is a synchronous uncovered cut, so no tween is left running
+  // to fight the next scroll on a frame-starved box.
+  const macJumped = !mobile && (await page.evaluate(async () => {
+    const j = window.__scroll?.jumpToSection;
+    if (!j) return false;
+    await j("Projects", { immediate: true });
+    return true;
+  }));
+  if (macJumped) {
+    await sleep(300);
+    console.log(`  info Projects landing via jumpToSection: y=${await page.evaluate(() => Math.round(window.scrollY))}`);
+  } else await scrollToSelector(page, ".portfolio-mac");
+  // Canvases mount on approach (IntersectionObserver -> lazy chunk -> WebGL
+  // context): wait for it rather than assuming a fixed beat is enough.
+  if (!mobile) await waitFor(page, () => !!document.querySelector(".portfolio-mac canvas"), { timeout: 10_000 });
+  else await sleep(1500);
   const macIn = await page.evaluate(() => ({
     canvas: !!document.querySelector(".portfolio-mac canvas"),
     accordion: document.querySelectorAll(".portfolio-mac .mac-acc-head").length,
@@ -192,16 +259,15 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
   if (mobile) check(macIn.accordion >= 4 || macIn.canvas, `Projects mobile accordion rendered (${macIn.accordion} items)`);
   else check(macIn.canvas, "Projects canvas mounted in view");
   await scrollToSelector(page, ".other-pin-wrap");
-  await sleep(1500);
   check(
-    await page.evaluate(() => !!document.querySelector(".other-pin-wrap canvas")),
+    await waitFor(page, () => !!document.querySelector(".other-pin-wrap canvas"), { timeout: 10_000 }),
     "Play canvas mounted in view",
   );
   await scrollToSelector(page, ".keypad-section");
-  await sleep(1500);
+  if (mobile) await sleep(1500);
   if (!mobile) {
     check(
-      await page.evaluate(() => !!document.querySelector(".keypad-section canvas")),
+      await waitFor(page, () => !!document.querySelector(".keypad-section canvas"), { timeout: 10_000 }),
       "Contact keypad canvas mounted in view",
     );
   } else {
@@ -217,8 +283,17 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
   for (let step = 0; step < 6; step++) {
     await page.evaluate((dy) => window.scrollBy(0, dy), Math.round(vh * 0.45));
     await sleep(350);
+    // IntersectionObserver entries are only computed on rendering frames: on
+    // a frame-starved box a fixed 350 ms can pass with no frame, the tiles
+    // scroll past unobserved and never latch. Let a couple of frames land.
+    if (!mobile) await waitFrames(page, 2); // phones skip the observer
   }
-  await sleep(800);
+  if (!mobile) {
+    await waitFor(page, () => {
+      const all = [...document.querySelectorAll(".portfolio-bp .bp-tile")];
+      return all.length > 0 && all.every((t) => t.classList.contains("is-revealed"));
+    }, { timeout: 8000 });
+  } else await sleep(800);
   const tiles = await page.evaluate(() => {
     const all = [...document.querySelectorAll(".portfolio-bp .bp-tile")];
     return {
@@ -318,7 +393,16 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
   );
   check(menuOpen, "nav menu opens");
   if (menuOpen) {
-    await sleep(900);
+    // The labels are drei <Html> nodes inside the menu's R3F canvas, so they
+    // exist only once the canvas has created its renderer and committed the
+    // scene. data-open now flips in the mount effect (motion overhaul W7: no
+    // rAF hop), i.e. before the canvas is up, so wait for the labels.
+    await waitFor(
+      page,
+      new Function(`return document.querySelectorAll(".navx-spill-label").length >= ${SECTIONS.length};`),
+      { timeout: 20_000 },
+    );
+    await sleep(300);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}-98-menu.png` });
     const labels = await page.evaluate(() =>
       [...document.querySelectorAll(".navx-spill-label")].map((e) => e.textContent.trim()),
@@ -327,16 +411,27 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
       SECTIONS.every((s) => labels.includes(s)),
       `menu lists all sections (${labels.join(", ")})`,
     );
+    // A missing label is already a FAIL above; don't let the click's 30 s
+    // auto-wait throw and abort the rest of the run (and the mobile scenario).
     await page
       .locator(".navx-spill-root .navx-spill-label", { hasText: "Contact" })
       .first()
-      .evaluate((b) => b.click());
+      .evaluate((b) => b.click(), undefined, { timeout: 5000 })
+      .catch(() => {});
     const jumped = await waitFor(page, () => {
       const closed = document.querySelector(".navx-spill-root") == null;
       const label = (document.querySelector(".snc-dial-label")?.textContent || "").trim();
       const unlocked = document.documentElement.style.overflow !== "hidden";
       return closed && unlocked && label === "Contact";
-    }, { timeout: 8000 });
+    }, { timeout: 15_000 }); // covered cut + label spring both need frames
+    if (!jumped) {
+      console.log(`  info menu jump state: ${JSON.stringify(await page.evaluate(() => ({
+        y: Math.round(window.scrollY),
+        menuMounted: document.querySelector(".navx-spill-root") != null,
+        label: (document.querySelector(".snc-dial-label")?.textContent || "").trim(),
+        overflow: document.documentElement.style.overflow,
+      })))}`);
+    }
     check(jumped, "menu jump lands on Contact, closes, and unlocks scroll");
   }
 
