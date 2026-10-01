@@ -168,3 +168,41 @@ export function planeGeom(): THREE.BufferGeometry {
   g.rotateZ(Math.PI / 4); // due-east -> northeast (+45°, CCW toward up)
   return g;
 }
+
+// ── Module-scope cache (motion spec W7.2) ───────────────────────────────────
+// The spill menu's canvas mounts fresh on every open, and each SpillObject used
+// to rebuild its ExtrudeGeometry in a useMemo, so every open paid for eight
+// shape triangulations on the frames the spill was meant to be animating. The
+// icons are pure functions of constants, so each is built ONCE per page and
+// shared by every open. `warmMenuGeometries()` runs from the menu's idle warm
+// (NavSpillMenu mounts closed on idle), so the first open finds them ready.
+// Geometries passed as props are not disposed by R3F on unmount; and even if
+// a dispose() ran, three re-uploads a disposed geometry on its next render.
+const MENU_GEOM_BUILDERS: ReadonlyArray<() => THREE.BufferGeometry> = [
+  houseGeom,
+  questionGeom,
+  macGeom,
+  briefcaseGeom,
+  playGeom,
+  trophyGeom,
+  cameraGeom,
+  planeGeom,
+];
+const menuGeomCache: Array<THREE.BufferGeometry | undefined> = [];
+
+/** Cached icon geometry for spill-menu slot `i` (index matches SECTION_REGISTRY). */
+export function getMenuGeometry(i: number): THREE.BufferGeometry {
+  let g = menuGeomCache[i];
+  if (!g) {
+    const build = MENU_GEOM_BUILDERS[i] ?? houseGeom;
+    g = build();
+    g.computeBoundingSphere();
+    menuGeomCache[i] = g;
+  }
+  return g;
+}
+
+/** Build every menu geometry ahead of the first open (idempotent). */
+export function warmMenuGeometries(): void {
+  for (let i = 0; i < MENU_GEOM_BUILDERS.length; i++) getMenuGeometry(i);
+}

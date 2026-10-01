@@ -1,7 +1,10 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useIsMobile } from "./useIsMobile";
 import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
-import { SectionDial } from "./SectionDial";
+import { SectionDial, type DialHudState } from "./SectionDial";
+import { useShownAfterPaint } from "./RoomHUD";
 import { track } from "./analytics";
 // NavSpillMenu pulls in three.js + @react-three/drei + gsap. Lazy-load it so
 // those deps leave the entry/first-paint bundle; warm the chunk on idle
@@ -11,15 +14,51 @@ const NavSpillMenu = lazy(() =>
   import("./NavSpillMenu").then((m) => ({ default: m.NavSpillMenu })),
 );
 
+gsap.registerPlugin(ScrollTrigger);
+
 /**
  * Top-right section indicator: the odometer dial (SectionDial) that opens
- * the spill menu. Section detection reads live rects so it stays accurate
- * as pinned sections grow their pin spacers.
+ * the spill menu.
+ *
+ * `visible` (default true, so a plain mount keeps working) drives the shared
+ * HUD CHROME entrance. It is designed to be mounted early (at `ready`) with
+ * `visible={hudVisible}`: while hidden it tracks the active section silently
+ * (no `section_view`, no drum roll), so it appears already on the right face.
  */
 
-export function StatusBar() {
+/** The active line: a section is current once its top passes 45% of the viewport. */
+const ACTIVE_LINE = 0.45;
+const ACTIVE_START = `top ${Math.round(ACTIVE_LINE * 100)}%`;
+
+/** Deepest registry index whose start is at or above scroll position `y`. */
+function lastIndexWithStartLE(starts: readonly number[], y: number): number {
+  let best = 0;
+  for (let i = 0; i < starts.length; i++) {
+    if (starts[i]! <= y) best = i;
+  }
+  return best;
+}
+
+/** One-off live measure (mount only): the same 45% rule from element rects. */
+function measureActiveNow(): number {
+  if (typeof window === "undefined") return 0;
+  const line = (window.innerHeight || 1) * ACTIVE_LINE;
+  let best = 0;
+  findSectionElements().forEach(({ el }, i) => {
+    if (el && el.getBoundingClientRect().top <= line) best = i;
+  });
+  return best;
+}
+
+interface Props {
+  visible?: boolean;
+}
+
+export function StatusBar({ visible = true }: Props) {
   const isMobile = useIsMobile();
-  const [activeIdx, setActiveIdx] = useState(0);
+  // Seeded synchronously from one live measure, so the dial mounts on the
+  // right face instead of rolling 00 → 01 as it appears.
+  const [activeIdx, setActiveIdx] = useState(measureActiveNow);
   // Nav-menu open state: the resting dial is a button that opens the spill
   // menu to jump between sections.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -46,72 +85,82 @@ export function StatusBar() {
     if (menuOpen) setNavMounted(true);
   }, [menuOpen]);
 
-  // Active section = the deepest one whose top has passed 45% of viewport.
-  //
-  // We read LIVE getBoundingClientRect() on a rAF-coalesced scroll listener
-  // rather than caching IntersectionObserver entry rects. The IO approach
-  // cached each section's top from the snapshot taken at a threshold
-  // crossing — but the GSAP-pinned sections (Mac / Work / Other) sit
-  // `position: fixed` during their pin, so their real top changes (0 while
-  // pinned → moving once released) WITHOUT firing new IO crossings. Those
-  // stale tops made the pill lag a whole section behind at the pin
-  // boundaries. Live rects on the ~7 section elements per scroll frame are
-  // cheap and always correct. setState only fires on a genuine index change.
+  // Active section, EVENT-DRIVEN (motion spec W7.7). ScrollTrigger already
+  // measures every trigger once per refresh, pin spacers included, so each
+  // registry element gets a callback-free trigger at "top 45%" that exists
+  // only to cache its `start` (refreshPriority -10: measured after the section
+  // pins). One page-long trigger maps the scroll position onto those cached
+  // starts on every ScrollTrigger update. No layout reads during scroll: the
+  // old loop read live getBoundingClientRect() on every section for 1.8 s
+  // after any scroll, the second-largest source of forced style recalcs in
+  // the wheel-scroll trace.
+  const lastIdxRef = useRef(activeIdx);
   useEffect(() => {
     const found = findSectionElements();
-    let lastIdx = -1;
-    let raf = 0;
-    let lastInput = 0; // last scroll/resize time
-    const measure = () => {
-      const vh = window.innerHeight || 1;
-      let bestIdx = 0;
-      for (let i = 0; i < found.length; i++) {
-        const el = found[i]!.el;
-        if (!el) continue;
-        if (el.getBoundingClientRect().top <= vh * 0.45) bestIdx = i;
-      }
-      if (bestIdx !== lastIdx) {
-        lastIdx = bestIdx;
-        setActiveIdx(bestIdx);
-        track("section_view", { section: SECTION_REGISTRY[bestIdx]?.label });
-      }
+    const starts: number[] = found.map(() => Number.POSITIVE_INFINITY);
+    const sectionSts = found.map(({ el }) =>
+      el
+        ? ScrollTrigger.create({
+            trigger: el,
+            start: ACTIVE_START,
+            refreshPriority: -10,
+          })
+        : null,
+    );
+    const setActive = (idx: number) => {
+      if (idx === lastIdxRef.current) return;
+      lastIdxRef.current = idx;
+      setActiveIdx(idx);
     };
-    // Keep measuring for ~1.3s after the last scroll/resize. A scroll fires
-    // one event, but GSAP's pinned sections (Mac/Work/Other) ease into place
-    // over ~1s of SCRUB *without* further scroll events — so a scroll-only
-    // listener would read a mid-transition rect and never re-check, leaving
-    // the pill one section off when you stop near a pin boundary. Ticking
-    // through the settle window keeps it correct, then idles (no per-frame
-    // layout cost when nothing's moving).
-    const SETTLE_MS = 1800;
-    const tick = () => {
-      measure();
-      if (performance.now() - lastInput < SETTLE_MS) {
-        raf = requestAnimationFrame(tick);
-      } else {
-        raf = 0;
-      }
+    const readStarts = () => {
+      sectionSts.forEach((st, i) => {
+        starts[i] = st ? st.start : Number.POSITIVE_INFINITY;
+      });
     };
-    const onInput = () => {
-      lastInput = performance.now();
-      if (!raf) raf = requestAnimationFrame(tick);
+    const page = ScrollTrigger.create({
+      start: 0,
+      end: "max",
+      refreshPriority: -10,
+      onUpdate: (self) => setActive(lastIndexWithStartLE(starts, self.scroll())),
+    });
+    // A refresh moves the starts while the scroll position may not change
+    // (pins resize, loader lift), so re-resolve on every refresh too.
+    const onRefresh = () => {
+      readStarts();
+      setActive(lastIndexWithStartLE(starts, page.scroll()));
     };
-    measure();
-    window.addEventListener("scroll", onInput, { passive: true });
-    window.addEventListener("resize", onInput, { passive: true });
+    ScrollTrigger.addEventListener("refresh", onRefresh);
+    onRefresh();
     return () => {
-      window.removeEventListener("scroll", onInput);
-      window.removeEventListener("resize", onInput);
-      if (raf) cancelAnimationFrame(raf);
+      ScrollTrigger.removeEventListener("refresh", onRefresh);
+      page.kill();
+      sectionSts.forEach((st) => st?.kill());
     };
   }, []);
 
+  // section_view only while the HUD is visible: never for the hero behind a
+  // hidden dial. On becoming visible it fires once for the current section.
+  const trackedIdxRef = useRef(-1);
+  useEffect(() => {
+    if (!visible) {
+      trackedIdxRef.current = -1;
+      return;
+    }
+    if (trackedIdxRef.current === activeIdx) return;
+    trackedIdxRef.current = activeIdx;
+    track("section_view", { section: SECTION_REGISTRY[activeIdx]?.label });
+  }, [visible, activeIdx]);
+
   // Global hotkey: "m" or "/" toggles the channel menu. Ignored while
-  // typing in a field so it never eats input. (Esc / outside-click close
-  // are owned by CrtChannelMenu itself.)
+  // typing in a field so it never eats input, and while the HUD is hidden
+  // (there is no dial to open it from yet). Esc / outside-click close are
+  // owned by NavSpillMenu itself.
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "m" && e.key !== "M" && e.key !== "/") return;
+      if (!visibleRef.current) return;
       const t = e.target as HTMLElement | null;
       if (
         t &&
@@ -145,6 +194,21 @@ export function StatusBar() {
     setMenuOpen((o) => !o);
   };
 
+  // HUD chrome state for the dial. The entrance (hidden → shown) is staggered
+  // a --stagger behind the brand tile; stepping back in after the menu closes
+  // is not.
+  const shown = useShownAfterPaint(visible);
+  const hud: DialHudState = !shown ? "hidden" : menuOpen ? "menu" : "shown";
+  const hudStateRef = useRef<{ prev: DialHudState; delay: string }>({
+    prev: "hidden",
+    delay: "0s",
+  });
+  if (hudStateRef.current.prev !== hud) {
+    hudStateRef.current.delay =
+      hudStateRef.current.prev === "hidden" ? "var(--stagger)" : "0s";
+    hudStateRef.current.prev = hud;
+  }
+
   const active = SECTION_REGISTRY[activeIdx] ?? SECTION_REGISTRY[0]!;
   const cardAria = `Open section menu. Current: ${active.number} ${active.label}`;
 
@@ -152,8 +216,8 @@ export function StatusBar() {
   const right = isMobile ? "calc(14px + env(safe-area-inset-right, 0px))" : 22;
 
   // Skeuomorphic odometer dial: rolls the current section into the aperture as
-  // you navigate, and opens the spill menu on click. Hidden while the menu is
-  // open so the close X can take its exact corner (close where you opened).
+  // you navigate, and opens the spill menu on click. Steps aside while the menu
+  // is open so the close X can take its exact corner (close where you opened).
   return (
     <>
       <SectionDial
@@ -162,14 +226,13 @@ export function StatusBar() {
         onToggle={() => toggleMenu("dial")}
         cardAria={cardAria}
         isMobile={isMobile}
+        hud={hud}
+        hudDelay={hudStateRef.current.delay}
         style={{
           position: "fixed",
           top,
           right,
           zIndex: 40,
-          opacity: menuOpen ? 0 : 1,
-          pointerEvents: menuOpen ? "none" : "auto",
-          transition: "opacity 160ms ease",
         }}
       />
       {navMounted && (

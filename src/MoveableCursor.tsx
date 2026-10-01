@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { DECAY, damp, reducedMotion } from "./motion";
 
 interface Props {
   /** True while the keypad reports the pointer is over an interactive cap/dial. */
@@ -62,10 +63,10 @@ export function MoveableCursor({ hot }: Props) {
     // pending, tick() stops scheduling, so a stationary cursor costs nothing.
     let running = false;
     let dirty = true;
-
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
+    // Time of the last tick (performance.now ms). Reset whenever the loop wakes
+    // from park, so the first frame's dt is one frame, not the idle gap (which
+    // clampDt would cap at 0.1 s and jump the press ~98% in one frame).
+    let lastT = 0;
 
     // PRESS-AND-HOLD dip. pressTarget is 1 (up) or PRESS_SCALE (held down);
     // pressCur eases toward it every frame — fast on the way DOWN (reactive
@@ -102,9 +103,15 @@ export function MoveableCursor({ hot }: Props) {
     };
 
     const tick = () => {
-      // Ease the press scale toward its target: snappy DOWN, softer UP.
-      const rate = pressTarget < pressCur ? 0.5 : 0.26;
-      pressCur += (pressTarget - pressCur) * rate;
+      // Ease the press scale toward its target: snappy DOWN (DECAY.press, τ
+      // 25 ms), softer UP (DECAY.fast, τ 55 ms). dt-based, so the press feels
+      // the same at 60 and 120 Hz (the old 0.5 / 0.26 per-frame lerp ran twice
+      // as fast at 120 Hz; these rates match it at 60 Hz).
+      const now = performance.now();
+      const dt = (now - lastT) / 1000;
+      lastT = now;
+      const rate = pressTarget < pressCur ? DECAY.press : DECAY.fast;
+      pressCur = damp(pressCur, pressTarget, rate, dt);
       let springActive = true;
       if (Math.abs(pressTarget - pressCur) < 0.001) {
         pressCur = pressTarget;
@@ -145,6 +152,7 @@ export function MoveableCursor({ hot }: Props) {
     const schedule = () => {
       if (!running) {
         running = true;
+        lastT = performance.now();
         frame = requestAnimationFrame(tick);
       }
     };
@@ -158,7 +166,7 @@ export function MoveableCursor({ hot }: Props) {
       // drives the pan cursor — so don't play the press dip for either, or the
       // cursor would animate an action that can't happen.
       if (e.button !== 0) return;
-      if (!reduced) pressTarget = PRESS_SCALE;
+      if (!reducedMotion.value) pressTarget = PRESS_SCALE;
       schedule(); // wake the loop to animate the press dip
     };
     const onUp = () => {
@@ -193,11 +201,10 @@ export function MoveableCursor({ hot }: Props) {
   }, []);
 
   const showHover = hot || clickable;
-  const src = showHover ? "/Cursor-Hover.svg" : "/Cursor.svg";
-  const w = showHover ? HOVER_W : ART_W;
-  const tipX = showHover ? HOVER_TIP_X : TIP_X;
-  const tipY = showHover ? HOVER_TIP_Y : TIP_Y;
 
+  // BOTH arts are always rendered and the inactive one is transparent, so the
+  // spark variant is fetched + decoded at mount. Swapping `src` on first hover
+  // left a blank cursor for a frame or more on a cold cache.
   return (
     <div
       ref={root}
@@ -206,11 +213,29 @@ export function MoveableCursor({ hot }: Props) {
     >
       <img
         className="moveable-cursor__arrow"
-        src={src}
-        width={w}
+        src="/Cursor.svg"
+        width={ART_W}
         alt=""
         draggable={false}
-        style={{ left: -tipX, top: -tipY, transformOrigin: `${tipX}px ${tipY}px` }}
+        style={{
+          left: -TIP_X,
+          top: -TIP_Y,
+          transformOrigin: `${TIP_X}px ${TIP_Y}px`,
+          opacity: showHover ? 0 : 1,
+        }}
+      />
+      <img
+        className="moveable-cursor__arrow"
+        src="/Cursor-Hover.svg"
+        width={HOVER_W}
+        alt=""
+        draggable={false}
+        style={{
+          left: -HOVER_TIP_X,
+          top: -HOVER_TIP_Y,
+          transformOrigin: `${HOVER_TIP_X}px ${HOVER_TIP_Y}px`,
+          opacity: showHover ? 1 : 0,
+        }}
       />
     </div>
   );

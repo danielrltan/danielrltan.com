@@ -1,6 +1,35 @@
 import { useEffect, useState } from "react";
 import { SignatureMark } from "./SignatureMark";
 import { useIsMobile } from "./useIsMobile";
+import { scrollToY } from "./scroll";
+import "./crt-channel-menu.css"; // HUD CHROME entrance states (.hud-chrome)
+
+/**
+ * `visible` delayed until the hidden state has been painted, so a component
+ * that MOUNTS already visible still plays its entrance transition (a style
+ * change needs a painted "before" state). Two rAFs: the first lands before
+ * the paint that shows the hidden state, the second flips it after. Hiding is
+ * immediate. Shared by the HUD chrome (RoomHUD, StatusBar, JumpToTop) so the
+ * three enter on the same frame.
+ */
+export function useShownAfterPaint(visible: boolean): boolean {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!visible) {
+      setShown(false);
+      return;
+    }
+    let id2 = 0;
+    const id1 = requestAnimationFrame(() => {
+      id2 = requestAnimationFrame(() => setShown(true));
+    });
+    return () => {
+      cancelAnimationFrame(id1);
+      cancelAnimationFrame(id2);
+    };
+  }, [visible]);
+  return shown;
+}
 
 /**
  * Top-left brand mark: Daniel's signature in a white tile. `visible` fades
@@ -13,7 +42,6 @@ interface Props {
 }
 
 const HUD_Z = 30;
-const FADE_MS = 700;
 
 // Shared with StatusBar (right) and the hero eyebrow. All three
 // top-row elements anchor to the same TOP_STRIP_TOP baseline so the
@@ -41,24 +69,17 @@ export function RoomHUD({ visible }: Props) {
   const leftOffset = isMobile
     ? "calc(14px + env(safe-area-inset-left, 0px))"
     : TOP_STRIP_LEFT;
-  // Initial commit at 0 so the first paint runs before the rAF flip
-  // to 1, otherwise the browser may collapse both values into one
-  // style and skip the fade-in.
-  const [shown, setShown] = useState(false);
+  // Entrance: the HUD chrome's shared hidden → shown transition (opacity +
+  // a --chrome-lift drop over --chrome-dur; see HUD CHROME in
+  // crt-channel-menu.css). The brand leads; the dial and jump-to-top follow a
+  // --stagger behind it.
+  const shown = useShownAfterPaint(visible);
   // Footer dodge: at the bottom-of-page rest position the footer's
   // INDEX heading lands exactly under the cat (the footer can't choose
   // what scrolls into the top-left corner). Fade the cat out whenever
   // that heading is inside the top strip of the viewport — the
   // JumpToTop FAB covers back-to-top down there anyway.
   const [dodge, setDodge] = useState(false);
-
-  useEffect(() => {
-    if (visible) {
-      const id = requestAnimationFrame(() => setShown(true));
-      return () => cancelAnimationFrame(id);
-    }
-    setShown(false);
-  }, [visible]);
 
   useEffect(() => {
     const target = document.getElementById("footer-index-label");
@@ -75,12 +96,16 @@ export function RoomHUD({ visible }: Props) {
 
   return (
     <div
+      // Hidden = opacity 0 + visibility hidden + inert, so the brand link is
+      // not clickable or focusable while invisible over the hero (it used to
+      // keep pointer-events:auto inside an opacity-0 wrapper).
+      className="hud-chrome hud-chrome--plain"
+      data-hud={shown ? "shown" : "hidden"}
+      inert={!shown}
       style={{
         position: "fixed",
         inset: 0,
         pointerEvents: "none",
-        opacity: shown ? 1 : 0,
-        transition: `opacity ${FADE_MS}ms ease`,
         zIndex: HUD_Z,
       }}
     >
@@ -90,7 +115,9 @@ export function RoomHUD({ visible }: Props) {
         className="brand-mark"
         onClick={(e) => {
           e.preventDefault();
-          window.scrollTo({ top: 0, behavior: "smooth" });
+          // Glide under 3 viewports, a covered cut beyond, instant under
+          // reduced motion (scroll.ts). Never native smooth scroll.
+          void scrollToY(0, { preset: "jump" });
         }}
         style={{
           position: "absolute",

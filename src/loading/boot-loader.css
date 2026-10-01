@@ -12,7 +12,7 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  transition: opacity 520ms var(--ease-soft, ease);
+  transition: opacity var(--t-slow) var(--ease-out); /* = LOADER_FADE_MS (DUR.slow) */
   will-change: opacity;
 }
 .boot-loader.is-complete {

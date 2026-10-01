@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { panScrollTo } from "./portfolio/Keypad";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { panScrollTo } from "./scroll";
 import "./pan-cursor.css";
 
 /**
@@ -20,6 +20,11 @@ import "./pan-cursor.css";
  * draw the chevron at the same coordinates, so a single SCALE keeps the
  * on-screen size + hotspot consistent.
  *
+ * POSITION is a ref written to the root's `transform: translate3d()` from the
+ * pan rAF loop: no React render per pointermove, and a compositor translate
+ * instead of left/top layout. React only re-renders on enter/exit and on a
+ * direction flip.
+ *
  * Desktop only (no middle button on touch). The OS cursor is hidden site-wide;
  * the regular arrow cursor is suppressed while panning (html.pan-scrolling).
  */
@@ -38,12 +43,33 @@ const DEADZONE = 16; // px around the anchor with no scroll (stays neutral)
 const MAX_SPEED = 3400; // px/s cap
 const SPEED_GAIN = 32; // px/s per px of pointer offset past the deadzone
 
+const PAN_ARTS = ["/Pan-Neutral.svg", "/Pan-Direction.svg"];
+// Warm the pan art into the HTTP + decode cache once the pan cursor mounts
+// (after the loader), so the first middle-click never shows a blank icon on a
+// cold cache. A JS warm rather than <link rel=preload>: panning is rare, and an
+// unused preload warns on every page load. Module scope keeps the Images alive.
+let panArtWarm: HTMLImageElement[] | null = null;
+function warmPanArt() {
+  if (panArtWarm || typeof Image === "undefined") return;
+  panArtWarm = PAN_ARTS.map((src) => {
+    const img = new Image();
+    img.src = src;
+    img.decode?.().catch(() => {});
+    return img;
+  });
+}
+
+function placeRoot(el: HTMLDivElement | null, p: { x: number; y: number }) {
+  if (el) el.style.transform = `translate3d(${p.x}px,${p.y}px,0)`;
+}
+
 export function PanCursor() {
   const [active, setActive] = useState(false);
   const [dir, setDir] = useState(0); // -1 = up, 0 = neutral, 1 = down
   // The icon FOLLOWS the live pointer (free movement). The click point lives in
   // anchorRef only as the scroll reference; the cursor is not locked to it.
-  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const posRef = useRef({ x: 0, y: 0 });
+  const rootRef = useRef<HTMLDivElement>(null);
 
   // Live mirrors read by the rAF loop / listeners without re-subscribing.
   const activeRef = useRef(false);
@@ -55,6 +81,25 @@ export function PanCursor() {
   const targetRef = useRef(0);
 
   useEffect(() => {
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(warmPanArt);
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(warmPanArt, 1000);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  // Place the root at the pointer before the first paint of a pan (the rAF
+  // loop keeps it there afterwards).
+  useLayoutEffect(() => {
+    if (active) placeRoot(rootRef.current, posRef.current);
+  }, [active]);
+
+  useEffect(() => {
     const html = document.documentElement;
 
     const enter = (x: number, y: number) => {
@@ -63,7 +108,7 @@ export function PanCursor() {
       offsetRef.current = 0;
       dirRef.current = 0;
       targetRef.current = window.scrollY;
-      setPos({ x, y });
+      posRef.current = { x, y };
       setDir(0);
       setActive(true);
       html.classList.add("pan-scrolling");
@@ -98,7 +143,8 @@ export function PanCursor() {
     };
     const onPointerMove = (e: PointerEvent) => {
       if (!activeRef.current) return;
-      setPos({ x: e.clientX, y: e.clientY }); // cursor follows the pointer freely
+      // Cursor follows the pointer freely; the rAF loop draws it.
+      posRef.current = { x: e.clientX, y: e.clientY };
       const off = e.clientY - anchorRef.current.y;
       offsetRef.current = off;
       const d = Math.abs(off) < DEADZONE ? 0 : off > 0 ? 1 : -1;
@@ -120,8 +166,9 @@ export function PanCursor() {
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000); // clamp stalls
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); // clamp stalls
       last = now;
+      placeRoot(rootRef.current, posRef.current);
       if (activeRef.current) {
         const off = offsetRef.current;
         const over = Math.abs(off) - DEADZONE;
@@ -170,24 +217,28 @@ export function PanCursor() {
   const src = isDir ? "/Pan-Direction.svg" : "/Pan-Neutral.svg";
 
   return (
-    <div className="pan-cursor" aria-hidden style={{ left: pos.x, top: pos.y }}>
-      {/* Flip layer: the down-art is mirrored vertically (around the anchor) for
-          the UP direction. Throb lives on the img inside, so the two transforms
-          never collide. */}
-      <div
-        className="pan-cursor__flip"
-        style={{ transform: dir === -1 ? "scaleY(-1)" : "none" }}
-      >
-        <img
-          key={isDir ? `d${dir}` : "n"}
-          className={`pan-cursor__art${isDir ? " is-dir" : ""}`}
-          src={src}
-          width={w}
-          height={h}
-          alt=""
-          draggable={false}
-          style={{ left: -ax, top: -ay }}
-        />
+    <div className="pan-cursor" aria-hidden ref={rootRef}>
+      {/* Pop layer: the drop-in pop animates `transform` here, so it never
+          fights the root's positioning transform. */}
+      <div className="pan-cursor__pop">
+        {/* Flip layer: the down-art is mirrored vertically (around the anchor)
+            for the UP direction. Throb lives on the img inside, so the
+            transforms never collide. */}
+        <div
+          className="pan-cursor__flip"
+          style={{ transform: dir === -1 ? "scaleY(-1)" : "none" }}
+        >
+          <img
+            key={isDir ? `d${dir}` : "n"}
+            className={`pan-cursor__art${isDir ? " is-dir" : ""}`}
+            src={src}
+            width={w}
+            height={h}
+            alt=""
+            draggable={false}
+            style={{ left: -ax, top: -ay }}
+          />
+        </div>
       </div>
     </div>
   );
