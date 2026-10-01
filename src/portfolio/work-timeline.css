@@ -1,31 +1,43 @@
 /* Work: "The Ledger" — PINNED SCROLL-DRIVEN ACCORDION TIMELINE
    -------------------------------------------------------------
    Every role is a node on a left spine and is always visible as a header
-   (dot-matrix year + sector + company + dates). The section pins; the active
-   node drops open to reveal its detail while the rest stay collapsed, so you
-   see the whole timeline and the scroll rolls through it. Pinning locks the
-   page scroll while panels expand, so the accordion never fights the document
-   scroll (no jank). Click a header to jump to (and open) that node.
+   (dot-matrix year + sector + company + dates). The section pins (desktop,
+   id "work-pin", 0.62vh per role); the active node drops open to reveal its
+   detail while the rest stay collapsed, so you see the whole timeline and the
+   scroll rolls through it. Click a header to open it and glide to its band.
+
+   Motion (tokens from src/index.css):
+     entrance   rows rise --reveal-lift over --reveal-dur, staggered by
+                --stagger (cap --stagger-max); spine draws scaleY 0->1 on
+                --t-slow. Hook: .portfolio-work.is-entered (one-shot IO).
+     morph      grid-template-rows on --t-morph / --ease-in-out both ways;
+                opening fades in on --t-base (80ms late), closing fades out
+                on --exit-dur / --exit-ease so it clears before the height.
+     bullets    stagger in from 180ms (panel half open); fade out on close.
+     fill       --work-fill is written per scroll frame by Work.tsx, so it
+                has NO transition (one smoother per signal: Lenis).
 
    Layout:
      .portfolio-work     → pinned 100vh frame
        .work-ledger      → max-width frame: header row + accordion
          .work-ledger-head → "03 / WORK" tag + giant EXPERIENCE wordmark
-         .work-resume      → résumé CTA, top-right
+         .work-resume      → résumé CTA, right of the wordmark
          .work-acc         → the accordion (left spine + nodes)
            .work-acc-item  → one role
              .work-acc-head  → button: node/year + company + dates + chevron
              .work-acc-panel → grid-rows 0fr↔1fr drop-open detail
+               .work-acc-panel-inner → clipped grid item (no vertical padding)
+                 .work-acc-panel-body → content + bottom padding
    Mobile + reduced-motion: no pin; a static tap-to-expand stack.
 */
 
 .portfolio-work {
   position: relative;
-  /* The section flows with the page and grows with whichever panel is open,
-     with a full-viewport MINIMUM so it still lands as a full-screen editorial
-     frame (desktop adds a GSAP pin that steps through the rows; mobile and
-     reduced-motion are click-driven). overflow visible so an expanded lower
-     row is never clipped. */
+  /* A full-viewport editorial frame. Desktop pins it, and GSAP locks the
+     pinned height at refresh, so the content (header + every row + the
+     tallest open panel) must fit 100vh: see the max-height blocks below.
+     Mobile and reduced motion flow at content height. overflow visible so an
+     expanded lower row is never clipped. */
   min-height: 100vh;
   height: auto;
   overflow: visible;
@@ -115,9 +127,53 @@
   min-width: 0;
   overflow-wrap: break-word;
 }
+/* Desktop frame: the bottom padding only counts once the content outgrows the
+   100vh minimum, so trimming it is visually free and keeps 1920×1080 inside
+   the pinned frame with room to spare (it fit by 1px at 8vh). */
+@media (min-width: 901px) {
+  .work-ledger {
+    padding-bottom: clamp(32px, 5vh, 72px);
+  }
+}
+/* Frame fit (desktop ≤1100 tall: 1440×900, 1536×864, and the common
+   1920×~970 / 1512×982 browser viewports): the pinned frame is locked to its
+   refresh height, so header + three rows + the tallest open panel (row 0)
+   must fit 100vh or the last row sits below the fold for the whole pin (it
+   measured 1015px at 900). Tightens the frame padding, and caps the wordmark,
+   company and metric by the viewport HEIGHT too (min(vw, vh)) so wide-short
+   windows fit; the rows keep their roomy padding (owner request), and
+   collapsed rows no longer carry a 20px residual. The spec's 920px bound was
+   raised to 1100 because 920-1000px-tall viewports overflowed by 25-36px
+   (OWNER REVIEW). The wordmark keeps the base 116px cap and is limited by
+   10.5vh alone, so tall screens barely change (1920×1080: 113px, was 116)
+   while 900-tall ones come down (1440×900: 94.5px).
+   The ≤800 block below tightens further and wins where both match. */
+@media (max-height: 1100px) and (min-width: 901px) {
+  .work-ledger {
+    gap: clamp(12px, 2vh, 24px);
+    padding-top: clamp(24px, 3.4vh, 40px);
+    padding-bottom: clamp(20px, 3vh, 36px);
+  }
+  .work-ledger-head {
+    padding-bottom: clamp(10px, 1.4vh, 18px);
+  }
+  .portfolio-work .work-ledger-title {
+    font-size: clamp(40px, min(7.5vw, 10.5vh), 116px);
+  }
+  .portfolio-work .work-acc-company {
+    font-size: clamp(26px, min(3.4vw, 5.6vh), 50px);
+  }
+  .portfolio-work .work-acc-pull-metric {
+    font-size: clamp(28px, min(3.4vw, 5.6vh), 52px);
+  }
+}
 /* Short desktop (≈768): the dot-matrix title renders ~2x its font-size, so on a
    short pinned frame everything has to come down a tier or the last open node
-   clips. Trims the title, company, gaps + paddings together. */
+   clips. Trims the title, company, metric, gaps + paddings together. The type
+   caps scale with the HEIGHT too (min(vw, vh)) so a wide-but-short window
+   (1440×720) still fits the frame. Row/company rules carry .portfolio-work:
+   the base rules come later in this file, so at equal specificity these
+   overrides were silently dead. */
 @media (max-height: 800px) and (min-width: 901px) {
   .work-ledger {
     gap: clamp(6px, 1vh, 12px);
@@ -128,21 +184,20 @@
     padding-bottom: clamp(8px, 1.1vh, 13px);
   }
   .portfolio-work .work-ledger-title {
-    font-size: clamp(34px, 4.5vw, 64px);
+    font-size: clamp(34px, min(4.5vw, 7.6vh), 64px);
     margin-top: clamp(2px, 0.5vh, 8px);
   }
-  .work-acc-company {
-    font-size: clamp(22px, 2.8vw, 40px);
+  .portfolio-work .work-acc-company {
+    font-size: clamp(22px, min(3.4vw, 5.6vh), 50px);
   }
-  .work-acc-head {
-    padding-top: clamp(7px, 1vh, 11px);
-    padding-bottom: clamp(7px, 1vh, 11px);
+  .portfolio-work .work-acc-pull-metric {
+    font-size: clamp(26px, min(3.4vw, 5.6vh), 52px);
   }
-  .work-acc-panel-inner {
+  .portfolio-work .work-acc-panel-body {
     gap: clamp(8px, 1.2vh, 14px);
     padding-bottom: clamp(10px, 1.6vh, 18px);
   }
-  .work-acc-bullets {
+  .portfolio-work .work-acc-bullets {
     gap: clamp(4px, 0.6vh, 8px);
   }
 }
@@ -174,15 +229,18 @@
      orange primary action of the section instead of vanishing into the chrome. */
   border: 1.5px solid var(--accent);
   border-radius: 0;
-  transition: color var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out),
-    border-color var(--t-fast) var(--ease-out), transform var(--t-fast) var(--ease-out),
-    box-shadow var(--t-fast) var(--ease-out);
+  transition: color var(--hover-dur) var(--hover-ease),
+    background var(--hover-dur) var(--hover-ease),
+    border-color var(--hover-dur) var(--hover-ease),
+    transform var(--t-press) var(--ease-out),
+    box-shadow var(--hover-dur) var(--hover-ease);
 }
 .work-resume-arrow {
   color: var(--accent);
   font-size: 16px;
   line-height: 1;
-  transition: transform var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+  transition: transform var(--hover-dur) var(--hover-ease),
+    color var(--hover-dur) var(--hover-ease);
 }
 .portfolio-work .work-resume:hover {
   background: var(--accent);
@@ -224,7 +282,8 @@
   align-self: start;
   width: 100%;
 }
-/* The spine: a hairline from the first node to the last. */
+/* The spine: a hairline from the first node to the last. It draws top→down
+   once on entrance (scaleY 0→1, --t-slow). */
 .work-acc::before {
   content: "";
   position: absolute;
@@ -232,14 +291,21 @@
   top: clamp(22px, 3vh, 34px);
   bottom: clamp(22px, 3vh, 34px);
   width: 2px;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scaleY(0);
+  transform-origin: top center;
   background: var(--ink-hairline);
   pointer-events: none;
 }
-/* The spine FILL: an accent line that grows top→down with the scroll progress
-   (--work-fill 0..1, written by the desktop pin in Work.tsx) so the timeline
-   visibly "completes" as you traverse it. Rest / mobile / reduced-motion =
-   --work-fill unset = scaleY(0) = invisible. */
+.portfolio-work.is-entered .work-acc::before {
+  transform: translateX(-50%) scaleY(1);
+  transition: transform var(--t-slow) var(--ease-out);
+}
+/* The spine FILL: an accent line whose tip rides the node dots with the pin
+   progress (--work-fill 0..1 of this element's height, written per scroll
+   frame by the desktop pin in Work.tsx from measured node geometry), so the
+   timeline visibly "completes" as you traverse it. Scroll-linked, so NO
+   transition on transform. Mobile / reduced motion = --work-fill unset =
+   scaleY(0). Hidden until the entrance so it never precedes the spine. */
 .work-acc::after {
   content: "";
   position: absolute;
@@ -251,12 +317,28 @@
   transform-origin: top center;
   background: var(--accent);
   pointer-events: none;
-  transition: transform 0.12s linear;
+  opacity: 0;
+}
+.portfolio-work.is-entered .work-acc::after {
+  opacity: 1;
+  transition: opacity var(--t-slow) var(--ease-out);
 }
 
 .work-acc-item {
   position: relative;
   border-top: 1px solid var(--ink-hairline);
+}
+/* Entrance: rows rise in once, staggered (--row-i is set per row in
+   Work.tsx). Hidden state only BEFORE .is-entered so a JS failure or reduced
+   motion (entered from mount) never leaves rows invisible. */
+.portfolio-work:not(.is-entered) .work-acc-item {
+  opacity: 0;
+  transform: translateY(var(--reveal-lift));
+}
+.portfolio-work.is-entered .work-acc-item {
+  transition: opacity var(--reveal-dur) var(--reveal-ease),
+    transform var(--reveal-dur) var(--reveal-ease);
+  transition-delay: calc(min(var(--row-i, 0), var(--stagger-max)) * var(--stagger));
 }
 /* The header already carries a bottom rule; the first row's top border doubled
    it into a parallel "double line". Drop it so there's a single divider. */
@@ -289,8 +371,8 @@
   padding: clamp(18px, 2.7vh, 30px) clamp(10px, 1.4vw, 18px)
     clamp(18px, 2.7vh, 30px) 0;
   border-radius: 2px;
-  transition: background var(--t-fast) var(--ease-out),
-    transform var(--t-fast) var(--ease-out);
+  transition: background var(--hover-dur) var(--hover-ease),
+    transform var(--t-press) var(--ease-out);
 }
 /* Affordance: on hover the whole row warms to a clear soft-orange SURFACE (not
    the old barely-there 10%-alpha tint) and the year node + company + chevron all
@@ -392,8 +474,9 @@
   font-size: var(--text-xs);
   letter-spacing: 0.2em;
   font-weight: 700;
-  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out),
-    box-shadow var(--t-fast) var(--ease-out);
+  transition: background var(--hover-dur) var(--hover-ease),
+    color var(--hover-dur) var(--hover-ease),
+    box-shadow var(--hover-dur) var(--hover-ease);
 }
 /* Collapsed rows recess to a hollow outline so the solid badge doesn't out-shout
    the open row (its full orange fill is reserved for the active node). */
@@ -409,7 +492,7 @@
   line-height: 0.94;
   letter-spacing: 0;
   color: var(--ink);
-  transition: color var(--t-fast) var(--ease-out);
+  transition: color var(--hover-dur) var(--hover-ease);
 }
 /* Collapsed rows read slightly recessive so the open one is clearly the focus. */
 .work-acc-item:not(.is-open) .work-acc-company {
@@ -446,7 +529,7 @@
      target" while the whole row is the control — misleading (user). A bare
      chevron that rotates + goes accent on hover/open is the honest affordance. */
   transition: transform var(--t-base) var(--ease-out),
-    color var(--t-fast) var(--ease-out);
+    color var(--hover-dur) var(--hover-ease);
 }
 .work-acc-head:hover .work-acc-chevron {
   color: var(--accent);
@@ -456,27 +539,44 @@
   color: var(--accent);
 }
 
-/* Drop-open panel: grid-rows 0fr → 1fr for smooth height + a soft fade. */
+/* Drop-open panel: grid-rows 0fr ↔ 1fr. Both directions morph on the
+   ease-in-out layout curve (both ends of the move are on screen; an ease-out
+   covered 67% of a 260px shift in 56ms and read as a snap). The transition on
+   the BASE rule is the close: the fade leaves fast (--exit-dur, ease-in) so
+   the content is gone before the height finishes. The .is-open rule is the
+   open: the fade waits 80ms for the height to start. */
 .work-acc-panel {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows var(--t-base) var(--ease-out),
-    opacity var(--t-base) var(--ease-out);
+  transition: grid-template-rows var(--t-morph) var(--ease-in-out),
+    opacity var(--exit-dur) var(--exit-ease) 0ms;
 }
 .work-acc-item.is-open .work-acc-panel {
   grid-template-rows: 1fr;
   opacity: 1;
+  transition: grid-template-rows var(--t-morph) var(--ease-in-out),
+    opacity var(--t-base) var(--ease-out) 80ms;
 }
+/* The clipped grid item: NO vertical padding here (padding survives a 0fr
+   row, which left a 20px residual under every collapsed row). */
 .work-acc-panel-inner {
   overflow: hidden;
   min-height: 0;
+  /* Indent to align with the company headline (clear the node gutter). */
+  padding: 0 0 0 calc(var(--gutter) + clamp(14px, 2.4vw, 36px));
+}
+.work-acc-panel-body {
   display: flex;
   flex-direction: column;
   gap: clamp(12px, 1.8vh, 22px);
-  /* Indent to align with the company headline (clear the node gutter). */
-  padding: 0 0 clamp(14px, 2.2vh, 26px)
-    calc(var(--gutter) + clamp(14px, 2.4vw, 36px));
+  padding-bottom: clamp(14px, 2.2vh, 26px);
+}
+/* Mobile tap anchoring (Work.tsx): the panel collapsing ABOVE the tapped row
+   closes in one frame so the scroll compensation is exact. */
+.work-acc-item.no-anim .work-acc-panel,
+.work-acc-item.no-anim .work-acc-bullet {
+  transition: none !important;
 }
 
 /* ----- Panel detail content ------------------------------------ */
@@ -543,18 +643,21 @@
   grid-template-columns: 34px 1fr;
   gap: 14px;
   align-items: baseline;
-  /* Stagger in once the panel opens (Emil): each bullet eases up just after
-     the panel reveal, capped short so it never feels slow. */
+  /* Base rule = the EXIT: bullets fade out (--exit-dur, ease-in, no delay)
+     instead of popping out in one frame. */
   opacity: 0;
   transform: translateY(7px);
+  transition: opacity var(--exit-dur) var(--exit-ease),
+    transform var(--exit-dur) var(--exit-ease);
 }
+/* Entrance: stagger in once the panel is about half open (180ms into the
+   420ms morph), --stagger apart, capped at --stagger-max. --i is per bullet. */
 .work-acc-item.is-open .work-acc-bullet {
   opacity: 1;
   transform: translateY(0);
-  transition: opacity var(--t-base) var(--ease-out)
-      calc(var(--bullet-i, 0) * 55ms + 120ms),
-    transform var(--t-base) var(--ease-out)
-      calc(var(--bullet-i, 0) * 55ms + 120ms);
+  transition: opacity var(--t-base) var(--ease-out),
+    transform var(--t-base) var(--ease-out);
+  transition-delay: calc(180ms + min(var(--i, 0), var(--stagger-max)) * var(--stagger));
 }
 .work-acc-bullet-num {
   font-family: var(--font-mono);
@@ -692,7 +795,18 @@
   .portfolio-work .work-resume {
     transition: none !important;
   }
-  .work-acc-item.is-open .work-acc-bullet {
+  .work-acc-item.is-open .work-acc-bullet,
+  .portfolio-work .work-acc-item,
+  .portfolio-work .work-acc::before,
+  .portfolio-work .work-acc::after {
     transition: none !important;
   }
+}
+/* Reduced motion: no entrance; land in the final state. */
+.portfolio-work.is-reduced-motion .work-acc-item {
+  opacity: 1;
+  transform: none;
+}
+.portfolio-work.is-reduced-motion .work-acc::before {
+  transform: translateX(-50%) scaleY(1);
 }
