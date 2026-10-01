@@ -52,11 +52,12 @@
    - Otherwise src/hero/heroWipe.ts scrubs the same translate from Lenis
      (html[data-hero-park="manual"] turns this block off).
    - The media query is the exact complement of heroWipe's iris mode
-     (mobile ≤768 / reduced motion fade the hero instead; About is not parked).
+     (≤900 = BREAKPOINT.narrow, About's stacked unpinned layout, and reduced
+     motion fade the hero instead; About is not parked).
    Keep the range in sync with the hero spacer (100vh, Hero.tsx) and About's
    pin start. */
 @supports (animation-timeline: scroll()) and (animation-range: 0px 100vh) {
-  @media (width > 768px) and (prefers-reduced-motion: no-preference) {
+  @media (width > 900px) and (prefers-reduced-motion: no-preference) {
     html:not([data-hero-park="manual"]) .portfolio-about .about-stage,
     html:not([data-hero-park="manual"]) .portfolio-about::after {
       animation: about-park linear none;
@@ -75,13 +76,25 @@
 }
 /* While parked (heroWipe sets html[data-hero-park] below 1.1vh, iris mode
    only) the stage paints above the section's own top edge, so let it
-   (overflow-y visible); x stays clipped so nothing can spill sideways. Back to
-   hidden a beat after the pin engages (the translate is already 0 at 1.0vh,
-   so the 1.0-1.1vh overlap is invisible; it keeps the overflow flip out of the
-   pin-engage frame). */
+   (overflow visible). Both axes: Chromium clips HIT-TESTING to the box in y
+   too when only x is clipped (overflow-x: clip + overflow-y: visible), which
+   left the part of the porthole above the section's top unclickable.
+   Sideways spill (the 1.06 pull-back) is already clipped by body's
+   overflow-x: clip (index.css). Back to hidden a beat after the pin engages
+   (the translate is already 0 at 1.0vh, so the 1.0-1.1vh overlap is
+   invisible; it keeps the overflow flip out of the pin-engage frame). */
 html[data-hero-park] .portfolio-about {
-  overflow-x: clip;
-  overflow-y: visible;
+  overflow: visible;
+}
+/* Fade path (≤900 / reduced motion: no park, no iris) keeps the hero LAYER a
+   pass-through (a full-viewport hit box would fight touch scrolling), so
+   About itself stops taking pointers while the hero still covers it
+   (html[data-hero-covering], heroWipe.ts): otherwise links that have scrolled
+   into the viewport under the opaque field (e.g. Ivey at 0.7vh, 1440 reduced
+   motion) take invisible clicks. Iris mode always has data-hero-park while
+   covering, and makes the layer itself the hit target instead. */
+html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
+  pointer-events: none;
 }
 
 /* Faint warm pool behind the centerpiece so the orange room reads as a
@@ -431,9 +444,13 @@ html[data-hero-park] .portfolio-about {
   animation: about-room-bob 6.5s ease-in-out infinite;
 }
 /* The bob is ambient: it only runs while About is on screen (.is-onscreen is
-   an IntersectionObserver toggle in About.tsx), never under the hero at rest
-   or behind the sections below. */
-.portfolio-about:not(.is-onscreen) .render-frame {
+   an IntersectionObserver toggle in About.tsx) AND the hero has cleared
+   (html[data-hero-covering], heroWipe.ts, is set while the hero layer is
+   visible). The parked stage counts as on screen under the hero, so without
+   the second guard the bob would run behind the opaque field at rest; it
+   also keeps the porthole onto a still room during the iris. */
+.portfolio-about:not(.is-onscreen) .render-frame,
+html[data-hero-covering] .render-frame {
   animation-play-state: paused;
 }
 @keyframes about-room-bob {

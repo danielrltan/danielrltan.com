@@ -42,11 +42,26 @@
  * (visibility) the moment the iris has covered the viewport, so the hide can
  * never cut the climax.
  *
- * Mobile (<=768) and prefers-reduced-motion get no iris: About is not parked,
- * and the hero does a short time-based fade (DUR.handoff) at FADE_AT_VH onto
- * the pre-armed About, with hysteresis. No zoom, no pixels.
+ * Narrow (<=900, BREAKPOINT.narrow: About's stacked, unpinned layout, where
+ * there is no room render to open onto) and prefers-reduced-motion get no
+ * iris: About is not parked, and the hero clears at spec §5 O2/O3 timing
+ * (hide at HERO.handoffVh 0.78, return below HERO.showVh 0.74). Narrow fades
+ * over DUR.handoff; reduced motion snaps in the same scroll callback (F3,
+ * <=1 frame). No zoom, no pixels.
+ *
+ * Hit-testing: while the iris is built the hero LAYER itself takes pointer
+ * events (clip-path clips hit-testing, so About is reachable only through the
+ * hole), otherwise the parked About under the opaque field (its Reach links)
+ * would take invisible clicks. The composition below it stays
+ * pointer-events:none, so the layer box is the only target; wheel/touch
+ * bubble to window/Lenis as before.
+ *
+ * Room bob: html[data-hero-covering] is set while the hero layer is visible
+ * (iris not yet cleared / fade not done); about.css pauses the room's ambient
+ * bob under it, so the parked room is still behind the hero and through the
+ * porthole, and starts floating once the hero clears.
  */
-import { DUR, HERO, ease, reducedMotion } from "../motion";
+import { BREAKPOINT, DUR, HERO, ease, reducedMotion } from "../motion";
 import { getLenis, onScrollJump } from "../scroll";
 import { heroHandoff, heroState } from "./heroState";
 
@@ -102,9 +117,10 @@ const ABOUT_PULL = 1.06;
 const PUSH_EASE = "cubic-bezier(0.5, 0, 0.8, 0.9)";
 const PULL_EASE = "cubic-bezier(0.2, 0.6, 0.35, 1)";
 
-/** Fade path (mobile / reduced motion): hide at/above, show again below. */
-const FADE_AT_VH = 0.5;
-const FADE_SHOW_VH = 0.46;
+/** Fade path (narrow / reduced motion): hide at/above, show again below
+ *  (spec §5 F1/F3 = O2/O3 timing; the tokens live in motion.ts HERO). */
+const FADE_AT_VH = HERO.handoffVh;
+const FADE_SHOW_VH = HERO.showVh;
 
 /** Hero-side animations exist only in (BUILD_MIN_PX, TEARDOWN_VH * vh). Torn
  *  down a beat after About pins (1.1vh, not 1.0) so the teardown never lands in
@@ -306,7 +322,10 @@ type Driven = { anim: Animation; start: number; end: number };
 export function installHeroWipe(): void {
   if (typeof window === "undefined") return;
   const root = document.documentElement;
-  const mobileQ = window.matchMedia("(max-width: 768px)");
+  // Iris only where About is the pinned one-viewport bento with the room
+  // render (> BREAKPOINT.narrow). about.css's park @media is the exact
+  // complement (width > 900px); keep the two in sync.
+  const mobileQ = window.matchMedia(`(max-width: ${BREAKPOINT.narrow}px)`);
   const params = new URLSearchParams(window.location.search);
   const forceManual = params.has("nost");
   const hasST = typeof (window as unknown as { ScrollTimeline?: unknown }).ScrollTimeline === "function";
@@ -328,6 +347,8 @@ export function installHeroWipe(): void {
   let irisHidden = false;
   let parked: string | null = null;
   let lastPointer = "";
+  let lastLayerPointer = "";
+  let covering: boolean | null = null;
   let lastDiving = false;
   let lastY = -1;
 
@@ -415,13 +436,32 @@ export function installHeroWipe(): void {
     el.style.setProperty("--hero-pointer-events", v);
   };
 
+  /** The hero LAYER's own hit-testing (inline, overriding App's
+   *  pointerEvents:none). "auto" only while the iris is up (see header). */
+  const setLayerPointer = (v: "auto" | "none") => {
+    if (v === lastLayerPointer) return;
+    const el = heroLayer();
+    if (!el) return;
+    lastLayerPointer = v;
+    el.style.pointerEvents = v;
+  };
+
+  /** heroState.culled + html[data-hero-covering] (pauses About's room bob). */
+  const setCulled = (culled: boolean) => {
+    heroState.culled = culled;
+    if (covering === !culled) return;
+    covering = !culled;
+    if (covering) root.setAttribute("data-hero-covering", "");
+    else root.removeAttribute("data-hero-covering");
+  };
+
   const setIrisHidden = (hide: boolean) => {
     if (hide === irisHidden) return;
     const el = heroLayer();
     if (!el) return;
     irisHidden = hide;
     el.style.visibility = hide ? "hidden" : "";
-    heroState.culled = hide;
+    setCulled(hide);
   };
 
   const setPark = (v: string | null) => {
@@ -514,10 +554,9 @@ export function installHeroWipe(): void {
         make(driven, rim, [{ clipPath: g.rimFrom, easing: g.cellEasing }, { clipPath: g.rimTo }], s, e, sd) &&
         make(driven, rim, RIM_OPACITY, s, e, sd);
     }
-    // Pull-back only on the pinned, one-viewport bento (>900px). In the
-    // 769-900 band About is a tall stacked column, and scaling it would drift
-    // the visible top.
-    if (ok && stage && g.w > 900) {
+    // Pull-back only on the pinned, one-viewport bento (iris mode is already
+    // > BREAKPOINT.narrow; the width check is a belt for a resize race).
+    if (ok && stage && g.w > BREAKPOINT.narrow) {
       stage.style.transformOrigin = `${f1(g.sx - g.stageLeft)}px ${f1(g.sy)}px`;
       ok = make(driven, stage, [{ scale: String(ABOUT_PULL), easing: PULL_EASE }, { scale: "1" }], s, e, sd);
     }
@@ -594,7 +633,7 @@ export function installHeroWipe(): void {
     build();
   };
 
-  // ── Fade path (mobile / reduced motion) ───────────────────────────────────
+  // ── Fade path (narrow / reduced motion) ───────────────────────────────────
   let fadeShown = window.scrollY / vh < FADE_AT_VH;
   let fadeOpacity = fadeShown ? 1 : 0;
   let fadeFrom = fadeOpacity;
@@ -609,7 +648,7 @@ export function installHeroWipe(): void {
       // Fully faded = not hit-testable and not painted.
       el.style.visibility = fadeOpacity <= 0 ? "hidden" : "";
     }
-    heroState.culled = fadeOpacity <= 0;
+    setCulled(fadeOpacity <= 0);
   };
   const fadeLoop = (now: number) => {
     const t = fadeDur > 0 ? clamp01((now - fadeT0) / fadeDur) : 1;
@@ -650,13 +689,14 @@ export function installHeroWipe(): void {
       if (diving) root.setAttribute("data-hero-diving", "");
       else root.removeAttribute("data-hero-diving");
     }
-    // The hero wordmark stops taking pointer events the moment you leave the
-    // resting hero, or About's Reach links under it go dead.
+    // The hero wordmark's hover field stops taking pointer events the moment
+    // you leave the resting hero (the layer itself takes over below, in iris
+    // mode, so the parked About can't be clicked through the opaque field).
     setPointer(diving ? "none" : "auto");
 
     if (irisMode()) {
       if (fadeRaf || fadeOpacity !== 1) {
-        // Leaving the fade path (resize past 768 / reduced-motion toggle).
+        // Leaving the fade path (resize past 900 / reduced-motion toggle).
         fadeShown = true;
         snapFade();
         irisHidden = false; // snapFade cleared the layer's visibility
@@ -683,18 +723,29 @@ export function installHeroWipe(): void {
       heroState.wiping = built && ratio < IRIS_END_VH;
       if (ratio >= IRIS_START_VH + (IRIS_END_VH - IRIS_START_VH) * (geo?.cueP ?? CUE_P)) heroHandoff.set("cue");
       setIrisHidden(ratio >= IRIS_END_VH);
+      setCulled(irisHidden);
+      // Opaque field = hit target; the hole (clip-path) lets About through.
+      setLayerPointer(irisHidden ? "none" : "auto");
     } else {
       const fromIris = built || irisHidden;
       if (built) teardown();
       if (parkDriven.length) cancelAll(parkDriven);
       setPark(null);
       setIrisHidden(false);
+      // Fade path: the layer stays a pass-through (App's default). About is
+      // not parked here, and on touch a full-viewport hit box is unwanted.
+      setLayerPointer("none");
       heroState.wiping = false;
       if (fromIris) writeFade();
       if (fadeShown && ratio >= FADE_AT_VH) fadeShown = false;
       else if (!fadeShown && ratio < FADE_SHOW_VH) fadeShown = true;
       if (!fadeShown) heroHandoff.set("cue");
-      startFade(fadeShown ? 1 : 0);
+      if (reducedMotion.value) {
+        // F3: reduced motion clears / returns in the same callback (<=1 frame).
+        if (fadeRaf || fadeOpacity !== (fadeShown ? 1 : 0)) snapFade();
+      } else {
+        startFade(fadeShown ? 1 : 0);
+      }
     }
   };
 
@@ -739,8 +790,11 @@ export function installHeroWipe(): void {
   Object.defineProperty(window, "__heroMotion", { configurable: true, value: mirror });
 
   // ── Wiring ────────────────────────────────────────────────────────────────
-  // Seed: a refresh-at-offset past the hero starts hidden (no flash).
+  // Seed: a refresh-at-offset past the hero starts hidden (no flash). The
+  // covering flag is seeded synchronously so the room bob is paused from the
+  // first paint (the hero layer is visible at install).
   if (!irisMode()) writeFade();
+  else setCulled(false);
   if (window.scrollY > 0) heroHandoff.set("armed");
 
   // Manual scrubs ride Lenis's scroll callback (the shared Lenis rAF, same
