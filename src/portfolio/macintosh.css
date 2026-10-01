@@ -170,12 +170,20 @@
   text-align: right;
   /* Fades while a project detail is open (see .is-detail-open below):
      during the dolly-in the header floated over the black CRT edge in
-     the corner, barely legible — read as broken. */
-  transition: opacity var(--t-med, 400ms) ease;
+     the corner, barely legible — read as broken. This transition is for
+     that class toggle ONLY: nothing writes .mac-col's own opacity per
+     frame. The scroll-driven descent fade rides the children instead
+     (--mac-head-fade, written by Macintosh.tsx, deliberately untransitioned:
+     no CSS smoother stacked on a scroll-written value), so the two fades
+     multiply and never fight. */
+  transition: opacity var(--t-med) var(--ease-out);
 }
 .mac-col.is-detail-open {
   opacity: 0;
   pointer-events: none;
+}
+.mac-col > * {
+  opacity: var(--mac-head-fade, 1);
 }
 .mac-col .section-marker,
 .mac-col .section-index,
@@ -310,8 +318,8 @@
   pointer-events: auto;
   font: inherit;
   transition:
-    box-shadow 150ms ease-out,
-    background-color 150ms ease-out;
+    box-shadow var(--hover-dur) var(--hover-ease),
+    background-color var(--hover-dur) var(--hover-ease);
 }
 /* NO DOM hover glow. The hover feedback is painted ON THE CANVAS (the detail
    painter brightens the BACK / CTA when hoveredControl matches), so it

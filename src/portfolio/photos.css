@@ -40,10 +40,10 @@
   min-width: 0;
   overflow-wrap: break-word;
   word-break: break-word;
+  /* Scroll-written (Photos.tsx entrance trigger): NO transition, so Lenis
+     stays the only smoother on this value. */
   opacity: var(--gh-title, 1);
   transform: translateY(calc((1 - var(--gh-title, 1)) * 22px));
-  transition: opacity var(--t-slow) var(--ease-entrance),
-    transform var(--t-slow) var(--ease-entrance);
 }
 
 /* Short-viewport guard (desktop widths only; the ≤768 block sets its own). */
@@ -85,10 +85,9 @@
   grid-row: 1;
   display: flex;
   align-items: flex-start;
+  /* Scroll-written, like the title: no transition. */
   opacity: var(--gh-eye, 1);
   transform: translateY(calc((1 - var(--gh-eye, 1)) * 8px));
-  transition: opacity var(--t-med) var(--ease-entrance),
-              transform var(--t-med) var(--ease-entrance);
 }
 /* Small section-number tag on the shared --hdr-num scale: 06 reads at the
    SAME tiny size as every other section's number. (The "/ Photo reel" tag
@@ -182,8 +181,8 @@
   display: flex;
   gap: var(--space-5);
   will-change: transform;
-  /* No CSS transition; the rAF lerp loop computes the transform on
-     every frame; a CSS transition would add lag. */
+  /* No CSS transition: OtherPhotoTrains' damp loop writes the transform
+     (only while the row is still moving); a CSS transition would add lag. */
 }
 
 /* Each card is a SQUARE tile. Placeholder gradient fill until the real

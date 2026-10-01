@@ -1,17 +1,20 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DECAY, clampDt } from "../motion";
+import { onScrollJump } from "../scroll";
 
 /**
  * Photo trains (the Recents section): three horizontal rows of photo cards
- * that slide in opposite directions as the section's pin scrubs (0..1).
+ * that slide in opposite directions as the page scrolls through the section.
  * Reads a parent-supplied progress instead of scrollY:
  *
- *   - Photos.tsx writes `progress` (0..1) every GSAP onUpdate frame.
- *   - A continuous rAF loop lerps each row's actual transform toward
- *     a per-row TARGET shift derived from that progress.
- *   - Result: trains glide smoothly even when the scrub jumps
- *     (mouse-wheel deltas, anchor jumps). See CLAUDE.md memory rule
- *     "Scroll animations must be fixed-rate: never bind a CSS property
- *     directly to scrollProgress; lerp toward it in a rAF loop instead."
+ *   - Photos.tsx writes `progress` (0..1, the "photos-train" span) on every
+ *     ScrollTrigger update and calls `wakeRef.current()`.
+ *   - A rAF loop damps each row's px shift toward a per-row TARGET derived
+ *     from that progress (dt-based, DECAY.soft, so the glide feels the same
+ *     at 60 and 120 Hz), rounded to device pixels.
+ *   - Once every row has converged the loop writes nothing and SLEEPS until
+ *     the next wake (progress change, visibility edge, resize, cut jump).
+ *   - A programmatic cut jump lands the rows on target in one frame.
  *
  * Layout: 3 horizontal rows of wide rectangular photo cards stacked
  * vertically. Adjacent rows scroll in opposite directions so the
@@ -43,6 +46,9 @@ interface Props {
    *  nodes on every scroll tick. The rAF loop below reads it directly;
    *  React never re-renders for progress. */
   progressRef: React.MutableRefObject<number>;
+  /** Filled by this component with a "progress changed, run the loop"
+   *  callback; Photos.tsx calls it from its trigger's onUpdate. */
+  wakeRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 const ROWS = 3;
@@ -55,6 +61,10 @@ const ROWS = 3;
 const ROW_DIRS = [1, -1, 1];
 
 // ROOT-CAUSE FIX (some photos never appear):
+// (Motion pass note: the measure below was silently dead until now. It
+// queried `.other-train-strip` INSIDE the strip element itself, found
+// nothing, and every row ran on the 15% seed. It now measures the strip
+// directly, in px, and applies COVERAGE to the FULL sweep as documented.)
 // ------------------------------------------------------------------
 // The old model multiplied a FIXED `TRAVEL_MULT` (= 30) by the strip
 // width to get the per-row drift in PERCENT of strip width. But how many
@@ -71,48 +81,50 @@ const ROW_DIRS = [1, -1, 1];
 // permanently outside the visible window.
 //
 // THE FIX: derive the drift from the ACTUAL measured geometry so the
-// sweep always covers one full unique-photo chunk (chunkCount * pitch),
-// converted to a percentage of the live strip width. Then every unique
-// photo is guaranteed to cross the centre of the clear window across a
-// Beat-A pass at any viewport size. Re-measured on mount + resize.
-// COVERAGE > 1 adds a little margin so even the chunk-edge photos clear
-// the 8% edge-fade mask and read fully, not just peek.
+// full sweep (progress 0 → 1) covers one unique-photo chunk
+// (chunkCount * pitch) × COVERAGE. Then every unique photo crosses the
+// centre of the clear window across a pass at any viewport size.
+// Re-measured on mount + resize + visible edge. COVERAGE > 1 adds a little
+// margin so even the chunk-edge photos read fully, not just peek. If the
+// parade reads too slow, raise it (spec: 1.12 → 1.3).
 const TRAVEL_COVERAGE = 1.12;
-// rAF lerp factor. 0.085 ≈ ~25 frames to 95% of target at 60fps
-// (~420ms catch-up). Same shape as the original.
+// Never slide a strip end into its row: cap the half-travel at the strip's
+// overhang past the row edge, minus this many px of safety.
+const TRAVEL_EDGE_GUARD_PX = 24;
+// Follow rate: DECAY.soft (τ ≈ 167ms), frame-rate independent.
 // NOTE: the trains deliberately do NOT use the sitewide pixel-grid
 // quantised writes (hero hover / marquees): an 8px-stepped slide over
 // PHOTOGRAPHS read as lag rather than pixel-art, per user. Continuous
-// imagery wants continuous motion; the stepped voice stays on type and
-// chrome.
-const LERP_K = 0.085;
+// imagery wants continuous motion (rounded only to DEVICE pixels, so the
+// photos stay crisp); the stepped voice stays on type and chrome.
+const FOLLOW_RATE = DECAY.soft;
+// Converged when every row is this close to its target (px). ~0.002% of a
+// ~6000px strip; below it the loop snaps to target, writes once, sleeps.
+const CONVERGE_PX = 0.12;
 
 export const OtherPhotoTrains = memo(function OtherPhotoTrains({
   photos,
   progressRef,
+  wakeRef,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  // The three sliding STRIPS (one per row; the row box clips them).
   const rowRefs = useRef<Array<HTMLDivElement | null>>([null, null, null]);
-  // Target shift values are derived from `progressRef` per frame; the
-  // rAF loop reads them and lerps the visible transform.
-  const targetShiftRef = useRef<number[]>([0, 0, 0]);
-  const currentShiftRef = useRef<number[]>([0, 0, 0]);
-  // Per-row HALF-travel as a PERCENT of strip width, measured from live
-  // geometry (see measureTravel). centered ∈ [-0.5, 0.5] → centered*2 maps
-  // to [-1, 1], so at the pin extremes the strip shifts ±travelPct, sweeping
-  // a full unique-photo chunk (× TRAVEL_COVERAGE) through the clear window.
-  // Re-measured on mount + resize so it tracks the (height-driven, clamped)
-  // card size at every viewport. Seeded to a sane non-zero so the first few
-  // frames before measurement still drift.
-  const travelPctRef = useRef<number[]>([15, 15, 15]);
+  // Per-row HALF-travel in px, measured from live geometry (see
+  // measureTravel). centered ∈ [-0.5, 0.5] → centered*2 maps to [-1, 1], so
+  // at the span extremes the strip shifts ±travelPx. Seeded to a sane
+  // non-zero so the first frames before measurement still drift.
+  const travelPxRef = useRef<number[]>([900, 900, 900]);
+  // Starts/resumes the (sleeping) follow loop; set by the loop effect.
+  const wakeLoopRef = useRef<() => void>(() => {});
   // Set true on the IO visible-rising edge so the tick re-measures travel
   // ONCE when the rack scrolls into view. Catches geometry that settled
   // after the initial mount measure WITHOUT firing a window 'resize' (font
   // load, iOS URL-bar svh shift, the post-loading ScrollTrigger.refresh that
   // re-lays-out the pin). One measure on entry, not a per-frame layout read.
   const needsMeasureRef = useRef<boolean>(true);
-  // PERF: visibility flag toggled by IntersectionObserver. The rAF
-  // loop short-circuits when the rack isn't on screen.
+  // PERF: visibility flag toggled by IntersectionObserver. Off-screen the
+  // loop lands the rows on target and sleeps instead of gliding.
   const visibleRef = useRef<boolean>(false);
 
   // Real uploaded photos, fetched at runtime from the manifest that
@@ -150,11 +162,10 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
     });
   }, [items]);
 
-  // IntersectionObserver: only run the lerp loop while the rack is
-  // on screen. Combined with the settled-early-out below, the rAF
-  // stops scheduling new frames in two cases: (a) section off-screen,
-  // (b) section visible but lerp has converged. Either way the CPU
-  // is free.
+  // IntersectionObserver: the follow loop only glides while the rack is on
+  // screen. It stops scheduling frames in two cases: (a) section off-screen
+  // (rows land on target first), (b) every row has converged. Either way
+  // the CPU is free until the next wake.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -167,6 +178,9 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
             needsMeasureRef.current = true;
           }
           visibleRef.current = entry.isIntersecting;
+          // Either edge runs the loop: rising to follow, falling so it can
+          // land the rows on target and go to sleep.
+          wakeLoopRef.current();
         }
       },
       { rootMargin: "15% 0px 15% 0px" },
@@ -182,19 +196,20 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
   //   chunkCount  = number of UNIQUE photos in the row (chunk before repeat)
   //   chunkWidth  = chunkCount * pitch  (px the strip must travel to parade
   //                 the whole chunk past centre)
-  //   travelPct   = (chunkWidth * COVERAGE) / stripWidth * 100  (HALF-travel,
-  //                 because centered*2 maps [-0.5,0.5] → [-1,1] in the tick)
+  //   travelPx    = chunkWidth * COVERAGE / 2  (HALF-travel: centered*2 maps
+  //                 [-0.5,0.5] → [-1,1] in the tick, so the full sweep is
+  //                 chunkWidth * COVERAGE), capped at the strip's overhang
   // Runs a handful of times (mount, resize, photo-set change, visible edge),
   // never per scroll frame, so the layout reads here are cheap.
   const measureTravel = useCallback(
     () => {
       const per = Math.ceil(items.length / ROWS);
       for (let i = 0; i < ROWS; i++) {
-        const row = rowRefs.current[i];
-        const strip = row?.querySelector<HTMLElement>(".other-train-strip");
+        const strip = rowRefs.current[i];
         const firstCard = strip?.querySelector<HTMLElement>(".other-train-card");
         if (!strip || !firstCard) continue;
-        const stripW = strip.scrollWidth;
+        const stripW = strip.offsetWidth;
+        const rowW = strip.parentElement?.clientWidth ?? 0;
         if (stripW <= 0) continue;
         const cardW = firstCard.getBoundingClientRect().width;
         // Flex `gap` on the strip (var(--space-5) = 24px). Read computed so a
@@ -205,9 +220,11 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
         let chunkCount = Math.min(per, Math.max(0, items.length - i * per));
         if (chunkCount <= 0) chunkCount = items.length; // fewer photos than rows
         const chunkWidth = chunkCount * pitch;
-        // HALF-travel percent: at the extremes the strip moves ±this, so the
-        // total sweep covers the full chunk (× COVERAGE for edge-mask margin).
-        travelPctRef.current[i] = ((chunkWidth * TRAVEL_COVERAGE) / stripW) * 100;
+        const overhang = Math.max(0, (stripW - rowW) / 2 - TRAVEL_EDGE_GUARD_PX);
+        travelPxRef.current[i] = Math.min(
+          (chunkWidth * TRAVEL_COVERAGE) / 2,
+          overhang,
+        );
       }
     },
     [items],
@@ -219,13 +236,19 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
   // re-lays-out the pin).
   useEffect(() => {
     // Defer one frame so the flex layout (card clamp, gap) has resolved.
-    let raf = requestAnimationFrame(measureTravel);
+    let raf = requestAnimationFrame(() => {
+      measureTravel();
+      wakeLoopRef.current();
+    });
     const onResize = () => {
       // Also flag the tick to re-measure on next visible frame, in case the
       // resize changed the card clamp while the section is off-screen.
       needsMeasureRef.current = true;
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(measureTravel);
+      raf = requestAnimationFrame(() => {
+        measureTravel();
+        wakeLoopRef.current();
+      });
     };
     window.addEventListener("resize", onResize, { passive: true });
     return () => {
@@ -235,64 +258,91 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
   }, [measureTravel, rowStrips]);
 
   useEffect(() => {
+    const cur = [0, 0, 0];
+    const tgt = [0, 0, 0];
+    // Last device-px value written per row (NaN = never), so a converged or
+    // sub-device-px step writes nothing.
+    const written = [NaN, NaN, NaN];
     let loopRaf = 0;
-    let firstFrame = true;
+    let running = false;
+    let lastT = 0;
+    // Land on target (no glide): the first frame after mount (the section
+    // may already be mid-span) and the frame after a programmatic cut jump.
+    let snapNext = true;
 
-    const tick = () => {
-      // PERF: skip the per-frame work entirely while the trains aren't
-      // on screen. We still keep the rAF scheduled (cheap) so the loop
-      // resumes the moment the section becomes visible.
-      if (!visibleRef.current) {
-        loopRaf = requestAnimationFrame(tick);
-        return;
-      }
+    const write = (i: number) => {
+      const strip = rowRefs.current[i];
+      if (!strip) return;
+      const dpr = window.devicePixelRatio || 1;
+      // Negative: a positive shift slides the strip left (as before).
+      const px = Math.round(-cur[i]! * dpr) / dpr;
+      if (px === written[i]) return;
+      written[i] = px;
+      strip.style.transform = `translate3d(${px}px, 0, 0)`;
+    };
+
+    const tick = (now: number) => {
+      // Real rAF dt (first frame after a wake: one nominal frame).
+      const dt = lastT ? clampDt((now - lastT) / 1000) : 1 / 60;
+      lastT = now;
+      const visible = visibleRef.current;
       // Consume a pending re-measure (visible-rising edge / off-screen
       // resize). One layout read on entry, never every frame.
-      if (needsMeasureRef.current) {
+      if (visible && needsMeasureRef.current) {
         needsMeasureRef.current = false;
         measureTravel();
       }
-      // Center the travel range around 0. At progress=0.5 the strip
-      // sits at neutral so the eye reads the middle of the pin as the
-      // "default" frame, with cards drifting in both temporal
-      // directions.
-      const p = progressRef.current;
-      const centered = p - 0.5;
+      // Center the travel range around 0: at progress 0.5 the strip sits at
+      // neutral, with cards drifting in both directions either side.
+      const centered = progressRef.current - 0.5;
       for (let i = 0; i < ROWS; i++) {
-        // centered*2 maps the [-0.5, 0.5] pin range onto [-1, 1], so at the
-        // extremes the strip shifts ±travelPct (a full chunk sweep). Sign
-        // from ROW_DIRS gives the alternating-row parallax direction.
-        targetShiftRef.current[i] =
-          centered * 2 * ROW_DIRS[i]! * travelPctRef.current[i]!;
+        // Sign from ROW_DIRS gives the alternating-row parallax direction.
+        tgt[i] = centered * 2 * ROW_DIRS[i]! * travelPxRef.current[i]!;
       }
-      // Snap to target on the very first tick so the trains don't
-      // slide in from 0 when the section is already partway through
-      // the pin on mount.
-      if (firstFrame) {
-        for (let i = 0; i < ROWS; i++) {
-          currentShiftRef.current[i] = targetShiftRef.current[i]!;
-        }
-        firstFrame = false;
-      }
+      // Off-screen there is nothing to glide for: land and sleep.
+      const snap = snapNext || !visible;
+      snapNext = false;
+      const k = 1 - Math.exp(-FOLLOW_RATE * dt);
+      let converged = true;
       for (let i = 0; i < ROWS; i++) {
-        const cur = currentShiftRef.current[i]!;
-        const tgt = targetShiftRef.current[i]!;
-        const next = cur + (tgt - cur) * LERP_K;
-        currentShiftRef.current[i] = next;
-        const row = rowRefs.current[i];
-        if (row) {
-          row.style.transform = `translate3d(${-next}%, 0, 0)`;
+        const d = tgt[i]! - cur[i]!;
+        if (snap || Math.abs(d) < CONVERGE_PX) cur[i] = tgt[i]!;
+        else {
+          cur[i] = cur[i]! + d * k;
+          converged = false;
         }
+        write(i);
       }
-      // Keep ticking even when settled so incoming progress writes are
-      // picked up; the off-screen cheap-skip above makes an idle tick ~one
-      // branch.
+      if (converged) {
+        // Sleep until the next wake (progress update, IO edge, resize, cut).
+        running = false;
+        lastT = 0;
+        return;
+      }
       loopRaf = requestAnimationFrame(tick);
     };
 
-    loopRaf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(loopRaf);
-  }, [measureTravel]);
+    const wake = () => {
+      if (running) return;
+      running = true;
+      loopRaf = requestAnimationFrame(tick);
+    };
+    wakeLoopRef.current = wake;
+    if (wakeRef) wakeRef.current = wake;
+    const stopJumps = onScrollJump((e) => {
+      if (e.phase !== "end" || e.mode !== "cut") return;
+      snapNext = true;
+      wake();
+    });
+    wake();
+    return () => {
+      stopJumps();
+      cancelAnimationFrame(loopRaf);
+      running = false;
+      wakeLoopRef.current = () => {};
+      if (wakeRef) wakeRef.current = null;
+    };
+  }, [measureTravel, progressRef, wakeRef]);
 
   return (
     <div ref={wrapRef} className="other-trains">
