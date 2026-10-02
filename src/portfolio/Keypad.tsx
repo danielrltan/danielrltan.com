@@ -12,6 +12,7 @@ const KeypadScene = lazy(() =>
   import("../keypad/KeypadScene").then((m) => ({ default: m.KeypadScene })),
 );
 import { useIsMobile } from "../useIsMobile";
+import { useReveal } from "./useReveal";
 import { track } from "../analytics";
 import "./keypad.css";
 
@@ -165,6 +166,10 @@ export const Keypad = memo(function Keypad() {
   // (useSectionCanvasMount), so the section is a normal-flow band carrying
   // the contact chips below.
   const isMobile = useIsMobile();
+  // Phones: the contact list blocks ride the shared one-shot [data-reveal]
+  // entrance (useReveal + sections.css: the subtle mobile timing), like the
+  // Honours rows above. Desktop has no [data-reveal] nodes here.
+  useReveal(sectionRef, { enabled: isMobile });
   // Capable desktops mount the canvas eagerly (see useSectionCanvasMount). On
   // approach-gated devices, mount it WELL ahead of arrival and release its
   // WebGL context once it's well out of view. The keypad is the LAST section
@@ -356,23 +361,27 @@ export const Keypad = memo(function Keypad() {
           missing). */}
       {isMobile && (
         <div className="keypad-mobile">
-          <header className="keypad-mhead">
+          <header className="keypad-mhead" data-reveal="">
             <span className="keypad-mnum">07</span>
             <h2 className="keypad-mtitle">Contact</h2>
           </header>
 
-          {/* Primary channel: email. The one bold action on the surface. */}
-          <a
-            className="keypad-email"
-            href="mailto:hello@danielrltan.com"
-            onClick={() => track("contact_email", { context: "contact" })}
-          >
-            <span className="keypad-email-k">Email</span>
-            <span className="keypad-email-v">hello@danielrltan.com</span>
-          </a>
+          {/* Primary channel: email. The one bold action on the surface.
+              (Wrapped so the reveal's transition never collides with the
+              card's own press transition.) */}
+          <div data-reveal="">
+            <a
+              className="keypad-email"
+              href="mailto:hello@danielrltan.com"
+              onClick={() => track("contact_email", { context: "contact" })}
+            >
+              <span className="keypad-email-k">Email</span>
+              <span className="keypad-email-v">hello@danielrltan.com</span>
+            </a>
+          </div>
 
           {/* Secondary: the socials, as a flat hairline-divided link list. */}
-          <div className="keypad-elsewhere">
+          <div className="keypad-elsewhere" data-reveal="">
             <span className="keypad-elsewhere-k">Find me elsewhere</span>
             <nav className="keypad-contact" aria-label="Find me elsewhere">
               {SOCIALS.map((s) => (

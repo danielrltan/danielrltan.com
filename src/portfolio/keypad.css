@@ -23,7 +23,10 @@
      element into a fixed layer and pads its pin-spacer so the document
      height grows accordingly. */
   display: block;
+  /* svh with vh fallback: bare 100vh changed the pin geometry whenever the
+     iOS URL bar collapsed. */
   height: 100vh;
+  height: 100svh;
   padding: 0;
   background: var(--bg-page, #eef0f3);
   position: relative;
@@ -95,15 +98,19 @@
   border: 0;
 }
 
-/* ── MOBILE (<=768px): clean CONTACT section, no canvas ────────────────
+/* ── COMPACT: clean CONTACT section, no canvas ─────────────────────────
+   Compact = <=768px wide OR a phone on its side (landscape, <=500px tall),
+   mirroring motion.ts MQ.compact / useIsMobile. A sideways phone used to get
+   the 3D keypad at 390px tall, showing 2 of its 5 keys; it now gets this
+   list like any phone.
    The keypad <Canvas> no longer mounts at <=768px (useSectionCanvasMount
    returns false), so the .keypad-stage is an EMPTY reserved box. Its old
    `flex:1` inside an 80svh flex column ate the whole viewport and shoved
    the chips off-screen. Here we COLLAPSE the stage, let the section be
    sized by its content (height:auto, NO svh floor), and compose a tidy
    editorial stack: the "07 / Find me elsewhere" heading immediately
-   followed by the four social chips. Desktop (>768px) is untouched. */
-@media (max-width: 768px) {
+   followed by the four social chips. Desktop is untouched. */
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   /* Combined selector again so the mobile height beats the shared
      .portfolio-section rule (same 0,2,0 > 0,1,0 reasoning as above). */
   .portfolio-section.keypad-section {
@@ -159,7 +166,7 @@
   .keypad-section .keypad-mnum {
     font-family: var(--font-pixel);
     font-weight: 700;
-    font-size: var(--hdr-num, clamp(13px, 3.4vw, 18px));
+    font-size: var(--hdr-num-mobile, clamp(13px, 3.4vw, 18px));
     line-height: 0.9;
     letter-spacing: 0.01em;
     color: var(--accent-deep);
@@ -168,6 +175,8 @@
   .keypad-section .keypad-mtitle {
     /* Trim the shared h2's big default bottom margin — the flex gap owns it. */
     margin: 0;
+    /* Shared mobile wordmark size (one token across the compact sections). */
+    font-size: var(--hdr-title-mobile, var(--hdr-title, clamp(48px, 13vw, 190px)));
   }
 
   /* Primary channel: email. A flat white card whose ADDRESS is the bold-orange
@@ -188,7 +197,7 @@
   }
   .keypad-section .keypad-email-k {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--fs-mono);
     font-weight: 500;
     letter-spacing: 0.22em;
     text-transform: uppercase;
@@ -220,7 +229,7 @@
   }
   .keypad-section .keypad-elsewhere-k {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--fs-mono);
     font-weight: 500;
     letter-spacing: 0.22em;
     text-transform: uppercase;
@@ -252,7 +261,11 @@
     justify-content: space-between;
     gap: var(--space-4);
     min-height: 60px; /* generous full-width touch target */
-    padding: 0 var(--space-4h);
+    /* Right pad: the host + arrow column is right-aligned, and the fixed
+       jump-to-top button (bottom-right, ~52px in from the edge on compact)
+       would sit over it at rest. 44px + the section's 16px gutter keeps the
+       column ~60px clear of the screen edge. */
+    padding: 0 max(44px, env(safe-area-inset-right, 0px) + 28px) 0 var(--space-4h);
     text-decoration: none;
     color: var(--ink);
     background: transparent;
@@ -271,7 +284,7 @@
   /* Platform name: the primary element, near-ink for max legibility. */
   .keypad-section .keypad-contact-name {
     font-family: var(--font-mono);
-    font-size: 17px;
+    font-size: var(--fs-body-lg);
     font-weight: 600;
     letter-spacing: 0.01em;
     color: inherit;
@@ -282,7 +295,7 @@
     align-items: center;
     gap: var(--space-2);
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: var(--fs-meta);
     letter-spacing: 0.02em;
     color: var(--ink-muted);
   }

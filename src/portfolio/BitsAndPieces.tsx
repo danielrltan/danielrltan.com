@@ -5,7 +5,7 @@ import "./sections.css";
 import "./bits-and-pieces.css";
 import { ScrambleText } from "./ScrambleText";
 import { useReveal } from "./useReveal";
-import { ease, reducedMotion } from "../motion";
+import { ease, matches, MQ, reducedMotion } from "../motion";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -291,15 +291,16 @@ export function BitsAndPieces() {
   // ScrollTrigger refresh. Rounded to device pixels, not to a coarse grid
   // (the old 12px quantisation juddered in Lenis's deceleration tail).
   // Skipped (strip stays at rest) under reduced motion, on coarse pointers,
-  // and <=768px, where the strip is trimmed/hidden in CSS.
+  // and on compact screens, where the strip is trimmed/hidden in CSS.
   useEffect(() => {
     const el = sectionRef.current;
     const strip = marqueeRef.current;
     if (!el || !strip) return;
     const coarsePointer =
       window.matchMedia?.("(hover: none), (pointer: coarse)").matches ?? false;
-    const narrow = window.matchMedia?.("(max-width: 768px)").matches ?? false;
-    if (reducedMotion.value || coarsePointer || narrow) return;
+    // Compact = a phone, upright or on its side (shared query; CSS trims the
+    // strip on the same query).
+    if (reducedMotion.value || coarsePointer || matches(MQ.compact)) return;
 
     const setX = gsap.quickSetter(strip, "x", "px") as (v: number) => void;
     let stripW = strip.scrollWidth;
