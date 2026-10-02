@@ -394,7 +394,7 @@ export function HeroSignature() {
             aria-hidden decorative spans (per-char fill + matrix overlay),
             so screen readers + SEO get the name from this single h1
             instead of nothing. Visually hidden, DOM-real. */}
-        <h1 className="hero-sr-heading">Daniel Tan, Software Engineer</h1>
+        <h1 className="hero-sr-heading">Daniel Tan, Software Engineer and Designer</h1>
 
         <div className="hero-ring-wrap" aria-hidden>
           {staticRing ? (
