@@ -111,7 +111,8 @@ export const HERO = {
   hudRevealVh: 1.0,
 } as const;
 
-export const BREAKPOINT = { mobile: 768, narrow: 900 } as const; // unchanged: useIsMobile / About+Work+Mac narrow
+// phone: the room-render cut (MQ.roomless below). mobile/narrow unchanged: useIsMobile / About+Work+Mac narrow.
+export const BREAKPOINT = { phone: 600, mobile: 768, narrow: 900 } as const;
 
 /**
  * The site's media queries, in one place (CSS mirrors these by hand; keep them in lockstep).
@@ -119,6 +120,9 @@ export const BREAKPOINT = { mobile: 768, narrow: 900 } as const; // unchanged: u
  *   A sideways phone is still a phone: it gets the stacked layout, the 2D fallbacks and the
  *   touch HUD, never the pinned desktop scenes sized for a tall window.
  * - narrow: the 900px stacked cut-over (About / Work / Projects), plus short landscape.
+ * - roomless: where About drops its room render and the hero fades instead of opening the pixel
+ *   iris onto it: <=600 wide, or a phone on its side. Tablets (601-900, incl. iPad mini portrait)
+ *   keep the room as the first stacked cell and get the iris.
  * - finePointer: a real mouse or trackpad. Gate cursors and hover-only effects on this, never on width.
  */
 const SHORT_LANDSCAPE = "(orientation: landscape) and (max-height: 500px)";
@@ -127,6 +131,7 @@ export const MQ = {
   shortLandscape: SHORT_LANDSCAPE,
   compact: `(max-width: ${BREAKPOINT.mobile}px), ${SHORT_LANDSCAPE}`,
   narrow: `(max-width: ${BREAKPOINT.narrow}px), ${SHORT_LANDSCAPE}`,
+  roomless: `(max-width: ${BREAKPOINT.phone}px), ${SHORT_LANDSCAPE}`,
   finePointer: "(hover: hover) and (pointer: fine)",
   touchPrimary: "(hover: none) and (pointer: coarse)",
 } as const;

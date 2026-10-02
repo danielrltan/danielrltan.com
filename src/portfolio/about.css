@@ -51,14 +51,19 @@
      `none`, so past 1vh nothing is left animating or promoted.
    - Otherwise src/hero/heroWipe.ts scrubs the same translate from Lenis
      (html[data-hero-park="manual"] turns this block off).
-   - The media query is the complement of About's stacked layout (MQ.narrow:
-     ≤900, or a phone on its side) and of reduced motion: there the hero
-     fades instead and About is not parked. heroWipe's iris mode must use the
-     same split.
+   - The media query is the exact complement of heroWipe's iris mode
+     (MQ.roomless: ≤600, or a phone on its side, About's facts-first column
+     with no room; and reduced motion): there the hero fades instead and
+     About is not parked. Tablets (601-900) park too: their About is stacked
+     and unpinned, but at 1.0vh the translate is 0 and the section's flow top
+     is exactly at the viewport top, so the hand-off to normal scrolling is
+     seamless. (height > 500px) drops a phone on its side: a screen wider
+     than 600px and at most 500px tall is always landscape, so this is the
+     same line as MQ.roomless's short-landscape half.
    Keep the range in sync with the hero spacer (100vh, Hero.tsx) and About's
    pin start. */
 @supports (animation-timeline: scroll()) and (animation-range: 0px 100vh) {
-  @media (width > 900px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
+  @media (width > 600px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
     html:not([data-hero-park="manual"]) .portfolio-about .about-stage,
     html:not([data-hero-park="manual"]) .portfolio-about::after {
       animation: about-park linear none;
@@ -1116,11 +1121,29 @@ html[data-hero-covering] .render-frame {
      shoved below the fold by a fixed-tall hero. */
   /* Render: a compact hero at the top of the column (no longer an occluding
      centerpiece — depth doesn't read on a single stacked column). */
+  /* TABLETS (601-900): the room is About's centrepiece and the hero's pixel
+     iris opens onto it, so it stays, as the FIRST full-width cell (order -1:
+     straight under the "ABOUT" banner, above the name card) so it sits in
+     the middle of the first viewport where the iris opens. In flow (not the
+     desktop's floating absolute layer), sized off the width, with a lighter
+     up-scale so its transparent margins don't spill onto the cards around it. */
   .c-render {
-    /* DROP the big room-render poster on mobile — it was the single biggest
-       bloat block in the stacked column. The desktop bento keeps its floating
-       room; phones are facts-first + compact. */
-    display: none;
+    order: -1;
+    position: relative;
+    left: auto;
+    right: auto;
+    top: auto;
+    grid-column: 1 / -1;
+    /* Width-sized, but never taller than most of a short landscape screen. */
+    height: min(clamp(300px, 58vw, 520px), 70svh);
+    z-index: 1;
+    /* Floats on the page ground like the desktop room, not in a white card
+       (the stacked .card surface below would otherwise paint it). */
+    background: transparent;
+    border: none;
+  }
+  .about-room {
+    transform: scale(1.12);
   }
 
   /* Portrait sizes to its content (a fixed card height let the grid row
@@ -1225,6 +1248,17 @@ html[data-hero-covering] .render-frame {
     align-items: center;
     column-gap: 12px;
     row-gap: 0;
+  }
+}
+
+/* PHONES (MQ.roomless: ≤600, or a phone on its side): drop the room-render
+   poster. It was the single biggest bloat block in the stacked phone column
+   (owner: "millions of cards / screen bloat"); phones stay facts-first +
+   compact, and the hero fades instead of opening the iris (heroWipe.ts reads
+   the same query). */
+@media (max-width: 600px), (orientation: landscape) and (max-height: 500px) {
+  .c-render {
+    display: none;
   }
 }
 

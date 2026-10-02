@@ -73,7 +73,8 @@ function reveal(el: Element | null | undefined, order: number) {
   el.classList.add("is-revealed");
 }
 
-/** Cells the narrow layout reveals on enter (the room render is not rendered there). */
+/** Cells the narrow layout reveals on enter (incl. the room cell on tablets;
+ *  it is not rendered on roomless phones). */
 const NARROW_REVEAL = ".about-banner, .about-grid > .card";
 
 export function About() {
@@ -86,6 +87,10 @@ export function About() {
      desktop→mobile flash on first paint and no room-render request on a
      phone. */
   const mobile = useMedia(MQ.narrow);
+  /* The room render is skipped only on roomless layouts (MQ.roomless: ≤600,
+     or a phone on its side), so phones never request it; tablets (601-900)
+     keep it as the first stacked cell, where the hero's iris opens onto it. */
+  const roomless = useMedia(MQ.roomless);
   /* The ONLY React state left in the reveal: the header decode cue. */
   const cue = useSyncExternalStore(
     heroHandoff.subscribe,
@@ -96,12 +101,12 @@ export function About() {
   useEffect(() => reducedMotionPref.subscribe(setReducedMotion), []);
 
   /* Warm the room render's decode so its first paint (under the parked,
-     covered stage) never lands on a scroll frame. Desktop only: the narrow
-     layout never renders the room. */
+     covered stage) never lands on a scroll frame. Roomless phones never
+     render the room. */
   useEffect(() => {
-    if (mobile) return;
+    if (roomless) return;
     roomRef.current?.decode?.().catch(() => {});
-  }, [mobile]);
+  }, [roomless]);
 
   /* Narrow: each cell rises in once as it scrolls into view (shared reveal
      primitive; about.css owns the hidden pose + transition). Reduced motion
@@ -277,7 +282,7 @@ export function About() {
           {/* FEATURE RENDER — the centerpiece. Cell is transparent so only
               the room art paints; the transparent PNG margins let the behind
               cards show through, while the room silhouette occludes them. */}
-          {!mobile && (
+          {!roomless && (
             <div className="card c-render">
               <div className="render-frame">
                 <img ref={roomRef} className="about-room" src="/render.webp" alt="" />

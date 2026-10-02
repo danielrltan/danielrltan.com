@@ -57,10 +57,14 @@
  * the busiest frames of the gesture. Main lost the climax entirely at that
  * speed; the iris always plays through.
  *
- * Narrow (MQ.narrow: <=900 wide OR short landscape, i.e. a phone on its side
- * at any width; About's stacked, unpinned layout, where
- * there is no room render to open onto) and prefers-reduced-motion get no
- * iris: About is not parked, and the hero clears at spec §5 O2/O3 timing
+ * Roomless layouts (MQ.roomless: <=600 wide, or a phone on its side at any
+ * width; About's facts-first column, where there is no room render to open
+ * onto) and prefers-reduced-motion get no iris. Tablets (601-900, iPad mini
+ * portrait included) do: their stacked, unpinned About shows the room as its
+ * first cell, and the park translate leaves About exactly at its flow
+ * position at 1.0vh, so the porthole works there too (no pull-back: that is
+ * tuned for the pinned bento, NOT MQ.narrow). Without the iris About is not
+ * parked, and the hero clears at spec §5 O2/O3 timing
  * (hide at HERO.handoffVh 0.78, return below HERO.showVh 0.74). Narrow fades
  * over DUR.handoff; reduced motion snaps in the same scroll callback (F3,
  * <=1 frame). No zoom, no pixels.
@@ -88,6 +92,7 @@
  * bob under it, so the parked room is still behind the hero and through the
  * porthole, and starts floating once the hero clears.
  */
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { DUR, HERO, MQ, ease, reducedMotion } from "../motion";
 import { getLenis, onScrollJump } from "../scroll";
 import { heroHandoff, heroState } from "./heroState";
@@ -109,13 +114,13 @@ export const IRIS_END_VH = 0.9;
 const HIDE_REMAIN = 0.03;
 /** Cells per radius of the pixel circle. */
 const IRIS_CELLS = 15;
-/** The iris is seeded on the centre of About's room render (measured at rest,
- *  where the parked About sits under the hero), so the hole opens straight
- *  onto the room. Fallback seed, used only if the room hasn't laid out yet:
- *  SEED_X_BIAS of the way from the wordmark's right edge to the viewport's
- *  right edge, at SEED_Y of the viewport height. */
-const SEED_X_BIAS = 0.4;
-const SEED_Y = 0.46;
+/** The iris is seeded on the centre of About's room render, measured where the
+ *  parked About sits under the hero, so the hole opens straight onto the room
+ *  at every size. Seed y is kept within [SEED_Y_MIN, SEED_Y_MAX] of the
+ *  viewport (a room centred below the fold on a short landscape tablet still
+ *  opens on screen). With no room on screen the seed is the viewport centre. */
+const SEED_Y_MIN = 0.2;
+const SEED_Y_MAX = 0.8;
 /** The name must be untouched (hole + rim) up to this iris progress. */
 const NAME_GUARD_P = 1 / 3;
 /** Radius curve r = rEnd * p^k. k is fitted per layout so the name guard holds,
@@ -313,6 +318,8 @@ type Geometry = {
   cellEnd: number;
   k: number;
   stageLeft: number;
+  /** The About stage's top edge where it sits parked (viewport px). */
+  stageTop: number;
   holeFrom: string;
   holeTo: string;
   rimFrom: string;
@@ -380,6 +387,15 @@ function revealedFraction(sx: number, sy: number, R: number, w: number, h: numbe
 
 const clamp01 = (v: number) => (v <= 0 ? 0 : v >= 1 ? 1 : v);
 
+/** The y component (px) of an element's computed individual `translate`
+ *  (includes a running park animation, CSS or WAAPI). */
+function translateY(el: Element): number {
+  const t = getComputedStyle(el).translate;
+  if (!t || t === "none") return 0;
+  const parts = t.split(/\s+/);
+  return parts.length > 1 ? parseFloat(parts[1]!) || 0 : 0;
+}
+
 // ---------------------------------------------------------------------------
 // Controller
 // ---------------------------------------------------------------------------
@@ -389,11 +405,13 @@ type Driven = { anim: Animation; start: number; end: number };
 export function installHeroWipe(): void {
   if (typeof window === "undefined") return;
   const root = document.documentElement;
-  // Iris only where About is the pinned one-viewport bento with the room
-  // render (NOT MQ.narrow). about.css's park @media is the complement
-  // ((width > 900px) and (height > 500px): a sideways phone, even 932x430,
-  // is stacked and never parked); keep the two in sync.
-  const mobileQ = window.matchMedia(MQ.narrow);
+  // Iris wherever About shows the room render (NOT MQ.roomless: the pinned
+  // bento above 900, the stacked tablet column at 601-900). about.css's park
+  // @media and its room-render rules are the complement ((width > 600px) and
+  // (height > 500px): a sideways phone is roomless and never parked); keep
+  // them in sync. The pull-back is pinned-bento only (NOT MQ.narrow).
+  const roomlessQ = window.matchMedia(MQ.roomless);
+  const narrowQ = window.matchMedia(MQ.narrow);
   // Scrubbed-fade layouts (a subset of the fade path; see header).
   const compactQ = window.matchMedia(MQ.compact);
   const params = new URLSearchParams(window.location.search);
@@ -424,7 +442,7 @@ export function installHeroWipe(): void {
 
   const q = <T extends Element>(sel: string) => document.querySelector<T>(sel);
   const heroLayer = () => q<HTMLElement>(".scroll-layer--hero");
-  const irisMode = () => !mobileQ.matches && !reducedMotion.value;
+  const irisMode = () => !roomlessQ.matches && !reducedMotion.value;
   const scrubMode = () => !irisMode() && compactQ.matches && !reducedMotion.value;
 
   // ── Geometry (seed, radius curve, cached keyframe strings) ────────────────
@@ -441,21 +459,41 @@ export function installHeroWipe(): void {
     const T = Math.min(a.top, b ? b.top : a.top);
     const R = Math.max(a.right, b ? b.right : a.right);
     const B = Math.max(a.bottom, b ? b.bottom : a.bottom);
-    // Seed on the room render's centre (its rect at rest is its on-screen spot
-    // under the hero while parked, same as the title cue below).
-    // Measured at hero-composed, the room's card can still be mid reveal
-    // (about.css .card rises from translateY(--reveal-lift)), so take its
-    // current reveal offset back out to get the room's resting spot.
+    // Everything is measured where it sits PARKED (the section top at the
+    // viewport top, the stage's park translate at 0), which is exactly where
+    // the iris opens onto it. That holds from any scroll position (a reload
+    // mid-page, a resize while scrolled), not just at rest: an element inside
+    // the stage maps to its parked spot by `parkDy`.
+    const section = q<HTMLElement>(".portfolio-about");
+    const stage = q<HTMLElement>(".portfolio-about .about-stage");
+    const st = stage?.getBoundingClientRect();
+    const sec = section?.getBoundingClientRect();
+    // parked top = untranslated offset within the section (st.top - parkTy -
+    // sec.top), so parked - current = -parkTy - sec.top.
+    const parkTy = stage ? translateY(stage) : 0;
+    const parkDy = st && sec ? -parkTy - sec.top : 0;
+    const stageLeft = st ? st.left : 0;
+    const stageTop = st ? st.top + parkDy : 0;
+    // Seed on the room render's centre. Its card can still be mid reveal
+    // (about.css .card rises from translateY(--reveal-lift)), so its current
+    // reveal offset comes back out to land on the room's resting spot.
     const roomEl = q<HTMLElement>(".portfolio-about .about-room");
     const room = roomEl?.getBoundingClientRect();
-    const roomOk = !!room && room.width > 0 && room.bottom > 0 && room.top < vh;
     const card = roomEl?.closest<HTMLElement>(".card");
     const cardT = card ? getComputedStyle(card).transform : "none";
     const lift = cardT && cardT !== "none" ? new DOMMatrixReadOnly(cardT).m42 : 0;
-    const sx = roomOk
-      ? room.left + room.width / 2
-      : Math.min(w * 0.88, Math.max(w * 0.5, R + (w - R) * SEED_X_BIAS));
-    const sy = roomOk ? room.top + room.height / 2 - lift : vh * SEED_Y;
+    const roomTop = room ? room.top - lift + parkDy : 0;
+    const roomBottom = room ? roomTop + room.height : 0;
+    const roomOk = !!room && room.width > 0 && room.height > 0 && roomBottom > 0 && roomTop < vh;
+    // Aim at the room's centre; if that is off screen when parked (a short
+    // landscape viewport where the room starts low), at the middle of the
+    // slice of it that is on screen. No room on screen at all: the middle of
+    // the viewport.
+    const roomMid = (roomTop + roomBottom) / 2;
+    const roomAim =
+      roomMid > 0 && roomMid < vh ? roomMid : (Math.max(0, roomTop) + Math.min(vh, roomBottom)) / 2;
+    const sx = roomOk ? room.left + room.width / 2 : w / 2;
+    const sy = roomOk ? Math.min(vh * SEED_Y_MAX, Math.max(vh * SEED_Y_MIN, roomAim)) : vh / 2;
     const cellEnd = coverCell(sx, sy, w, vh) * 1.01;
     const rEnd = cellEnd * IRIS_CELLS;
     // Nearest point of the name block to the seed; the hole plus its rim (two
@@ -468,11 +506,8 @@ export function installHeroWipe(): void {
       allowed <= 0
         ? K_MAX
         : Math.min(K_MAX, Math.max(K_MIN, Math.log(allowed / rEnd) / Math.log(NAME_GUARD_P)));
-    const stage = q<HTMLElement>(".portfolio-about .about-stage");
-    const stageLeft = stage ? stage.getBoundingClientRect().left : 0;
     // Decode cue: the iris progress at which the hole first touches the
-    // parked "ABOUT" title (its rect at rest is its on-screen spot under the
-    // hero while parked).
+    // parked "ABOUT" title.
     let cueP = CUE_P;
     const title = q<HTMLElement>(".portfolio-about .about-banner-title");
     if (title) {
@@ -480,9 +515,11 @@ export function installHeroWipe(): void {
       const range = document.createRange();
       range.selectNodeContents(title);
       const t = range.getBoundingClientRect();
-      if (t.width > 0 && t.bottom > 0 && t.top < vh) {
+      const tTop = t.top + parkDy;
+      const tBottom = t.bottom + parkDy;
+      if (t.width > 0 && tBottom > 0 && tTop < vh) {
         const tx = Math.max(t.left, Math.min(sx, t.right));
-        const ty = Math.max(t.top, Math.min(sy, t.bottom));
+        const ty = Math.max(tTop, Math.min(sy, tBottom));
         const d = Math.hypot(sx - tx, sy - ty);
         cueP = Math.min(CUE_P_MAX, Math.max(CUE_P_MIN, Math.pow(Math.min(1, d / rEnd), 1 / k)));
       }
@@ -509,6 +546,7 @@ export function installHeroWipe(): void {
       cellEnd,
       k,
       stageLeft,
+      stageTop,
       cueP,
       hideVh,
       holeFrom: holeClip(g0, 0),
@@ -652,10 +690,10 @@ export function installHeroWipe(): void {
         make(driven, rim, [{ clipPath: g.rimFrom, easing: g.cellEasing }, { clipPath: g.rimTo }], s, e, sd) &&
         make(driven, rim, RIM_OPACITY, s, e, sd);
     }
-    // Pull-back only on the pinned, one-viewport bento (iris mode already
-    // excludes MQ.narrow; the live re-check is a belt for a resize race).
-    if (ok && stage && !mobileQ.matches) {
-      stage.style.transformOrigin = `${f1(g.sx - g.stageLeft)}px ${f1(g.sy)}px`;
+    // Pull-back only on the pinned, one-viewport bento (NOT MQ.narrow): the
+    // stacked tablet column runs the iris without it.
+    if (ok && stage && !narrowQ.matches) {
+      stage.style.transformOrigin = `${f1(g.sx - g.stageLeft)}px ${f1(g.sy - g.stageTop)}px`;
       ok = make(driven, stage, [{ scale: String(ABOUT_PULL), easing: PULL_EASE }, { scale: "1" }], s, e, sd);
     }
     if (!ok) {
@@ -964,9 +1002,25 @@ export function installHeroWipe(): void {
     update(true);
   };
 
+  // Re-measure once layout has really settled: ScrollTrigger's refresh runs
+  // after a resize / rotation has re-laid out the pins (the 120ms resize
+  // measure can still see the old pin width), and after late content shifts
+  // About. Only rebuilds when the seed actually moved.
+  const remeasure = () => {
+    const next = measure();
+    if (!next) return;
+    const g = geo;
+    if (g && g.w === next.w && g.vh === next.vh && Math.abs(g.sx - next.sx) < 1.5 && Math.abs(g.sy - next.sy) < 1.5) return;
+    if (built) teardown();
+    geo = next;
+    update(true);
+  };
+  ScrollTrigger.addEventListener("refresh", remeasure);
   window.addEventListener("scroll", onScroll, { passive: true });
   window.addEventListener("resize", onResize, { passive: true });
-  mobileQ.addEventListener("change", onModeChange);
+  roomlessQ.addEventListener("change", onModeChange);
+  // Crossing 900 (bento <-> stacked tablet) changes the pull-back: rebuild.
+  narrowQ.addEventListener("change", onModeChange);
   compactQ.addEventListener("change", onModeChange);
   reducedMotion.subscribe(onModeChange);
   // A programmatic CUT (menu / footer / jump-to-top) snaps every state in the
@@ -987,6 +1041,10 @@ export function installHeroWipe(): void {
       requestAnimationFrame(() => {
         if (!built) geo = measure();
       });
+      // A late layout pass once the room image decodes can still move its
+      // cell: measure again on load (About is mounted by now).
+      const roomImg = q<HTMLImageElement>(".portfolio-about .about-room");
+      if (roomImg && !roomImg.complete) roomImg.addEventListener("load", remeasure, { once: true });
     },
     { once: true },
   );
