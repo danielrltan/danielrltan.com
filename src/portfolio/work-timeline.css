@@ -130,7 +130,9 @@
 /* Desktop frame: the bottom padding only counts once the content outgrows the
    100vh minimum, so trimming it is visually free and keeps 1920×1080 inside
    the pinned frame with room to spare (it fit by 1px at 8vh). */
-@media (min-width: 901px) {
+/* Desktop blocks carry min-height 501: a phone on its side (≤500 tall) gets
+   the stacked narrow layout (MQ.narrow) instead. */
+@media (min-width: 901px) and (min-height: 501px) {
   .work-ledger {
     padding-bottom: clamp(32px, 5vh, 72px);
   }
@@ -148,7 +150,7 @@
    10.5vh alone, so tall screens barely change (1920×1080: 113px, was 116)
    while 900-tall ones come down (1440×900: 94.5px).
    The ≤800 block below tightens further and wins where both match. */
-@media (max-height: 1100px) and (min-width: 901px) {
+@media (max-height: 1100px) and (min-width: 901px) and (min-height: 501px) {
   .work-ledger {
     gap: clamp(12px, 2vh, 24px);
     padding-top: clamp(24px, 3.4vh, 40px);
@@ -174,7 +176,7 @@
    (1440×720) still fits the frame. Row/company rules carry .portfolio-work:
    the base rules come later in this file, so at equal specificity these
    overrides were silently dead. */
-@media (max-height: 800px) and (min-width: 901px) {
+@media (max-height: 800px) and (min-width: 901px) and (min-height: 501px) {
   .work-ledger {
     gap: clamp(6px, 1vh, 12px);
     padding-top: clamp(16px, 2.4vh, 28px);
@@ -211,7 +213,7 @@
    padding is raised to 84px (tile bottom 74 + 10px gap). On wider screens the
    tile sits in the side margin and costs no height. Placed after the height
    blocks so it wins at equal specificity. */
-@media (min-width: 901px) and (max-width: 1380px) {
+@media (min-width: 901px) and (max-width: 1380px) and (min-height: 501px) {
   .work-ledger {
     padding-top: max(84px, clamp(40px, 7vh, 96px));
   }
@@ -220,7 +222,7 @@
    last row stays above the fold for the whole pin (1280x720: last row at 661
    of 720 before the clearance). The wordmark shrinks a step and the header's
    internal gaps tighten. The rows and the open panel stay as they were. */
-@media (min-width: 901px) and (max-width: 1380px) and (max-height: 800px) {
+@media (min-width: 901px) and (max-width: 1380px) and (min-height: 501px) and (max-height: 800px) {
   .work-ledger {
     padding-bottom: clamp(6px, 1vh, 12px);
   }
@@ -276,20 +278,22 @@
   transition: transform var(--hover-dur) var(--hover-ease),
     color var(--hover-dur) var(--hover-ease);
 }
-.portfolio-work .work-resume:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff !important;
-  /* Opt out of the sitewide text-link hover (`.portfolio-section a:hover
-     { opacity: 0.7 }` in sections.css). On this SOLID-FILL button that fade
-     rendered the International Orange fill at 70% over the grey page
-     (#f97e48 instead of #ff4f00) — the "too light" hover. Block CTAs keep
-     full opacity; the fill IS the hover cue. */
-  opacity: 1;
-}
-.portfolio-work .work-resume:hover .work-resume-arrow {
-  color: #fff;
-  transform: translate(2px, -2px);
+@media (hover: hover) {
+  .portfolio-work .work-resume:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff !important;
+    /* Opt out of the sitewide text-link hover (`.portfolio-section a:hover
+       { opacity: 0.7 }` in sections.css). On this SOLID-FILL button that fade
+       rendered the International Orange fill at 70% over the grey page
+       (#f97e48 instead of #ff4f00) — the "too light" hover. Block CTAs keep
+       full opacity; the fill IS the hover cue. */
+    opacity: 1;
+  }
+  .portfolio-work .work-resume:hover .work-resume-arrow {
+    color: #fff;
+    transform: translate(2px, -2px);
+  }
 }
 .portfolio-work .work-resume:active {
   transform: scale(0.97);
@@ -416,11 +420,13 @@
 .work-acc-head {
   border-radius: 3px;
 }
-.work-acc-head:hover {
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg-page));
-}
-.work-acc-head:hover .work-acc-year {
-  color: var(--accent);
+@media (hover: hover) {
+  .work-acc-head:hover {
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-page));
+  }
+  .work-acc-head:hover .work-acc-year {
+    color: var(--accent);
+  }
 }
 .work-acc-head:active {
   transform: scale(0.994);
@@ -532,8 +538,10 @@
 .work-acc-item:not(.is-open) .work-acc-company {
   color: var(--ink-muted);
 }
-.work-acc-head:hover .work-acc-company {
-  color: var(--accent);
+@media (hover: hover) {
+  .work-acc-head:hover .work-acc-company {
+    color: var(--accent);
+  }
 }
 
 /* Side: dates + chevron affordance. */
@@ -565,8 +573,10 @@
   transition: transform var(--t-base) var(--ease-out),
     color var(--hover-dur) var(--hover-ease);
 }
-.work-acc-head:hover .work-acc-chevron {
-  color: var(--accent);
+@media (hover: hover) {
+  .work-acc-head:hover .work-acc-chevron {
+    color: var(--accent);
+  }
 }
 .work-acc-item.is-open .work-acc-chevron {
   transform: rotate(180deg);
@@ -713,14 +723,38 @@
    one click-driven accordion at every width, so there is no separate static
    layout to style.) */
 
-@media (max-width: 900px) {
+/* ===============================================================
+   NARROW (MQ.narrow: ≤900px, or a phone on its side). No pin: a
+   tap-to-expand stack at content height. The open panel's body uses
+   nearly the whole card width: it starts just right of the spine (the
+   rail + node dots stay), and the bullet numbers ride a narrow 22px
+   column, so the text column is ~280px at 390 (was 212px behind a
+   72-90px gutter + a 34px number column).
+   =============================================================== */
+@media (max-width: 900px), (orientation: landscape) and (max-height: 500px) {
   /* Flow at content height on phones — the desktop 100vh frame left dead space
      below the last accordion row once the section is no longer pinned. */
-  .portfolio-work {
+  .portfolio-work,
+  .work-ledger {
     min-height: auto;
   }
-  .work-ledger-title {
-    font-size: clamp(44px, 13vw, 80px);
+  .work-ledger {
+    padding-left: max(clamp(20px, 6vw, 48px), env(safe-area-inset-left, 0px));
+    padding-right: max(clamp(20px, 6vw, 48px), env(safe-area-inset-right, 0px));
+  }
+  /* Shared mobile header pair (sections.css). Scoped (0,2,0) to beat the base
+     .portfolio-work .work-ledger-title: the old bare .work-ledger-title
+     override here lost on specificity and never applied. */
+  .portfolio-work .work-ledger-title {
+    font-size: var(--hdr-title-mobile, clamp(40px, 12.5vw, 64px));
+  }
+  .work-ledger-num {
+    font-size: var(--hdr-num-mobile, clamp(13px, 3.4vw, 18px));
+  }
+  /* ONE index on mobile: the orange number tag; the mono eyebrow is
+     desktop-only (sections.css MOBILE INDEX RULE). */
+  .work-ledger-index {
+    display: none;
   }
   /* Header stacks on narrow screens: the giant wordmark + the résumé CTA can't
      share a row, so the CTA drops below, left-aligned. */
@@ -738,6 +772,8 @@
   }
   .work-acc {
     --gutter: clamp(72px, 19vw, 90px);
+    /* Panel inset: just clear of the spine + node dot (spine-x 9 + 17). */
+    --panel-inset: calc(var(--spine-x) + 17px);
     /* A touch more air between the resume CTA / header and the first row. */
     margin-top: var(--space-2);
   }
@@ -784,11 +820,19 @@
     align-items: flex-start;
     gap: 4px;
   }
+  /* Balanced role line: no orphaned "INTERN" on its own line. */
+  .work-acc-role {
+    text-wrap: balance;
+  }
   .work-acc-locgroup .work-acc-sep {
     display: none;
   }
   .work-acc-panel-inner {
-    padding-left: var(--gutter);
+    padding-left: var(--panel-inset);
+  }
+  .work-acc-panel-body {
+    /* Readable measure on the wide end of the band (tablet / landscape). */
+    max-width: 68ch;
   }
   .work-acc-pull {
     grid-template-columns: 1fr;
@@ -797,19 +841,57 @@
   .work-acc-pull-metric {
     white-space: normal;
     font-size: clamp(28px, 11vw, 46px);
+    text-wrap: balance;
   }
   .work-acc-pull-caption,
   .work-acc-bullet-text {
     font-size: var(--fs-body);
   }
-}
+  .work-acc-bullet {
+    grid-template-columns: 22px 1fr;
+    gap: 8px;
+  }
+  .work-acc-bullet-num {
+    letter-spacing: 0.06em;
+  }
 
-/* #34 OVERFLOW: at ≤380px the EXPERIENCE wordmark mid-broke ("Experi-ence").
-   Drop the title floor so it scales down to fit the line instead of wrapping.
-   Placed after the ≤900px rule so it wins for the overlapping range. */
-@media (max-width: 380px) {
-  .work-ledger-title {
-    font-size: clamp(38px, 12vw, 64px);
+  /* ENTRANCE (narrow): the header and each row's header button rise in as
+     they enter ([data-reveal] + useReveal in Work.tsx, 400ms / 12px), so the
+     section-level .is-entered cascade (which fired once for the whole tall
+     column, mostly off screen) is parked here. */
+  .portfolio-work:not(.is-entered) .work-acc-item,
+  .portfolio-work.is-entered .work-acc-item {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  /* ACCORDION MORPH (narrow). The desktop morph animates grid-template-rows,
+     which re-lays-out the page below on every frame. On a phone the panel
+     SNAPS to its height (one layout) and the content inside eases in on
+     opacity + transform only (compositor work), so a tap costs one reflow,
+     not ~25. Close collapses at once (the content fades on the way out only
+     where the snap allows: it is clipped by the 0fr row immediately). */
+  .work-acc-panel,
+  .work-acc-item.is-open .work-acc-panel {
+    transition: none;
+  }
+  .work-acc-panel-body {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  .work-acc-item.is-open .work-acc-panel-body {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity var(--t-base) var(--ease-out),
+      transform var(--t-base) var(--ease-out);
+  }
+  .work-acc-item.is-open .work-acc-bullet {
+    transition-delay: calc(60ms + min(var(--i, 0), var(--stagger-max)) * var(--stagger));
+  }
+  .work-acc-item.no-anim .work-acc-panel-body {
+    transition: none !important;
   }
 }
 
@@ -821,6 +903,7 @@
 @media (prefers-reduced-motion: reduce) {
   .work-acc-head,
   .work-acc-panel,
+  .work-acc-panel-body,
   .work-acc-chevron,
   .work-acc-node::before,
   .work-acc-year,
