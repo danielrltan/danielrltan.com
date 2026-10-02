@@ -39,6 +39,18 @@
      the owner flagged). A single word like EXPERIENCE now spans most of
      the content width on desktop. */
   --hdr-title: clamp(48px, 13vw, 190px);
+  /* MOBILE header pair (compact / narrow stacked layouts). ONE wordmark size
+     and ONE number-tag size for every section's mobile header, so About,
+     Projects, Work (and the rest) read as one system on a phone. The 40px
+     floor keeps the longest single word ("EXPERIENCE") on one line at 320px;
+     the 64px cap keeps a sideways phone's header from eating its short
+     viewport. */
+  --hdr-title-mobile: clamp(40px, 12.5vw, 64px);
+  --hdr-num-mobile: clamp(13px, 3.4vw, 18px);
+  /* Mobile entrance (stacked layouts): shorter + subtler than the desktop
+     --reveal-dur (--t-slow) / --reveal-lift (16px). */
+  --reveal-dur-mobile: var(--t-med);
+  --reveal-lift-mobile: 12px;
 
   /* HEADER COLOUR SYSTEM (sitewide).
      COOL palette (white + cool ink + one orange). The big section titles use
@@ -65,6 +77,7 @@
 
 .portfolio-section {
   min-height: 100vh;
+  min-height: 100svh;
   display: flex;
   align-items: center;
   position: relative;
@@ -76,6 +89,7 @@
 .portfolio-section--hero {
   padding: 0;
   min-height: 100vh;
+  min-height: 100svh;
 }
 
 /* Right-column gutter (Macintosh). Fully opaque: the old --content-opacity
@@ -188,11 +202,57 @@
   border-bottom: 1px solid currentColor;
   transition: opacity var(--hover-dur) var(--hover-ease);
 }
-.portfolio-section a:hover {
-  opacity: 0.7;
+@media (hover: hover) {
+  .portfolio-section a:hover {
+    opacity: 0.7;
+  }
 }
 
-@media (max-width: 768px) {
+/* ----------------------------------------------------------------------
+   SHARED REVEAL PRIMITIVE (motion spec W5.1-2)
+   ----------------------------------------------------------------------
+   One entrance language for the back half: an element marked
+   [data-reveal] rises --reveal-lift and fades in over --reveal-dur on
+   --reveal-ease once useReveal() (src/portfolio/useReveal.ts) latches
+   .is-revealed. --i is the element's index within its reveal BATCH, so
+   each row that crosses the line together starts at 0 ms; the stagger is
+   capped at --stagger-max steps. Rise only: no filter, no scale, no side
+   sweep (filters re-raster per frame).
+   MOBILE: the same primitive runs on phones, shorter and subtler
+   (--reveal-dur-mobile / --reveal-lift-mobile, swapped in by the narrow
+   block at the end of this file). Transform + opacity only, once, never a pin. */
+/* The hidden pose applies only under a root useReveal has ARMED
+   (data-reveal-armed, set before paint whenever motion is allowed), so
+   a marked node that no hook is watching still renders. The hide carries
+   no transition (arming can never fade a painted node out); the reveal
+   transition lives on .is-revealed, the after-change style. */
+[data-reveal-armed] [data-reveal]:not(.is-revealed) {
+  opacity: 0;
+  transform: translateY(var(--reveal-lift));
+}
+[data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--reveal-dur) var(--reveal-ease),
+    transform var(--reveal-dur) var(--reveal-ease);
+  transition-delay: calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal-armed] [data-reveal]:not(.is-revealed),
+  [data-reveal].is-revealed {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ----------------------------------------------------------------------
+   MOBILE (compact: phone width OR a phone on its side; mirrors MQ.compact
+   in src/motion.ts). The one phone block for this file: section rhythm and
+   the shared header pair on the mobile scale.
+   ---------------------------------------------------------------------- */
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   /* One consistent inter-section rhythm on mobile. Was 88px; trimmed to 64px
      because the flow sections (About, Honours) stack this base padding ON TOP
      of their own inner-wrapper padding, which compounded into the uneven
@@ -216,68 +276,36 @@
   }
   .section-index {
     margin-bottom: 14px;
-    font-size: 10.5px;
+    font-size: var(--fs-mono);
     letter-spacing: 0.2em;
   }
-  /* Keep the shared header pair on the cohesive scale on mobile too: the
-     --hdr-num / --hdr-title clamps carry mobile-safe floors (13px number
-     tag, 48px wordmark) + vw scaling — at 360px the title floor (48px)
-     and the multi-word wrap keep the longest wordmark off horizontal
-     scroll. We only restore tracking + trim the wordmark's bottom margin
-     here. (The old block dropped to a separate clamp + -0.04em tracking,
-     which both broke the one-system look and collided the OffBit pixel
-     glyphs.) */
+  /* The shared header pair on the MOBILE scale (--hdr-num-mobile /
+     --hdr-title-mobile, :root above). MOBILE INDEX RULE: a section shows ONE
+     index on a phone, the small orange pixel number tag ("02") directly
+     above its wordmark; the long mono eyebrow ("02 / 07 · PROJECTS") is
+     desktop-only (the SectionDial already names the section on a phone).
+     Sections with their own header classes follow the same rule in their
+     own sheets (about.css, macintosh.css, work-timeline.css). */
   .section-marker {
     margin: 0 0 4px 0;
+    font-size: var(--hdr-num-mobile);
   }
   .portfolio-section h2 {
+    font-size: var(--hdr-title-mobile);
     letter-spacing: 0.01em;
     margin-bottom: 32px;
   }
 }
 
-/* ----------------------------------------------------------------------
-   SHARED REVEAL PRIMITIVE (motion spec W5.1-2)
-   ----------------------------------------------------------------------
-   One entrance language for the back half: an element marked
-   [data-reveal] rises --reveal-lift and fades in over --reveal-dur on
-   --reveal-ease once useReveal() (src/portfolio/useReveal.ts) latches
-   .is-revealed. --i is the element's index within its reveal BATCH, so
-   each row that crosses the line together starts at 0 ms; the stagger is
-   capped at --stagger-max steps. Rise only: no filter, no scale, no side
-   sweep (filters re-raster per frame). */
-/* The hidden pose applies only under a root useReveal has ARMED
-   (data-reveal-armed, set before paint in the animated desktop mode), so
-   a marked node that no hook is watching still renders. The hide carries
-   no transition (arming can never fade a painted node out); the reveal
-   transition lives on .is-revealed, the after-change style. */
-[data-reveal-armed] [data-reveal]:not(.is-revealed) {
-  opacity: 0;
-  transform: translateY(var(--reveal-lift));
-}
-[data-reveal].is-revealed {
-  opacity: 1;
-  transform: none;
-  transition:
-    opacity var(--reveal-dur) var(--reveal-ease),
-    transform var(--reveal-dur) var(--reveal-ease);
-  transition-delay: calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));
-}
-/* Phones render in place (useReveal never arms there and reveals everything
-   at mount); no mount-time fade, even if a desktop-armed root is resized. */
-@media (max-width: 768px) {
-  [data-reveal-armed] [data-reveal]:not(.is-revealed),
-  [data-reveal].is-revealed {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  [data-reveal-armed] [data-reveal]:not(.is-revealed),
-  [data-reveal].is-revealed {
-    opacity: 1;
-    transform: none;
-    transition: none;
+/* Stacked layouts (narrow: <=900px or a phone on its side; MQ.narrow) run
+   the entrance primitive shorter and subtler: 400ms, 12px. Scoped to the
+   sections that stack at this cut-over plus any root useReveal has armed. */
+@media (max-width: 900px), (orientation: landscape) and (max-height: 500px) {
+  [data-reveal-armed],
+  .portfolio-about,
+  .portfolio-mac,
+  .portfolio-work {
+    --reveal-dur: var(--reveal-dur-mobile);
+    --reveal-lift: var(--reveal-lift-mobile);
   }
 }

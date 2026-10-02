@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
-import { BREAKPOINT, reducedMotion } from "../motion";
+import { reducedMotion } from "../motion";
 
 /**
  * Shared one-shot entrance primitive for the back-half sections (spec W5.1).
@@ -21,21 +21,26 @@ import { BREAKPOINT, reducedMotion } from "../motion";
  *   callbacks), so a parent re-render can never drop `.is-revealed`: callers
  *   must NOT put reveal state into the className they render.
  * - The hidden pose only applies under a root carrying `data-reveal-armed`,
- *   which the hook sets (before paint) in the animated desktop mode. A
+ *   which the hook sets (before paint) whenever motion is allowed. A
  *   [data-reveal] node outside an armed root renders visible. A
  *   MutationObserver adopts nodes that mount after the first pass.
- * - Reduced motion or <= BREAKPOINT.mobile: the root is never armed and
- *   everything is revealed at mount (sections.css also parks the primitive
- *   static there, so nothing fades).
- * - `onReveal(el)` fires once per element when it is revealed. In the
- *   mobile immediate mode it still fires on real intersection (so e.g. a
- *   count-up plays when seen, not at mount); under reduced motion it fires at
- *   mount.
+ * - Phones run the same one-shot rise, shorter and subtler: sections.css
+ *   swaps --reveal-dur / --reveal-lift for the -mobile tokens on stacked
+ *   layouts. Opacity + transform only; nothing pins or scroll-jacks.
+ * - Reduced motion (or no IntersectionObserver): the root is never armed and
+ *   everything is revealed at mount; `onReveal` fires at mount too.
+ * - `enabled: false` makes the hook a no-op (a section that only wants the
+ *   primitive on some layouts, e.g. About / Work on the stacked mobile
+ *   layout, passes its live media match). Turning it off later disarms the
+ *   root; nodes already revealed stay revealed.
+ * - `onReveal(el)` fires once per element when it is revealed.
  */
 export interface UseRevealOptions {
   selector?: string;
   rootMargin?: string;
   onReveal?: (el: Element) => void;
+  /** Default true. False: do nothing (and disarm a previously armed root). */
+  enabled?: boolean;
 }
 
 /** Untransformed document position: sum offsetTop/Left up the offsetParent chain. */
@@ -57,6 +62,7 @@ export function useReveal(
     selector = "[data-reveal]",
     rootMargin = "0px 0px -15% 0px",
     onReveal,
+    enabled = true,
   }: UseRevealOptions = {},
 ): void {
   // Latest callback without re-running the effect (stable observer).
@@ -67,7 +73,7 @@ export function useReveal(
   // the first paint, so armed nodes never flash visible-then-hidden.
   useLayoutEffect(() => {
     const root = rootRef.current;
-    if (!root) return;
+    if (!root || !enabled) return;
 
     const reveal = (el: HTMLElement, i: number) => {
       el.style.setProperty("--i", String(i));
@@ -75,9 +81,6 @@ export function useReveal(
     };
 
     const noIO = typeof IntersectionObserver === "undefined";
-    const narrow =
-      typeof window !== "undefined" &&
-      !!window.matchMedia?.(`(max-width: ${BREAKPOINT.mobile}px)`).matches;
     const immediate = reducedMotion.value || noIO;
 
     // Every node handed to an observer (or revealed outright) exactly once.
@@ -96,24 +99,6 @@ export function useReveal(
           tracked.add(el);
           reveal(el, 0);
           onRevealRef.current?.(el);
-        });
-    } else if (narrow) {
-      // Reveal in place now; keep watching only to fire onReveal when seen.
-      observer = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (!entry.isIntersecting) continue;
-            observer?.unobserve(entry.target);
-            onRevealRef.current?.(entry.target);
-          }
-        },
-        { rootMargin },
-      );
-      adopt = (els) =>
-        els.forEach((el) => {
-          tracked.add(el);
-          reveal(el, 0);
-          if (onRevealRef.current) observer?.observe(el);
         });
     } else {
       // Only an armed root hides its [data-reveal] nodes (sections.css), so
@@ -169,5 +154,5 @@ export function useReveal(
       observer?.disconnect();
       root.removeAttribute("data-reveal-armed");
     };
-  }, [rootRef, selector, rootMargin]);
+  }, [rootRef, selector, rootMargin, enabled]);
 }

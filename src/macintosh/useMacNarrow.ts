@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-
+import { MQ } from "../motion";
+import { useMedia } from "../useMedia";
 /**
  * Macintosh-section narrow-viewport hook. Breakpoint is 900px, the
  * width below which the orbit cinematic + top-right editorial overlay
@@ -14,24 +14,8 @@ import { useEffect, useState } from "react";
  * body copy. Keeping a dedicated hook avoids regressing those sections.
  *
  * The breakpoint MUST stay in lockstep with the `@media (max-width:
- * 900px)` block in macintosh.css; if you change one, change both.
+ * 900px), (orientation: landscape) and (max-height: 500px)` block in macintosh.css; if you change one, change both.
  */
-const MAC_NARROW_BREAKPOINT_PX = 900;
-
 export function useMacNarrow() {
-  const query = `(max-width: ${MAC_NARROW_BREAKPOINT_PX}px)`;
-  const [narrow, setNarrow] = useState(() =>
-    typeof window === "undefined" ? false : window.matchMedia(query).matches,
-  );
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    const handler = (e: MediaQueryListEvent) => setNarrow(e.matches);
-    mql.addEventListener("change", handler);
-    // Sync in case the width changed between the initial render and the
-    // effect running (e.g. an SSR-mismatched first paint or a fast
-    // resize during mount).
-    setNarrow(mql.matches);
-    return () => mql.removeEventListener("change", handler);
-  }, [query]);
-  return narrow;
+  return useMedia(MQ.narrow);
 }

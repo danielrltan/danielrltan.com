@@ -137,13 +137,20 @@
   transition: color var(--hover-dur) var(--hover-ease),
     transform var(--hover-dur) var(--hover-ease);
 }
-.footer-link:hover {
-  /* International Orange (--accent #ff4f00), not the lighter --accent-hot
-     sibling — the résumé + footer links hover to the true brand orange. */
-  color: var(--accent);
-  /* Editorial nudge toward the glyph: purely transform, no layout
-     shift, and disabled under prefers-reduced-motion (global block). */
-  transform: translateX(3px);
+/* Hover only where hover is real: a tap on a touch screen fires a sticky
+   synthetic :hover that left the row orange + nudged. */
+@media (hover: hover) {
+  .footer-link:hover {
+    /* International Orange (--accent #ff4f00), not the lighter --accent-hot
+       sibling — the résumé + footer links hover to the true brand orange. */
+    color: var(--accent);
+    /* Editorial nudge toward the glyph: purely transform, no layout
+       shift, and disabled under prefers-reduced-motion (global block). */
+    transform: translateX(3px);
+  }
+  .footer-link:hover .footer-link-num {
+    color: var(--accent);
+  }
 }
 /* Visible keyboard focus ring (was entirely absent; links had zero
    focus indicator). Accent ring + tint backplate reads clearly on the
@@ -167,7 +174,6 @@
   min-width: 18px;
   transition: color var(--hover-dur) var(--hover-ease);
 }
-.footer-link:hover .footer-link-num,
 .footer-link:focus-visible .footer-link-num {
   color: var(--accent);
 }
@@ -195,28 +201,36 @@
 }
 
 /* Colophon is now a real description list (<dl> of <dt>/<dd> pairs)
-   for correct key→value semantics. UA margins reset below. */
+   for correct key→value semantics. UA margins reset below.
+   ONE shared key column: each row used to be its own grid with a
+   minmax(72px, max-content) key track, so a longer key ("LOCATION") pushed
+   only its own value right and the values didn't line up. The rows are now
+   subgrids of a single max-content | 1fr grid, so every value starts on the
+   same x (the widest key sets it). Fallback without subgrid: a fixed key
+   track wide enough for the longest key. */
 .footer-meta {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--space-3);
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--space-4h);
+  row-gap: var(--space-3);
   margin: 0;
 }
 .footer-meta > div {
+  grid-column: 1 / -1;
   display: grid;
-  /* Editorial key/value rhythm: was a cramped fixed 90px label column,
-     out of step with the spacious key/value layout the sections use. A
-     fluid min-content key column lets the label set its own width and
-     opens the gap to --space-4h so the colophon breathes like the
-     editorial grid above it. */
-  grid-template-columns: minmax(72px, max-content) 1fr;
-  gap: var(--space-4h);
+  grid-template-columns: 6.5rem 1fr;
+  column-gap: var(--space-4h);
   align-items: baseline;
   border-bottom: 1px dotted var(--ink-hairline);
   padding-bottom: var(--space-3);
 }
 .footer-meta > div:last-child {
   border-bottom: 0;
+}
+@supports (grid-template-columns: subgrid) {
+  .footer-meta > div {
+    grid-template-columns: subgrid;
+  }
 }
 .footer-meta-key {
   font-family: var(--font-mono);
@@ -262,13 +276,15 @@
 
 /* Intermediate: keep Colophon's wider column but tighten the gap so
    the three columns don't crowd between ~769–1024px. */
-@media (max-width: 1024px) and (min-width: 769px) {
+@media (max-width: 1024px) and (min-width: 769px) and (min-height: 501px) {
   .footer-grid {
     gap: 40px;
   }
 }
 
-@media (max-width: 768px) {
+/* Compact (mirrors motion.ts MQ.compact): phones, incl. a phone on its side
+   (landscape, <=500px tall), whose links were 26px tall on the desktop grid. */
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   .portfolio-footer {
     /* Bottom pad must clear BOTH the home-indicator inset AND the fixed
        jump-to-top FAB (bottom-right): it sits ~14px up and is 44px tall,
@@ -330,6 +346,23 @@
     align-items: center;
     gap: var(--space-3);
     text-align: center;
+  }
+
+  /* Mobile entrance: the same one-shot rise as the other compact sections
+     (shared phone tokens, sections.css: --reveal-lift-mobile 12px over
+     --reveal-dur-mobile ~400ms), instead of the desktop chrome lift. */
+  .footer-nav .footer-link {
+    translate: 0 var(--reveal-lift-mobile, 12px);
+    transition:
+      color var(--hover-dur) var(--hover-ease),
+      transform var(--hover-dur) var(--hover-ease),
+      translate var(--reveal-dur-mobile, var(--t-med)) var(--reveal-ease)
+        calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger)),
+      opacity var(--reveal-dur-mobile, var(--t-med)) var(--reveal-ease)
+        calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));
+  }
+  .footer-revealed .footer-nav .footer-link {
+    translate: 0 0;
   }
 }
 

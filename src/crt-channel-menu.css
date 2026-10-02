@@ -50,7 +50,16 @@
    beneath it, and the bar LIFTS 1px (up, the opposite of a press). Nothing
    slams or pulses, so it reads as "this is live / liftable", never as a click.
    The press feel is owned by :active above. */
-.snc-dial:hover,
+/* :hover only where hover is real (design-system.md "Breakpoints and
+   mobile"): on touch, :hover sticks after a tap, so the dial stayed lifted +
+   ringed after the menu closed. Touch gets the :active press cue below. */
+@media (hover: hover) {
+  .snc-dial:hover {
+    outline-color: var(--navx-accent);
+    box-shadow: 0 8px 26px -10px rgba(255, 79, 0, 0.5);
+    transform: translateY(-1px);
+  }
+}
 .snc-dial:focus-visible {
   outline-color: var(--navx-accent);
   box-shadow: 0 8px 26px -10px rgba(255, 79, 0, 0.5);
@@ -111,12 +120,17 @@
   transform: translateY(3px);
 }
 
-/* White readout body: the section label. */
+/* White readout body: the section label. min-width RESERVES the widest
+   label ("Honours"), so the dial no longer changes width from section to
+   section (desktop 168-181px, phone 124-154px): its right edge is fixed, so
+   every width change slid the whole bar's left edge and nudged layout. The
+   label sits left in the reserved box. */
 .snc-dial-body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-width: 80px;
+  min-width: 95px;
+  box-sizing: border-box;
   padding: 0 12px;
   background: #ffffff;
 }
@@ -150,13 +164,19 @@
   background: var(--navx-accent);
   transition: background var(--t-press) var(--ease-out);
 }
-.snc-dial:hover .snc-dial-trigger,
 .snc-dial[aria-expanded="true"] .snc-dial-trigger {
   background: var(--navx-accent-hot);
 }
-.snc-dial:hover .snc-dial-grid > i,
 .snc-dial[aria-expanded="true"] .snc-dial-grid > i {
   background: #ffffff;
+}
+@media (hover: hover) {
+  .snc-dial:hover .snc-dial-trigger {
+    background: var(--navx-accent-hot);
+  }
+  .snc-dial:hover .snc-dial-grid > i {
+    background: #ffffff;
+  }
 }
 
 /* Mobile (#29): the dial is just chrome on a phone — shrink it to a compact
@@ -182,7 +202,9 @@
   font-size: 22px;
 }
 .snc-dial[data-mobile="true"] .snc-dial-body {
-  min-width: 0;
+  /* Reserved like desktop (widest label at 13px + 2x9px padding); 30vw
+     still caps it on the narrowest phones. */
+  min-width: min(79px, 30vw);
   max-width: 30vw;
   padding: 0 9px;
 }
@@ -381,13 +403,15 @@
 .navx-close::after {
   transform: translate(-50%, -50%) rotate(-45deg);
 }
-.navx-close:hover {
-  background: var(--navx-accent-hot);
-  border-color: var(--navx-accent-hot);
-}
-.navx-close:hover::before,
-.navx-close:hover::after {
-  background: #ffffff;
+@media (hover: hover) {
+  .navx-close:hover {
+    background: var(--navx-accent-hot);
+    border-color: var(--navx-accent-hot);
+  }
+  .navx-close:hover::before,
+  .navx-close:hover::after {
+    background: #ffffff;
+  }
 }
 .navx-close:focus-visible {
   outline: 2px solid var(--navx-accent);
@@ -437,21 +461,42 @@
 }
 /* HOVER = "what you'd jump to": scales up noticeably (no colour change) so the
    jump target is unmistakable next to the orange you-are-here state. */
-.navx-spill-label:hover,
 .navx-spill-label[data-armed="true"] {
   transform: scale(1.4);
+}
+@media (hover: hover) {
+  .navx-spill-label:hover {
+    transform: scale(1.4);
+  }
+}
+/* Hit area. drei <Html distanceFactor> scales each label down on a phone
+   (~0.62 at 360px), so the 40px-tall button landed as a 25-26px tap target.
+   An invisible ::before grows the box the finger can hit to >=44px AFTER
+   that scale without changing a pixel of the look (the button is
+   position:relative and does not clip, and a pseudo-element hit-tests as
+   the button). Sized in the label's own (pre-scale) px. */
+.navx-spill-label::before {
+  content: "";
+  position: absolute;
+  inset: -18px -14px;
 }
 /* MOBILE / touch ring: the menu ring now renders on phones too (squashed into a
    vertical ellipse). Long labels ("Stack + Projects", "Off the clock") at the
    side slots would run off the narrow screen as one nowrap line, so allow them
    to WRAP within a max-width and centre — single-word labels stay one line. A
    slightly smaller face + thinner stroke keeps them dense + tappable. */
-@media (max-width: 768px) {
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   .navx-spill-label {
     white-space: normal;
     max-width: 170px;
     text-align: center;
     font-size: 36px;
-    -webkit-text-stroke: 4px var(--navx-ink);
+    /* Legibility on the light ground: after the ~0.62 Html scale the old 4px
+       stroke rendered at ~2.5px and the white fill washed into the #eef0f3
+       scrim between objects. A heavier stroke plus a hard 2px ink offset (a
+       printed-sticker shadow, not a soft blur) keeps the white type outlined
+       on both the orange dither and the bare ground. */
+    -webkit-text-stroke: 5.5px var(--navx-ink);
+    text-shadow: 0 2.5px 0 var(--navx-ink);
   }
 }

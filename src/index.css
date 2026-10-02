@@ -415,10 +415,12 @@ html.loading-active body {
    on the computed cursor (it uses an interactive selector), so forcing none is
    safe. body included so the Mac/Hobbies canvases' inline pointer is hidden too
    (the JS still reads the inline string for the spark variant).
-   Gated to fine-pointer devices ONLY: the custom MoveableCursor mounts behind
-   the same `(hover:hover) and (pointer:fine)` condition (App.tsx: `!isMobile`),
-   so on touch / hybrid devices where it is NOT mounted, this would otherwise
-   hide the OS pointer with nothing to replace it. Also keyed on
+   Gated to fine-pointer devices ONLY: MoveableCursor mounts behind the very
+   same query (App.tsx: useFinePointer(), i.e. MQ.finePointer in motion.ts;
+   the width plays no part), so on touch / hybrid-primary devices where it is
+   NOT mounted the OS pointer is never hidden. This is the ONLY place the OS
+   cursor is hidden (the app wrapper no longer carries an inline
+   cursor:none). Also keyed on
    html.custom-cursor, which MoveableCursor adds on its first pointermove: the
    page can't know where the pointer is until then, so the OS arrow shows on
    boot instead of no cursor at all. */
@@ -499,7 +501,16 @@ html.loading-active body {
     box-shadow var(--hover-dur) var(--hover-ease),
     transform var(--hover-dur) var(--hover-ease);
 }
-.brand-mark:hover,
+/* Hover lives in @media (hover: hover) (design-system.md, "Breakpoints and
+   mobile"): on touch a tap leaves :hover stuck on until the next tap
+   elsewhere, so the tile sat lifted + ringed after every brand tap. */
+@media (hover: hover) {
+  .brand-mark:hover {
+    outline-color: var(--accent);
+    box-shadow: 0 8px 26px -10px rgba(255, 79, 0, 0.5);
+    transform: translateY(-1px);
+  }
+}
 .brand-mark:focus-visible {
   outline-color: var(--accent);
   box-shadow: 0 8px 26px -10px rgba(255, 79, 0, 0.5);
@@ -526,11 +537,75 @@ html.loading-active body {
     transform var(--t-press) var(--ease-out),
     box-shadow var(--hover-dur) var(--hover-ease);
 }
-.hud-btn:hover {
-  background: var(--accent-tint) !important;
-  border-color: rgba(255, 79, 0, 0.55) !important;
-  color: var(--accent) !important;
-  box-shadow: 0 4px 14px -8px rgba(255, 79, 0, 0.55);
+@media (hover: hover) {
+  .hud-btn:hover {
+    background: var(--accent-tint) !important;
+    border-color: rgba(255, 79, 0, 0.55) !important;
+    color: var(--accent) !important;
+    box-shadow: 0 4px 14px -8px rgba(255, 79, 0, 0.55);
+  }
+  /* Compact FAB: the 44px button is a transparent hit box; the hover tint
+     belongs on the 34px face, not on the invisible box around it. */
+  .hud-btn--compact:hover {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none;
+  }
+  .hud-btn--compact:hover .hud-btn-face {
+    background: var(--accent-tint);
+    border-color: rgba(255, 79, 0, 0.55);
+  }
+}
+/* Compact FAB face (JumpToTop.tsx): the visible 34px square inside the 44px
+   hit box. Solid surface + a real drop shadow (the HUD top strip's floating
+   treatment), so it reads as chrome hovering over the content it overlaps. */
+.hud-btn-face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--ink-hairline);
+  box-shadow: 0 6px 18px -8px rgba(13, 14, 16, 0.35), 0 1px 2px rgba(13, 14, 16, 0.08);
+  transition: background var(--hover-dur) var(--hover-ease),
+    border-color var(--hover-dur) var(--hover-ease);
+}
+
+/* Compact top backing (RoomHUD.tsx): a strip of page ground behind the brand
+   tile and the dial, so section content no longer scrolls visibly through the
+   gap between and under the two tiles on a phone. Height = the dial (46px,
+   the taller tile) + its top offset (max(14px, safe-top + 8px), same as
+   hudTopOffset()) + 10px of air. Opaque ground with a hairline and a short
+   soft fade below it (::after) so the cut edge doesn't read as a hard bar.
+   Lives inside the RoomHUD layer (z 30): under the brand tile (its sibling,
+   later in the DOM) and the dial (z 40), above the content and the JumpToTop
+   (z 35 is a different corner). It inherits the HUD reveal (hidden over the
+   hero), fades with the footer dodge, and hides while the spill menu is
+   open (the menu's close X takes the dial's corner on the bare scrim). */
+.hud-top-backing {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(max(14px, env(safe-area-inset-top, 0px) + 8px) + 56px);
+  background: var(--bg-page);
+  box-shadow: 0 1px 0 var(--ink-hairline);
+  pointer-events: none;
+  transition: opacity var(--chrome-dur) var(--ease-out);
+}
+.hud-top-backing::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 12px;
+  background: linear-gradient(to bottom, rgba(13, 14, 16, 0.05), rgba(13, 14, 16, 0));
+}
+.hud-top-backing[data-dodge="true"],
+html:has(.navx-spill-root[data-open="true"]) .hud-top-backing {
+  opacity: 0;
 }
 .hud-btn:active {
   transform: scale(0.94);
@@ -612,29 +687,18 @@ html.loading-active body {
 @media (prefers-reduced-motion: reduce) { .scroll-cover { display: none; } }
 
 /* ===================================================================
- * GLOBAL MOBILE FOUNDATION (<=768px, matches useIsMobile breakpoint)
+ * SAFE-AREA HELPERS
  * ===================================================================
- * Touch-first chrome rules. Design tokens are untouched; this only
- * adds mobile ergonomics: a 16px body-text floor (iOS zooms any input
- * under 16px on focus, and sub-16px body copy fails WCAG comfort on
- * small screens), and safe-area helper custom-properties consumed by
- * the fixed chrome (StatusBar / RoomHUD / JumpToTop) so notch + home-
+ * Safe-area custom properties for the fixed chrome, so notch + home-
  * indicator insets are respected. viewport-fit=cover in index.html is
- * what unlocks env(safe-area-inset-*). */
+ * what unlocks env(safe-area-inset-*). (The old <=768px body font-size
+ * floor here was a no-op: --fs-body is already 16px. Deleted.) */
 :root {
-  /* Resolve to 0 on devices/browsers without notches. Inline styles in
-     the HUD components add these via calc() so they degrade gracefully. */
+  /* Resolve to 0 on devices/browsers without notches. The HUD components
+     use max(gap, env(...) + n) offsets at every width (design-system.md). */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
 }
 
-@media (max-width: 768px) {
-  /* Body-text floor: guarantee ≥16px base on phones so iOS doesn't
-     auto-zoom and copy stays legible. Sections set their own type, but
-     the document default must never drop below 16px on mobile. */
-  body {
-    font-size: max(16px, var(--fs-body));
-  }
-}

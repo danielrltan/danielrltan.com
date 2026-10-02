@@ -8,6 +8,8 @@ import { isLowTier } from "../capabilityTier";
 import { track } from "../analytics";
 import { HOBBIES, type Hobby } from "./hobbies";
 import { markSectionCanvasCreated } from "../useSectionCanvasMount";
+import { MQ, reducedMotion } from "../motion";
+import { useMedia } from "../useMedia";
 
 // First-focus-per-page guard for hobby_focus analytics (module scope persists
 // across the scene's mount-on-approach remounts, so each interest fires once).
@@ -112,11 +114,9 @@ const HOVER_FORWARD = 0.18;        // ease it this far toward the camera (+z)
 const PARALLAX = THREE.MathUtils.degToRad(15);
 const PARALLAX_LERP_RATE = 6;
 
-// prefers-reduced-motion: park static (no drift, no sway, no collisions step).
-const PREFERS_REDUCED_MOTION =
-  typeof window !== "undefined" &&
-  typeof window.matchMedia === "function" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+// prefers-reduced-motion: park static (no drift, no sway, no collisions step)
+// and render on demand only (load, resize, hover), never every frame. Read
+// LIVE from motion.ts `reducedMotion.value` (follows an OS toggle).
 
 function PlaceholderMesh({ kind, size }: { kind: PlaceholderKind; size: number }) {
   const r = size * 0.55;
@@ -316,8 +316,13 @@ interface HobbyMeshProps {
   scene: THREE.Group | null;
   index: number;
   isTouch: boolean;
-  /** Phones: show the name tag STATICALLY over the object (no hover on touch). */
+  /** Portrait phone arrangement (<=768px wide): POS_PORTRAIT home slots. */
   mobile: boolean;
+  /** Compact screens (phones, incl. a phone on its side): show the name tag
+   *  STATICALLY over the object (no hover on touch). */
+  staticLabels: boolean;
+  /** drei <Html> distanceFactor for the label (viewport-scaled on phones). */
+  labelDistance: number;
   hoveredIndexRef: React.RefObject<number>;
   cursorRef: React.RefObject<{ x: number; y: number; active: boolean }>;
   visibleRef: React.RefObject<boolean>;
@@ -329,10 +334,13 @@ function HobbyMesh({
   index,
   isTouch,
   mobile,
+  staticLabels,
+  labelDistance,
   hoveredIndexRef,
   cursorRef,
   visibleRef,
 }: HobbyMeshProps) {
+  const invalidate = useThree((st) => st.invalidate);
   const rotRef = useRef<THREE.Group>(null);
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
@@ -365,16 +373,20 @@ function HobbyMesh({
     const t = state.clock.elapsedTime;
     const hovered = hoveredIndexRef.current === index;
 
-    // Hover weight (smoothed) drives scale + parallax blend.
+    const rm = reducedMotion.value;
+    // Hover weight (smoothed) drives scale + parallax blend. Reduced motion:
+    // snap (no eased lift), so one on-demand frame per hover change suffices.
     const targetHover = hovered ? 1 : 0;
-    hoverLerpRef.current += (targetHover - hoverLerpRef.current) * (1 - Math.exp(-dt * 9));
+    hoverLerpRef.current = rm
+      ? targetHover
+      : hoverLerpRef.current + (targetHover - hoverLerpRef.current) * (1 - Math.exp(-dt * 9));
     const hw = hoverLerpRef.current;
 
     // Rotation: gentle front-facing sway, damped as the object focuses, plus
     // the keypad face-tracking parallax that turns it toward the cursor while
     // hovered.
     const rr = tr.rot;
-    if (PREFERS_REDUCED_MOTION) {
+    if (rm) {
       g.rotation.set(rr[0], rr[1], rr[2]);
     } else {
       const swayDamp = 1 - 0.75 * hw;
@@ -388,7 +400,7 @@ function HobbyMesh({
       // Skipped on touch (`mobile`): there's no hovering cursor to track, so the
       // objects shouldn't tilt toward a phantom pointer.
       const c = cursorRef.current;
-      const track = hovered && !mobile && c && c.active;
+      const track = hovered && !isTouch && c && c.active;
       const cx = track ? (c.x - 0.5) * 2 : 0;
       const cy = track ? (c.y - 0.5) * 2 : 0;
       const k = 1 - Math.exp(-dt * PARALLAX_LERP_RATE);
@@ -424,7 +436,7 @@ function HobbyMesh({
     // wander being off on mobile.
     const label = labelRef.current;
     if (label) {
-      const w = mobile ? 1 : hw < 0.001 ? 0 : hw;
+      const w = staticLabels ? 1 : hw < 0.001 ? 0 : hw;
       const last = labelWRef.current;
       if (Math.abs(w - last) > 0.001 || (w === 0) !== (last === 0)) {
         labelWRef.current = w;
@@ -434,7 +446,7 @@ function HobbyMesh({
         } else {
           label.style.visibility = "";
           label.style.opacity = w.toFixed(3);
-          label.style.transform = mobile
+          label.style.transform = staticLabels
             ? "translateY(0) scale(1)"
             : `translateY(${(-6 - 10 * w).toFixed(1)}px) scale(${(0.92 + 0.08 * w).toFixed(3)})`;
         }
@@ -445,6 +457,8 @@ function HobbyMesh({
   const onPointerOver = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     hoveredIndexRef.current = index;
+    // The demand loop may be parked (reduced motion renders on demand only).
+    invalidate();
     // NB: do NOT set body cursor to "pointer" here. The interests are hover-only
     // (they reveal a label), not clickable — and the custom cursor shows its
     // "clickable" spark variant whenever body cursor is "pointer", which falsely
@@ -463,6 +477,7 @@ function HobbyMesh({
     // (onPointerMissed clears it). Pointer devices clear on hover-out.
     if (isTouch) return;
     if (hoveredIndexRef.current === index) hoveredIndexRef.current = -1;
+    invalidate();
   };
 
   return (
@@ -509,14 +524,14 @@ function HobbyMesh({
       <Html
         center
         position={[0, 0, 0]}
-        distanceFactor={mobile ? 12 : 9}
+        distanceFactor={labelDistance}
         zIndexRange={[30, 0]}
         style={{ pointerEvents: "none" }}
       >
         <span
           ref={labelRef}
-          className={`hobbies-label${mobile ? " hobbies-label--static" : ""}`}
-          style={{ opacity: mobile ? 1 : 0 }}
+          className={`hobbies-label${staticLabels ? " hobbies-label--static" : ""}`}
+          style={{ opacity: staticLabels ? 1 : 0 }}
         >
           {hobby.label}
         </span>
@@ -636,8 +651,10 @@ interface Framing {
   lookY: number;
 }
 /** @param extraBottomFrac fraction of the canvas HEIGHT that is slack below the
- *  framed band (DESK_EXTRA_BOTTOM_PX / canvas px height). 0 = legacy framing. */
-function desktopFraming(aspect: number, extraBottomFrac = 0): Framing {
+ *  framed band (DESK_EXTRA_BOTTOM_PX / canvas px height). 0 = legacy framing.
+ *  @param topReserveFrac minimum top band (fraction of the frame) to keep clear
+ *  for the header; a sideways phone passes its measured header height. */
+function desktopFraming(aspect: number, extraBottomFrac = 0, topReserveFrac = 0): Framing {
   const a = Math.max(0.0001, aspect);
   const halfHc = (DESK_TOP_Y - DESK_BOT_Y) / 2; // cluster world half-height
   const centerY = (DESK_TOP_Y + DESK_BOT_Y) / 2; // cluster world centre
@@ -646,7 +663,7 @@ function desktopFraming(aspect: number, extraBottomFrac = 0): Framing {
   // (1 - TOP - BOT) × (H − slack) px for the cluster — identical pixels to the
   // legacy 100svh framing — and parks the slack entirely at the bottom.
   const e = Math.min(0.4, Math.max(0, extraBottomFrac));
-  const TOP_RESERVE = TOP_RESERVE_BASE * (1 - e);
+  const TOP_RESERVE = Math.max(TOP_RESERVE_BASE * (1 - e), Math.min(0.5, topReserveFrac));
   const BOTTOM_MARGIN = BOTTOM_MARGIN_BASE * (1 - e) + e;
   const visibleFracV = 1 - TOP_RESERVE - BOTTOM_MARGIN;
   // Distance so the cluster height fills `visibleFracV` of the frame AND its width
@@ -661,6 +678,43 @@ function desktopFraming(aspect: number, extraBottomFrac = 0): Framing {
   const bandCenterFrac = (TOP_RESERVE + (1 - BOTTOM_MARGIN)) / 2;
   const lookY = centerY + (bandCenterFrac - 0.5) * 2 * visHalfH;
   return { dist, lookY };
+}
+
+// Static (always-on) phone labels: target on-screen cap height in px. Sized as
+// a fraction of the frame so the labels scale WITH the cluster: drei's
+// distanceFactor alone keeps a label a fixed pixel size at a given camera
+// distance, so on a short phone (320x568) the cluster shrank but the labels
+// did not, and neighbours collided (Piano over 3D Modelling, Workstation over
+// Skiing). Portrait: ~3% of the frame height (25px at 844 tall, as before).
+const STATIC_LABEL_FRAC_PORTRAIT = 25 / 844;
+// A sideways phone frames the wide spread small; its labels sit a touch smaller.
+const STATIC_LABEL_FRAC_LANDSCAPE = 0.034;
+const STATIC_LABEL_MIN_PX = 13;
+const STATIC_LABEL_MAX_PX = 25;
+const STATIC_LABEL_CSS_PX = 15; // .hobbies-label--static font-size
+const HOVER_LABEL_DISTANCE = 9; // desktop hover tag (unchanged)
+
+/** Camera framing for the active arrangement (pure; used by the frame loop
+ *  and to size the static labels). */
+function frameFor(
+  width: number,
+  height: number,
+  mobile: boolean,
+  extraBottomPx: number,
+  topReservePx: number,
+): Framing {
+  const aspect = height > 0 ? width / height : 1;
+  if (mobile) {
+    return {
+      lookY: CAM_LOOK_Y_PORTRAIT,
+      dist: camDistanceForAspect(aspect, CLUSTER_HALF_W_PORTRAIT, CLUSTER_HALF_H_PORTRAIT),
+    };
+  }
+  return desktopFraming(
+    aspect,
+    height > 0 ? extraBottomPx / height : 0,
+    height > 0 ? topReservePx / height : 0,
+  );
 }
 
 function SceneInner({
@@ -678,25 +732,59 @@ function SceneInner({
   cursorRef: React.RefObject<{ x: number; y: number; active: boolean }>;
   hoveredIndexRef: React.RefObject<number>;
 }) {
-  const { camera, invalidate } = useThree();
+  const { camera, invalidate, gl } = useThree();
+  const size = useThree((st) => st.size);
   // Outer position groups (one per body) written by the solver each frame.
   const posRefs = useRef<(THREE.Group | null)[]>([]);
 
-  // <=768px → use the TALL portrait cluster (fills a phone screen) instead of the
-  // landscape spread. Reactive so an orientation/resize across the breakpoint
-  // rebuilds the body home slots + re-frames the camera.
-  const [mobile, setMobile] = useState(
-    () => typeof window !== "undefined" && window.innerWidth <= 768,
-  );
+  // <=768px wide → use the TALL portrait cluster (fills a phone screen) instead
+  // of the landscape spread. Reactive (shared MQ) so an orientation/resize across
+  // the breakpoint rebuilds the body home slots + re-frames the camera.
+  const mobile = useMedia(MQ.phone);
+  // Compact (a phone, upright or on its side): always-on labels, no canvas
+  // slack (other.css only adds the +100px off the compact query).
+  const compact = useMedia(MQ.compact);
+  const extraBottomPx = compact ? 0 : DESK_EXTRA_BOTTOM_PX;
+
+  // A sideways phone frames the landscape spread under a header that takes a
+  // third of the short screen: reserve its MEASURED height (untransformed
+  // offsetTop + offsetHeight, so the reveal lift doesn't skew it) as the top
+  // band. Desktop keeps the fixed TOP_RESERVE_BASE framing.
+  const [topReservePx, setTopReservePx] = useState(0);
+  const sideways = compact && !mobile;
   useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+    if (!sideways) {
+      setTopReservePx(0);
       return;
-    const mq = window.matchMedia("(max-width: 768px)");
-    const onChange = () => setMobile(mq.matches);
-    onChange();
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
+    }
+    const header = gl.domElement
+      .closest(".portfolio-other")
+      ?.querySelector<HTMLElement>(".other-header");
+    if (!header) return;
+    const measure = () => setTopReservePx(header.offsetTop + header.offsetHeight + 8);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, [sideways, gl]);
+
+  // Static label size, in drei distanceFactor units: target px / css px x the
+  // world->screen scale at the framing distance (drei's objectScale).
+  const labelDistance = useMemo(() => {
+    if (!compact) return HOVER_LABEL_DISTANCE;
+    const { dist } = frameFor(size.width, size.height, mobile, extraBottomPx, topReservePx);
+    const frac = mobile ? STATIC_LABEL_FRAC_PORTRAIT : STATIC_LABEL_FRAC_LANDSCAPE;
+    const px = Math.min(STATIC_LABEL_MAX_PX, Math.max(STATIC_LABEL_MIN_PX, frac * size.height));
+    return (px / STATIC_LABEL_CSS_PX) * 2 * HALF_VFOV_TAN * dist;
+  }, [compact, mobile, size.width, size.height, extraBottomPx, topReservePx]);
+
+  // Reduced motion renders on demand only: wake one frame when it flips (the
+  // loop restarts itself when motion comes back on).
+  useEffect(() => reducedMotion.subscribe(() => invalidate()), [invalidate]);
+  // ...and redraw once when the framing inputs change (no-op while the loop runs).
+  useEffect(() => {
+    invalidate();
+  }, [invalidate, mobile, compact, topReservePx, labelDistance]);
 
   // Soft-body state for the drift + collision sim. Rebuilt when the portrait /
   // landscape arrangement flips (positions differ; scale/radius are unchanged).
@@ -722,34 +810,28 @@ function SceneInner({
 
   useFrame((state, dtRaw) => {
     if (visibleRef.current === false || liveRef.current === false) return;
-    invalidate();
+    // Reduced motion: NO self-invalidation. The demand loop then renders only
+    // when something asks (GLB swap-in, resize, the visibility/live wake,
+    // hover) and this frame just re-frames + parks the still life.
+    const rm = reducedMotion.value;
+    if (!rm) invalidate();
     const dt = Math.min(dtRaw, 0.05); // clamp so a stalled tab doesn't explode the sim
     const t = state.clock.elapsedTime;
 
     // ---- Camera: fixed framing of the whole cluster ----
     const aspect = state.size.height > 0 ? state.size.width / state.size.height : 1;
     // Portrait phones frame the TALL cluster (fills the screen); desktop/tablet
-    // frame the landscape spread into the LOWER part of the frame, leaving a clear
-    // top band for the wordmark (desktopFraming).
-    let lookY: number;
-    let dist: number;
-    if (mobile) {
-      lookY = CAM_LOOK_Y_PORTRAIT;
-      dist = camDistanceForAspect(
-        aspect,
-        CLUSTER_HALF_W_PORTRAIT,
-        CLUSTER_HALF_H_PORTRAIT,
-      );
-    } else {
-      // Exclude the desktop canvas slack (see DESK_EXTRA_BOTTOM_PX) from the
-      // framed band so the cluster keeps its legacy on-screen size/position.
-      const f = desktopFraming(
-        aspect,
-        state.size.height > 0 ? DESK_EXTRA_BOTTOM_PX / state.size.height : 0,
-      );
-      lookY = f.lookY;
-      dist = f.dist;
-    }
+    // (and a sideways phone) frame the landscape spread into the LOWER part of
+    // the frame, leaving a clear top band for the wordmark (desktopFraming).
+    // The desktop canvas slack (DESK_EXTRA_BOTTOM_PX) is excluded from the
+    // framed band so the cluster keeps its legacy on-screen size/position.
+    const { lookY, dist } = frameFor(
+      state.size.width,
+      state.size.height,
+      mobile,
+      extraBottomPx,
+      topReservePx,
+    );
     const frameX = mobile ? 0 : FRAME_SHIFT_X;
     camera.position.set(frameX, lookY, dist);
     camera.lookAt(frameX, lookY, 0);
@@ -761,7 +843,7 @@ function SceneInner({
 
     const hoveredIdx = hoveredIndexRef.current;
 
-    if (PREFERS_REDUCED_MOTION) {
+    if (rm) {
       // Static still-life: park each body at its home, no drift / collisions.
       for (let i = 0; i < bodies.length; i++) {
         const b = bodies[i]!;
@@ -877,6 +959,8 @@ function SceneInner({
             index={i}
             isTouch={isTouch}
             mobile={mobile}
+            staticLabels={compact}
+            labelDistance={labelDistance}
             scene={loaded[h.id] ?? null}
             hoveredIndexRef={hoveredIndexRef}
             cursorRef={cursorRef}
@@ -911,12 +995,13 @@ export const HobbiesScene = memo(function HobbiesScene({
   // Viewport-relative cursor for the face-tracking parallax.
   const parallaxCursorRef = useRef({ x: 0.5, y: 0.5, active: false });
   const containerRef = useRef<HTMLDivElement>(null);
-  const isTouch = useMemo(
-    () => typeof window !== "undefined" && "ontouchstart" in window,
-    [],
-  );
+  // Touch-PRIMARY (no hover, coarse pointer), live: a touchscreen laptop has a
+  // trackpad and keeps the hover labels / face tracking / full sim. (The old
+  // `"ontouchstart" in window` test counted those laptops as phones.)
+  const isTouch = useMedia(MQ.touchPrimary);
+  // Phone-sized, upright or on its side (shared compact query, live).
+  const narrow = useMedia(MQ.compact);
   const dprCap = useMemo<[number, number]>(() => {
-    const narrow = typeof window !== "undefined" && window.innerWidth <= 768;
     // Weak GPU (low tier) OR a phone: no supersampling at all — the cluster's
     // smooth-shaded props read fine at DPR 1 and fragment cost dominates here.
     // The phone term (touch AND narrow) is checked SEPARATELY from the tier on
@@ -931,7 +1016,7 @@ export const HobbiesScene = memo(function HobbiesScene({
     // now correctly takes [1,1.25] as the capable device it is.
     if (isLowTier() || (isTouch && narrow)) return [1, 1];
     return isTouch || narrow ? [1, 1.25] : [1, 1.5];
-  }, [isTouch]);
+  }, [isTouch, narrow]);
 
   // Subscribe to the module-scope preload so late-arriving GLBs swap in.
   useEffect(() => {
@@ -1013,6 +1098,7 @@ export const HobbiesScene = memo(function HobbiesScene({
   const handleMissed = () => {
     hoveredIndexRef.current = -1;
     document.body.style.cursor = "";
+    canvasInvalidateRef.current?.();
   };
 
   return (
@@ -1027,6 +1113,9 @@ export const HobbiesScene = memo(function HobbiesScene({
           powerPreference: "high-performance",
         }}
         frameloop="demand"
+        // Don't re-measure the canvas on every page scroll: the wrapper is
+        // inset:0 in its section, so only a real resize changes its size.
+        resize={{ scroll: false }}
         onCreated={({ gl, invalidate }) => {
           markSectionCanvasCreated(gl.domElement);
           canvasInvalidateRef.current = invalidate;

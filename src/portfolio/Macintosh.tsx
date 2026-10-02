@@ -20,6 +20,7 @@ import { MAC_PROJECTS, liveLinkLabel, type MacProject } from "../macintosh/proje
 import { track } from "../analytics";
 import { useMacNarrow } from "../macintosh/useMacNarrow";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
+import { useReveal } from "./useReveal";
 import { scrollToY } from "../scroll";
 import { GSAP_EASE } from "../motion";
 
@@ -278,6 +279,11 @@ export function Macintosh() {
   const reducedMotion = usePrefersReducedMotion();
   // Either condition lands the Mac without scroll choreography.
   const staticLanded = narrow || reducedMotion;
+  // Narrow: header, ticker and project list rise in once as they enter (shared
+  // [data-reveal] primitive; 400ms / 12px on stacked layouts). Desktop keeps
+  // its pinned cinematic.
+  useReveal(sectionRef, { enabled: narrow && !reducedMotion });
+  const revealAttr = narrow ? "" : undefined;
 
   useEffect(() => {
     if (!TUNE_MODE && PIN_FREEZE == null) return;
@@ -491,7 +497,7 @@ export function Macintosh() {
           </Suspense>
         )}
       </div>
-      <div className="mac-ticker-slot">
+      <div className="mac-ticker-slot" data-reveal={revealAttr}>
         <TechStackTicker />
       </div>
 
@@ -504,7 +510,11 @@ export function Macintosh() {
           dropdowns"). Mirrors the Work accordion's motion. Desktop's
           orbit/dolly cinematic owns selection there and hides this entirely. */}
       {staticLanded && (
-        <ul className="mac-project-list mac-project-acc" aria-label="Projects">
+        <ul
+          className="mac-project-list mac-project-acc"
+          aria-label="Projects"
+          data-reveal={revealAttr}
+        >
           {MAC_PROJECTS.map((p) => {
             const open = openMobileId === p.id;
             const panelId = `mac-acc-panel-${p.id}`;
@@ -608,9 +618,13 @@ export function Macintosh() {
         ref={headerRef}
         className={`portfolio-col mac-col${selected ? " is-detail-open" : ""}`}
       >
-        <span className="section-marker">02</span>
+        {/* data-reveal on the children, not .mac-col: its className
+            changes with the detail view, which would drop .is-revealed. */}
+        <span className="section-marker" data-reveal={revealAttr}>
+          02
+        </span>
         <span className="section-index">02 / 07 &middot; Projects</span>
-        <h2>
+        <h2 data-reveal={revealAttr}>
           <ScrambleText text="Projects" />
         </h2>
       </div>

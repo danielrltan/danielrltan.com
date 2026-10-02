@@ -114,50 +114,51 @@
   transform: none;
 }
 
-/* Short-viewport guard: this section is full-bleed with the 3D cluster
-   filling the centre. On short screens the GIANT shared-scale wordmark
-   would push down over the centred reel hero, so ease the title back here
-   (it stays large for impact but yields room); the number stays the tiny
-   tag. Mirrors Work's guard. Desktop widths only — the ≤768 mobile block
-   already sets its own header sizes. */
-/* DESKTOP: the section (and so the full-bleed canvas, inset:0) runs 100px
-   TALLER than the viewport. The bottom-row objects (car, keyboard) sat on the
-   very bottom edge and were sliced flat by this box's overflow:hidden — worse
-   on hover, when the focused object scales up + dollies forward. The camera
-   keeps the cluster framed to the top 100svh (HobbiesScene desktopFraming
-   reserves this exact band in px), so the extra 100px is pure slack UNDER
-   the cluster for hovered objects to grow into. Must stay in sync with
-   HobbiesScene's DESK_EXTRA_BOTTOM_PX. Phones keep the 100svh portrait box. */
-@media (min-width: 769px) {
-  .portfolio-other {
-    height: calc(100vh + 100px);
-    height: calc(100svh + 100px);
-  }
-}
+/* ======================================================================
+   DESKTOP (exactly the complement of the compact phone query: >=769px wide
+   AND >=501px tall; a phone on its side, <=500px tall, takes the compact
+   path below). One block for the desktop canvas slack + the scroll stop.
 
-/* SCROLL STOP (desktop): a CSS sticky hold, NOT a GSAP pin. The wrapper is
-   taller than the section by --other-stop; the section sticks to the viewport
-   top while the wrapper's extra height scrolls through, then releases. Native
-   sticky is resolved by the compositor in lockstep with the (Lenis-smoothed)
-   native scroll — the section glides to the top and stays, with no JS-timed
+   CANVAS SLACK: the section (and so the full-bleed canvas, inset:0) runs
+   100px TALLER than the viewport. The bottom-row objects (car, keyboard) sat
+   on the very bottom edge and were sliced flat by this box's overflow:hidden
+   — worse on hover, when the focused object scales up + dollies forward. The
+   camera keeps the cluster framed to the top 100svh (HobbiesScene
+   desktopFraming reserves this exact band in px), so the extra 100px is pure
+   slack UNDER the cluster for hovered objects to grow into. Must stay in sync
+   with HobbiesScene's DESK_EXTRA_BOTTOM_PX (which it only applies off the
+   compact query, matching this block). Phones keep the 100svh box.
+
+   SCROLL STOP: a CSS sticky hold, NOT a GSAP pin. The wrapper is taller than
+   the section by --other-stop; the section sticks to the viewport top while
+   the wrapper's extra height scrolls through, then releases. Native sticky
+   is resolved by the compositor in lockstep with the (Lenis-smoothed) native
+   scroll — the section glides to the top and stays, with no JS-timed
    position:fixed swap to snap in. Ancestors use overflow-x: clip (not hidden)
    precisely so sticky/fixed chrome keeps working — see index.css. Phones: no
-   wrapper height, no sticky — the portrait cluster free-scrolls. */
+   wrapper height, no sticky — the portrait cluster free-scrolls.
+   ====================================================================== */
 .other-pin-wrap {
   --other-stop: 500px; /* scroll distance the section holds; the dwell (halved from 1000) */
   position: relative;
 }
-@media (min-width: 769px) {
+@media (min-width: 769px) and (min-height: 501px) {
+  .portfolio-other {
+    height: calc(100vh + 100px);
+    height: calc(100svh + 100px);
+    position: sticky;
+    top: 0;
+  }
   .other-pin-wrap {
     height: calc(100vh + 100px + var(--other-stop));
     height: calc(100svh + 100px + var(--other-stop));
   }
-  .portfolio-other {
-    position: sticky;
-    top: 0;
-  }
 }
-@media (max-height: 780px) and (min-width: 769px) {
+/* Short-viewport guard (desktop only): on short screens the GIANT wordmark
+   would push down over the centred cluster, so ease the title back (it stays
+   large but yields room); the number stays the tiny tag. Mirrors Work's
+   guard; the number rule is IDENTICAL to the one in photos.css. */
+@media (min-width: 769px) and (min-height: 501px) and (max-height: 780px) {
   .other-section-num {
     font-size: clamp(13px, 1.4vw, 20px);
   }
@@ -238,31 +239,50 @@
 }
 
 /* ======================================================================
-   Mobile (≤ 768px)
+   Compact (phones, incl. a phone on its side: <=768px wide OR landscape
+   <=500px tall — mirrors motion.ts MQ.compact)
    ====================================================================== */
-@media (max-width: 768px) {
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   /* FULL-BLEED 3D ON PHONES: the hobby cluster IS this section and fills the
      screen. The canvas stays mounted on mobile (Other.tsx passes
-     disableOnMobile:false) and HobbiesScene switches to a TALL portrait
-     arrangement at <=768px. Keep the base .portfolio-other (100svh,
-     overflow:hidden) and .other-scene-wrap (inset:0) — only tune the floating
-     header sizing + the touch label chips here. */
+     disableOnMobile:false); HobbiesScene switches to a TALL portrait
+     arrangement at <=768px wide and keeps the landscape spread on a sideways
+     phone, with always-on labels on both. Keep the base .portfolio-other
+     (100svh, overflow:hidden) and .other-scene-wrap (inset:0) — only tune the
+     floating header here. */
 
   /* Header floats over the cluster (base: position:absolute, z-index:5). Only
-     re-pad for HUD/notch clearance + size the wordmark for a phone. */
+     re-pad for HUD/notch clearance (shared top-strip token) + size the
+     wordmark for a phone. */
   .other-header {
-    padding: calc(max(72px, 9vh) + env(safe-area-inset-top, 0px)) 6vw 0;
+    padding: var(--top-strip-clear-mobile, calc(max(72px, 9vh) + env(safe-area-inset-top, 0px))) 6vw 0;
   }
   .other-section-num {
-    font-size: clamp(13px, 3.4vw, 18px);
+    font-size: var(--hdr-num-mobile, clamp(13px, 3.4vw, 18px));
   }
   .portfolio-other .other-title {
     /* Phone ceiling so "SOME INTERESTS" stays bold but never forces horizontal
        scroll; it floats over the top of the full-screen cluster. */
-    font-size: clamp(40px, 12vw, 64px);
+    font-size: var(--hdr-title-mobile, clamp(40px, 12vw, 64px));
   }
-  /* Each interest's NAME is now rendered STATICALLY over its 3D object inside
-     the canvas (.hobbies-label--static), so there's no bottom chip row here. */
+  /* Mobile entrance: the same one-shot reveal, on the shared phone timing
+     (--reveal-dur-mobile ~400ms, --reveal-lift-mobile 12px; sections.css) that
+     every compact section entrance uses. Fallbacks match those tokens. */
+  .other-header {
+    --reveal-dur: var(--reveal-dur-mobile, var(--t-med));
+    --reveal-lift: var(--reveal-lift-mobile, 12px);
+  }
+}
+/* A phone on its side: ~390-430px of height. The header floats over a
+   one-viewport stage here (unlike the flow sections, which take the shared
+   64px-capped wordmark), so cap it by height too — the same cap as Recents —
+   and the cluster keeps the frame; HobbiesScene reserves the header's
+   measured height above it. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .portfolio-other .other-title {
+    font-size: min(var(--hdr-title-mobile, 64px), 11vh);
+    margin-top: 8px;
+  }
 }
 
 /* ======================================================================

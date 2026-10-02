@@ -13,11 +13,14 @@ import "./work-timeline.css";
 import { ScrambleText } from "./ScrambleText";
 import { getLenis, scrollToY } from "../scroll";
 import {
-  BREAKPOINT,
+  MQ,
   SCROLL,
+  matches,
   presetDuration,
   reducedMotion as reducedMotionPref,
 } from "../motion";
+import { useMedia } from "../useMedia";
+import { useReveal } from "./useReveal";
 import { track } from "../analytics";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -202,9 +205,10 @@ function measureSpine(list: HTMLElement): SpineGeo {
  * role opens it at once and glides the scroll to the centre of its band; the
  * scroll never re-picks a role mid-glide (jumpingRef).
  *
- * Mobile (<=900px) and reduced motion: no pin. Mobile is a tap-to-expand
- * stack that keeps the tapped header under the finger; reduced motion opens
- * every panel for a static, readable résumé.
+ * Narrow (MQ.narrow: <=900px or a phone on its side) and reduced motion: no
+ * pin. Narrow is a tap-to-expand stack that keeps the tapped header under the
+ * finger (all rows collapsed at first on phones); reduced motion opens every
+ * panel for a static, readable résumé.
  *
  * Motion (work-timeline.css): rows rise in once on entry (.is-entered), panels
  * morph on --t-morph / --ease-in-out with a faster fade-out on close, and
@@ -224,21 +228,27 @@ export function Work() {
   );
   const [entered, setEntered] = useState(reducedMotion);
 
-  // Narrow (<=900px): no pin, tap-to-expand in place. Read once at mount.
-  const [isMobile] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia(`(max-width: ${BREAKPOINT.narrow}px)`).matches,
-  );
+  // Narrow (MQ.narrow: <=900px, or a phone on its side): no pin, tap-to-expand
+  // in place. Live, so a rotation / resize across the cut-over builds or tears
+  // down the pin (the pin effect depends on it).
+  const isMobile = useMedia(MQ.narrow);
 
-  // Single-open accordion. Current role open first so the section never reads as
-  // a wall of collapsed rows. null = all collapsed.
+  // Single-open accordion. Desktop: the current role opens first so the pinned
+  // frame never reads as a wall of collapsed rows. Phones (MQ.compact) start
+  // all collapsed: the open Broadridge panel alone was ~1236px tall at 360px
+  // wide, so three short tappable rows read better. null = all collapsed.
   const firstOpen = Math.max(
     0,
     STINTS.findIndex((s) => s.current),
   );
-  const [openIndex, setOpenIndex] = useState<number | null>(firstOpen);
+  const [openIndex, setOpenIndex] = useState<number | null>(() =>
+    matches(MQ.compact) ? null : firstOpen,
+  );
+
+  // Narrow: the header and each row rise in once as they enter (shared
+  // [data-reveal] primitive, 400ms / 12px on stacked layouts). Desktop keeps
+  // its section-level .is-entered cascade below.
+  useReveal(sectionRef, { enabled: isMobile && !reducedMotion });
 
   // One-shot entrance (.is-entered) once the section scrolls into view.
   useEffect(() => {
@@ -502,7 +512,7 @@ export function Work() {
       className={`portfolio-section portfolio-work${entered ? " is-entered" : ""}${reducedMotion ? " is-reduced-motion" : ""}`}
     >
       <div className="work-ledger">
-        <header className="work-ledger-head">
+        <header className="work-ledger-head" data-reveal={isMobile ? "" : undefined}>
           <div className="work-ledger-head-text">
             <div className="work-ledger-head-left">
               <span className="work-ledger-num">03</span>
@@ -552,6 +562,9 @@ export function Work() {
                   }}
                   type="button"
                   className="work-acc-head"
+                  // On the button, not the <li>: the li's className changes
+                  // on open, which would drop the imperative .is-revealed.
+                  data-reveal={isMobile ? "" : undefined}
                   aria-expanded={open}
                   aria-controls={panelId}
                   onClick={() => {

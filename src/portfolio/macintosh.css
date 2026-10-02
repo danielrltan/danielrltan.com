@@ -5,6 +5,7 @@
 .portfolio-mac {
   position: relative;
   height: 100vh;
+  height: 100svh;
   overflow: hidden;
   /* Solid page bg so the global body::before dot texture doesn't bleed through
      the transparent 3D canvas and read as a darker "viewport" band against the
@@ -72,7 +73,7 @@
      user scrolls toward the Macintosh section; see Macintosh.tsx's
      STAGE_REVEAL_VH gate. */
   opacity: 0;
-  transition: opacity var(--t-med) var(--ease-soft, cubic-bezier(0.2, 0.7, 0.2, 1));
+  transition: opacity var(--t-med) var(--ease-out);
 }
 .mac-stage[data-stage-visible="true"] {
   opacity: 1;
@@ -102,7 +103,10 @@
   overflow-x: auto;
   overflow-y: hidden;
   pointer-events: auto;
-  touch-action: pan-x;
+  /* pan-x AND pan-y: the strip scrolls sideways under a horizontal swipe,
+     but a vertical swipe that STARTS on it still scrolls the page (pan-x
+     alone swallowed it: a 60px dead band mid-page). */
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
@@ -372,8 +376,10 @@
 
    The section is no longer pinned at these widths (Macintosh.tsx skips
    the pin ≤ 900px), so the wrapper becomes a normal-flow auto-height
-   column instead of a 100vh overflow:hidden stage. */
-@media (max-width: 900px) {
+   column instead of a 100vh overflow:hidden stage.
+   Query = MQ.narrow (≤900, or a phone on its side), the same one
+   useMacNarrow() reads, so layout + behaviour always agree. */
+@media (max-width: 900px), (orientation: landscape) and (max-height: 500px) {
   .portfolio-mac {
     height: auto;
     min-height: auto;
@@ -408,16 +414,18 @@
     backdrop-filter: none;
     order: 1;
   }
-  /* Mobile: the header is a normal in-flow left-aligned block. The giant
-     wordmark gets a phone ceiling so "THE KIT" stays large but never
-     forces horizontal scroll; the number stays the tiny tag above it. */
+  /* Mobile: the header is a normal in-flow left-aligned block on the shared
+     mobile header pair (sections.css): the "02" tag on --hdr-num-mobile, the
+     wordmark on --hdr-title-mobile, and ONE index (the mono "02 / 07 ·
+     PROJECTS" eyebrow is desktop-only). */
   .portfolio-mac .section-marker {
-    font-size: clamp(13px, 3.4vw, 18px);
+    font-size: var(--hdr-num-mobile, clamp(13px, 3.4vw, 18px));
+  }
+  .portfolio-mac .section-index {
+    display: none;
   }
   .portfolio-mac h2 {
-    /* Lower clamp floor (40px) + 15vw so the single pixel word "Projects"
-       SCALES with the viewport rather than fracturing mid-word. */
-    font-size: clamp(40px, 15vw, 96px);
+    font-size: var(--hdr-title-mobile, clamp(40px, 12.5vw, 64px));
     margin-top: 4px;
     /* Stacked layout has full width; the word must stay intact (no
        hyphenation, no mid-word break) and scale down instead. keep-all +
@@ -554,14 +562,14 @@
   }
   .mac-project-meta {
     font-family: var(--font-mono, sans-serif);
-    font-size: 11px;
+    font-size: var(--fs-mono);
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--ink-muted, rgba(13, 14, 16, 0.62));
   }
   .mac-project-title {
     font-family: var(--font-display, "Geist", system-ui, sans-serif);
-    font-size: 17px;
+    font-size: var(--fs-body-lg);
     font-weight: 600;
     letter-spacing: -0.01em;
     line-height: 1.15;
@@ -591,20 +599,30 @@
     color: var(--accent, #ff4f00);
   }
 
-  /* Drop-open detail panel: grid-rows 0fr -> 1fr for a smooth height + fade
-     (same trick + tokens as the Work accordion). The inner wrapper clips so
-     content never spills while collapsed; honoured by reduced-motion below. */
+  /* Drop-open detail panel: grid-rows 0fr -> 1fr. The height SNAPS (one
+     layout per tap; animating grid-template-rows re-laid-out the page below
+     on every frame) and the content inside eases in on opacity + transform
+     only, the same treatment as the narrow Work accordion. The inner wrapper
+     clips so content never spills while collapsed; honoured by
+     reduced-motion below. */
   .mac-acc-panel {
     display: grid;
     grid-template-rows: 0fr;
-    opacity: 0;
-    transition:
-      grid-template-rows var(--t-base) var(--ease-out),
-      opacity var(--t-base) var(--ease-out);
   }
   .mac-acc-item.is-open .mac-acc-panel {
     grid-template-rows: 1fr;
+  }
+  /* (0,3,0): must beat the blurb's opacity:1 reset below. */
+  .mac-acc-item:not(.is-open) .mac-acc-panel-inner > * {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  .mac-acc-item.is-open .mac-acc-panel-inner > * {
     opacity: 1;
+    transform: none;
+    transition:
+      opacity var(--t-base) var(--ease-out),
+      transform var(--t-base) var(--ease-out);
   }
   .mac-acc-panel-inner {
     overflow: hidden;
@@ -629,10 +647,12 @@
     margin: 0;
     opacity: 1;
     font-family: var(--font-body, "Geist", system-ui, sans-serif);
-    font-size: 16px;
+    font-size: var(--fs-body);
     line-height: 1.6;
     color: var(--ink-muted, rgba(13, 14, 16, 0.62));
     text-wrap: pretty;
+    /* Readable measure: full width ran ~100 chars a line on a sideways phone. */
+    max-width: 65ch;
   }
   /* Live / source link: solid orange button, >=44px. Scoped under
      .mac-acc-panel to beat `.portfolio-section a` (colour + underline). */
@@ -649,7 +669,7 @@
     border: none;
     border-radius: 0;
     font-family: var(--font-mono, sans-serif);
-    font-size: 12px;
+    font-size: var(--text-base);
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -685,7 +705,7 @@
     margin: 0;
     padding: 5px 12px;
     font-family: var(--font-mono, sans-serif);
-    font-size: 11px;
+    font-size: var(--fs-mono);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--ink-muted, rgba(13, 14, 16, 0.62));
@@ -705,12 +725,13 @@
      ‹ tech ticker marquee ›            (.mac-ticker-slot)
      [ project list ]                   (.mac-project-list — centerpiece)
 
-   GATED AT 768, NOT 900: the 769-900px TABLET band STILL mounts the
-   canvas (useSectionCanvasMount only bails ≤768), so it must keep the
-   stage box from the 900px block. Only phones (≤768) collapse it. The
-   section is already height:auto / overflow:visible / display:flex from
-   the 900px block, so it flows top-to-bottom without a fixed-vh box. */
-@media (max-width: 768px) {
+   GATED AT COMPACT (MQ.compact: ≤768, or a phone on its side), NOT 900:
+   the 769-900px TABLET band STILL mounts the canvas (useSectionCanvasMount
+   bails on MQ.compact only), so it must keep the stage box from the narrow
+   block. Only compact collapses it. The section is already height:auto /
+   overflow:visible / display:flex from the narrow block, so it flows
+   top-to-bottom without a fixed-vh box. */
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   /* Canvas doesn't mount here → reserve no height, no dead gap. */
   .mac-stage {
     display: none;
@@ -729,16 +750,6 @@
   }
 }
 
-/* Sub-360px phones (e.g. 320px iPhone SE): step the single "Projects"
-   pixel word down further so it fits one line and never fractures or
-   forces horizontal scroll. word-break:keep-all from the 900px block
-   keeps the glyph run intact; this just shrinks it to fit. */
-@media (max-width: 360px) {
-  .portfolio-mac h2 {
-    font-size: clamp(34px, 13vw, 48px);
-  }
-}
-
 /* ── REDUCED MOTION ───────────────────────────────────────────────
    Macintosh.tsx skips the GSAP pin + scroll cinematic (orbit/dolly/
    boot) for reduced-motion users and lands the Mac immediately. The
@@ -750,7 +761,8 @@
   /* Mobile project accordion: open/close instantly, no grid-rows/chevron
      animation (the panel still toggles via the is-open class). */
   .mac-acc-panel,
-  .mac-acc-chevron {
+  .mac-acc-chevron,
+  .mac-acc-item.is-open .mac-acc-panel-inner > * {
     transition: none;
   }
 }

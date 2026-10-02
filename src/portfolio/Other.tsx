@@ -40,6 +40,36 @@ gsap.registerPlugin(ScrollTrigger);
 // (about a third of the section is on screen, the title is well in view).
 const HEADER_REVEAL_START = "top 65%";
 
+// Longest the deferred canvas mount waits for an idle period. The mount band
+// is ~3.5 viewports ahead, so even the cap lands it long before arrival.
+const IDLE_MOUNT_TIMEOUT_MS = 1200;
+
+/**
+ * True one idle period after `open` turns true (requestIdleCallback with a
+ * timeout; a short timer where rIC is missing, i.e. Safari). Drops back to
+ * false at once when `open` does, so an unmount is never delayed.
+ */
+function useIdleGate(open: boolean, timeout: number): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setReady(false);
+      return;
+    }
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(() => setReady(true), { timeout });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const id = window.setTimeout(() => setReady(true), 120);
+    return () => window.clearTimeout(id);
+  }, [open, timeout]);
+  return open && ready;
+}
+
 export function Other() {
   const sectionRef = useRef<HTMLElement>(null);
   // Mount the hobbies <Canvas> only as the section approaches; release the WebGL
@@ -59,6 +89,12 @@ export function Other() {
     mountVh: 3.5,
     unmountVh: 5,
   });
+  // ...but don't stand the canvas up from inside a scroll frame. The gate
+  // flips while the reader is still in About (~3.5 viewports out) and the
+  // mount (WebGL context + scene build + first draw) is one long task; start
+  // it in the next idle period instead (capped, so a busy page still mounts
+  // well before arrival).
+  const sceneIdle = useIdleGate(sceneMounted, IDLE_MOUNT_TIMEOUT_MS);
   // Editorial corner header. `.is-in` (one-shot, latched) starts its CSS
   // reveal; `inView` opens the title's ScrambleText gate in the same pass.
   const headerRef = useRef<HTMLElement>(null);
@@ -180,7 +216,7 @@ export function Other() {
           a framed box. aria-hidden: decorative; the sr-only list above is the
           accessible equivalent. */}
       <div className="other-scene-wrap" aria-hidden="true">
-        {sceneMounted && (
+        {sceneMounted && sceneIdle && (
           <Suspense fallback={null}>
             <HobbiesScene live={live} />
           </Suspense>

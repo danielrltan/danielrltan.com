@@ -7,13 +7,26 @@
    (OtherPhotoTrains). The `.other-*` class names are historical.
    ====================================================================== */
 
-.portfolio-photos {
+/* THE HOLD (all viewports): a CSS sticky stage, NOT a GSAP pin. The section
+   is taller than the viewport by --photos-hold; .photos-stage sticks to the
+   top while that extra height scrolls through, then releases — the same
+   recipe as Play's .other-pin-wrap. The old GSAP pin swapped the section to
+   position:fixed on a JS frame inside a pin-spacer, which logged a ~1.0
+   layout shift on engage and ~0.97 on release on phones. Sticky is resolved
+   by the compositor with the native scroll: no engage frame, no shift.
+   The section must NOT be a scroll container (overflow hidden/auto) or the
+   sticky would bind to it; overflow-x: clip only clips. Combined selector
+   (0,2,0) so the shared .portfolio-section padding/flex never applies. */
+.portfolio-section.portfolio-photos {
+  --photos-hold: 200vh; /* hold distance: two viewports (was PIN_VH = 2) */
+  --photos-hold: 200svh;
   position: relative;
-  /* svh with vh fallback: this section PINS, and bare 100vh changed its pin
-     geometry whenever the iOS URL bar collapsed mid-scrub. */
-  height: 100vh;
-  height: 100svh;
-  overflow: hidden;
+  display: block;
+  padding: 0;
+  min-height: 0;
+  height: calc(100vh + var(--photos-hold));
+  height: calc(100svh + var(--photos-hold));
+  overflow-x: clip;
   /* Flat page tone, uniform with every other content section. The faint
      dot-grid "rice" texture was removed (owner flagged it: it seamed visibly
      against the flat #eef0f3 of Honours above and the keypad below — Recents
@@ -21,6 +34,27 @@
      section is now the same flat --bg-page ground, so there is no seam. */
   background-color: var(--bg-page);
   color: var(--ink);
+}
+
+/* The viewport-tall frame that holds. svh with vh fallback: bare 100vh
+   changed the hold geometry whenever the iOS URL bar collapsed mid-scrub. */
+.photos-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+}
+
+/* Reduced motion: no scrub, so no hold — a single static, readable frame. */
+@media (prefers-reduced-motion: reduce) {
+  .portfolio-section.portfolio-photos {
+    height: 100vh;
+    height: 100svh;
+  }
+  .photos-stage {
+    position: relative;
+  }
 }
 
 /* Giant title — scoped under .portfolio-photos so the
@@ -41,13 +75,16 @@
   overflow-wrap: break-word;
   word-break: break-word;
   /* Scroll-written (Photos.tsx entrance trigger): NO transition, so Lenis
-     stays the only smoother on this value. */
+     stays the only smoother on this value. The rise is the shared
+     --reveal-lift (16px), the same lift every other section header uses. */
   opacity: var(--gh-title, 1);
-  transform: translateY(calc((1 - var(--gh-title, 1)) * 22px));
+  transform: translateY(calc((1 - var(--gh-title, 1)) * var(--reveal-lift, 16px)));
 }
 
-/* Short-viewport guard (desktop widths only; the ≤768 block sets its own). */
-@media (max-height: 780px) and (min-width: 769px) {
+/* Short-viewport guard, desktop widths only (the compact block below sets
+   its own sizes). Kept IDENTICAL to the guard in other.css: same query, same
+   number size. Short landscape phones (<=500px tall) take the compact path. */
+@media (min-width: 769px) and (min-height: 501px) and (max-height: 780px) {
   .other-gallery-num {
     font-size: clamp(13px, 1.4vw, 20px);
   }
@@ -240,22 +277,29 @@
 }
 
 /* ======================================================================
-   Mobile (≤ 768px): the photo CAROUSEL runs on phones too, exactly like
-   desktop — the pin scrubs it as a swipe-through carousel (restored per the
-   owner; the vertical grid was bad mobile UX). The section keeps its base
-   full-bleed (100svh, overflow:hidden) pinned shell.
+   Compact (phones, incl. a phone on its side: <=768px wide OR landscape
+   <=500px tall — mirrors motion.ts MQ.compact): the photo CAROUSEL runs on
+   phones too, exactly like desktop — the sticky hold scrubs it as a
+   swipe-through carousel (restored per the owner; the vertical grid was bad
+   mobile UX).
    ====================================================================== */
-@media (max-width: 768px) {
-  /* Same HUD clearance as the Play header. */
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
+  /* Same HUD clearance as the Play header (shared top-strip token). */
   .other-gallery-header {
-    padding: calc(max(72px, 9vh) + env(safe-area-inset-top, 0px)) 6vw 0;
+    padding: var(--top-strip-clear-mobile, calc(max(72px, 9vh) + env(safe-area-inset-top, 0px))) 6vw 0;
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
     row-gap: 6px;
+    /* Scroll-linked entrance keeps its character; its rise uses the shared
+       phone lift like every compact section entrance. */
+    --reveal-lift: var(--reveal-lift-mobile, 12px);
   }
   .other-gallery-eyebrow { grid-column: 1; grid-row: 1; }
   .other-gallery-num {
-    font-size: clamp(13px, 3.4vw, 18px);
+    font-size: var(--hdr-num-mobile, clamp(13px, 3.4vw, 18px));
+  }
+  .portfolio-photos .other-gallery-title {
+    font-size: var(--hdr-title-mobile, var(--hdr-title, clamp(48px, 13vw, 190px)));
   }
   /* Train band starts below the pushed-down header and ends above the
      foot hint. overflow:hidden on the band (+ .portfolio-photos) means the
@@ -289,6 +333,32 @@
     font-size: var(--text-xs);
     padding: 4px 7px;
     letter-spacing: 0.18em;
+  }
+}
+
+/* A phone on its side (landscape, <=500px tall): only ~390-430px of height.
+   The header floats over a one-viewport stage, so the wordmark is capped by
+   height (the same cap as Play's stage; flow sections keep the shared 64px
+   cap) and the train band + cards re-fit so all three rows show: band from
+   just under the header to the bottom edge, rows ~18svh. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .portfolio-photos .other-gallery-title {
+    font-size: min(var(--hdr-title-mobile, 64px), 11vh);
+  }
+  .other-trains-wrap {
+    top: 36vh;
+    top: 36svh;
+    bottom: 4vh;
+    bottom: 4svh;
+  }
+  .other-train-card {
+    height: clamp(56px, 18vh, 120px);
+    height: clamp(56px, 18svh, 120px);
+    padding: 6px;
+  }
+  .other-train-card-label {
+    padding: 2px 5px;
+    letter-spacing: 0.12em;
   }
 }
 

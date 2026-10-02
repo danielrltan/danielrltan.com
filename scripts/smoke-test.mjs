@@ -501,6 +501,7 @@ const preview = await startPreview();
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const browser = await chromium.launch({
   headless: true,
+  executablePath: process.env.CHROME || undefined, // a local Chromium when Playwright's own build is not installed
   args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"],
 });
 try {

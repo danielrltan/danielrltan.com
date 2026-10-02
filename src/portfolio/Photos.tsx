@@ -8,7 +8,7 @@ import "./photos.css";
 import { ScrambleText } from "./ScrambleText";
 import { OtherPhotoTrains } from "../other/OtherPhotoTrains";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
-import { isCoarsePointer } from "../motion";
+import { reducedMotion } from "../motion";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -19,8 +19,8 @@ gsap.registerPlugin(ScrollTrigger);
  * section), now its own standalone section near the end of the page (after
  * Honours, before Contact). Three rows of cards slide as the page scrolls:
  * ONE continuous train-progress span (the "photos-train" trigger) runs from
- * the section entering the viewport, through the pin, to half a viewport past
- * it, so the rack is never parked static on the way in or out.
+ * the section entering the viewport, through the sticky hold, to half a
+ * viewport past it, so the rack is never parked static on the way in or out.
  * OtherPhotoTrains follows that progress through a dt-based damp that sleeps
  * once converged. Real
  * uploads stream in from /photos/manifest.json; until they exist the tinted
@@ -43,17 +43,10 @@ const TRAIN_PHOTOS = [
   { color: "#1f1a17", label: "Books" },
 ];
 
-// Pin length, viewport-relative (motion spec §3). Was a fixed 2600px with a
-// dead lead/tail and a static rack either side; the train now moves across
-// the whole approach + pin + exit span instead (TRAIN_TAIL_VH).
-const PIN_VH = 2.0;
-// The train progress span ends this many viewports past the pin's end.
+// Hold length (2 viewports) lives in photos.css as --photos-hold: the section
+// is that much taller than its sticky stage. The train progress span ends
+// TRAIN_TAIL_VH viewports past the end of the hold.
 const TRAIN_TAIL_VH = 0.5;
-
-const PREFERS_REDUCED_MOTION =
-  typeof window !== "undefined" &&
-  typeof window.matchMedia === "function" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 
 // Write the gallery header reveal STRAIGHT to CSS vars (no React state → the
@@ -100,44 +93,44 @@ export function Photos() {
     const el = sectionRef.current;
     if (!el) return;
 
-    // The pin scrubs the horizontal photo carousel on ALL viewports — including
-    // phones (restored per the owner; the vertical grid was bad mobile UX). Only
-    // prefers-reduced-motion opts out, laying the rack at its neutral centred
-    // frame with the header up (a static, readable single frame).
-    if (PREFERS_REDUCED_MOTION) {
+    // THE HOLD IS CSS, NOT A GSAP PIN. The section is taller than the
+    // viewport by --photos-hold and its .photos-stage is `position: sticky;
+    // top: 0` inside it (photos.css), the same recipe as Play's
+    // .other-pin-wrap. The old GSAP pin swapped the section to position:fixed
+    // on a JS frame and wrapped it in a pin-spacer; on phones (native touch
+    // scroll + anticipatePin) that logged a ~1.0 layout shift on engage and
+    // ~0.97 on release. Sticky is resolved by the compositor with the native
+    // scroll, so there is no engage frame and nothing shifts.
+    //
+    // Reduced motion: no hold (photos.css drops the extra height), rack parked
+    // at its neutral centred frame with the header up.
+    if (reducedMotion.value) {
       applyGalleryHead(headerRef.current, 1);
       progressRef.current = 0.5;
       return;
     }
 
+    // "photos-pin" is kept as a NON-pinning trigger spanning the hold: the
+    // section registry / jumpToSection read its start/end to land a menu jump
+    // at data-jump-progress inside the hold. It also keeps the header landed
+    // while held (applyGalleryHead no-ops when the value is unchanged).
     const st = ScrollTrigger.create({
       id: "photos-pin",
       trigger: el,
       start: "top top",
-      end: () => "+=" + Math.round(window.innerHeight * PIN_VH),
+      end: "bottom bottom",
       invalidateOnRefresh: true,
-      pin: true,
-      pinSpacing: true,
-      // Native touch scroll pins late without it (the pin engages a frame
-      // after the section passes the top); Lenis-driven desktop scroll pins
-      // early WITH it, so only coarse pointers get it.
-      anticipatePin: isCoarsePointer() ? 1 : 0,
-      // Header is already landed by the entrance trigger as the section
-      // rises; the pin just holds it up (applyGalleryHead no-ops when the
-      // value is unchanged).
       onUpdate: () => applyGalleryHead(headerRef.current, 1),
     });
 
-    // One continuous train span (created AFTER the pin so it refreshes after
-    // it): from the section's top entering the viewport bottom, through the
-    // pin, to TRAIN_TAIL_VH past the pin's end. Not pinning.
+    // One continuous train span: from the section's top entering the viewport
+    // bottom, through the hold, to TRAIN_TAIL_VH past the hold's end. Not
+    // pinning; scrubbed by the trains' own damp loop.
     const train = ScrollTrigger.create({
       id: "photos-train",
       trigger: el,
       start: "top bottom",
-      end: () =>
-        (ScrollTrigger.getById("photos-pin")?.end ?? st.end) +
-        window.innerHeight * TRAIN_TAIL_VH,
+      end: () => `bottom ${Math.round((1 - TRAIN_TAIL_VH) * 100)}%`,
       invalidateOnRefresh: true,
       onUpdate: (s) => {
         progressRef.current = s.progress;
@@ -161,8 +154,8 @@ export function Photos() {
       onUpdate: (self) => applyGalleryHead(headerRef.current, self.progress),
     });
 
-    // Refresh after the loading screen lifts: pin position can shift during
-    // initial layout. Same pattern as Other / Macintosh / Keypad.
+    // Refresh after the loading screen lifts: trigger positions can shift
+    // during initial layout. Same pattern as Other / Macintosh / Keypad.
     const stopLoaderWatch = refreshScrollOnLoaderLift();
 
     return () => {
@@ -178,9 +171,12 @@ export function Photos() {
       ref={sectionRef}
       className="portfolio-section portfolio-photos"
       aria-labelledby="photos-sr-heading"
-      // Menu / footer jumps land just inside the pin (scroll.ts jumpToSection).
+      // Menu / footer jumps land just inside the hold (scroll.ts jumpToSection).
       data-jump-progress="0.1"
     >
+      {/* Sticky stage: the viewport-tall frame that holds while the taller
+          section scrolls past (photos.css). */}
+      <div className="photos-stage">
       {/* Accessible heading: the visible header + trains are decorative
           placeholders (aria-hidden below), so this carries the section name
           for AT and crawlers. When real captioned photos land, give each card
@@ -196,8 +192,8 @@ export function Photos() {
         style={
           {
             // Initial state only; applyGalleryHead writes these after mount.
-            "--gh-eye": PREFERS_REDUCED_MOTION ? "1" : "0",
-            "--gh-title": PREFERS_REDUCED_MOTION ? "1" : "0",
+            "--gh-eye": reducedMotion.value ? "1" : "0",
+            "--gh-title": reducedMotion.value ? "1" : "0",
           } as React.CSSProperties
         }
       >
@@ -221,6 +217,7 @@ export function Photos() {
             wakeRef={trainWakeRef}
           />
         )}
+      </div>
       </div>
     </section>
   );

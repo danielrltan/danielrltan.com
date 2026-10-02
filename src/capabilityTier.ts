@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { MQ, matches } from "./motion";
 
 /**
  * ONE coherent device-capability tier, resolved ONCE synchronously before React
@@ -120,7 +121,7 @@ let touchPrimaryCache: boolean | null = null;
  * protection this file exists to give it. A bare `(pointer: coarse)`, or
  * maxTouchPoints / "ontouchstart", would rescue exactly that weak hardware and
  * defeat the point. Note this is INTENTIONALLY not the same test as
- * HeroGlyphRing's IS_SMALL_SCREEN / HobbiesScene's `ontouchstart`: those ask
+ * HeroGlyphRing's IS_SMALL_SCREEN (MQ.compact or no fine pointer) / HobbiesScene's `ontouchstart`: those ask
  * "is this a small or touch-capable viewport" (a narrow desktop window counts),
  * whereas this asks "is the primary input a finger" (it must not).
  *
@@ -128,10 +129,8 @@ let touchPrimaryCache: boolean | null = null;
  */
 export function isTouchPrimary(): boolean {
   if (touchPrimaryCache !== null) return touchPrimaryCache;
-  touchPrimaryCache =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  // MQ.touchPrimary: the same query scroll.ts uses to run without Lenis.
+  touchPrimaryCache = matches(MQ.touchPrimary);
   return touchPrimaryCache;
 }
 

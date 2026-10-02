@@ -51,13 +51,14 @@
      `none`, so past 1vh nothing is left animating or promoted.
    - Otherwise src/hero/heroWipe.ts scrubs the same translate from Lenis
      (html[data-hero-park="manual"] turns this block off).
-   - The media query is the exact complement of heroWipe's iris mode
-     (≤900 = BREAKPOINT.narrow, About's stacked unpinned layout, and reduced
-     motion fade the hero instead; About is not parked).
+   - The media query is the complement of About's stacked layout (MQ.narrow:
+     ≤900, or a phone on its side) and of reduced motion: there the hero
+     fades instead and About is not parked. heroWipe's iris mode must use the
+     same split.
    Keep the range in sync with the hero spacer (100vh, Hero.tsx) and About's
    pin start. */
 @supports (animation-timeline: scroll()) and (animation-range: 0px 100vh) {
-  @media (width > 900px) and (prefers-reduced-motion: no-preference) {
+  @media (width > 900px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
     html:not([data-hero-park="manual"]) .portfolio-about .about-stage,
     html:not([data-hero-park="manual"]) .portfolio-about::after {
       animation: about-park linear none;
@@ -554,8 +555,10 @@ html[data-hero-covering] .render-frame {
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
-.c-now .pill a:hover {
-  color: var(--accent, #ff4f00);
+@media (hover: hover) {
+  .c-now .pill a:hover {
+    color: var(--accent, #ff4f00);
+  }
 }
 
 /* Exploring */
@@ -679,17 +682,25 @@ html[data-hero-covering] .render-frame {
   opacity: 0;
   transition: opacity var(--hover-dur) var(--hover-ease);
 }
-.c-reach .ch a:hover::before,
 .c-reach .ch a:focus-visible::before {
   opacity: 1;
+}
+@media (hover: hover) {
+  .c-reach .ch a:hover::before {
+    opacity: 1;
+  }
 }
 /* Opt out of the sitewide text-link hover (`.portfolio-section a:hover
    { opacity: 0.7 }`, sections.css): it faded the whole row — orange fill AND
    the inverted white text — to 70%, so the International Orange fill rendered
    washed-out. The fill in-fade above is the hover cue; keep the row solid. */
-.c-reach .ch a:hover,
 .c-reach .ch a:focus-visible {
   opacity: 1;
+}
+@media (hover: hover) {
+  .c-reach .ch a:hover {
+    opacity: 1;
+  }
 }
 .c-reach .ch-name {
   flex: 0 0 auto;
@@ -719,18 +730,24 @@ html[data-hero-covering] .render-frame {
     transform var(--hover-dur) var(--hover-ease),
     color var(--hover-dur) var(--hover-ease);
 }
-.c-reach .ch a:hover .ch-name,
-.c-reach .ch a:hover .ch-handle,
-.c-reach .ch a:hover .ch-go,
 .c-reach .ch a:focus-visible .ch-name,
 .c-reach .ch a:focus-visible .ch-handle,
 .c-reach .ch a:focus-visible .ch-go {
   /* Invert to white on the orange fill (was ink). */
   color: var(--bg-surface, #fff);
 }
-.c-reach .ch a:hover .ch-go,
 .c-reach .ch a:focus-visible .ch-go {
   transform: translate(3px, -3px);
+}
+@media (hover: hover) {
+  .c-reach .ch a:hover .ch-name,
+  .c-reach .ch a:hover .ch-handle,
+  .c-reach .ch a:hover .ch-go {
+    color: var(--bg-surface, #fff);
+  }
+  .c-reach .ch a:hover .ch-go {
+    transform: translate(3px, -3px);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .c-reach .ch a::before,
@@ -837,8 +854,10 @@ html[data-hero-covering] .render-frame {
 .portfolio-about a {
   border-bottom: none;
 }
-.portfolio-about a:hover {
-  opacity: 1;
+@media (hover: hover) {
+  .portfolio-about a:hover {
+    opacity: 1;
+  }
 }
 
 /* ----------------------------------------------------------------------
@@ -894,7 +913,8 @@ html[data-hero-covering] .render-frame {
    the four channels clear the shorter row. Desktop MONITORS (≥901px tall) keep
    the roomier approved layout untouched — this only engages on short screens.
    ====================================================================== */
-@media (min-width: 901px) and (max-height: 900px) {
+/* min-height 501: a phone on its side (≤500 tall) gets the stacked layout. */
+@media (min-width: 901px) and (min-height: 501px) and (max-height: 900px) {
   .about-stage {
     /* Trim the top/bottom bands so the grid claims the reclaimed height —
        but never above the fixed brand tile (see --top-strip-clear). */
@@ -932,11 +952,11 @@ html[data-hero-covering] .render-frame {
    full-width beneath it. The GSAP pin is SKIPPED on mobile (About.tsx) — the
    pinned, internally-scrolling stage was a nested scroll-trap (rubber-band)
    inside the page pin. The column now flows + scrolls with the page like
-   Work's staticLayout, and About.tsx force-reveals every cell up front.
-   Breakpoint 900 matches Work's mobile cutoff + About.tsx's `mobile`
-   matchMedia, so layout + behaviour always agree (no cramped 769-900 band).
+   Work, and each cell rises in once as it enters (About.tsx useReveal).
+   The query is MQ.narrow (≤900, or a phone on its side), the same one
+   About.tsx reads, so layout + behaviour always agree.
    ====================================================================== */
-@media (max-width: 900px) {
+@media (max-width: 900px), (orientation: landscape) and (max-height: 500px) {
   /* Auto height (NOT 100vh/100svh): the section is no longer pinned on
      mobile, so it should grow with the stacked column and scroll as part of
      the page — never box its content into one viewport with an inner scroll. */
@@ -950,8 +970,11 @@ html[data-hero-covering] .render-frame {
        the fold; keep a safe-area cushion on notched devices. */
     /* Top inset clears the 44px brand tile at 14px (+ safe area) with air
        beneath it — see --top-strip-clear-mobile in sections.css. */
+    /* Sides fold in the safe-area insets (a notched phone on its side). */
     padding: var(--top-strip-clear-mobile, calc(72px + env(safe-area-inset-top, 0px)))
-      20px calc(48px + env(safe-area-inset-bottom, 0px));
+      max(20px, env(safe-area-inset-right, 0px))
+      calc(48px + env(safe-area-inset-bottom, 0px))
+      max(20px, env(safe-area-inset-left, 0px));
     /* Top-anchored editorial flow that grows with the column. NO inner scroll:
        the old `overflow-y:auto; height:100svh` was a rubber-band scroll-trap
        captured inside the page pin. The page itself scrolls the column now. */
@@ -960,13 +983,29 @@ html[data-hero-covering] .render-frame {
     gap: 16px;
   }
 
-  /* #27: cap the big "ABOUT" wordmark so it never eats the first viewport. */
+  /* The shared mobile header pair (sections.css): the "ABOUT" wordmark on
+     --hdr-title-mobile, and ONE index, the orange "01" tag on
+     --hdr-num-mobile (the rule + domain crumb is desktop-only). */
   .portfolio-about .about-banner-title {
-    font-size: clamp(40px, 12vw, 64px);
+    font-size: var(--hdr-title-mobile, clamp(40px, 12.5vw, 64px));
+  }
+  .about-crumb-idx {
+    font-size: var(--hdr-num-mobile, clamp(13px, 3.4vw, 18px));
+  }
+  .about-crumb-rule,
+  .about-banner-domain {
+    display: none;
   }
 
   .about-banner {
     align-items: flex-start;
+    gap: 8px;
+  }
+  /* Enter reveal (useReveal latches .is-revealed as a cell crosses the line):
+     cells that enter together cascade by their batch index --i. */
+  .about-banner,
+  .card {
+    transition-delay: calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));
   }
 
   /* Single readable column: drop the 12-col grid, stack everything. */
@@ -977,6 +1016,10 @@ html[data-hero-covering] .render-frame {
        roughly halves the scroll and reads scannable instead of bloated. */
     display: grid;
     grid-template-columns: 1fr 1fr;
+    /* Content-height rows: the desktop's three equal 1fr rows stretched
+       every row to the tallest card's height. */
+    grid-template-rows: none;
+    grid-auto-rows: auto;
     gap: 8px;
     align-items: stretch;
     max-height: none;
@@ -994,38 +1037,59 @@ html[data-hero-covering] .render-frame {
     grid-row: auto;
     margin: 0;
   }
-  /* Intro, portrait, and reach span the full width; the four facts pair up. */
+  /* Intro, portrait, reach, studying and location span the full width;
+     Currently | Exploring pair up. Studying (two stacked facts) beside
+     Location left Location stretched to Studying's height with a big empty
+     band on a portrait phone; full width, each keeps a two-up split INSIDE
+     the card instead, so neither card is taller than its content. */
   .c-name,
   .c-portrait,
-  .c-reach {
+  .c-reach,
+  .c-study,
+  .c-loc {
     grid-column: 1 / -1;
   }
   .c-now,
-  .c-explore,
-  .c-study,
-  .c-loc {
+  .c-explore {
     grid-column: span 1;
   }
-  /* Reach is full-width and sits between Studying and Location in the DOM, which
-     orphaned Location into its own row. Order it LAST so the four facts pair up
-     cleanly: [Currently | Exploring], [Studying | Location], then Reach. */
+  /* Reach sits between Studying and Location in the DOM; order it LAST so
+     the facts read [Currently | Exploring], Studying, Location, then Reach. */
   .c-reach {
     order: 1;
   }
-  /* STUDYING: its internal Degree|Business split is too tight in a half-width
-     card (it was clipping "Business School"). Stack it vertically, swapping the
-     left-divider for a top hairline. */
   .c-study .study-split {
-    flex-direction: column;
-    margin-top: 10px;
+    margin-top: 0;
   }
-  .c-study .study-col + .study-col {
-    border-left: none;
-    padding-left: 0;
-    margin-left: 0;
-    border-top: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
-    padding-top: 10px;
-    margin-top: 10px;
+  /* Full-width fact cards read top-down (no centring in a stretched cell). */
+  .c-study .c-info-body,
+  .c-loc .c-info-body {
+    justify-content: flex-start;
+  }
+  /* LOCATION: the two places side by side (Toronto | London, ON), each with
+     its sub line beneath. */
+  .c-loc .c-info-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    grid-auto-flow: column;
+    column-gap: 16px;
+    align-items: start;
+  }
+  .c-loc .loc-alt {
+    margin-top: 0;
+    padding-left: 16px;
+    border-left: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
+  }
+  .c-loc .coord {
+    padding-left: 16px;
+    border-left: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.08));
+    margin-top: 0;
+    padding-top: 8px;
+  }
+  .c-loc .sub {
+    margin-top: 0;
+    padding-top: 8px;
   }
   /* Unify card padding on mobile: the old fixed 18px 20px override broke the
      vertical rhythm against the other stacked cards (which use the shared
@@ -1059,16 +1123,25 @@ html[data-hero-covering] .render-frame {
     display: none;
   }
 
-  /* Portrait needs an explicit height once it's no longer a grid cell. */
+  /* Portrait sizes to its content (a fixed card height let the grid row
+     outgrow the card, leaving a ~60px hole under it at 320px). */
   .c-portrait {
-    height: clamp(150px, 44vw, 210px);
+    height: auto;
+  }
+  .portrait-wrap {
+    height: auto;
   }
 
-  /* #11 READABILITY: a flat 16px body floor for the lede (not a clamp that
-     bottoms at 14.4px on small screens). */
-  .about-lede {
-    font-size: 16px;
-    max-width: none;
+  /* #11 READABILITY: a flat 16px body for the lede, full card width. Scoped
+     like the base rule (.portfolio-about .about-lede, 0,2,0): a bare
+     .about-lede here lost on specificity and phones got 12.5px capped at
+     31ch. */
+  .portfolio-about .about-lede {
+    font-size: var(--fs-body, 16px);
+    line-height: 1.5;
+    /* Full card width on a phone (the card is narrower than this); a
+       readable measure on a sideways phone / tablet. */
+    max-width: 65ch;
   }
   /* #11: bump content VALUES to the 16px content floor; the study sub to 14px. */
   .c-study .val,
@@ -1126,13 +1199,32 @@ html[data-hero-covering] .render-frame {
     color: var(--bg-surface, #fff);
   }
 
-  /* Touch targets: the mail link + Ivey link + Say-hello button all
-     need a comfortable hit area. */
-  .c-reach .mail,
+  /* Touch target: the Ivey link. */
   .c-now .pill a {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
+  }
+  /* EMAIL: one unbroken inline run (NOT inline-flex, which made "hello@",
+     the accent span and ".com" separate flex items that wrapped into
+     columns at 320px). It may wrap only at the <wbr>s in About.tsx (after
+     the @, before .com), with overflow-wrap:anywhere as a last resort for
+     the whole address. Block padding keeps a 44px hit area. */
+  .c-reach .mail {
+    display: inline-block;
+    max-width: 100%;
+    padding: 12px 0;
+    line-height: 1.25;
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+  /* The "Replies < 24h" hint drops to its own line when the address and
+     hint can't share one. */
+  .c-reach .reach-primary {
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 0;
   }
 }
 
@@ -1140,8 +1232,8 @@ html[data-hero-covering] .render-frame {
    horizontal scroll. */
 @media (max-width: 360px) {
   .about-stage {
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
   .about-name-h {
     font-size: clamp(34px, 11vw, 44px);

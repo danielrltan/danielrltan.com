@@ -14,10 +14,10 @@ import { BootLoader } from "./loading/BootLoader";
 import { HeroSignature } from "./hero/HeroSignature";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
 import { installHeroWipe } from "./hero/heroWipe";
-import { useIsMobile } from "./useIsMobile";
+import { useFinePointer } from "./useMedia";
 import { StatusBar } from "./StatusBar";
 import { isLowTier, demoteTier } from "./capabilityTier";
-import { HERO } from "./motion";
+import { HERO, MQ, matches } from "./motion";
 
 /*
  * App shell: the fixed hero layer, the sections, and the HUD. The hero hands
@@ -117,7 +117,11 @@ export default function App() {
   // past the hero, so it never clutters the opening signature.
   const [hudVisible, setHudVisible] = useState(false);
   const [moveableHover, setMoveableHover] = useState(false);
-  const isMobile = useIsMobile();
+  // Custom cursors follow the INPUT, not the width: a narrow desktop window
+  // still has a mouse, and a touch laptop / iPad in landscape does not get a
+  // cursor that would park wherever the finger lifted. Same query as the
+  // index.css `cursor:none` gate, so the two can never disagree.
+  const finePointer = useFinePointer();
 
   const choreoInstalled = useRef(false);
   if (!choreoInstalled.current) {
@@ -214,13 +218,21 @@ export default function App() {
    * so R3F + JS pointer handlers re-evaluate against the content that scrolled
    * beneath the cursor. Same coords => no parallax/cursor jump, and a pointermove
    * never triggers scroll, so there's no loop. (The custom cursor re-hit-tests
-   * its spark per frame on its own; see MoveableCursor.) rAF-throttled. */
+   * its spark per frame on its own; see MoveableCursor.) rAF-throttled.
+   *
+   * MOUSE ONLY. A finger has no hover to keep alive, yet recording touch
+   * pointers made every scroll frame on a phone pay for an elementFromPoint +
+   * a bubbling synthetic pointermove (15-19 ms per frame in Play). Installed
+   * only under a fine pointer, and even then only mouse moves are recorded
+   * (a hybrid's finger/pen leaves the last mouse position alone). */
   useEffect(() => {
+    if (!finePointer) return;
     let lastX = -1;
     let lastY = -1;
     let queued = false;
     let raf = 0;
     const onMove = (e: PointerEvent) => {
+      if (e.pointerType && e.pointerType !== "mouse") return;
       lastX = e.clientX;
       lastY = e.clientY;
     };
@@ -257,7 +269,7 @@ export default function App() {
       window.removeEventListener("scroll", onScroll);
       cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [finePointer]);
 
   /* Warm the lazy section-scene chunks, so each scene's chunk is compiled AND
    * its GLBs/textures are fetched BEFORE the user scrolls to it. Importing each
@@ -275,7 +287,13 @@ export default function App() {
    * KEYPAD FIRST: it's the LAST section AND a jump-menu/StatusBar teleport
    * target, so its chunk compiles ahead of the others (mac.glb is only ~15KB, so
    * Mac loses nothing by going second). Hobbies (~620KB of GLBs) is staggered
-   * last so its parse doesn't contend with the nearer scenes. */
+   * last so its parse doesn't contend with the nearer scenes.
+   *
+   * COMPACT SCREENS skip wave 1: on a phone (or a phone on its side) the
+   * Keypad and Mac sections render their static fallbacks, never the WebGL
+   * scenes, so importing them only downloaded and parsed keypad.glb (493 KB)
+   * and mac.glb for nothing. Decided once at mount: a later rotation to a
+   * wide layout still lazy-loads the scene on approach. */
   useEffect(() => {
     const w = window as unknown as {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
@@ -293,8 +311,10 @@ export default function App() {
       }
     };
     // Wave 1 — Keypad (last section / teleport target) compiles first, then Mac.
-    schedule(() => void import("./keypad/KeypadScene"), 300, 120);
-    schedule(() => void import("./macintosh/MacintoshScene"), 450, 200);
+    if (!matches(MQ.compact)) {
+      schedule(() => void import("./keypad/KeypadScene"), 300, 120);
+      schedule(() => void import("./macintosh/MacintoshScene"), 450, 200);
+    }
     // Wave 2 — the heavy Play cluster, staggered behind wave 1.
     schedule(() => void import("./other/HobbiesScene"), 1400, 800);
     return () => {
@@ -310,7 +330,9 @@ export default function App() {
         style={{
           position: "relative",
           minHeight: "100vh",
-          cursor: "none",
+          // No inline cursor:none here: it hid the OS pointer on touch /
+          // hybrid devices where no custom cursor mounts. index.css hides it
+          // only under a fine pointer once MoveableCursor has taken over.
         }}
         onPointerLeave={() => setMoveableHover(false)}
       >
@@ -347,9 +369,9 @@ export default function App() {
         {/* Custom pointer. Mounted from first paint (not gated on `ready`) so a
             cursor is visible over the boot loader too; the OS arrow stays
             until it takes over (see html.custom-cursor in index.css). */}
-        {!isMobile && <MoveableCursor hot={moveableHover} />}
-        {/* Middle-button pan / autoscroll cursor. */}
-        {ready && !isMobile && <PanCursor />}
+        {finePointer && <MoveableCursor hot={moveableHover} />}
+        {/* Middle-button pan / autoscroll cursor (mouse only, like the above). */}
+        {ready && finePointer && <PanCursor />}
 
         <PortfolioSections />
 

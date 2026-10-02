@@ -109,7 +109,6 @@
      .portfolio-section h2 rule; 0.9 line-height + tight tracking match the
      system. min-width:0 + break-word keep the wrap off horizontal scroll. */
   font-family: var(--font-dot, monospace);
-  font-size: var(--hdr-title, clamp(48px, 13vw, 190px));
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 0.9;
@@ -118,6 +117,15 @@
   min-width: 0;
   overflow-wrap: break-word;
   word-break: break-word;
+  /* Even line lengths: never strand a lone "WALL" on the last line. */
+  text-wrap: balance;
+}
+/* Size scoped (0,2,0) so it beats the shared `.portfolio-section h2` (0,1,1):
+   a bare .bp-title lost to it, so none of the mobile title sizes ever applied
+   (the wordmark stayed on the desktop clamp: 109.7px on a sideways phone, and
+   "WALL" orphaned at 320/360). */
+.portfolio-bp .bp-title {
+  font-size: var(--hdr-title, clamp(48px, 13vw, 190px));
 }
 
 .bp-blurb {
@@ -130,12 +138,16 @@
   max-width: 60ch;
 }
 
-/* Stats banner: three giant count-up numbers in a horizontal row. */
+/* Stats banner: three giant count-up numbers in a horizontal row. The number
+   leads each stat (dd before dt in the DOM), so TOP-aligning the stats puts
+   every number on one common baseline whatever its label does: the old
+   align-items:end bottom-aligned the stacks, and a label that wrapped to two
+   lines lifted its number above its neighbours'. */
 .bp-stats {
   display: grid;
   grid-template-columns: 1fr 1px 1fr 1px 1fr;
   gap: var(--space-5); /* 28→24, on-grid */
-  align-items: end;
+  align-items: start;
   padding: var(--space-4h) 0 var(--space-5); /* 20 0 26→24, on-grid */
   border-top: 1px solid var(--ink-hairline);
   border-bottom: 1px solid var(--ink-hairline);
@@ -172,6 +184,11 @@
   width: 1px;
   background: var(--ink-hairline);
   align-self: center;
+}
+/* Labels sit under their number and may wrap; keep them from pushing the row
+   apart by balancing their lines. */
+.bp-stat-label {
+  text-wrap: balance;
 }
 
 /* Uniform tile grid: every card is one column wide, three across. The three
@@ -391,8 +408,10 @@
    their org rather than a faked metric (fail loud, never fake). This
    replaces the old two-up card grid whose full-width featured cards
    left a tall empty right half. The <=560 block only trims sizes
-   further for phones. The desktop scattered card board is untouched. */
-@media (max-width: 768px) {
+   further for phones. The desktop scattered card board is untouched.
+   Compact query (mirrors motion.ts MQ.compact): a phone on its side
+   (landscape, <=500px tall) gets the ledger too, never the desktop board. */
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   .bp-layout {
     padding: 8vh 6vw;
   }
@@ -408,7 +427,19 @@
     opacity: 0.06;
   }
 
-  /* Stats: grant total spans full width as the headline, the rest pair up. */
+  /* MOBILE INDEX RULE (sections.css): one index on a phone, the small orange
+     "05" tag above the wordmark; the long mono eyebrow is desktop-only. */
+  .bp-index {
+    display: none;
+  }
+  /* Shared mobile wordmark size (one token across the compact sections). */
+  .portfolio-bp .bp-title {
+    font-size: var(--hdr-title-mobile, clamp(36px, 11vw, 58px));
+  }
+
+  /* Stats: grant total spans full width as the headline, the rest pair up.
+     align-items:start (base rule) keeps the paired numbers level even when
+     one label wraps. */
   .bp-stats {
     grid-template-columns: 1fr 1fr;
     gap: var(--space-4h) var(--space-5); /* 20 24, on-grid */
@@ -551,10 +582,6 @@
   .bp-blurb {
     grid-column: 1;
   }
-  /* Title trimmed so the header doesn't eat the fold above the ledger. */
-  .bp-title {
-    font-size: clamp(36px, 11vw, 58px);
-  }
   .bp-blurb {
     font-size: var(--fs-body); /* 16, on-grid */
     line-height: 1.5;
@@ -593,13 +620,10 @@
   }
 }
 
-/* Small phones (360px class): trim the title floor + gutter so the giant
-   wordmark still wraps cleanly and nothing clips at the narrowest common
-   width (longest word "TROPHY" fits ~310px content at this floor). */
+/* Small phones (360px class): trim the gutter so nothing clips at the
+   narrowest common width (the wordmark rides the shared compact size, wrapped
+   with text-wrap: balance). */
 @media (max-width: 380px) {
-  .bp-title {
-    font-size: clamp(34px, 12vw, 52px);
-  }
   .bp-layout {
     padding: 4vh 5vw;
   }

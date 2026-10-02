@@ -76,6 +76,13 @@ const TOP_STRIP_LEFT = 22;
 const TOP_STRIP_CHIP_H = 54;
 const BRAND_ICON_PX = 26;
 
+/** Top offset of the two top-strip tiles (brand here, dial in StatusBar). */
+export function hudTopOffset(compact: boolean): string {
+  return compact
+    ? "max(14px, env(safe-area-inset-top, 0px) + 8px)"
+    : `max(${TOP_STRIP_TOP}px, env(safe-area-inset-top, 0px) + 12px)`;
+}
+
 export function RoomHUD({ visible }: Props) {
   const isMobile = useIsMobile();
   // Compress the brand chip on phones so it doesn't dominate the
@@ -84,14 +91,15 @@ export function RoomHUD({ visible }: Props) {
   // via minWidth/minHeight so it stays comfortably tappable.
   const chipH = isMobile ? 34 : TOP_STRIP_CHIP_H;
   const iconPx = isMobile ? 22 : BRAND_ICON_PX;
-  // Safe-area aware top/left offsets so the brand mark clears the
-  // notch / rounded corner on phones (viewport-fit=cover).
-  const topOffset = isMobile
-    ? "calc(14px + env(safe-area-inset-top, 0px))"
-    : TOP_STRIP_TOP;
+  // Safe-area aware top/left offsets so the brand mark clears the notch /
+  // rounded corner (viewport-fit=cover). max(), not calc(+): the inset only
+  // needs to WIN when it is bigger than the design gap, and it applies at
+  // every width, since a phone on its side (or a notched laptop) has its
+  // notch on the left with any layout. Shared with StatusBar's dial.
+  const topOffset = hudTopOffset(isMobile);
   const leftOffset = isMobile
-    ? "calc(14px + env(safe-area-inset-left, 0px))"
-    : TOP_STRIP_LEFT;
+    ? "max(14px, env(safe-area-inset-left, 0px) + 8px)"
+    : `max(${TOP_STRIP_LEFT}px, env(safe-area-inset-left, 0px) + 12px)`;
   // Entrance: the HUD chrome's shared hidden → shown transition (opacity +
   // a --chrome-lift drop over --chrome-dur; see HUD CHROME in
   // crt-channel-menu.css). The brand leads; the dial and jump-to-top follow a
@@ -132,6 +140,21 @@ export function RoomHUD({ visible }: Props) {
         zIndex: HUD_Z,
       }}
     >
+      {/* Compact top backing (.hud-top-backing, index.css): a strip of page
+          ground behind the brand tile and the dial. On a phone the two tiles
+          are ~150px apart, and every section's content visibly scrolled
+          through the gap and under them. Behind the tiles in z (it is the
+          first child here; the dial sits at z 40 above this whole layer),
+          pointer-events none, and it shares this wrapper's reveal: hidden
+          over the hero (the HUD only shows after it), with the footer dodge,
+          and while the spill menu is open (CSS, :has on the menu root). */}
+      {isMobile && (
+        <div
+          className="hud-top-backing"
+          aria-hidden
+          data-dodge={dodge ? "true" : "false"}
+        />
+      )}
       <a
         href="#top"
         aria-label="Daniel Tan, back to top"

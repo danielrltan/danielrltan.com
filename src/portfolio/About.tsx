@@ -6,8 +6,10 @@ import "./sections.css";
 import "./about.css";
 import { ScrambleText } from "./ScrambleText";
 import { track } from "../analytics";
-import { reducedMotion as reducedMotionPref } from "../motion";
+import { MQ, reducedMotion as reducedMotionPref } from "../motion";
+import { useMedia } from "../useMedia";
 import { heroHandoff } from "../hero/heroState";
+import { useReveal } from "./useReveal";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -36,10 +38,12 @@ gsap.registerPlugin(ScrollTrigger);
  * and LATCH: coming back up from the Mac shows the finished dashboard, never
  * a blank sheet. Cells crossed in one update stagger by --reveal-order.
  *
- * MOBILE (≤900px) SKIPS the pin entirely (mirrors Work's staticLayout): a
- * pinned, internally-scrolling stage was a nested scroll-trap inside the
- * page pin. The bento collapses to a single readable column that flows +
- * scrolls with the page, and every cell is force-revealed up front.
+ * NARROW (MQ.narrow: ≤900px, or a phone on its side) SKIPS the pin entirely
+ * (mirrors Work): a pinned, internally-scrolling stage was a nested
+ * scroll-trap inside the page pin. The bento collapses to a compact column
+ * that flows + scrolls with the page; each cell rises in once as it enters
+ * (useReveal, 400ms / 12px), and the room render is neither rendered nor
+ * decoded (about.css hides it there anyway).
  *
  * prefers-reduced-motion: every cell is force-revealed (no transforms), so
  * the dashboard is fully readable without the choreography. The scroll-pin
@@ -69,21 +73,19 @@ function reveal(el: Element | null | undefined, order: number) {
   el.classList.add("is-revealed");
 }
 
-const readMobile = () =>
-  typeof window !== "undefined" && window.matchMedia
-    ? window.matchMedia("(max-width: 900px)").matches
-    : false;
+/** Cells the narrow layout reveals on enter (the room render is not rendered there). */
+const NARROW_REVEAL = ".about-banner, .about-grid > .card";
 
 export function About() {
   const sectionRef = useRef<HTMLElement>(null);
   const roomRef = useRef<HTMLImageElement>(null);
   const [reducedMotion, setReducedMotion] = useState(() => reducedMotionPref.value);
-  /* Mirror the CSS bento breakpoint (≤900px collapses to one column) so the
-     reveal schedule matches the layout the user actually sees. Initialised
-     synchronously to avoid a desktop→mobile flash on first paint. Aligned to
-     900px (Work's breakpoint) so the 769-900 tablet band gets the stacked
-     column too. */
-  const [mobile, setMobile] = useState(readMobile);
+  /* Mirror the CSS bento breakpoint (MQ.narrow collapses the bento) so the
+     reveal schedule matches the layout the user actually sees. Live (follows
+     resize / rotation) and initialised synchronously, so there is no
+     desktop→mobile flash on first paint and no room-render request on a
+     phone. */
+  const mobile = useMedia(MQ.narrow);
   /* The ONLY React state left in the reveal: the header decode cue. */
   const cue = useSyncExternalStore(
     heroHandoff.subscribe,
@@ -93,25 +95,21 @@ export function About() {
 
   useEffect(() => reducedMotionPref.subscribe(setReducedMotion), []);
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    /* 900 matches Work's mobile breakpoint AND the about.css mobile block:
-       below it the bento collapses to a single column and the GSAP pin is
-       skipped, so the mobile (non-pinned) layout must kick in. Using 900 (not
-       768) removes the cramped 769-900 tablet band where the dense 12-col
-       bento and the floating room overlapped the side cards. */
-    const mql = window.matchMedia("(max-width: 900px)");
-    const apply = () => setMobile(mql.matches);
-    apply();
-    mql.addEventListener("change", apply);
-    return () => mql.removeEventListener("change", apply);
-  }, []);
-
   /* Warm the room render's decode so its first paint (under the parked,
-     covered stage) never lands on a scroll frame. */
+     covered stage) never lands on a scroll frame. Desktop only: the narrow
+     layout never renders the room. */
   useEffect(() => {
+    if (mobile) return;
     roomRef.current?.decode?.().catch(() => {});
-  }, []);
+  }, [mobile]);
+
+  /* Narrow: each cell rises in once as it scrolls into view (shared reveal
+     primitive; about.css owns the hidden pose + transition). Reduced motion
+     is handled below (force-reveal). */
+  useReveal(sectionRef, {
+    selector: NARROW_REVEAL,
+    enabled: mobile && !reducedMotion,
+  });
 
   /* Arrival trio: reveal once the hero wipe controller arms it (the hero is
      settled and opaque above), or on the about-arrive fallback trigger. */
@@ -139,10 +137,10 @@ export function About() {
     };
   }, []);
 
-  /* Mobile / reduced motion: force-reveal every cell up front (no stagger). */
+  /* Reduced motion: force-reveal every cell up front (no stagger). */
   useEffect(() => {
     const el = sectionRef.current;
-    if (!el || !(mobile || reducedMotion)) return;
+    if (!el || !reducedMotion) return;
     el.querySelectorAll(".about-banner, .card").forEach((c) => reveal(c, 0));
   }, [mobile, reducedMotion]);
 
@@ -162,11 +160,11 @@ export function About() {
     const el = sectionRef.current;
     if (!el) return;
 
-    // MOBILE: skip the GSAP pin entirely (mirrors Work's staticLayout). The
-    // pinned bento on a phone created a nested scroll-trap — a full-height
-    // internally-scrolling stage captured inside the page pin (rubber-band).
-    // On mobile the bento is a plain stacked single column that scrolls with
-    // the page; the cells force-reveal up front (effect above).
+    // NARROW: skip the GSAP pin entirely (mirrors Work). The pinned bento on
+    // a phone created a nested scroll-trap — a full-height internally-
+    // scrolling stage captured inside the page pin (rubber-band). On narrow
+    // the bento is a plain stacked column that scrolls with the page; the
+    // cells rise in on enter (useReveal above).
     if (mobile) {
       // A breakpoint flip from desktop→mobile kills the old pin; refresh so
       // every pin BELOW (Work, Other, Keypad) recomputes its start now that
@@ -236,6 +234,8 @@ export function About() {
         <header className="about-banner" aria-hidden="true">
           <div className="about-banner-meta">
             <span className="about-crumb-idx">01</span>
+            {/* Desktop crumb: "01 —— danielrltan.com". Narrow keeps only the
+                number tag (the site-wide mobile index rule, sections.css). */}
             <span className="about-crumb-rule" />
             <span className="about-banner-domain">danielrltan.com</span>
           </div>
@@ -277,11 +277,13 @@ export function About() {
           {/* FEATURE RENDER — the centerpiece. Cell is transparent so only
               the room art paints; the transparent PNG margins let the behind
               cards show through, while the room silhouette occludes them. */}
-          <div className="card c-render">
-            <div className="render-frame">
-              <img ref={roomRef} className="about-room" src="/render.webp" alt="" />
+          {!mobile && (
+            <div className="card c-render">
+              <div className="render-frame">
+                <img ref={roomRef} className="about-room" src="/render.webp" alt="" />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* PORTRAIT */}
           <div className="card c-portrait">
@@ -384,7 +386,11 @@ export function About() {
                     href="mailto:hello@danielrltan.com"
                     onClick={() => track("contact_email", { context: "about" })}
                   >
-                    hello@<span className="accent">danielrltan</span>.com
+                    {/* <wbr>: the only places a narrow card may wrap the
+                        address (after the @, before the .com). */}
+                    hello@<wbr />
+                    <span className="accent">danielrltan</span>
+                    <wbr />.com
                   </a>
                   <span className="hint">Replies &lt; 24h</span>
                 </span>

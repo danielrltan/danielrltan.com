@@ -4,6 +4,7 @@ import {
   type SignatureData,
   type SignatureEvent,
 } from "../hero/signatureGeometry";
+import { matches, MQ, reducedMotion } from "../motion";
 
 /**
  * Footer signature. Renders the captured gesture (signature.json, via the
@@ -36,11 +37,11 @@ interface Props {
 const STAMP_ALPHA = 0.55;
 const STEP_PX = 4;
 
-/** Resolve the canvas height for the current viewport: phones (<768px) get
- *  a shorter band so the signature doesn't leave a dead vertical gap on the
- *  narrow stacked footer column; desktop keeps the full `base` height. */
-const resolveHeight = (base: number): number =>
-  typeof window !== "undefined" && window.innerWidth < 768 ? 84 : base;
+/** Resolve the canvas height for the current viewport: compact screens (the
+ *  shared phone query, incl. a phone on its side — the footer stacks there)
+ *  get a shorter band so the signature doesn't leave a dead vertical gap on
+ *  the stacked footer column; desktop keeps the full `base` height. */
+const resolveHeight = (base: number): number => (matches(MQ.compact) ? 84 : base);
 
 export function FooterSignature({
   height = 120,
@@ -72,8 +73,8 @@ export function FooterSignature({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const reducedMotion =
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    // Live (motion.ts): read when the replay is set up, not at module load.
+    const prefersReduced = reducedMotion.value;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let w = Math.max(1, wrap.clientWidth);
@@ -205,7 +206,7 @@ export function FooterSignature({
       // pass: no replay, no rAF, identical end-state. The non-animated
       // path (reduced motion OR a post-replay resize repaint) draws every
       // event in one synchronous pass.
-      if (reducedMotion || !animated) {
+      if (prefersReduced || !animated) {
         for (const ev of sig.events) drawEvent(ev);
         return;
       }
@@ -235,7 +236,7 @@ export function FooterSignature({
       // Once the signature has played (or under reduced motion) every
       // subsequent paint is static: only the very first in-view paint
       // gets the draw-on animation.
-      render(cachedSig, animated && !hasPlayed && !reducedMotion);
+      render(cachedSig, animated && !hasPlayed && !prefersReduced);
       hasPlayed = true;
     };
 
