@@ -1,18 +1,10 @@
-import { useEffect, useState } from "react";
+import { MQ } from "./motion";
+import { useMedia } from "./useMedia";
 
-const MOBILE_BREAKPOINT_PX = 768;
-
+/**
+ * Phone layout: <=768px wide, or a short landscape screen (a phone on its side).
+ * CSS mirrors this as `@media (max-width: 768px), (orientation: landscape) and (max-height: 500px)`.
+ */
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window === "undefined"
-      ? false
-      : window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`).matches,
-  );
-  useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, []);
-  return isMobile;
+  return useMedia(MQ.compact);
 }

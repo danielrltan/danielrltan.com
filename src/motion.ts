@@ -113,6 +113,25 @@ export const HERO = {
 
 export const BREAKPOINT = { mobile: 768, narrow: 900 } as const; // unchanged: useIsMobile / About+Work+Mac narrow
 
+/**
+ * The site's media queries, in one place (CSS mirrors these by hand; keep them in lockstep).
+ * - compact: phone-sized, OR any short landscape screen (a phone on its side: 844-932 x 390-430).
+ *   A sideways phone is still a phone: it gets the stacked layout, the 2D fallbacks and the
+ *   touch HUD, never the pinned desktop scenes sized for a tall window.
+ * - narrow: the 900px stacked cut-over (About / Work / Projects), plus short landscape.
+ * - finePointer: a real mouse or trackpad. Gate cursors and hover-only effects on this, never on width.
+ */
+const SHORT_LANDSCAPE = "(orientation: landscape) and (max-height: 500px)";
+export const MQ = {
+  phone: `(max-width: ${BREAKPOINT.mobile}px)`,
+  shortLandscape: SHORT_LANDSCAPE,
+  compact: `(max-width: ${BREAKPOINT.mobile}px), ${SHORT_LANDSCAPE}`,
+  narrow: `(max-width: ${BREAKPOINT.narrow}px), ${SHORT_LANDSCAPE}`,
+  finePointer: "(hover: hover) and (pointer: fine)",
+  touchPrimary: "(hover: none) and (pointer: coarse)",
+} as const;
+export const matches = (q: string) => typeof window !== "undefined" && !!window.matchMedia?.(q).matches;
+
 /** Live prefers-reduced-motion (reacts to OS toggles; replaces the ~20 module-load reads over time). */
 export const reducedMotion = (() => {
   const mq = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;

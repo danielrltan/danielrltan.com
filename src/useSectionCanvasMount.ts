@@ -1,8 +1,11 @@
 import { useEffect, useState, type RefObject } from "react";
 import { isLowTier, isTouchPrimary } from "./capabilityTier";
+import { MQ } from "./motion";
 
 /**
- * MOBILE NEVER MOUNTS A SECTION CANVAS (≤768px).
+ * MOBILE NEVER MOUNTS A SECTION CANVAS (≤768px, or a short landscape phone),
+ * unless the section opts out with disableOnMobile:false (Play and Recents do: their
+ * mobile experience is the scene itself).
  *
  * On a phone, the section 3D scenes (Macintosh orbit, Hobbies cluster, Keypad)
  * were live WebGL surfaces with the section's UI laid OVER them — which the owner
@@ -16,7 +19,7 @@ import { isLowTier, isTouchPrimary } from "./capabilityTier";
  * The hero ring is intentionally NOT gated here (it's the hero's signature
  * centerpiece, mounts on its own, and reads fine on a phone).
  */
-const MOBILE_QUERY = "(max-width: 768px)";
+const MOBILE_QUERY = MQ.compact; // phone-sized or a phone on its side
 
 /**
  * Minimum time a section canvas stays mounted once it has mounted. R3F's
