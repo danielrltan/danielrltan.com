@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { heroState } from "./heroState";
+import { MQ, matches, reducedMotion as reducedMotionLive } from "../motion";
 import * as THREE from "three";
 
 /**
@@ -54,10 +55,11 @@ interface Props {
 // devices cap DPR at 1 (vs up to 2x desktop). Tessellation also drops
 // (24x160 vs 40x260): the tile grid re-quantizes the surface into 10px
 // cells, so the coarser smooth-shaded mesh is visually indistinguishable
-// at phone sizes while cutting pass-1 vertex work.
-const IS_SMALL_SCREEN =
-  typeof window !== "undefined" &&
-  window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
+// at phone sizes while cutting pass-1 vertex work. Shared queries (motion.ts
+// MQ): a compact layout (a phone, or one on its side) OR no real hovering
+// mouse (the cursor bulge/trail below needs one). Read once at module load on
+// purpose: the tessellation and DPR are baked into the Canvas at mount.
+const IS_SMALL_SCREEN = matches(MQ.compact) || !matches(MQ.finePointer);
 
 // Browser/OS zoom or HiDPI panel: pass 2's cost scales with canvas PIXELS, so a
 // 1.25→1.0 DPR drop is ~36% fewer fullscreen-post fragments — a real win on the
@@ -407,6 +409,14 @@ export function HeroGlyphRing({
   color = "#ff4f00",
   spinDuration = 26,
 }: Props) {
+  // R3F loop on/off. The hero layer is position:fixed, so this canvas never
+  // unmounts; with frameloop "always" its rAF loop (and the priority-1
+  // useFrame's early return) ran for the whole session, on every page of the
+  // site. RingScene flips this to "never" while the hero is culled /
+  // scrolled away and back to "always" when it can be seen again. React
+  // state, not useThree's setFrameloop: the Canvas re-applies its frameloop
+  // PROP on any re-render, which would silently undo an imperative switch.
+  const [frameloop, setFrameloop] = useState<"always" | "never">("always");
   return (
     <div className="hero-glyph-ring" aria-hidden>
       <Canvas
@@ -416,7 +426,10 @@ export function HeroGlyphRing({
         // measurement uses getBoundingClientRect, which INCLUDES that
         // ancestor scale, so the canvas would "resize" mid-wipe and back.
         // offsetSize keeps the canvas pinned to the untransformed 130vw box.
-        resize={{ offsetSize: true }}
+        // scroll:false: the canvas sits in the fixed hero layer, so page
+        // scroll never moves it; R3F's default also re-measured it on every
+        // scroll event of the whole session.
+        resize={{ offsetSize: true, scroll: false }}
         gl={{
           antialias: false, // pass 1 is a data buffer; AA would blur the encoding
           alpha: true,
@@ -431,7 +444,8 @@ export function HeroGlyphRing({
         // post-pass fragments).
         dpr={IS_SMALL_SCREEN || IS_HI_DPR ? 1 : [1, 1.25]}
         // We own the render via a priority-1 useFrame (two manual passes).
-        frameloop="always"
+        // "never" while offscreen (see the state above).
+        frameloop={frameloop}
         style={{
           position: "absolute",
           inset: 0,
@@ -443,7 +457,11 @@ export function HeroGlyphRing({
           gl.setClearColor(0x000000, 0);
         }}
       >
-        <RingScene color={color} spinDuration={spinDuration} />
+        <RingScene
+          color={color}
+          spinDuration={spinDuration}
+          onOffscreen={(off) => setFrameloop(off ? "never" : "always")}
+        />
       </Canvas>
     </div>
   );
@@ -456,9 +474,12 @@ export function HeroGlyphRing({
 function RingScene({
   color,
   spinDuration,
+  onOffscreen,
 }: {
   color: string;
   spinDuration: number;
+  /** Edge-triggered: the hero went offscreen (true) / came back (false). */
+  onOffscreen: (offscreen: boolean) => void;
 }) {
   const { gl, scene, camera, size } = useThree();
   const torusRef = useRef<THREE.Mesh>(null);
@@ -473,16 +494,13 @@ function RingScene({
   // Resting orientation (the scene's tilt), applied once on the tilt group.
   const TILT_X = (38 * Math.PI) / 180;
   const TILT_Z = (-12 * Math.PI) / 180;
-  const reducedMotion =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reducedMotion = reducedMotionLive.value;
   // Spin scale: hold still under reduced-motion; gentle on touch (continuous
   // motion on a phone is wasted battery + the ring needn't keep spinning there);
   // full on desktop.
   const spinScale = reducedMotion
     ? 0
-    : typeof window !== "undefined" &&
-        window.matchMedia("(hover: none), (pointer: coarse)").matches
+    : !matches(MQ.finePointer)
       ? 0.45
       : 1;
   // PERF: the hero composition is `position: fixed`, so this component
@@ -490,6 +508,8 @@ function RingScene({
   // passes entirely (zero GPU work) via this ref; a passive scroll
   // listener flips it, no per-frame layout reads.
   const offscreenRef = useRef(false);
+  const onOffscreenRef = useRef(onOffscreen);
+  onOffscreenRef.current = onOffscreen;
   // Timestamp (ms) of the last scroll — used to PAUSE the 2-pass render during
   // active scroll outside the hero -> About pixel iris (heroState.wiping).
   const lastScrollRef = useRef(0);
@@ -501,9 +521,19 @@ function RingScene({
     // fade has finished; the ratio check is a belt-and-braces backstop.
     const OFFSCREEN_VH = 1.15;
     let raf = 0;
+    let reported: boolean | null = null;
     const apply = () => {
+      raf = 0;
       const ratio = window.scrollY / Math.max(1, window.innerHeight);
-      offscreenRef.current = ratio >= OFFSCREEN_VH || heroState.culled;
+      const off = ratio >= OFFSCREEN_VH || heroState.culled;
+      offscreenRef.current = off;
+      // Stop / restart the whole R3F loop on the edge (HeroGlyphRing). The
+      // useFrame guards below stay as the in-between-frames backstop, and
+      // keep the spin clock current so it doesn't jump on resume.
+      if (off !== reported) {
+        reported = off;
+        onOffscreenRef.current(off);
+      }
     };
     const onScroll = () => {
       lastScrollRef.current = performance.now();

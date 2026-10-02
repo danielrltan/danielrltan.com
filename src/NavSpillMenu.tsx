@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { SECTION_REGISTRY } from "./sectionRegistry";
 import { useIsMobile } from "./useIsMobile";
 import { jumpToSection, lockScroll, unlockScroll } from "./scroll";
-import { DUR, ease, reducedMotion, toMs } from "./motion";
+import { DUR, MQ, ease, matches, reducedMotion, toMs } from "./motion";
 import { clamp01 } from "./math";
 import { MercuryAura, type CursorState, type AuraTarget } from "./MercuryAura";
 import { getMenuGeometry, warmMenuGeometries } from "./menuGeometries";
@@ -166,6 +166,11 @@ const UNMOUNT_PAD_MS = 20;
  *  ~15 noise evaluations per pixel; at DPR 2 on a 1440×900 Retina panel that
  *  is ~5.2M px per frame. 1.5 keeps the pixel-dither crisp at ~56% the cost. */
 const MENU_DPR: [number, number] = [1, 1.5];
+/** Touch-primary devices (phones, tablets): DPR 1. Their panels are 2-3x, so
+ *  the [1, 1.5] cap still meant 1.5x on a mobile GPU, for an effect whose
+ *  whole look is a coarse pixel dither (and the cursor-pooling MercuryAura
+ *  does not even mount on touch). Read when the menu canvas mounts. */
+const menuDpr = (): number | [number, number] => (matches(MQ.touchPrimary) ? 1 : MENU_DPR);
 
 // SETTLE DRIFT — after the spill spirals out, the field COASTS a few degrees in
 // the SAME rotational direction the spill opened (the objects sweep clockwise
@@ -1015,7 +1020,11 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
         <Canvas
           className="navx-spill-canvas"
           camera={{ position: [0, 0, camZ], fov: camFov }}
-          dpr={MENU_DPR}
+          dpr={menuDpr()}
+          // The canvas is position:fixed (inside .navx-spill-root), so page
+          // scroll never moves it: don't let R3F's resize observer also
+          // listen to every scroll event and re-measure the canvas on it.
+          resize={{ scroll: false }}
           gl={{ alpha: true, antialias: true }}
           onPointerMissed={onClose}
           onCreated={onCanvasCreated}

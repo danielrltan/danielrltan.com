@@ -4,7 +4,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useIsMobile } from "./useIsMobile";
 import { SECTION_REGISTRY, findSectionElements } from "./sectionRegistry";
 import { SectionDial, type DialHudState } from "./SectionDial";
-import { useShownAfterPaint } from "./RoomHUD";
+import { hudTopOffset, useShownAfterPaint } from "./RoomHUD";
 import { track } from "./analytics";
 import { isScrollLocked } from "./scroll";
 import { requestScrollRefresh } from "./portfolio/scrollRefresh";
@@ -290,8 +290,12 @@ export function StatusBar({ visible = true }: Props) {
   const active = SECTION_REGISTRY[activeIdx] ?? SECTION_REGISTRY[0]!;
   const cardAria = `Open section menu. Current: ${active.number} ${active.label}`;
 
-  const top = isMobile ? "calc(14px + env(safe-area-inset-top, 0px))" : 20;
-  const right = isMobile ? "calc(14px + env(safe-area-inset-right, 0px))" : 22;
+  // Safe-area offsets as max(gap, inset + n) at every width (a phone on its
+  // side has its notch on the right half the time), same rule as the brand.
+  const top = hudTopOffset(isMobile);
+  const right = isMobile
+    ? "max(14px, env(safe-area-inset-right, 0px) + 8px)"
+    : "max(22px, env(safe-area-inset-right, 0px) + 12px)";
 
   // Skeuomorphic odometer dial: rolls the current section into the aperture as
   // you navigate, and opens the spill menu on click. Steps aside while the menu

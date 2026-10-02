@@ -57,12 +57,24 @@
  * the busiest frames of the gesture. Main lost the climax entirely at that
  * speed; the iris always plays through.
  *
- * Narrow (<=900, BREAKPOINT.narrow: About's stacked, unpinned layout, where
+ * Narrow (MQ.narrow: <=900 wide OR short landscape, i.e. a phone on its side
+ * at any width; About's stacked, unpinned layout, where
  * there is no room render to open onto) and prefers-reduced-motion get no
  * iris: About is not parked, and the hero clears at spec §5 O2/O3 timing
  * (hide at HERO.handoffVh 0.78, return below HERO.showVh 0.74). Narrow fades
  * over DUR.handoff; reduced motion snaps in the same scroll callback (F3,
  * <=1 frame). No zoom, no pixels.
+ *
+ * COMPACT (MQ.compact: phones, a phone on its side) + motion OK: a SCRUBBED
+ * fade instead. The timed fade kept the fixed hero fully opaque until
+ * 0.78vh, so the first ~650px of a phone swipe changed nothing on screen and
+ * read as the page refusing to scroll. Here the hero layer follows the
+ * finger from the first pixel: it drifts up at SCRUB_SHIFT of the scroll
+ * speed (a parallax, never faster than the finger) and fades from
+ * SCRUB_FROM_VH to SCRUB_TO_VH, both written straight from the scroll
+ * position (transform + opacity only: compositor work, no layout), so a
+ * half swipe rests half faded and reversing the swipe reverses it exactly.
+ * Reduced motion keeps the instant F3 snap above.
  *
  * Hit-testing: while the iris is built the hero LAYER itself takes pointer
  * events (clip-path clips hit-testing, so About is reachable only through the
@@ -76,7 +88,7 @@
  * bob under it, so the parked room is still behind the hero and through the
  * porthole, and starts floating once the hero clears.
  */
-import { BREAKPOINT, DUR, HERO, ease, reducedMotion } from "../motion";
+import { DUR, HERO, MQ, ease, reducedMotion } from "../motion";
 import { getLenis, onScrollJump } from "../scroll";
 import { heroHandoff, heroState } from "./heroState";
 
@@ -143,6 +155,17 @@ const PULL_EASE = "cubic-bezier(0.2, 0.6, 0.35, 1)";
  *  (spec §5 F1/F3 = O2/O3 timing; the tokens live in motion.ts HERO). */
 const FADE_AT_VH = HERO.handoffVh;
 const FADE_SHOW_VH = HERO.showVh;
+
+/** Scrubbed fade (compact, motion OK; see header): opacity 1 -> 0 between
+ *  these scroll positions (viewports). Ends well before About's top reaches
+ *  the HUD reveal line (1.0vh) and the HUD top strip. */
+const SCRUB_FROM_VH = 0.05;
+const SCRUB_TO_VH = 0.6;
+/** The hero layer's upward drift, as a fraction of the scroll distance. */
+const SCRUB_SHIFT = 0.45;
+/** Scrub progress at which About's ABOUT decode cue fires: About's title is
+ *  on screen by then and the hero is translucent over it. */
+const SCRUB_CUE_P = 0.35;
 
 /** Hero-side animations exist only in (BUILD_MIN_PX, TEARDOWN_VH * vh). Torn
  *  down a beat after About pins (1.1vh, not 1.0) so the teardown never lands in
@@ -367,9 +390,12 @@ export function installHeroWipe(): void {
   if (typeof window === "undefined") return;
   const root = document.documentElement;
   // Iris only where About is the pinned one-viewport bento with the room
-  // render (> BREAKPOINT.narrow). about.css's park @media is the exact
-  // complement (width > 900px); keep the two in sync.
-  const mobileQ = window.matchMedia(`(max-width: ${BREAKPOINT.narrow}px)`);
+  // render (NOT MQ.narrow). about.css's park @media is the complement
+  // ((width > 900px) and (height > 500px): a sideways phone, even 932x430,
+  // is stacked and never parked); keep the two in sync.
+  const mobileQ = window.matchMedia(MQ.narrow);
+  // Scrubbed-fade layouts (a subset of the fade path; see header).
+  const compactQ = window.matchMedia(MQ.compact);
   const params = new URLSearchParams(window.location.search);
   const forceManual = params.has("nost");
   const hasST = typeof (window as unknown as { ScrollTimeline?: unknown }).ScrollTimeline === "function";
@@ -399,6 +425,7 @@ export function installHeroWipe(): void {
   const q = <T extends Element>(sel: string) => document.querySelector<T>(sel);
   const heroLayer = () => q<HTMLElement>(".scroll-layer--hero");
   const irisMode = () => !mobileQ.matches && !reducedMotion.value;
+  const scrubMode = () => !irisMode() && compactQ.matches && !reducedMotion.value;
 
   // ── Geometry (seed, radius curve, cached keyframe strings) ────────────────
   // Measured at rest (hero-composed, resize) so the build frame does no layout
@@ -625,9 +652,9 @@ export function installHeroWipe(): void {
         make(driven, rim, [{ clipPath: g.rimFrom, easing: g.cellEasing }, { clipPath: g.rimTo }], s, e, sd) &&
         make(driven, rim, RIM_OPACITY, s, e, sd);
     }
-    // Pull-back only on the pinned, one-viewport bento (iris mode is already
-    // > BREAKPOINT.narrow; the width check is a belt for a resize race).
-    if (ok && stage && g.w > BREAKPOINT.narrow) {
+    // Pull-back only on the pinned, one-viewport bento (iris mode already
+    // excludes MQ.narrow; the live re-check is a belt for a resize race).
+    if (ok && stage && !mobileQ.matches) {
       stage.style.transformOrigin = `${f1(g.sx - g.stageLeft)}px ${f1(g.sy)}px`;
       ok = make(driven, stage, [{ scale: String(ABOUT_PULL), easing: PULL_EASE }, { scale: "1" }], s, e, sd);
     }
@@ -712,9 +739,17 @@ export function installHeroWipe(): void {
   let fadeT0 = 0;
   let fadeDur = 0;
   let fadeRaf = 0;
+  // Scrub path's upward drift (px, <= 0); 0 everywhere else.
+  let scrubShift = 0;
+  let lastShift = "";
   const writeFade = () => {
     const el = heroLayer();
     if (el) {
+      const shift = scrubShift ? `translate3d(0, ${scrubShift.toFixed(1)}px, 0)` : "";
+      if (shift !== lastShift) {
+        lastShift = shift;
+        el.style.transform = shift;
+      }
       el.style.opacity = fadeOpacity >= 1 ? "" : fadeOpacity.toFixed(3);
       // Fully faded = not hit-testable and not painted.
       el.style.visibility = fadeOpacity <= 0 ? "hidden" : "";
@@ -740,6 +775,7 @@ export function installHeroWipe(): void {
   const snapFade = () => {
     if (fadeRaf) cancelAnimationFrame(fadeRaf);
     fadeRaf = 0;
+    scrubShift = 0;
     fadeOpacity = fadeTo = fadeFrom = fadeShown ? 1 : 0;
     writeFade();
   };
@@ -766,7 +802,7 @@ export function installHeroWipe(): void {
     setPointer(diving ? "none" : "auto");
 
     if (irisMode()) {
-      if (fadeRaf || fadeOpacity !== 1) {
+      if (fadeRaf || fadeOpacity !== 1 || scrubShift) {
         // Leaving the fade path (resize past 900 / reduced-motion toggle).
         fadeShown = true;
         snapFade();
@@ -811,6 +847,28 @@ export function installHeroWipe(): void {
       setLayerPointer("none");
       heroState.wiping = false;
       if (fromIris) writeFade();
+      if (scrubMode()) {
+        // Scrubbed fade: opacity + drift written from the scroll position
+        // itself (no timed tween to chase). See header.
+        if (fadeRaf) cancelAnimationFrame(fadeRaf);
+        fadeRaf = 0;
+        const p = clamp01((ratio - SCRUB_FROM_VH) / (SCRUB_TO_VH - SCRUB_FROM_VH));
+        fadeOpacity = fadeFrom = fadeTo = 1 - ease.inOutSine(p);
+        if (p >= 1) fadeOpacity = fadeFrom = fadeTo = 0;
+        // Kept in step so a switch to the timed path (rotation to a wider
+        // narrow layout) starts from the right side of its hysteresis.
+        fadeShown = p < 1;
+        scrubShift = -SCRUB_SHIFT * Math.min(y, SCRUB_TO_VH * vh);
+        writeFade();
+        if (p >= SCRUB_CUE_P) heroHandoff.set("cue");
+        return;
+      }
+      if (scrubShift) {
+        // Left the scrub path (rotation / reduced-motion toggle): drop the
+        // drift; the timed fade below takes it from the current opacity.
+        scrubShift = 0;
+        writeFade();
+      }
       if (fadeShown && ratio >= FADE_AT_VH) fadeShown = false;
       else if (!fadeShown && ratio < FADE_SHOW_VH) fadeShown = true;
       if (!fadeShown) heroHandoff.set("cue");
@@ -849,7 +907,7 @@ export function installHeroWipe(): void {
     },
     get phase() {
       if (!irisMode()) {
-        if (fadeRaf) return "clearing";
+        if (fadeRaf || (fadeOpacity > 0 && fadeOpacity < 1)) return "clearing";
         return fadeOpacity <= 0 ? "cleared" : "rest";
       }
       const r = this.r;
@@ -909,6 +967,7 @@ export function installHeroWipe(): void {
   window.addEventListener("scroll", onScroll, { passive: true });
   window.addEventListener("resize", onResize, { passive: true });
   mobileQ.addEventListener("change", onModeChange);
+  compactQ.addEventListener("change", onModeChange);
   reducedMotion.subscribe(onModeChange);
   // A programmatic CUT (menu / footer / jump-to-top) snaps every state in the
   // same frame: jump-to-top from Contact shows the hero at rest, not a
@@ -916,7 +975,8 @@ export function installHeroWipe(): void {
   onScrollJump((ev) => {
     if (ev.phase !== "end" || ev.mode !== "cut") return;
     update(true);
-    if (!irisMode()) snapFade();
+    // The scrub path already wrote the landing's exact state in update().
+    if (!irisMode() && !scrubMode()) snapFade();
   });
   // The hero settled (opaque, composed): arm About's arrival trio underneath
   // it and measure the iris geometry off the scroll path.

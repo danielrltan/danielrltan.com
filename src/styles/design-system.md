@@ -260,3 +260,43 @@ Stagger idiom:
   breakpoint flip still measure the spacers above them. Don't add per-pin
   priorities. A viewport resize restores the same section beat (pin progress)
   in one global handler; don't add per-section resize restores.
+- Touch-primary devices (`MQ.touchPrimary`) run with NO Lenis: native
+  scrolling end to end (Lenis's non-passive touch listeners blocked the
+  compositor). `getLenis()` is null there; always handle null. Smooth
+  programmatic scrolls run on a small rAF tween in scroll.ts, and a held lock
+  blocks touch panning with its own temporary touchmove guard.
+
+## Breakpoints and mobile
+
+One set of media queries, `MQ` in `src/motion.ts` (`matches(q)` for a
+one-off read, `useMedia(q)` / `useFinePointer()` from `src/useMedia.ts` for
+React). CSS mirrors them by hand; keep the two in lockstep.
+
+| Name | Query | Use for |
+| --- | --- | --- |
+| `phone` | `(max-width: 768px)` | portrait phone layout |
+| `shortLandscape` | `(orientation: landscape) and (max-height: 500px)` | a phone on its side, any width |
+| `compact` | `phone` OR `shortLandscape` | "is this a phone": `useIsMobile()`, the touch HUD, 2D fallbacks, no idle GLB prefetch |
+| `narrow` | `(max-width: 900px)` OR `shortLandscape` | the stacked About / Work / Projects cut-over |
+| `finePointer` | `(hover: hover) and (pointer: fine)` | custom cursors, hover-only effects |
+| `touchPrimary` | `(hover: none) and (pointer: coarse)` | input-engine choices (no Lenis, menu DPR 1) |
+
+CSS for `compact`: `@media (max-width: 768px), (orientation: landscape) and (max-height: 500px)`.
+
+Rules:
+
+- Width is layout, pointer is input. Never gate a cursor or a hover effect on
+  width: a narrow desktop window still has a mouse, and an iPad in landscape
+  does not. `MoveableCursor` / `PanCursor` mount on `useFinePointer()`; the OS
+  cursor is hidden only by the `html.custom-cursor` rule under the same query.
+- Every `:hover` rule lives inside `@media (hover: hover)` (a tap leaves
+  `:hover` stuck on touch). Keep `:focus-visible` outside it, and give touch
+  an `:active` cue where the hover was the only feedback.
+- Full-height boxes use `svh` (with a `vh` line before it as the fallback), so
+  they don't jump as the mobile URL bar shows and hides.
+- Fixed chrome offsets are `max(<gap>px, env(safe-area-inset-<side>, 0px) +
+  <n>px)` at EVERY width, not only on phones: a phone on its side carries its
+  notch on the left or right, whatever layout it gets.
+- Tap targets are >= 44 x 44 px after any transform (drei `<Html>` labels are
+  scaled down on phones: grow the hit box with an invisible `::before`, not
+  the type).

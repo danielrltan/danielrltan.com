@@ -298,6 +298,9 @@ html[data-hero-diving] .hero-scroll-cue {
   -webkit-text-stroke: 2.2px var(--accent-deep, #c23d00);
   paint-order: stroke fill;
   max-width: 34ch;
+  /* Balanced lines: at ~430px the greeting wrapped with "of" alone on the
+     last line. Short text, so balance's cost is nil. */
+  text-wrap: balance;
 }
 .hero-mega-text {
   position: relative;
@@ -354,7 +357,7 @@ html[data-hero-diving] .hero-scroll-cue {
      Wordmark fill enters FIRST at 0.40s: the persistent signature
      is already anchored from the loading phase, so the wordmark is
      the first new element to compose around it. */
-  animation: hero-mega-in 900ms cubic-bezier(0.16, 0.84, 0.2, 1) both;
+  animation: hero-mega-in 900ms var(--ease-out) both;
   /* Tightened 0.4s -> 0.25s: the loader now plays before this, so every ms
      of post-compose delay is pure perceived lag. The wordmark still trails
      the ring/signature, just sooner. */
@@ -501,34 +504,33 @@ html[data-hero-diving] .hero-scroll-cue {
   }
 }
 
-/* Narrow portrait phones (≤400px, e.g. 390×844 / 360×640): squeeze the
-   wordmark + stagger a touch more so 6-glyph DANIEL never crowds the
-   edges, and pull the ring tighter so it isn't an overwhelming wash. */
-@media (max-width: 400px) {
-  /* The vw-proportional justified block fits every width by
-     construction; only the ring + chrome need narrowing here. */
-  .hero-ring-wrap {
-    width: 125vmax;
-    height: 125vmax;
-  }
-}
+/* (The <=400px and short-landscape ring sizes that lived here were dead on
+   every phone: the (hover: none) ring rule below is later in the file and
+   wins on touch. Deleted rather than kept as traps.) */
 
-/* Short landscape phones (e.g. 360×640 rotated, or any ≤480px tall):
-   the giant wordmark + bottom row can't both fit a short viewport.
-   Trim the wordmark and ring so nothing gets pushed off-screen. */
-@media (max-height: 480px) and (max-width: 900px) {
+/* Short landscape (a phone on its side): MQ.shortLandscape in motion.ts,
+   ANY width, so a 932x430 Pro Max gets it too (the old block stopped at
+   900px wide and stopped at 480px tall). The old clamp(40px, 11vh, 84px)
+   left DANIEL TAN 43px tall at 844x390: a thin name in an empty orange
+   screen. Now the two lines take ~half the viewport height (26svh each at
+   line-height 0.88 is ~46%), capped by width so DANIEL (3.07em) always
+   fits. svh: the size must not jump as the landscape URL bar comes and
+   goes (vh fallback first for engines without it). */
+@media (orientation: landscape) and (max-height: 500px) {
   .hero-mega-text {
-    font-size: clamp(40px, 11vh, 84px);
+    font-size: 26vh;
+    font-size: min(26svh, 17vw);
+    line-height: 0.88;
   }
   .hero-mega-line-2 {
-    /* Landscape kills the justified block (47vw of TAN would be ~2x the
-       viewport height): both lines revert to the same vh-led size. */
+    /* Landscape kills the portrait justified block (45vw of TAN would be
+       ~2x the viewport height): both lines share the vh-led size. */
     font-size: inherit;
     margin-top: -0.04em;
   }
-  .hero-ring-wrap {
-    width: 120vmax;
-    height: 120vmax;
+  .hero-welcome {
+    font-size: clamp(18px, 5.5svh, 28px);
+    margin-bottom: 6px;
   }
   .hero-composition {
     padding-top: calc(12px + var(--safe-top, 0px));
@@ -554,12 +556,10 @@ html[data-hero-diving] .hero-scroll-cue {
  * per-frame WebGL torus.rotation.y tick inside HeroGlyphRing.tsx's useFrame
  * loop, driven by the spinDuration prop. CSS in this file cannot slow or
  * pause it (there is no CSS animation on .hero-glyph-ring / the canvas to
- * target), and HeroGlyphRing.tsx is out of scope for this pass. A no-op CSS
- * @keyframes here would be a fake effect, so it's intentionally omitted; the
- * genuine CSS-only lever — shrinking the ring's footprint, which also cuts
- * its on-screen pixel/filter cost — is what's applied. Slowing the actual
- * spin needs a one-line gate in HeroGlyphRing.tsx (spinPerSec scaled by a
- * coarse-pointer / reduced-motion factor), flagged for a follow-up. */
+ * target). The spin IS slowed on touch (spinScale 0.45 without a fine
+ * pointer, 0 under reduced motion) in HeroGlyphRing.tsx, and its R3F loop
+ * stops entirely once the hero is offscreen; the CSS lever here is the
+ * ring's footprint, which also cuts its on-screen pixel/filter cost. */
 @media (hover: none) {
   .hero-ring-wrap {
     width: 110vmax;
@@ -570,8 +570,8 @@ html[data-hero-diving] .hero-scroll-cue {
 /* Reduced motion: the ring already lands at rest opacity 0.55 (see the
    prefers-reduced-motion block up top). Pull its footprint in to match the
    touch treatment so the dense ASCII field is quieter for these users too.
-   (The WebGL spin itself isn't slowed here for the same reason noted above —
-   that lives in HeroGlyphRing.tsx, out of scope for this CSS-only pass.) */
+   (The WebGL spin itself is held still under reduced motion in
+   HeroGlyphRing.tsx.) */
 @media (prefers-reduced-motion: reduce) {
   .hero-ring-wrap {
     width: 110vmax;

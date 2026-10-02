@@ -4,6 +4,19 @@
 // calls ensureLenis() at the same moment so creation timing is unchanged), the
 // scroll-lock reasons, and every PROGRAMMATIC scroll on the site.
 //
+// NO LENIS ON TOUCH-PRIMARY DEVICES (MQ.touchPrimary: phones, tablets without
+// a trackpad). Even with syncTouch:false, Lenis registers NON-passive
+// touchstart/touchmove/touchend listeners on window, which makes every finger
+// scroll wait on the main thread before the compositor may move the page (the
+// very jank syncTouch:false was meant to avoid). There the page scrolls fully
+// natively: ensureLenis() still installs the loader lock, getLenis() stays
+// null (every consumer handles null: heroWipe and ScrollTrigger fall back to
+// the window scroll event, Work reads window.scrollY), smooth programmatic
+// scrolls run on a small rAF tween (nativeTween below) instead of
+// lenis.scrollTo, and a held lock blocks touch scrolling with its own
+// touchmove guard, which exists only while a lock is held. Decided once, at
+// install: a hybrid that changes primary input mid-session keeps its engine.
+//
 // Rules this module enforces (spec §0):
 //   - Lenis (LENIS in motion.ts) is the only wheel smoother.
 //   - Programmatic scroll never uses the wheel curve: from-rest scrolls use the
@@ -29,7 +42,9 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
   DUR,
   LENIS,
+  MQ,
   SCROLL,
+  matches,
   presetDuration,
   reducedMotion,
 } from "./motion";
@@ -70,8 +85,13 @@ export interface ScrollJumpEvent {
 // Module scope so StrictMode's double-mount in dev doesn't spin up a competing
 // instance.
 let lenisInstance: Lenis | null = null;
+// ensureLenis() ran (with or without creating Lenis; see the header).
+let coreInstalled = false;
+// Touch-primary install: Lenis deliberately absent, smooth scrolls tween natively.
+let nativeMode = false;
 
-/** The live Lenis instance, or null before the first ensureLenis(). */
+/** The live Lenis instance, or null before the first ensureLenis() and always
+ *  on touch-primary devices (native scroll; see the header). */
 export function getLenis(): Lenis | null {
   return lenisInstance;
 }
@@ -81,7 +101,38 @@ export function getLenis(): Lenis | null {
  * motion.ts `LENIS`; the history behind them is recorded below.
  */
 export function ensureLenis(): void {
-  if (lenisInstance || typeof window === "undefined") return;
+  if (coreInstalled || typeof window === "undefined") return;
+  coreInstalled = true;
+  if (matches(MQ.touchPrimary)) {
+    // Native scroll (see the header): ScrollTrigger already listens to the
+    // window scroll event itself; only the locks + loader lock below remain.
+    nativeMode = true;
+  } else {
+    createLenis();
+  }
+
+  // Locks requested before the core existed (only the inline overflow applied).
+  applyLocks();
+
+  // Loader lock, EDGE-triggered. The old observer re-synced on EVERY <html>
+  // class mutation, so Lenis's own lenis-* class churn (lenis-stopped,
+  // lenis-scrolling) called start() and silently undid any other stop(): the
+  // menu lock never held. Only a real loading-active flip reaches the lock now.
+  // Seed first: main.tsx adds loading-active before React mounts, so the
+  // observer would never see that "added" change.
+  const html = document.documentElement;
+  let lastLoading = html.classList.contains("loading-active");
+  if (lastLoading) lockScroll("loader");
+  new MutationObserver(() => {
+    const now = html.classList.contains("loading-active");
+    if (now === lastLoading) return;
+    lastLoading = now;
+    if (now) lockScroll("loader");
+    else unlockScroll("loader");
+  }).observe(html, { attributes: true, attributeFilter: ["class"] });
+}
+
+function createLenis(): void {
   // Lenis tuning (values in motion.ts LENIS) balances smoothness against
   // responsiveness. PERF / FEEL: duration dropped 0.95s → 0.6s after the owner
   // reported the page feeling "laggy and unusable". The longer duration was
@@ -125,30 +176,19 @@ export function ensureLenis(): void {
   // Refresh closes the stale-limit window: ScrollTrigger pins change the
   // document height on refresh, and Lenis's own ResizeObserver lags it.
   ScrollTrigger.addEventListener("refresh", () => lenis.resize());
-
-  // Locks requested before Lenis existed (only the inline overflow applied).
-  applyLocks();
-
-  // Loader lock, EDGE-triggered. The old observer re-synced on EVERY <html>
-  // class mutation, so Lenis's own lenis-* class churn (lenis-stopped,
-  // lenis-scrolling) called start() and silently undid any other stop(): the
-  // menu lock never held. Only a real loading-active flip reaches the lock now.
-  // Seed first: main.tsx adds loading-active before React mounts, so the
-  // observer would never see that "added" change.
-  const html = document.documentElement;
-  let lastLoading = html.classList.contains("loading-active");
-  if (lastLoading) lockScroll("loader");
-  new MutationObserver(() => {
-    const now = html.classList.contains("loading-active");
-    if (now === lastLoading) return;
-    lastLoading = now;
-    if (now) lockScroll("loader");
-    else unlockScroll("loader");
-  }).observe(html, { attributes: true, attributeFilter: ["class"] });
 }
 
 // ── Locks ───────────────────────────────────────────────────────────────────
 const locks = new Set<string>();
+
+// Native mode's stand-in for a stopped Lenis, which preventDefault()s every
+// touchmove/wheel while stopped: overflow:hidden on <html> alone does not stop
+// a finger panning the page on iOS. Non-passive, but it only exists while a
+// lock is held (menu open, a covered cut), never during normal scrolling.
+const blockTouchScroll = (e: TouchEvent) => {
+  if (e.cancelable) e.preventDefault();
+};
+let touchGuard = false;
 
 function applyLocks() {
   const locked = locks.size > 0;
@@ -156,9 +196,70 @@ function applyLocks() {
     if (locked) lenisInstance.stop();
     else lenisInstance.start();
   }
+  if (nativeMode && typeof window !== "undefined") {
+    // A stopped Lenis also kills its in-flight tween (stop() -> reset()).
+    if (locked) activeTween?.cancel();
+    if (locked !== touchGuard) {
+      touchGuard = locked;
+      if (locked) window.addEventListener("touchmove", blockTouchScroll, { passive: false });
+      else window.removeEventListener("touchmove", blockTouchScroll);
+    }
+  }
   if (typeof document !== "undefined") {
     document.documentElement.style.overflow = locked ? "hidden" : "";
   }
+}
+
+// ── Native tween (touch-primary only) ───────────────────────────────────────
+// lenis.scrollTo's stand-in where Lenis is absent: the same duration + easing,
+// stepped in rAF with instant window.scrollTo (never native `smooth`, spec §0).
+// ScrollTrigger and every scroll listener follow from the real scroll events.
+// A finger on the glass always takes over (a tween fighting a drag frame by
+// frame is worse than an interrupted glide); wheel / keys take over unless the
+// caller asked for `lock` (as with Lenis's lock option).
+interface Tween {
+  cancel(): void;
+}
+let activeTween: Tween | null = null;
+
+function nativeTween(
+  y: number,
+  duration: number,
+  easing: (t: number) => number,
+  lock: boolean,
+  onArrive: () => void,
+): Tween {
+  activeTween?.cancel();
+  const from = window.scrollY;
+  const t0 = performance.now();
+  let raf = 0;
+  let live = true;
+  const inputs = lock ? ["touchstart"] : ["touchstart", "wheel", "keydown"];
+  const tween: Tween = {
+    cancel() {
+      if (!live) return;
+      live = false;
+      cancelAnimationFrame(raf);
+      for (const t of inputs) window.removeEventListener(t, takeOver, true);
+      if (activeTween === tween) activeTween = null;
+    },
+  };
+  const takeOver = () => tween.cancel();
+  const step = (now: number) => {
+    if (!live) return;
+    const t = duration > 0 ? Math.min(1, (now - t0) / (duration * 1000)) : 1;
+    window.scrollTo(0, from + (y - from) * easing(t));
+    if (t >= 1) {
+      tween.cancel();
+      onArrive();
+      return;
+    }
+    raf = requestAnimationFrame(step);
+  };
+  for (const t of inputs) window.addEventListener(t, takeOver, { passive: true, capture: true });
+  activeTween = tween;
+  raf = requestAnimationFrame(step);
+  return tween;
 }
 
 /** Block user scroll input for `reason` ("loader" | "menu" | "jump" | …). */
@@ -291,6 +392,7 @@ let coverOwner = 0;
 
 /** Instant jump + ScrollTrigger.update + synchronous `end` emit. */
 function cutNow(y: number, from: number) {
+  activeTween?.cancel();
   if (lenisInstance) lenisInstance.scrollTo(y, { immediate: true, force: true });
   else window.scrollTo(0, y);
   ScrollTrigger.update();
@@ -387,7 +489,7 @@ export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): 
     opts.duration ?? presetDuration(dy, vh, preset, opts.maxDuration);
   const easing = opts.easing ?? preset.easing;
   emit({ phase: "start", mode: "smooth", from, to: y });
-  if (!lenisInstance) {
+  if (!lenisInstance && !nativeMode) {
     // Lenis not running yet: immediate, never native smooth.
     window.scrollTo(0, y);
     ScrollTrigger.update();
@@ -399,6 +501,7 @@ export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): 
   return new Promise<void>((resolve) => {
     let done = false;
     let timer = 0;
+    let tween: Tween | null = null;
     // `end` is emitted and the promise resolves on every exit (arrival,
     // supersede, cancel), but the caller's onComplete means ARRIVAL only,
     // as with lenis.scrollTo's own onComplete (spec §2.2.3).
@@ -406,6 +509,9 @@ export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): 
       if (done) return;
       done = true;
       window.clearTimeout(timer);
+      // Native: a superseded / timed-out tween must stop writing scrollY
+      // (lenis.scrollTo replaces its own tween; ours has to be told).
+      tween?.cancel();
       if (settleActiveSmooth === settle) settleActiveSmooth = null;
       emit({ phase: "end", mode: "smooth", from, to: y });
       if (arrived) opts.onComplete?.();
@@ -418,6 +524,10 @@ export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): 
     const settle = () => finish(atTarget());
     timer = window.setTimeout(settle, (duration + 0.25) * 1000);
     settleActiveSmooth = settle;
+    if (!lenis) {
+      tween = nativeTween(y, duration, easing, opts.lock ?? false, () => finish(true));
+      return;
+    }
     lenis.scrollTo(y, {
       duration,
       easing,
@@ -467,6 +577,7 @@ export function jumpToSection(which: number | string, opts: ScrollOpts = {}): Pr
 export function panScrollTo(y: number): void {
   if (typeof window === "undefined") return;
   ensureLenis();
+  activeTween?.cancel();
   if (lenisInstance) {
     lenisInstance.scrollTo(y, { immediate: true });
   } else {

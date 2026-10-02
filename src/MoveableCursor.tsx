@@ -87,7 +87,14 @@ export function MoveableCursor({ hot }: Props) {
       rootEl.style.transform = `translate3d(${px}px,${py}px,0) scale(${pressCur})`;
     };
 
+    // MOUSE ONLY. On a hybrid (touchscreen laptop, iPad + trackpad) a finger or
+    // pen also fires pointer events; following them would teleport the arrow
+    // to every tap and leave it parked where the finger lifted. Synthetic
+    // replays (App's hover-while-scrolling) are typed "mouse", so they pass.
+    const isMouse = (e: PointerEvent) => !e.pointerType || e.pointerType === "mouse";
+
     const onMove = (e: PointerEvent) => {
+      if (!isMouse(e)) return;
       px = e.clientX;
       py = e.clientY;
       applyTransform(); // follow IMMEDIATELY — never wait on the (parkable) tick
@@ -165,7 +172,7 @@ export function MoveableCursor({ hot }: Props) {
       // site-wide (App.tsx suppresses the context menu) and middle-click (1)
       // drives the pan cursor — so don't play the press dip for either, or the
       // cursor would animate an action that can't happen.
-      if (e.button !== 0) return;
+      if (e.button !== 0 || !isMouse(e)) return;
       if (!reducedMotion.value) pressTarget = PRESS_SCALE;
       schedule(); // wake the loop to animate the press dip
     };
