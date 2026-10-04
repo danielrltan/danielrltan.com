@@ -54,25 +54,26 @@ gsap.registerPlugin(ScrollTrigger);
 /**
  * "My room in real life!" callout: a hand-drawn arrow, rasterised onto a
  * pixel grid so it speaks the same Offbit pixel language as the wordmarks.
- * Built once at module load: a quadratic curve that leaves the label heading
- * left, then bends down onto the room, stamped 2 cells thick, plus a slightly
- * lopsided arrowhead (the hand-drawn tell). One <path> of unit squares,
- * drawn crispEdges, so it stays sharp at any size.
+ * Built once at module load: a long, shallow quadratic curve that leaves the
+ * label heading left and lands diagonally (down-left, ~45 deg) on the room's
+ * top-right edge, stamped 2 cells thick, plus a lopsided arrowhead whose arms
+ * run straight up and straight right from the tip (the hand-drawn tell). One
+ * <path> of unit squares, drawn crispEdges, so it stays sharp at any size.
  */
 const ROOM_ARROW_D = (() => {
   const cells = new Set<string>();
   const put = (x: number, y: number) => cells.add(`${x},${y}`);
-  const [x0, y0, cx, cy, x1, y1] = [31, 4, 9, 2, 6, 21]; // start, control, tip
-  for (let i = 0; i <= 240; i++) {
-    const t = i / 240, u = 1 - t;
+  const [x0, y0, cx, cy, x1, y1] = [46, 3, 22, 2, 4, 21]; // start, control, tip
+  for (let i = 0; i <= 320; i++) {
+    const t = i / 320, u = 1 - t;
     const x = Math.round(u * u * x0 + 2 * u * t * cx + t * t * x1);
     const y = Math.round(u * u * y0 + 2 * u * t * cy + t * t * y1);
-    put(x, y); put(x + 1, y);
+    put(x, y); put(x, y + 1);
   }
-  // Arrowhead: two arms up from the tip, the right one a cell shorter.
-  for (let i = 1; i <= 5; i++) { put(x1 - i, y1 - i); put(x1 - i + 1, y1 - i); }
-  for (let i = 1; i <= 4; i++) { put(x1 + i, y1 - i); put(x1 + i + 1, y1 - i); }
-  put(x1, y1 + 1); put(x1 + 1, y1 + 1);
+  // Arrowhead for a down-left arrow: one arm straight up, one straight right
+  // (the right one a cell shorter), each 2 cells thick.
+  for (let i = 0; i <= 6; i++) { put(x1, y1 - i); put(x1 + 1, y1 - i); }
+  for (let i = 0; i <= 5; i++) { put(x1 + i, y1); put(x1 + i, y1 + 1); }
   return [...cells].map((c) => { const [x, y] = c.split(","); return `M${x} ${y}h1v1h-1z`; }).join("");
 })();
 
@@ -277,7 +278,7 @@ export function About() {
           {!roomless && (
             <div className="about-room-callout">
               <span className="about-room-callout-text">my room in real life!</span>
-              <svg className="about-room-callout-arrow" viewBox="0 0 34 24" shapeRendering="crispEdges">
+              <svg className="about-room-callout-arrow" viewBox="0 0 49 24" shapeRendering="crispEdges">
                 <path d={ROOM_ARROW_D} />
               </svg>
             </div>
