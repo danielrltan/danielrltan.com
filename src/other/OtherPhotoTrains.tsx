@@ -212,7 +212,7 @@ export const OtherPhotoTrains = memo(function OtherPhotoTrains({
         const rowW = strip.parentElement?.clientWidth ?? 0;
         if (stripW <= 0) continue;
         const cardW = firstCard.getBoundingClientRect().width;
-        // Flex `gap` on the strip (var(--space-5) = 24px). Read computed so a
+        // Flex `gap` on the strip (var(--space-3) = 12px). Read computed so a
         // future token change is honoured without touching this code.
         const gap = parseFloat(getComputedStyle(strip).columnGap || "0") || 0;
         const pitch = cardW + gap;
