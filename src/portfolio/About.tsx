@@ -51,6 +51,31 @@ gsap.registerPlugin(ScrollTrigger);
  */
 
 /** Pin length in viewports (spec §3: 1.25vh). */
+/**
+ * "My room in real life!" callout: a hand-drawn arrow, rasterised onto a
+ * pixel grid so it speaks the same Offbit pixel language as the wordmarks.
+ * Built once at module load: a quadratic curve that leaves the label heading
+ * left, then bends down onto the room, stamped 2 cells thick, plus a slightly
+ * lopsided arrowhead (the hand-drawn tell). One <path> of unit squares,
+ * drawn crispEdges, so it stays sharp at any size.
+ */
+const ROOM_ARROW_D = (() => {
+  const cells = new Set<string>();
+  const put = (x: number, y: number) => cells.add(`${x},${y}`);
+  const [x0, y0, cx, cy, x1, y1] = [31, 4, 9, 2, 6, 21]; // start, control, tip
+  for (let i = 0; i <= 240; i++) {
+    const t = i / 240, u = 1 - t;
+    const x = Math.round(u * u * x0 + 2 * u * t * cx + t * t * x1);
+    const y = Math.round(u * u * y0 + 2 * u * t * cy + t * t * y1);
+    put(x, y); put(x + 1, y);
+  }
+  // Arrowhead: two arms up from the tip, the right one a cell shorter.
+  for (let i = 1; i <= 5; i++) { put(x1 - i, y1 - i); put(x1 - i + 1, y1 - i); }
+  for (let i = 1; i <= 4; i++) { put(x1 + i, y1 - i); put(x1 + i + 1, y1 - i); }
+  put(x1, y1 + 1); put(x1 + 1, y1 + 1);
+  return [...cells].map((c) => { const [x, y] = c.split(","); return `M${x} ${y}h1v1h-1z`; }).join("");
+})();
+
 const PIN_VH = 1.25;
 
 /** The boot-up beats (pin progress), in reveal order. */
@@ -247,6 +272,16 @@ export function About() {
           <p className="about-banner-title">
             <ScrambleText text="About" play={cue} />
           </p>
+          {/* "My room in real life!": a pixel hand-drawn arrow from the top-right
+              corner down onto the room. Only where the room renders. */}
+          {!roomless && (
+            <div className="about-room-callout">
+              <span className="about-room-callout-text">my room in real life!</span>
+              <svg className="about-room-callout-arrow" viewBox="0 0 34 24" shapeRendering="crispEdges">
+                <path d={ROOM_ARROW_D} />
+              </svg>
+            </div>
+          )}
         </header>
 
         {/* DOM-real <h2> for assistive tech + SEO. The painted "ABOUT"

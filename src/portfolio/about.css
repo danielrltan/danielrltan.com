@@ -176,6 +176,52 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
   opacity: 1;
   transform: none;
 }
+/* "My room in real life!" callout (About.tsx): sits in the banner row's empty
+   right side, under the section dial and above the portrait card, with a pixel
+   arrow curving down-left onto the room. Rides the banner's reveal; above the
+   bento (the room is z 20) so the arrow tip can cross the portrait card's top.
+   Narrow (601-900) keeps it: the room is the first cell right under the banner. */
+.about-banner {
+  position: relative;
+  z-index: 30;
+}
+.about-room-callout {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.about-room-callout-text {
+  position: absolute;
+  top: 0.15em;
+  right: 0;
+  font-family: var(--font-pixel, "Offbit", monospace);
+  font-weight: 700;
+  font-size: clamp(16px, 1.45vw, 24px);
+  line-height: 1;
+  color: var(--ink, #0d0e10);
+  white-space: nowrap;
+  transform: rotate(-3deg);
+  transform-origin: right center;
+}
+.about-room-callout-arrow {
+  position: absolute;
+  /* Starts just left of the label's first letter and lands its tip on the
+     room's right shoulder (~72% across the stage). */
+  top: 0.35em;
+  right: clamp(150px, 13.5vw, 228px);
+  width: clamp(130px, 16%, 270px);
+  height: auto;
+  fill: var(--accent, #ff4f00);
+  overflow: visible;
+}
+@media (max-width: 900px) {
+  .about-room-callout-text { font-size: clamp(15px, 2.6vw, 20px); }
+  .about-room-callout-arrow { right: clamp(165px, 22vw, 190px); width: clamp(84px, 14%, 130px); }
+}
+
 .about-banner-meta {
   display: flex;
   align-items: center;
