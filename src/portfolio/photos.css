@@ -196,8 +196,8 @@
   /* Row gap: half the old spacing (owner: "2x tighter"; was ~18px via
      space-between). Rows sit as one tight block centred in the band. svh to
      match the section/cards/band (see .other-trains-wrap): a vh gap diverged on iOS. */
-  gap: clamp(6px, 1vh, 11px);
-  gap: clamp(6px, 1svh, 11px);
+  gap: clamp(4px, 0.67vh, 7px); /* a third tighter again (owner) */
+  gap: clamp(4px, 0.67svh, 7px);
 }
 
 .other-train-row {
@@ -217,7 +217,7 @@
 
 .other-train-strip {
   display: flex;
-  gap: var(--space-3); /* half the old --space-5 (24px): tighter photo run (owner) */
+  gap: var(--space-2); /* 8px: a third tighter than --space-3 (owner; was --space-5 24px before that) */
   will-change: transform;
   /* No CSS transition: OtherPhotoTrains' damp loop writes the transform
      (only while the row is still moving); a CSS transition would add lag. */
@@ -313,8 +313,8 @@
     bottom: 13svh;
   }
   .other-trains {
-    gap: clamp(6px, 1vh, 9px);
-    gap: clamp(6px, 1svh, 9px);
+    gap: clamp(4px, 0.67vh, 6px);
+    gap: clamp(4px, 0.67svh, 6px);
   }
   /* SQUARE CARD IN PORTRAIT: sized to FILL the train band. The band is
      100svh - 26vh header - 13vh foot ≈ 61svh; three rows + two gaps

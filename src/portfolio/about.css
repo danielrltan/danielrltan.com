@@ -195,7 +195,8 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
 }
 .about-room-callout-text {
   position: absolute;
-  top: 0.15em;
+  /* Clear of the section dial above it (it sat tight under it). */
+  top: clamp(14px, 1.6vw, 26px);
   right: 0;
   font-family: var(--font-pixel, "Offbit", monospace);
   font-weight: 700;
@@ -208,18 +209,20 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
 }
 .about-room-callout-arrow {
   position: absolute;
-  /* Starts just left of the label's first letter and lands its tip on the
-     room's right shoulder (~72% across the stage). */
-  top: 0.35em;
-  right: clamp(150px, 13.5vw, 228px);
-  width: clamp(130px, 16%, 270px);
+  /* Starts just left of the label's first letter and runs long and shallow,
+     landing diagonally on the room's top-right edge (~66% across the stage).
+     Sized in % of the stage so it scales with the room. */
+  top: clamp(12px, 1.3vw, 22px);
+  right: 12%;
+  width: 23.5%;
   height: auto;
   fill: var(--accent, #ff4f00);
   overflow: visible;
 }
 @media (max-width: 900px) {
   .about-room-callout-text { font-size: clamp(15px, 2.6vw, 20px); }
-  .about-room-callout-arrow { right: clamp(165px, 22vw, 190px); width: clamp(84px, 14%, 130px); }
+  /* Room sits centred under the banner here: a shorter run that clears the label. */
+  .about-room-callout-arrow { right: 24%; width: 22%; }
 }
 
 .about-banner-meta {
