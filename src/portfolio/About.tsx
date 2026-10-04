@@ -66,7 +66,7 @@ const ROOM_ARROW_D = (() => {
   const dot = (x: number, y: number) => {
     for (let i = 0; i < T; i++) for (let j = 0; j < T; j++) cells.add(`${Math.round(x) + i},${Math.round(y) + j}`);
   };
-  const [x0, y0, cx, cy, x1, y1] = [100, 6, 34, 6, 2, 15]; // start, control, tip
+  const [x0, y0, cx, cy, x1, y1] = [56, 6, 34, 6, 2, 15]; // start, control, tip
   for (let i = 0; i <= 640; i++) {
     const t = i / 640, u = 1 - t;
     dot(u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1);
@@ -282,7 +282,7 @@ export function About() {
           {!roomless && (
             <div className="about-room-callout">
               <span className="about-room-callout-text">my room in real life!</span>
-              <svg className="about-room-callout-arrow" viewBox="0 0 106 24" shapeRendering="crispEdges">
+              <svg className="about-room-callout-arrow" viewBox="0 0 62 24" shapeRendering="crispEdges">
                 <path d={ROOM_ARROW_D} />
               </svg>
             </div>
