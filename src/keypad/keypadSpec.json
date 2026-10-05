@@ -1,5 +1,5 @@
 {
-  "_comment": "Keypad geometry, glTF space (Y up, display toward -Z), world units. scripts/build-keypad-model.py reads this; npm run model:keypad rebuilds public/keypad.glb. Tune proportions HERE.",
+  "_comment": "Keypad geometry, glTF space (Y up, display toward -Z), world units. scripts/build-keypad-model.py reads this; npm run model:keypad rebuilds src/keypad/keypad.glb. Tune proportions HERE.",
   "body": {
     "w": 2.9,
     "d": 3.96,
@@ -89,11 +89,11 @@
     "iconPx": 1024,
     "displayCrop": [
       0,
-      192,
+      222,
       500,
-      308
+      278
     ],
-    "_comment": "display.png in blend-src/keypad/tex is the original 500x500 screen art cropped to displayCrop [x,y,w,h] (matches the glass aspect (w-2*inset)/(topRow.h-2*inset)) and scaled 2x"
+    "_comment": "display.png = original 500x500 screen art cropped to displayCrop [x,y,w,h] (just the text block), padded with black to the glass aspect (w-2*inset)/(topRow.h-2*inset) so the text sits centred, scaled 2x"
   },
   "casing": {
     "_comment": "raised bezel ring around the dial; the dial sits in it with a dark gap",

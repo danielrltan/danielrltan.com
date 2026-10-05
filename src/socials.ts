@@ -11,7 +11,7 @@ export interface Social {
   /** Short host shown under the label on the mobile chips. */
   host: string;
   /**
-   * Name of the keycap node in /keypad.glb that opens this link. Each social
+   * Name of the keycap node in keypad.glb that opens this link. Each social
    * node carries the matching icon material/texture (linkedin → LinkedIn,
    * github → GitHub), so node names map straight through.
    */

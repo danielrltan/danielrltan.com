@@ -4,9 +4,15 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { track } from "../analytics";
 import { SOCIALS } from "../socials";
+// keypad.glb is imported as a Vite asset so the build gives it a content-
+// hashed URL under /assets/ (cached immutably; a new model gets a new URL).
+// From public/ it was /keypad.glb with a 24 h cache, so browsers kept showing
+// the old model for a day after each change (owner: "the keypad didnt change
+// at all").
+import keypadUrl from "./keypad.glb?url";
 
 /**
- * Loads /keypad.glb and wires up four social keycaps + the spinnable
+ * Loads keypad.glb and wires up four social keycaps + the spinnable
  * dial. Other meshes render unchanged.
  *
  * GLB nodes (built by scripts/build-keypad-model.py from
@@ -24,7 +30,7 @@ import { SOCIALS } from "../socials";
  * library, no per-frame React re-renders.
  */
 
-useGLTF.preload("/keypad.glb");
+useGLTF.preload(keypadUrl);
 
 
 // Keycap NODE name → URL (src/socials.ts owns the list).
@@ -58,6 +64,9 @@ const DIAL_KICK = Math.PI * 2 * 1.1;
 // rapid click stack actually reaches "spinning hard" before fading.
 // At 0.9, velocity halves every ~0.77s.
 export const DIAL_DAMP = 0.9;
+// World units the dial rises per unit of scale growth (hover +0.12 lifts it
+// ~0.17, clear of its casing lip).
+const DIAL_LIFT = 1.4;
 // Hard cap so a determined spammer can't push velocity into the
 // 'spinning so fast it looks frozen' territory.
 const DIAL_MAX_VEL = Math.PI * 2 * 12; // 12 revs/sec ceiling
@@ -114,7 +123,7 @@ interface KeypadModelProps {
 }
 
 export function KeypadModel({ onReady }: KeypadModelProps = {}) {
-  const { scene } = useGLTF("/keypad.glb");
+  const { scene } = useGLTF(keypadUrl);
   const { camera, size, gl } = useThree();
 
   // Clone + traverse synchronously so caps & dial are known before
@@ -283,6 +292,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   const dialPressedAtRef = useRef<number | null>(null);
   const dialScaleRef = useRef(1);
   const dialBaseScaleRef = useRef<THREE.Vector3 | null>(null);
+  const dialBaseYRef = useRef<number | null>(null);
 
   // Expose imperative API for parent-driven dial kicks (e.g. spin
   // automatically when the drop-in animation completes).
@@ -340,18 +350,21 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       dialVelRef.current *= Math.exp(-dt * DIAL_DAMP);
     }
 
-    // Dial scale feedback: 1.0 at rest, ~+5% on hover, a decaying
-    // ~+12% pop on click that eases back down. Independent of the spin
-    // rotation above (scale and rotation compose freely).
+    // Dial scale feedback: 1.0 at rest, +12% on hover, a decaying extra
+    // +16% pop on click that eases back down (owner: "make the knob increase
+    // in size bigger"; was +5% / +8%). The dial sits in a casing ring, so it
+    // also LIFTS out of it as it grows (DIAL_LIFT per unit of growth) instead
+    // of swelling into the ring. Independent of the spin rotation above.
     if (dial) {
       if (!dialBaseScaleRef.current) dialBaseScaleRef.current = dial.scale.clone();
+      if (dialBaseYRef.current == null) dialBaseYRef.current = dial.position.y;
       const base = dialBaseScaleRef.current;
-      let target = dialHoveredRef.current ? 1.05 : 1.0;
+      let target = dialHoveredRef.current ? 1.12 : 1.0;
       const pAt = dialPressedAtRef.current;
       if (pAt != null) {
         const since = (now - pAt) / 1000;
         if (since < 0.32) {
-          target += (1 - since / 0.32) * 0.08; // up to ~+0.13 at the click instant
+          target += (1 - since / 0.32) * 0.16; // up to ~+0.28 at the click instant
         } else {
           dialPressedAtRef.current = null;
         }
@@ -359,6 +372,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       dialScaleRef.current += (target - dialScaleRef.current) * (1 - Math.exp(-dt * 11));
       const s = dialScaleRef.current;
       dial.scale.set(base.x * s, base.y * s, base.z * s);
+      dial.position.y = dialBaseYRef.current + (s - 1) * DIAL_LIFT;
     }
   });
 

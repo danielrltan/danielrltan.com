@@ -1,6 +1,6 @@
 # scripts/build-keypad-model.py
 #
-# Generates public/keypad.glb: the Contact keypad (display + cat dial + four
+# Generates src/keypad/keypad.glb (imported by KeypadModel as a hashed Vite asset): the Contact keypad (display + cat dial + four
 # social keycaps + two side buttons) built procedurally in Blender from
 # src/keypad/keypadSpec.json, so its proportions are spec numbers, not hand
 # edits. Replaces the hand-exported model whose low-segment chamfers shaded as
@@ -26,7 +26,7 @@ from mathutils import Vector
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = json.load(open(os.path.join(ROOT, "src/keypad/keypadSpec.json")))
 TEX = os.path.join(ROOT, "blend-src/keypad/tex")
-OUT = os.path.join(ROOT, "public/keypad.glb")
+OUT = os.path.join(ROOT, "src/keypad/keypad.glb")  # Vite asset: hashed URL
 
 
 def B(gx, gy, gz):
@@ -289,8 +289,11 @@ def keycap(name, cx, cz, w, d, y0, y1, mat):
     if MAT_ICON[name].name not in [m.name for m in ob.data.materials]:
         ob.data.materials.append(MAT_ICON[name])
     slot = [m.name for m in ob.data.materials].index(MAT_ICON[name].name)
-    size_x = w * taper * 0.9
-    size_z = d * taper * 0.9
+    # Icon size: the art's badge is ~54% of the texture. 1.35 (was 0.9, owner:
+    # icons 50% bigger) spreads the texture past the dish so the badge reads
+    # at ~74% of the cap top; the texture's white margin clamps (EXTEND) beyond.
+    size_x = w * taper * 1.35
+    size_z = d * taper * 1.35
     bm = bmesh.new()
     bm.from_mesh(ob.data)
     uv = bm.loops.layers.uv.verify()
