@@ -49,8 +49,9 @@ const MUTED = "#8a8f98";
 /** Entrance length before the card shows (ms). */
 const READY_MS = 2050;
 /** The scene sits in this part of the canvas (fractions); the card owns the
- *  left. */
-const FREE_BOX = { x0: 0.26, x1: 0.995, y0: 0.03, y1: 0.97 };
+ *  left. Same box as the approved lab draft "07" (the canvas fills the whole
+ *  100svh section, header top-left, stats bottom-left). */
+const FREE_BOX = { x0: 0.262, x1: 0.99, y0: 0.15, y1: 0.93 };
 
 function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number) {
   const words = text.split(" ");

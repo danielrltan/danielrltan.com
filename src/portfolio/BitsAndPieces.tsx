@@ -292,7 +292,9 @@ export function BitsAndPieces() {
       stopCountRef.current = runCountUps(el);
     }
   }, []);
-  useReveal(sectionRef, { onReveal });
+  // Podium layout: the stats sit 34px off the bottom of a 100svh stage, below
+  // the default -15% reveal line, so reveal against the whole viewport there.
+  useReveal(sectionRef, { onReveal, rootMargin: narrow ? undefined : "0px" });
   useEffect(() => () => stopCountRef.current(), []);
 
   // Ghost marquee: slides the giant category strip sideways with the
@@ -343,7 +345,7 @@ export function BitsAndPieces() {
   }, []);
 
   return (
-    <section ref={sectionRef} className="portfolio-section portfolio-bp">
+    <section ref={sectionRef} className={`portfolio-section portfolio-bp${narrow ? "" : " is-podium"}`}>
       <div className="bp-marquee" aria-hidden>
         <div ref={marqueeRef} className="bp-marquee-strip">
           {Array.from({ length: 3 }).map((_, k) => (
@@ -357,16 +359,26 @@ export function BitsAndPieces() {
 
       <div className="bp-layout">
         <header className="bp-head" data-reveal="">
-          <span className="section-marker bp-marker">05</span>
-          <span className="section-index bp-index">
-            05 / 07 &middot; Honours
-          </span>
+          {narrow ? (
+            <>
+              <span className="section-marker bp-marker">05</span>
+              <span className="section-index bp-index">
+                05 / 07 &middot; Honours
+              </span>
+            </>
+          ) : (
+            // Podium layout: the trophy-lab "07" index line (05 —— 05 / 07 ·
+            // HONOURS), exactly as the owner approved it.
+            <div className="bp-idx">
+              <span className="bp-idx-n">05</span>
+              <span className="bp-idx-rule" aria-hidden />
+              <span>05 / 07 &middot; Honours</span>
+            </div>
+          )}
           <h2 className="bp-title">
             <ScrambleText text="The trophy wall" />
           </h2>
-          <p className="bp-blurb">
-            Awards, grants, leadership, scholarships, whatever the timeline doesn&rsquo;t have room for.
-          </p>
+          {narrow && <p className="bp-blurb">Awards and leadership.</p>}
         </header>
 
         {/* Summary metrics as a definition list: the animated digits

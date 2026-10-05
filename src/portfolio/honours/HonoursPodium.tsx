@@ -67,9 +67,6 @@ export function HonoursPodium({ entries, active }: { entries: readonly HonoursEn
           </>
         )}
       </article>
-      <span className="bp-podium-count" aria-hidden>
-        <b>{String((focus ?? 0) + 1).padStart(2, "0")}</b> / {String(entries.length).padStart(2, "0")}
-      </span>
     </div>
   );
 }

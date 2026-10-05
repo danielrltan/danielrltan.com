@@ -647,16 +647,117 @@
 }
 
 /* ======================================================================
-   3D podium (desktop, > MQ.narrow): replaces the card grid. Owner pick
-   "07" from the trophy lab. The stage box is always laid out (fixed height),
-   so mounting the WebGL canvas never changes the section's height. The card
-   on the left shows the hovered / selected entry; the scene keeps the right.
+   3D podium layout (desktop, > MQ.narrow; .portfolio-bp.is-podium).
+   Owner: "exactly like the 07 example" from the trophy lab (+ his notes: no
+   x / 12 counter, no "whatever the timeline..." line). So the section is ONE
+   100svh stage: the WebGL canvas fills it, the index line + mixed-case title
+   sit top-left, the stats bottom-left, the honour card above the stats. The
+   values below are copied from the lab page (t07-podium-tower.html). The
+   stage box is always laid out, so mounting the canvas never changes the
+   section's height.
    ====================================================================== */
-.bp-podium {
-  position: relative;
-  height: clamp(520px, 74vh, 860px);
-  margin-top: var(--space-5);
+.portfolio-section.portfolio-bp.is-podium {
+  height: 100vh;
+  height: 100svh;
+  min-height: 0;
+  padding: 0;
 }
+.portfolio-bp.is-podium .bp-marquee {
+  display: none;
+}
+.portfolio-bp.is-podium .bp-layout {
+  position: absolute;
+  inset: 0;
+  display: block;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.portfolio-bp.is-podium .bp-head {
+  position: absolute;
+  z-index: 3;
+  left: 48px;
+  /* The lab page had no site chrome (34px); here it clears the fixed logo chip
+     and the section dial, where every other section header starts. */
+  top: 92px;
+  display: block;
+  margin: 0;
+  pointer-events: none;
+}
+.bp-idx {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.bp-idx-n {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 0;
+  color: var(--accent-deep);
+}
+.bp-idx-rule {
+  width: 40px;
+  height: 2px;
+  background: var(--accent);
+}
+.portfolio-section.portfolio-bp.is-podium .bp-title {
+  margin: 8px 0 0;
+  font-family: var(--font-dot);
+  font-weight: 700;
+  font-size: clamp(44px, 7.4vw, 120px);
+  line-height: 0.9;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+.portfolio-bp.is-podium .bp-stats {
+  position: absolute;
+  z-index: 3;
+  left: 48px;
+  bottom: 34px;
+  display: flex;
+  gap: 28px;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+}
+.portfolio-bp.is-podium .bp-stat-rule {
+  display: none;
+}
+.portfolio-bp.is-podium .bp-stat {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.portfolio-bp.is-podium .bp-stat-num {
+  margin: 0;
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: clamp(28px, 3.2vw, 46px);
+  line-height: 1;
+  color: var(--accent);
+}
+.portfolio-bp.is-podium .bp-stat-label {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.bp-podium,
 .bp-podium-stage {
   position: absolute;
   inset: 0;
@@ -674,28 +775,26 @@
 }
 .bp-podium-card {
   position: absolute;
-  z-index: 2;
-  left: 0;
-  top: 50%;
-  width: min(320px, 23vw);
-  display: grid;
-  gap: 6px;
+  z-index: 4;
+  left: 48px;
+  bottom: 150px;
+  width: min(320px, calc(100vw - 32px));
   padding: 18px 20px;
   background: var(--bg-surface);
   border: 1px solid var(--ink-hairline);
   box-shadow: 0 1px 0 rgba(13, 14, 16, 0.04), 0 24px 48px -32px rgba(194, 61, 0, 0.18);
   pointer-events: none;
-  transform: translateY(-50%);
   transition:
-    opacity var(--t-fast) var(--ease-out),
-    transform var(--t-base) var(--ease-out);
+    opacity 0.22s var(--ease-out),
+    transform 0.32s var(--ease-out);
 }
 .bp-podium-card.is-hidden {
   opacity: 0;
-  transform: translateY(calc(-50% + 8px));
+  transform: translateY(8px);
 }
 .bp-podium-cat,
 .bp-podium-ctx {
+  display: block;
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
   font-weight: 600;
@@ -703,40 +802,29 @@
   text-transform: uppercase;
 }
 .bp-podium-cat { color: var(--accent-text); }
-.bp-podium-ctx { color: var(--ink-muted); }
-.bp-podium-title {
-  margin: 0;
+.bp-podium-ctx { margin-top: 6px; color: var(--ink-muted); }
+.portfolio-section .bp-podium-title {
+  margin: 6px 0 0;
   font: 600 17px/1.25 var(--font-display);
-  color: var(--ink);
+  letter-spacing: 0;
   text-transform: none;
+  color: var(--ink);
 }
 .bp-podium-metric {
+  display: block;
+  margin-top: 8px;
   font-family: var(--font-pixel);
   font-weight: 700;
   font-size: 36px;
   line-height: 1;
   color: var(--accent);
 }
-.bp-podium-blurb {
-  margin: 2px 0 0;
-  font-size: var(--fs-sub);
+.portfolio-section .bp-podium-blurb {
+  margin: 8px 0 0;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--ink-muted);
 }
-.bp-podium-count {
-  position: absolute;
-  z-index: 2;
-  right: 0;
-  top: 0;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-muted);
-  pointer-events: none;
-}
-.bp-podium-count b { color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   .bp-podium-card { transition: none; }
 }
