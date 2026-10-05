@@ -29,14 +29,14 @@
     "ridges": 28
   },
   "well": {
-    "pad": 0.036,
+    "pad": 0.069,
     "depth": 0.24,
     "corner": 0.2
   },
   "keys": {
-    "gap": 0.048,
+    "gap": 0.012,
     "height": 0.62,
-    "taper": 0.78,
+    "taper": 0.84,
     "topBevel": 0.06,
     "bevelSegs": 5,
     "cornerBase": 0.1,
