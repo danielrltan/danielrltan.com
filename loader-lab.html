@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>Loader Lab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&family=VT323&display=swap" rel="stylesheet" />
+    <!-- Dev-only: not a vite build input, so it never ships. `npm run dev`
+         then open /loader-lab.html. -->
+  </head>
+  <body>
+    <header class="lab-bar">
+      <strong>Loader lab</strong>
+      <div class="lab-ctl" role="group" aria-label="Load speed">
+        <button data-dur="1200" class="is-on">Real · 1.2s</button>
+        <button data-dur="4000">Slow · 4s</button>
+        <button data-dur="8000">Very slow · 8s</button>
+      </div>
+      <button id="replay">Replay</button>
+    </header>
+    <main id="grid" class="lab-grid"></main>
+    <script type="module" src="/src/loading/lab.ts"></script>
+  </body>
+</html>

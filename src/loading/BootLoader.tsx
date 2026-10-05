@@ -8,7 +8,17 @@ import {
 } from "./types";
 import { reducedMotion } from "../motion";
 import { clamp01 } from "../math";
+import { readLoadStats, startLoadStats } from "./loadStats";
+import type { LoaderVariant } from "./variants/shared";
 import "./boot-loader.css";
+
+/** `?loader=1..6` previews an alternative 3D look (src/loading/variants). The
+ *  variants chunk only loads when asked for; no param = the plain count. */
+const VARIANT_ID = (() => {
+  if (typeof location === "undefined") return 0;
+  const id = Number(new URLSearchParams(location.search).get("loader"));
+  return id >= 1 && id <= 6 ? id : 0;
+})();
 
 /**
  * Live loading overlay shown during html.loading-active.
@@ -47,6 +57,9 @@ export function BootLoader() {
   const countRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef({ combinedPct, climaxReady });
   liveRef.current = { combinedPct, climaxReady };
+  // What the count clock is showing, for a ?loader= variant to draw.
+  const shownRef = useRef({ p: 0, n: 0 });
+  const stageRef = useRef<HTMLDivElement>(null);
 
   // Count clock (motion spec W7.13): elapsed-time driven, eased with
   // outQuad (see below) over TIMELINE_FLOOR_MS (it decelerates into 100 rather than
@@ -82,6 +95,7 @@ export function BootLoader() {
         p = COUNT_PRE_CLIMAX_MAX * outQuad(lin);
       }
       const n = done ? 100 : Math.floor(p * 100 + 1e-6);
+      shownRef.current = { p, n };
       if (n !== shown && countRef.current) {
         shown = n; // at most one DOM write per displayed integer
         countRef.current.textContent = String(n);
@@ -95,6 +109,33 @@ export function BootLoader() {
     raf = requestAnimationFrame(tick);
     return () => {
       if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  // ?loader=N: mount the variant and give it every frame (it keeps animating
+  // through the hold and the fade) until the loader unmounts.
+  useEffect(() => {
+    if (!VARIANT_ID) return;
+    startLoadStats();
+    let raf = 0;
+    let dead = false;
+    let variant: LoaderVariant | null = null;
+    import("./variants").then(({ VARIANTS }) => {
+      const info = VARIANTS.find((v) => v.id === VARIANT_ID);
+      if (dead || !info || !stageRef.current) return;
+      const v = info.create(stageRef.current, reducedMotion.value);
+      variant = v;
+      const loop = (now: number) => {
+        const { p, n } = shownRef.current;
+        v.frame(now, p, n, readLoadStats());
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+    });
+    return () => {
+      dead = true;
+      if (raf) cancelAnimationFrame(raf);
+      variant?.destroy();
     };
   }, []);
 
@@ -152,9 +193,13 @@ export function BootLoader() {
       className={`boot-loader${reveal ? " is-complete" : ""}`}
       aria-hidden="true"
     >
-      <div className="boot-loader__count" ref={countRef}>
-        0
-      </div>
+      {VARIANT_ID ? (
+        <div className="ldr-host" ref={stageRef} />
+      ) : (
+        <div className="boot-loader__count" ref={countRef}>
+          0
+        </div>
+      )}
     </div>
   );
 }
