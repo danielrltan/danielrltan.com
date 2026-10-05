@@ -78,8 +78,6 @@ interface Hit {
 
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 const pad2 = (n: number) => String(n).padStart(2, "0");
-const fmtCoord = (n: number) =>
-  (n < 0 ? "−" : "+") + String(Math.abs(Math.round(n))).padStart(4, "0");
 
 function makeRng(seed: number) {
   let s = seed;
@@ -89,8 +87,6 @@ function makeRng(seed: number) {
 export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, wakeRef }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const hxRef = useRef<HTMLElement>(null);
-  const hyRef = useRef<HTMLElement>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   // Focus view: index of the open photo (null = closed) + where it opened from.
   const [open, setOpen] = useState<number | null>(null);
@@ -220,7 +216,6 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, wakeRef 
     let hoverKey = "";
     let ownsCursor = false;
     let dirty = true;
-    let lastXY = "";
     let lastProgress = progressRef.current;
 
     // ---------- drawing ----------
@@ -320,14 +315,6 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, wakeRef 
         ctx!.textBaseline = "middle";
         ctx!.fillText(label, hr.x + 7, hr.y + hr.h + 12.5);
         (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = "0px";
-      }
-      // HUD coordinates (text written only when it changes).
-      const xy = `${fmtCoord(-px / 10)}|${fmtCoord(-yCam / 10)}`;
-      if (xy !== lastXY) {
-        lastXY = xy;
-        const [a, b] = xy.split("|");
-        if (hxRef.current) hxRef.current.textContent = a;
-        if (hyRef.current) hyRef.current.textContent = b;
       }
       const wv = Math.round(warp * 100) / 100;
       if (wv !== lastWarpVar) {
@@ -672,16 +659,6 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, wakeRef 
       </div>
       <div className="recents-vignette" aria-hidden />
       <div className="recents-cross" aria-hidden />
-      <div className="recents-hud recents-hud--xy" aria-hidden>
-        <span>
-          X <b ref={hxRef}>+0000</b>&nbsp; Y <b ref={hyRef}>+0000</b>
-        </span>
-      </div>
-      <div className="recents-hud recents-hud--count" aria-hidden>
-        <span>
-          <b>{N || ""}</b> frames &middot; <b>&infin;</b>
-        </span>
-      </div>
       {typeof document !== "undefined" &&
         createPortal(
           <div

@@ -209,29 +209,6 @@
 .recents-cross::before { left: 5px; top: 0; width: 1px; height: 11px; }
 .recents-cross::after { top: 5px; left: 0; width: 11px; height: 1px; }
 
-.recents-hud {
-  position: absolute;
-  z-index: 4;
-  bottom: 28px;
-  display: flex;
-  pointer-events: none;
-  font-family: var(--font-body);
-  font-size: var(--fs-meta);
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-muted);
-}
-.recents-hud > span {
-  background: var(--bg-page);
-  padding: 6px 8px;
-  box-shadow: 0 0 0 1px var(--ink-hairline);
-}
-.recents-hud b { color: var(--ink); font-weight: 600; }
-.recents-hud--xy { left: 6vw; }
-.recents-hud--xy b { display: inline-block; min-width: 5ch; text-align: right; }
-.recents-hud--count { right: 6vw; }
 
 /* Focus view: portalled to <body> (the stage clips, and an ancestor may
    transform). Above the status bar / menu, below the scroll cover (9500)
@@ -329,9 +306,6 @@
 .recents-chev--r { transform: scaleX(-1); }
 
 @media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
-  .recents-hud { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
-  .recents-hud--xy { left: 16px; }
-  .recents-hud--count { right: 16px; }
   .recents-head-plate { width: 100vw; height: 40svh; }
 }
 
