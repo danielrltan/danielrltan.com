@@ -162,7 +162,7 @@ def set_origin(ob, g_point):
     bpy.ops.object.origin_set(type="ORIGIN_CURSOR")
 
 
-def map_top(ob, mat, top_y, cx, cz, size_x, size_z, tol=1e-3):
+def map_top(ob, mat, top_y, cx, cz, size_x, size_z, tol=1e-3, min_up=0.999):
     """Faces that are flat and facing up at top_y get `mat` and a planar UV
     covering size_x x size_z centred on (cx, cz). Other faces keep slot 0."""
     if mat.name not in [m.name for m in ob.data.materials]:
@@ -177,7 +177,7 @@ def map_top(ob, mat, top_y, cx, cz, size_x, size_z, tol=1e-3):
     for f in bm.faces:
         n = (mw.to_3x3() @ f.normal).normalized()
         c = mw @ f.calc_center_median()
-        is_top = n.dot(up) > 0.999 and abs(c.z - top_y) < tol
+        is_top = n.dot(up) > min_up and abs(c.z - top_y) < tol
         for loop in f.loops:
             p = mw @ loop.vert.co
             gx, gz = p.x, -p.y
@@ -338,15 +338,31 @@ collar = cylinder("knob_collar", case_in, Y1 - 0.01, Y1 + KN["collarH"], knob_cx
 kb0 = Y1 + KN["collarH"]
 kb1 = kb0 + KN["h"]
 knob = cylinder("knob", KN["r"], kb0, kb1, knob_cx, knob_cz, segs=72, mat=MAT_BODY)
-# Knurled grip: shallow vertical grooves around the side.
+# Round the TOP edge first (the bottom sits inside the casing). Done before
+# the grooves on purpose: a bevel modifier clamps itself against nearby
+# geometry, and grooves ending just under the rim clamped it to ~nothing.
+bm = bmesh.new()
+bm.from_mesh(knob.data)
+top_edges = [e for e in bm.edges if all(abs(v.co.z - (kb1 - (kb0 + kb1) / 2)) < 1e-4 for v in e.verts)]
+bmesh.ops.bevel(bm, geom=top_edges, offset=KN["topBevel"], offset_type="OFFSET", segments=8,
+                profile=0.5, affect="EDGES", clamp_overlap=False)
+bm.to_mesh(knob.data)
+bm.free()
+# Knurled grip: shallow vertical grooves around the side, stopping below the
+# rounded rim.
 for i in range(KN["ridges"]):
     a = i / KN["ridges"] * 2 * math.pi
     gx = knob_cx + math.cos(a) * (KN["r"] + 0.012)
     gz = knob_cz + math.sin(a) * (KN["r"] + 0.012)
-    groove = cylinder("groove", 0.028, kb0 + 0.09, kb1 - 0.1, gx, gz, segs=8)
+    groove = cylinder("groove", 0.028, kb0 + 0.06, kb1 - KN["topBevel"] - 0.03, gx, gz, segs=8)
     boolean(knob, groove)
-bevel(knob, KN["topBevel"], 5, angle=50)
-map_top(knob, MAT_ICON["cat"], kb1, knob_cx, knob_cz, (KN["r"] - KN["topBevel"]) * 2 * 1.06, (KN["r"] - KN["topBevel"]) * 2 * 1.06)
+activate(knob)
+bpy.ops.object.shade_smooth_by_angle(angle=math.radians(35), keep_sharp_edges=True)
+# The cat's white face wraps over the rounded rim (faces facing mostly up within
+# the bevel band), so rounding the edge never shrinks the cat. Mapped at the
+# size it had with the old 0.07 rim.
+CAT = (KN["r"] - 0.07) * 2 * 1.06
+map_top(knob, MAT_ICON["cat"], kb1, knob_cx, knob_cz, CAT, CAT, tol=KN["topBevel"] + 0.01, min_up=0.35)
 set_origin(knob, (knob_cx, (kb0 + kb1) / 2, knob_cz))
 # The collar is part of the static frame (it doesn't spin).
 activate(collar)
