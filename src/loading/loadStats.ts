@@ -21,6 +21,24 @@ export interface LoadStats {
   bytesPerSec: number;
   /** most recent resource's file name, for tickers. */
   last: string;
+  /** every resource seen, in arrival order (shared array, do not mutate). */
+  entries: LoadEntry[];
+}
+
+export interface LoadEntry {
+  bytes: number;
+  kind: "doc" | "script" | "style" | "font" | "image" | "data";
+  cached: boolean;
+}
+
+function kindOf(e: PerformanceResourceTiming): LoadEntry["kind"] {
+  if (e.entryType === "navigation") return "doc";
+  const n = e.name.split("?")[0];
+  if (/\.(woff2?|ttf|otf)$/.test(n) || /fonts\.gstatic/.test(n)) return "font";
+  if (/\.(png|jpe?g|webp|avif|gif|svg)$/.test(n)) return "image";
+  if (/\.css$/.test(n) || /fonts\.googleapis/.test(n)) return "style";
+  if (/\.(m?js|tsx?|jsx)$/.test(n) || e.initiatorType === "script") return "script";
+  return "data";
 }
 
 let started = false;
@@ -30,12 +48,14 @@ let files = 0;
 let cached = 0;
 let netSpanEnd = 0;
 let last = "";
+const entries: LoadEntry[] = [];
 
 function add(e: PerformanceResourceTiming) {
   const t = e.transferSize || 0;
   const size = t || e.encodedBodySize || 0;
   files++;
   bytes += size;
+  entries.push({ bytes: size, kind: kindOf(e), cached: !t });
   if (t > 0) {
     netBytes += t;
     netSpanEnd = Math.max(netSpanEnd, e.responseEnd);
@@ -75,6 +95,7 @@ export function readLoadStats(): LoadStats {
     cached,
     bytesPerSec: span > 0 ? netBytes / span : 0,
     last,
+    entries,
   };
 }
 

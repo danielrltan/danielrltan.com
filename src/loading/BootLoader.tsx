@@ -12,12 +12,12 @@ import { readLoadStats, startLoadStats } from "./loadStats";
 import type { LoaderVariant } from "./variants/shared";
 import "./boot-loader.css";
 
-/** `?loader=1..6` previews an alternative 3D look (src/loading/variants). The
+/** `?loader=1..12` previews an alternative 3D look (src/loading/variants). The
  *  variants chunk only loads when asked for; no param = the plain count. */
 const VARIANT_ID = (() => {
   if (typeof location === "undefined") return 0;
   const id = Number(new URLSearchParams(location.search).get("loader"));
-  return id >= 1 && id <= 6 ? id : 0;
+  return id >= 1 && id <= 12 ? id : 0;
 })();
 
 /**
@@ -49,6 +49,8 @@ export function BootLoader() {
   // gone: the fade finished → unmount.
   const [reveal, setReveal] = useState(false);
   const [gone, setGone] = useState(false);
+  // A ?loader= variant that paints its own field and plays its own exit.
+  const [ownExit, setOwnExit] = useState(false);
 
   // The count is written straight to its text node: no React commit per frame
   // (it used to setState ~every frame from a 0.14-per-frame chase lerp, which
@@ -60,6 +62,8 @@ export function BootLoader() {
   // What the count clock is showing, for a ?loader= variant to draw.
   const shownRef = useRef({ p: 0, n: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
+  // performance.now() when the reveal (fade / variant exit) began.
+  const revealAtRef = useRef(0);
 
   // Count clock (motion spec W7.13): elapsed-time driven, eased with
   // outQuad (see below) over TIMELINE_FLOOR_MS (it decelerates into 100 rather than
@@ -128,10 +132,17 @@ export function BootLoader() {
       // Readouts freeze the frame the count lands on 100: the hold and the
       // fade after it are not load time.
       let final: ReturnType<typeof readLoadStats> | null = null;
+      let first = true;
       const loop = (now: number) => {
         const { p, n } = shownRef.current;
         if (n >= 100 && !final) final = readLoadStats();
-        v.frame(now, p, n, final ?? readLoadStats());
+        const at = revealAtRef.current;
+        const exit = at ? clamp01((now - at) / LOADER_FADE_MS) : 0;
+        v.frame(now, p, n, final ?? readLoadStats(), exit);
+        // Its first frame has painted the orange: the scrim can step aside
+        // and leave the exit to the variant.
+        if (first && info.ownsExit) setOwnExit(true);
+        first = false;
         raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
@@ -181,6 +192,7 @@ export function BootLoader() {
     if (!reveal) return;
     if (!revealStartSentRef.current) {
       revealStartSentRef.current = true;
+      revealAtRef.current = performance.now();
       window.dispatchEvent(new Event("loader-reveal-start"));
     }
     const t = window.setTimeout(() => {
@@ -194,7 +206,7 @@ export function BootLoader() {
 
   return (
     <div
-      className={`boot-loader${reveal ? " is-complete" : ""}`}
+      className={`boot-loader${reveal ? " is-complete" : ""}${ownExit ? " is-own-exit" : ""}`}
       aria-hidden="true"
     >
       {VARIANT_ID ? (

@@ -298,3 +298,102 @@
 }
 .ldr-pl__pct { font-size: min(15cqmin, 130px); }
 .ldr-pl__time { font-size: min(5.5cqmin, 44px); opacity: 0.92; }
+
+/* Shared text block under a canvas scene (batch 2). */
+.ldr-pin, .ldr-sky, .ldr-sock, .ldr-gim, .ldr-plane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+/* 7 · Pinscreen --------------------------------------------------------- */
+.ldr-pin { top: calc(46cqh + min(17cqw, 26cqh)); }
+.ldr-pin__rate {
+  font-size: min(6cqmin, 48px);
+  padding: 0.12em 0.45em;
+  border: 2px solid #fff;
+}
+
+/* 8 · Data skyline ------------------------------------------------------ */
+.ldr-sky { top: calc(46cqh + min(29cqw, 27cqh)); }
+.ldr-sky__pct { font-size: min(14cqmin, 120px); }
+.ldr-sky__meta { display: flex; gap: 1.4em; font-size: min(5.5cqmin, 44px); opacity: 0.92; }
+
+/* 9 · Windsock ---------------------------------------------------------- */
+.ldr-sock { top: 0; }
+.ldr-sock__pct { font-size: min(14cqmin, 120px); }
+.ldr-sock__rate { font-size: min(5.5cqmin, 44px); opacity: 0.92; }
+
+/* 10 · Gimbal iris ------------------------------------------------------ */
+.ldr-gim { top: calc(45cqh - min(9cqmin, 76px)); }
+.ldr-gim__pct { font-size: min(18cqmin, 150px); line-height: 1; }
+.ldr-gim__meta {
+  position: absolute;
+  top: calc(min(9cqmin, 76px) + min(34cqw, 34cqh));
+  display: flex;
+  gap: 1.4em;
+  font-size: min(5.5cqmin, 44px);
+  opacity: 0.92;
+}
+
+/* 11 · Paper plane ------------------------------------------------------ */
+.ldr-plane { top: calc(42cqh + min(32cqw, 32cqh)); }
+.ldr-plane__pct { font-size: min(14cqmin, 120px); }
+.ldr-plane__time { font-size: min(5.5cqmin, 44px); opacity: 0.92; }
+
+/* 12 · Speedcube -------------------------------------------------------- */
+.ldr-cube {
+  --s: min(9cqmin, 66px);
+  --g: calc(var(--s) * 1.04);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.ldr-cube__scene {
+  width: calc(var(--s) * 6);
+  height: calc(var(--s) * 5.2);
+  perspective: calc(var(--s) * 24);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ldr-cube__world {
+  position: relative;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  transition: scale 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ldr-cube.is-solved .ldr-cube__world { scale: 1.12; }
+.ldr-cube__cubie {
+  position: absolute;
+  transform-style: preserve-3d;
+}
+.ldr-cube__f {
+  position: absolute;
+  width: var(--s);
+  height: var(--s);
+  left: calc(var(--s) / -2);
+  top: calc(var(--s) / -2);
+  background: #4a1800;
+  backface-visibility: hidden;
+}
+.ldr-cube__st {
+  position: absolute;
+  inset: 7%;
+  border-radius: 14%;
+}
+.ldr-cube__pct { font-size: min(13cqmin, 110px); margin-top: calc(var(--s) * 0.1); }
+.ldr-cube__meta { display: flex; gap: 1.4em; font-size: min(5cqmin, 40px); opacity: 0.92; }
+
+/* Variants that own their exit paint the orange themselves. */
+.boot-loader.is-own-exit,
+.boot-loader.is-own-exit.is-complete {
+  background: transparent;
+  opacity: 1;
+  transition: none;
+}

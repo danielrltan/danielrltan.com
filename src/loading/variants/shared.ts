@@ -7,8 +7,9 @@ import type { LoadStats } from "../loadStats";
  * pull the three chunk), at most a few hundred elements.
  */
 export interface LoaderVariant {
-  /** p: shown progress 0..1, n: the integer shown (100 only once done). */
-  frame(now: number, p: number, n: number, s: LoadStats): void;
+  /** p: shown progress 0..1, n: the integer shown (100 only once done).
+   *  exit: 0 until the reveal starts, then 0..1 across LOADER_FADE_MS. */
+  frame(now: number, p: number, n: number, s: LoadStats, exit: number): void;
   destroy(): void;
 }
 
@@ -16,6 +17,9 @@ export interface VariantInfo {
   id: number;
   name: string;
   create(host: HTMLElement, reduced: boolean): LoaderVariant;
+  /** The variant paints its own orange field and plays its own exit (iris,
+   *  fly-off) over the revealed hero, instead of the scrim's opacity fade. */
+  ownsExit?: boolean;
 }
 
 export const INK = "#ffffff";
@@ -77,4 +81,45 @@ export function mix(a: string, b: string, t: number) {
   const ch = (s: number) =>
     Math.round(((pa >> s) & 255) * (1 - t) + ((pb >> s) & 255) * t);
   return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+}
+
+/** Damped spring step (semi-implicit Euler). zeta < 1 overshoots. */
+export function spring(
+  st: { x: number; v: number },
+  target: number,
+  dt: number,
+  k = 170,
+  zeta = 0.6,
+) {
+  st.v += (k * (target - st.x) - 2 * zeta * Math.sqrt(k) * st.v) * dt;
+  st.x += st.v * dt;
+}
+
+export const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+export const inOutCubic = (t: number) =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+export const outCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+export const inCubic = (t: number) => t * t * t;
+
+/** Frame-time delta in seconds, clamped so a stalled tab doesn't explode a
+ *  spring. */
+export function clock() {
+  let last = -1;
+  return (now: number) => {
+    const dt = last < 0 ? 1 / 60 : Math.min(0.05, (now - last) / 1000);
+    last = now;
+    return dt;
+  };
+}
+
+/** Network rate → 0..1 "wind", log scale 20 KB/s .. 10 MB/s; cached = 0.35. */
+export const rateLevel = (bps: number) =>
+  bps > 0 ? clamp01(Math.log10(bps / 2e4) / 2.7) : 0.35;
+
+/** Fill a polygon of projected points. */
+export function poly(ctx: CanvasRenderingContext2D, pts: number[][]) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
 }
