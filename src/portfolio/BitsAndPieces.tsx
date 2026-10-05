@@ -30,6 +30,7 @@ const COUNT_UP_MS = 1100;
 const GHOST_TRAVEL = 0.1;
 
 type Category =
+  | "Launch"
   | "Hackathon"
   | "Competition"
   | "Grant"
@@ -55,6 +56,17 @@ interface Entry {
 // so card edges align top-to-bottom with no ragged trailing column.
 const ENTRIES: Entry[] = [
   // --- Hero row: the three marquee placements, each with a verified metric ---
+  // Headliner (owner, 2026-10-05): Poddle placed #25 on Product Hunt on its
+  // Oct 3 2026 launch day. It leads the hero row; TRREB moved down to the
+  // supporting grid so the row stays three-up.
+  {
+    category: "Launch",
+    title: "Poddle on Product Hunt",
+    metric: "#25",
+    context: "Oct 3, 2026",
+    blurb: "Launch-day ranking for Poddle, my motion-controlled online pickleball game.",
+    featured: true,
+  },
   {
     category: "Hackathon",
     title: "Hack The 6ix",
@@ -77,9 +89,6 @@ const ENTRIES: Entry[] = [
     metric: "2nd",
     context: "$2,500",
     blurb: "Toronto Regional Real Estate Board student competition.",
-    // Third hero: carries a verified metric ("2nd") + context ("$2,500"), so
-    // it earns the headline row alongside Hack The 6ix and WFN Odyssey.
-    featured: true,
   },
   // --- Supporting grid ---
   {
@@ -114,11 +123,6 @@ const ENTRIES: Entry[] = [
     category: "Scholarship",
     title: "Chris Binns-Smith Memorial",
     metric: "$5,000",
-  },
-  {
-    category: "Leadership",
-    title: "Director of Flagship",
-    blurb: "Western AI Club.",
   },
   {
     category: "Leadership",
@@ -336,7 +340,7 @@ export function BitsAndPieces() {
         <div ref={marqueeRef} className="bp-marquee-strip">
           {Array.from({ length: 3 }).map((_, k) => (
             <span key={k}>
-              HACKATHON / COMPETITION / GRANT / LEADERSHIP /
+              LAUNCH / HACKATHON / COMPETITION / GRANT / LEADERSHIP /
               SCHOLARSHIP /{" "}
             </span>
           ))}
