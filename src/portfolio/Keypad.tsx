@@ -87,17 +87,18 @@ const PIN_VH = 0.6;
  *  stage is the rice backdrop with its glow already up (GLOW_APPROACH_MARGIN),
  *  so it never reads as a dead section. */
 const DROP_TRIGGER_VH = 0.2;
-/** Late / fast arrival: compress the 680 ms timeline to FAST_TOTAL_S when the
+/** Late / fast arrival: compress the 800 ms timeline to FAST_TOTAL_S when the
  *  trigger is seen with the section top already above FAST_LATE_VH (a late IO
  *  delivery at speed, or a jump that lands past the line), or the approach
  *  (glow line -> trigger line) ran faster than FAST_APPROACH_PX_S. Trigger to
- *  pin release is 0.2 + 0.6 = 0.8 vh (720 px at 900 tall): the full 680 ms
- *  settles inside it up to ~1060 px/s, the compressed 460 ms up to ~1560 px/s.
+ *  pin release is 0.2 + 0.6 = 0.8 vh (720 px at 900 tall): the full 800 ms
+ *  settles inside it up to ~900 px/s (its 560 ms pull up to ~1290 px/s), the
+ *  compressed 460 ms up to ~1560 px/s.
  *  Never applied behind an overlay (menu / covered jumps). */
 const FAST_LATE_VH = 0.08;
 const FAST_APPROACH_PX_S = 1100;
 const FAST_TOTAL_S = 0.46;
-const DROP_TOTAL_S = 0.68; // mirrors KeypadScene's DROP_TOTAL_S
+const DROP_TOTAL_S = 0.8; // mirrors KeypadScene's DROP_TOTAL_S
 /** The glow releases earlier, on approach (section top within 1.1vh). */
 const GLOW_APPROACH_MARGIN = "0px 0px 10% 0px";
 /** A full-screen overlay that hides the page: the section menu (while open
@@ -105,11 +106,11 @@ const GLOW_APPROACH_MARGIN = "0px 0px 10% 0px";
  *  jump to Contact lands at pin start while the menu scrim is still up, so
  *  the drop waits behind this gate and plays once the page is visible. */
 const MENU_ROOT_SELECTOR = ".navx-spill-root";
-const SCROLL_COVER_ON_SELECTOR = ".scroll-cover.is-on";
-/** The menu root counts as covering until its fade-out drops below this.
- *  The scroll-cover releases as soon as it starts its 200 ms fade-out: the
- *  fall's slow inCubic head (model still above the canvas top) overlaps it,
- *  and contact lands well after the cover has cleared. */
+const SCROLL_COVER_SELECTOR = ".scroll-cover";
+/** The menu root AND the scroll-cover count as covering until their fade-out
+ *  drops below this. (The cover used to release at the start of its 200 ms
+ *  fade, hidden by the old fall's slow head; the pull is fastest at the
+ *  start, so it now waits for the fade to finish.) */
 const COVER_OPACITY_EPS = 0.05;
 /** Safety cap on the cover wait, so a renamed overlay can never strand the
  *  keypad at its pre-drop pose. */
@@ -117,7 +118,9 @@ const COVER_WAIT_MAX_MS = 2500;
 
 /** True while an overlay hides the page (see MENU_ROOT_SELECTOR). */
 function pageCovered(): boolean {
-  if (document.querySelector(SCROLL_COVER_ON_SELECTOR)) return true;
+  const cover = document.querySelector<HTMLElement>(SCROLL_COVER_SELECTOR);
+  if (cover && (cover.classList.contains("is-on") || Number(getComputedStyle(cover).opacity) > COVER_OPACITY_EPS))
+    return true;
   const menu = document.querySelector<HTMLElement>(MENU_ROOT_SELECTOR);
   if (!menu) return false;
   if (menu.dataset.open === "true") return true;

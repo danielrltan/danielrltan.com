@@ -14,7 +14,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useIsMobile } from "../useIsMobile";
 import { isLowTier } from "../capabilityTier";
 import { isTuneMode } from "../tuneMode";
-import { clampDt, ease, reducedMotion } from "../motion";
+import { clampDt, reducedMotion } from "../motion";
 import { markSectionCanvasCreated } from "../useSectionCanvasMount";
 import type { KeypadDropState } from "../portfolio/Keypad";
 
@@ -34,7 +34,7 @@ const TUNE_MODE = isTuneMode("keypad");
  *
  * Motion:
  *   Drop-in: the model waits HIDDEN above the canvas, then a
- *            680 ms time-based fall + impact (DROP_* below) once Keypad.tsx
+ *            800 ms time-based pull + float settle (DROP_* below) once Keypad.tsx
  *            arms it. Nothing here is scroll-linked.
  *   Desktop: face-tracking, the model turns toward the viewport cursor
  *            (±15° on X and Y, damped at PARALLAX_LERP_RATE).
@@ -103,18 +103,20 @@ const FLOAT_FADE_S = 1.0; // float amplitude fade-in after the landing
 //                 with no keypad.
 //   Then a time-based timeline, armed ONCE by Keypad.tsx when the section top
 //   crosses DROP_TRIGGER_VH (held while an overlay covers the page), advanced
-//   by clamped frame dt (frame-rate independent), never scroll-bound. 680 ms:
-//   0 -> 420 ms   FALL: from out of frame, ease.inCubic, so it accelerates
-//                 INTO the landing: it enters the stage ~250 ms in and slams
-//                 down over the last ~170 ms (long enough to read the shape).
-//   420 ms        CONTACT, in the same frame: the thud shockwave through the
-//                 rice (stampPulse) + a dial kick (kickDial).
-//   420 -> 640 ms SQUASH: scaleY 0.94 / XZ 1.03 at contact, decaying to 1,
-//                 through the same scale path as the knob-press wobble.
-//   420 -> 680 ms REBOUND: the fall overshoots rest by DROP_REBOUND, then
-//                 springs back up those +0.10 units with an ease.outBack
-//                 shape (a slam past rest and a recoil into it).
-//   680 ms        LANDED: the idle float clock starts.
+//   by clamped frame dt (frame-rate independent), never scroll-bound.
+//   "A quick pull down, still kind of floating" (owner, 2026-10-05: the old
+//   accelerating fall + outBack recoil + squash + 1.35 thud ripple read as a
+//   SLAM). 800 ms:
+//   0 -> 560 ms   PULL: from out of frame on an ease-out (quartic), so it is
+//                 fastest while it ENTERS the stage and decelerates into
+//                 place: no impact frame, nothing to stop dead.
+//   250 ms        TOUCHDOWN, ~90% of the travel done: a soft ripple through
+//                 the rice (stampPulse at LAND_PULSE, a third of a press) +
+//                 a small dial nudge (kickDial). No squash.
+//   250 -> 800 ms SETTLE: a shallow dip below rest and back (DROP_DIP, a sin²
+//                 bell, smaller than the idle bob), with a slight lean while
+//                 it descends (PULL_TILT) that levels out as it arrives.
+//   800 ms        LANDED: the idle float clock starts.
 // A late or fast arrival (Keypad.tsx sets dropRef.rate > 1) plays the same
 // timeline compressed, so the landing still happens inside the pin.
 // Every value is a named constant so the owner can tune the feel here.
@@ -127,35 +129,29 @@ const PARK_MIN = 0.8;
 const PARK_MAX = 10;
 // Probe offset (world units) used only to measure px-per-unit in parkHeight.
 const PARK_PROBE = 4;
-const DROP_FALL_S = 0.42; // fall duration; contact fires when t crosses it
-const DROP_SQUASH_S = 0.22; // squash decay after contact (ends at 640 ms)
-const DROP_TOTAL_S = 0.68; // rebound done; float bob may begin
-const DROP_REBOUND = 0.1; // contact overshoot below rest, recovered by outBack
-const LAND_SQUASH = 0.06; // scaleY 1 - 0.06 = 0.94, XZ 1 + 0.03 = 1.03
-const LAND_PULSE = { strength: 1.35, x: 0.5, y: 0.58 } as const; // thud ripple
-const LAND_DIAL_KICK = 12; // rad/s added to the dial at contact
+const DROP_ARRIVE_S = 0.56; // the pull's travel is done (ease-out quartic)
+const DROP_FALL_S = 0.25; // touchdown beat (~90% travelled): soft ripple + nudge
+const DROP_TOTAL_S = 0.8; // settle done; float bob may begin
+const DROP_DIP = 0.05; // settle dip below rest (world units; the idle bob is 0.12)
+const PULL_TILT = THREE.MathUtils.degToRad(3); // lean while descending, 0 at rest
+const LAND_PULSE = { strength: 0.45, x: 0.5, y: 0.58 } as const; // soft touchdown ripple
+const LAND_DIAL_KICK = 3; // rad/s added to the dial at touchdown
 
-/** Model Y offset (world units, 0 = rest) at drop time t (s), falling from
- *  `height`. Continuous at the contact (both branches give -DROP_REBOUND)
- *  and exactly 0 at the end. */
-function dropOffsetY(t: number, height: number): number {
-  if (t < DROP_FALL_S) {
-    const u = t / DROP_FALL_S;
-    return (height + DROP_REBOUND) * (1 - ease.inCubic(u)) - DROP_REBOUND;
-  }
-  if (t < DROP_TOTAL_S) {
-    const u = (t - DROP_FALL_S) / (DROP_TOTAL_S - DROP_FALL_S);
-    return -DROP_REBOUND * (1 - ease.outBack(u));
-  }
-  return 0;
+/** Remaining pull (1 = parked, 0 = arrived) at drop time t: an ease-out
+ *  quartic, fastest at the start (while the model is still entering). */
+function pullLeft(t: number): number {
+  const u = Math.min(1, Math.max(0, t / DROP_ARRIVE_S));
+  return Math.pow(1 - u, 4);
 }
 
-/** Landing squash amount (0..LAND_SQUASH) at drop time t: full on the
- *  contact frame, decaying (quadratic ease-out) to 0 by 560 ms. */
-function landSquash(t: number): number {
-  const u = (t - DROP_FALL_S) / DROP_SQUASH_S;
-  if (u < 0 || u >= 1) return 0;
-  return LAND_SQUASH * (1 - u) * (1 - u);
+/** Model Y offset (world units, 0 = rest) at drop time t (s), pulled down from
+ *  `height`, plus the settle dip: a sin² bell (zero slope at both ends) from
+ *  the touchdown to the end, so it eases into the idle float with no step. */
+function dropOffsetY(t: number, height: number): number {
+  if (t >= DROP_TOTAL_S) return 0;
+  const s = Math.min(1, Math.max(0, (t - DROP_FALL_S) / (DROP_TOTAL_S - DROP_FALL_S)));
+  const bell = Math.sin(Math.PI * s);
+  return height * pullLeft(t) - DROP_DIP * bell * bell;
 }
 
 /** Parked height (world units above rest) that puts the model's bottom edge
@@ -221,7 +217,7 @@ interface KeypadMotionDebug {
   coverWaitMs?: number | null;
   /** Parked height (world units above rest) the fall starts from. */
   parkHeight?: number;
-  /** Timeline rate (1 = 600 ms; > 1 = compressed late/fast arrival). */
+  /** Timeline rate (1 = 800 ms; > 1 = compressed late/fast arrival). */
   rate?: number;
   approachPxS?: number | null;
   /** Live model Y offset from rest (world units), written every frame. */
@@ -736,7 +732,7 @@ function SceneContents({
       d.t = Math.max(d.t, DROP_TOTAL_S);
       d.contactFired = true;
     } else if (d.armed && d.t < DROP_TOTAL_S) {
-      // Plain clampDt (MAX_DT 0.1 s): the drop keeps its 600 ms wall-clock
+      // Plain clampDt (MAX_DT 0.1 s): the drop keeps its 800 ms wall-clock
       // length down to 10 fps. Contact is a latch, so a large step still
       // fires it, just on that frame.
       if (!firstFrameRef.current && startedRef.current) d.t += clampDt(dt) * d.rate;
@@ -761,13 +757,14 @@ function SceneContents({
     }
     g.position.y = dropOffsetY(dropT, sh.h);
 
-    // No pre-drop hover: the model waits out of frame (see HIDDEN above).
-    const hoverPitch = 0;
+    // No pre-drop hover: the model waits out of frame (see HIDDEN above). While
+    // it is pulled down it leans slightly, levelling out as it arrives.
+    const hoverPitch = rm || dropT >= DROP_TOTAL_S ? 0 : PULL_TILT * pullLeft(dropT);
     const hoverRoll = 0;
 
-    // CONTACT: the frame the fall crosses DROP_FALL_S. Thud shockwave from
-    // beneath the keypad + dial kick, both in THIS frame, so the ripple has
-    // a visible cause (the device slamming into the space it lands in).
+    // TOUCHDOWN: the frame the pull crosses DROP_FALL_S. A soft ripple from
+    // beneath the keypad + a small dial nudge, both in THIS frame, so the
+    // ripple still has a visible cause (the device settling into the space).
     if (!d.contactFired && dropT >= DROP_FALL_S) {
       d.contactFired = true;
       stampPulse(pulsesRef.current, LAND_PULSE.strength, LAND_PULSE.x, LAND_PULSE.y);
@@ -819,7 +816,7 @@ function SceneContents({
     // applied (neutral when idle) so the group scale resets cleanly.
     let wobX = 0;
     let wobZ = 0;
-    let sq = rm ? 0 : landSquash(dropT);
+    let sq = 0;
     const wStart = wobbleStartRef.current;
     if (wStart > 0) {
       const age = (performance.now() - wStart) / 1000;
