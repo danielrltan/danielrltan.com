@@ -57,13 +57,13 @@ interface Entry {
 const ENTRIES: Entry[] = [
   // --- Hero row: the three marquee placements, each with a verified metric ---
   // Headliner (owner, 2026-10-05): Poddle placed #25 on Product Hunt on its
-  // Oct 3 2026 launch day. It leads the hero row; TRREB moved down to the
+  // Oct 4 2026 launch day. It leads the hero row; TRREB moved down to the
   // supporting grid so the row stays three-up.
   {
     category: "Launch",
     title: "Poddle on Product Hunt",
     metric: "#25",
-    context: "Oct 3, 2026",
+    context: "Oct 4, 2026",
     blurb: "Launch-day ranking for Poddle, my motion-controlled online pickleball game.",
     featured: true,
   },
