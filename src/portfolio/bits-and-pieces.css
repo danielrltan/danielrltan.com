@@ -574,12 +574,12 @@
   /* HEAD STACK (mobile): tiny "05" marker tag above a full-width wordmark. */
   .bp-head {
     grid-template-columns: 1fr;
-    row-gap: 4px;
+    row-gap: 0;
   }
   .bp-marker {
     grid-column: 1;
     grid-row: auto;
-    margin-bottom: 2px;
+    margin-bottom: var(--hdr-num-gap-mobile);
   }
   .bp-index,
   .bp-title,
@@ -708,7 +708,7 @@
   color: var(--accent-deep);
 }
 .portfolio-section.portfolio-bp.is-podium .bp-title {
-  margin: 8px 0 0;
+  margin: var(--hdr-num-gap) 0 0;
   font-family: var(--font-dot);
   font-weight: 700;
   font-size: clamp(44px, 7.4vw, 120px);

@@ -64,6 +64,12 @@
   --hdr-eyebrow: var(--ink-muted);   /* cool muted eyebrow (was warm #6c6660) */
   /* Consistent header rhythm, shared by every section's corner header. */
   --hdr-gap-title: clamp(40px, 5vw, 64px); /* title → content breathing room */
+  /* Section number → title gap, line box to line box (the pixel faces add
+     ~3-5px of their own). ONE value for every corner header: owner
+     2026-10-05 found the "0X" tags congested, with gaps anywhere from 2px
+     (Recents) to 20px (Play). */
+  --hdr-num-gap: clamp(16px, 1.5vw, 24px);
+  --hdr-num-gap-mobile: 14px;
 
   /* TOP-STRIP CLEARANCE. The fixed brand tile (RoomHUD, top-left: 20px top +
      54px tall) and the SectionDial (top-right) own the first ~74px of the
@@ -121,7 +127,7 @@
   letter-spacing: 0.01em;
   /* The section number is the header's orange moment (deep orange reads). */
   color: var(--hdr-num-color, var(--accent-deep));
-  margin: 0 0 4px 0;
+  margin: 0;
   display: inline-flex;
   align-items: baseline;
   gap: 8px;
@@ -262,6 +268,10 @@
      min-height + HUD-cleared headers, so they're unaffected. */
   .portfolio-section {
     padding: 64px 0;
+    /* A menu jump lands a flow section this far down (scroll.ts honours
+       scroll-margin-top), so its number tag clears the fixed top strip
+       instead of sitting 6px under the logo tile. */
+    scroll-margin-top: 16px;
   }
   .portfolio-section--hero {
     padding: 0;
@@ -288,7 +298,7 @@
      Sections with their own header classes follow the same rule in their
      own sheets (about.css, macintosh.css, work-timeline.css). */
   .section-marker {
-    margin: 0 0 4px 0;
+    margin: 0;
     font-size: var(--hdr-num-mobile);
   }
   .portfolio-section h2 {

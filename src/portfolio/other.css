@@ -42,7 +42,8 @@
   top: 0;
   left: 0;
   right: 0;
-  padding: 7vh 6vw 0;
+  /* Floors at the top strip: at 7vh the "04" sat under the logo tile. */
+  padding: max(var(--top-strip-clear, 86px), 7vh) 6vw 0;
   z-index: 5;
   pointer-events: none;
   display: grid;
@@ -86,7 +87,7 @@
   grid-row: 2;
   /* Clear gap under the eyebrow — the pixel title's line-height:0.9 overflows
      upward, so the old 2px let it crowd/overlap the number tag. */
-  margin: clamp(16px, 2.2vh, 34px) 0 0;
+  margin: var(--hdr-num-gap) 0 0;
   /* OffBit pixel display on the shared GIANT --hdr-title scale — SAME
      wordmark size as every other section. UPPERCASE, 0.9 line-height,
      tight tracking. "SOME INTERESTS" wraps to stacked huge lines
@@ -261,6 +262,7 @@
     font-size: var(--hdr-num-mobile, clamp(13px, 3.4vw, 18px));
   }
   .portfolio-other .other-title {
+    margin-top: var(--hdr-num-gap-mobile);
     /* Phone ceiling so "SOME INTERESTS" stays bold but never forces horizontal
        scroll; it floats over the top of the full-screen cluster. */
     font-size: var(--hdr-title-mobile, clamp(40px, 12vw, 64px));
@@ -281,7 +283,7 @@
 @media (orientation: landscape) and (max-height: 500px) {
   .portfolio-other .other-title {
     font-size: min(var(--hdr-title-mobile, 64px), 11vh);
-    margin-top: 8px;
+    margin-top: var(--hdr-num-gap-mobile);
   }
 }
 

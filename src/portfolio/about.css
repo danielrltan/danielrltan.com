@@ -161,7 +161,7 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--hdr-num-gap);
   opacity: 0;
   transform: translateY(var(--reveal-lift));
   /* Match the card reveal: strong ease-out, brisk --t-med, so the banner
@@ -234,7 +234,7 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
 .about-crumb-idx {
   font-family: var(--font-pixel, "Offbit", monospace);
   font-weight: 700;
-  font-size: clamp(18px, 1.8vw, 26px);
+  font-size: var(--hdr-num, clamp(13px, 1.4vw, 22px));
   letter-spacing: 0.01em;
   line-height: 0.9;
   color: var(--accent-deep, #c23d00);
@@ -1119,7 +1119,7 @@ html[data-hero-covering] .render-frame {
 
   .about-banner {
     align-items: flex-start;
-    gap: 8px;
+    gap: var(--hdr-num-gap-mobile);
   }
   /* Enter reveal (useReveal latches .is-revealed as a cell crosses the line):
      cells that enter together cascade by their batch index --i. */

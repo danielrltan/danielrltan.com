@@ -156,7 +156,8 @@
    intentionally narrow so the orbit is the visual centerpiece. */
 .mac-col {
   position: absolute;
-  top: 9vh;
+  /* Clear of the section dial above it (74px) on short windows too. */
+  top: max(var(--top-strip-clear, 86px), 9vh);
   right: 3vw;
   z-index: 2;
   /* Widened (was 300px) to host the GIANT corner wordmark: "THE KIT"
@@ -231,7 +232,7 @@
   /* Clear gap under the eyebrow: the pixel title's line-height:0.9 overflows
      its box UPWARD, so a 2px gap let the wordmark overlap the "02 / 06" eyebrow.
      This margin clears the overflow + leaves real breathing room. */
-  margin: clamp(14px, 1.8vh, 26px) 0 0;
+  margin: var(--hdr-num-gap) 0 0;
   line-height: 0.9;
   white-space: nowrap;
 }
@@ -426,7 +427,7 @@
   }
   .portfolio-mac h2 {
     font-size: var(--hdr-title-mobile, clamp(40px, 12.5vw, 64px));
-    margin-top: 4px;
+    margin-top: var(--hdr-num-gap-mobile);
     /* Stacked layout has full width; the word must stay intact (no
        hyphenation, no mid-word break) and scale down instead. keep-all +
        hyphens:none prevent the pixel glyphs from fracturing into a second

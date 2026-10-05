@@ -86,7 +86,7 @@
 .work-ledger-head-text {
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.2vh, 16px);
+  gap: var(--hdr-num-gap);
   min-width: 0;
 }
 .work-ledger-head-left {
@@ -124,7 +124,8 @@
   line-height: 0.9;
   letter-spacing: 0.01em;
   color: var(--hdr-ink, var(--ink));
-  margin: clamp(4px, 0.8vh, 12px) 0 0;
+  /* The head-text gap (--hdr-num-gap) owns the space above. */
+  margin: 0;
   min-width: 0;
   overflow-wrap: break-word;
 }
@@ -188,7 +189,10 @@
   }
   .portfolio-work .work-ledger-title {
     font-size: clamp(34px, min(4.5vw, 7.6vh), 64px);
-    margin-top: clamp(2px, 0.5vh, 8px);
+    margin-top: 0;
+  }
+  .work-ledger-head-text {
+    gap: var(--hdr-num-gap-mobile);
   }
   .portfolio-work .work-acc-company {
     font-size: clamp(22px, min(3.4vw, 5.6vh), 50px);
@@ -219,6 +223,15 @@
     padding-top: max(84px, clamp(40px, 7vh, 96px));
   }
 }
+/* Wider screens: the logo tile sits in the side margin, but the frame's
+   24-40px top padding left the "03" tag crowding the window's top edge
+   (owner 2026-10-05: congested section numbers). 56px is as much as the
+   pinned frame can spare: the last row still fits at 1440x720 and 1536x864. */
+@media (min-width: 1381px) and (min-height: 501px) {
+  .work-ledger {
+    padding-top: 56px;
+  }
+}
 /* Short frames in that band also get back the ~65px the clearance adds, so the
    last row stays above the fold for the whole pin (1280x720: last row at 661
    of 720 before the clearance). The wordmark shrinks a step and the header's
@@ -231,7 +244,7 @@
     padding-bottom: clamp(6px, 0.9vh, 10px);
   }
   .work-ledger-head-text {
-    gap: 4px;
+    gap: var(--hdr-num-gap-mobile);
   }
   .portfolio-work .work-ledger-title {
     font-size: clamp(34px, min(4.5vw, 6.2vh), 64px);
@@ -757,6 +770,9 @@
      desktop-only (sections.css MOBILE INDEX RULE). */
   .work-ledger-index {
     display: none;
+  }
+  .work-ledger-head-text {
+    gap: var(--hdr-num-gap-mobile);
   }
   /* Header stacks on narrow screens: the giant wordmark + the résumé CTA can't
      share a row, so the CTA drops below, left-aligned. */

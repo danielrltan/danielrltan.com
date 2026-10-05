@@ -558,7 +558,7 @@ export function jumpToSection(which: number | string, opts: ScrollOpts = {}): Pr
   const y =
     st && Number.isFinite(progress)
       ? st.start + progress * (st.end - st.start)
-      : docTop(el);
+      : docTop(el) - (parseFloat(getComputedStyle(el).scrollMarginTop) || 0);
   return scrollToY(y, { preset: "jump", ...opts });
 }
 

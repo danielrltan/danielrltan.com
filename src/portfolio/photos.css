@@ -63,7 +63,7 @@
 .portfolio-photos .other-gallery-title {
   grid-column: 1;
   grid-row: 2;
-  margin: 2px 0 0;
+  margin: var(--hdr-num-gap) 0 0;
   font-family: var(--font-dot);
   font-weight: 700;
   font-size: var(--hdr-title, clamp(48px, 13vw, 190px));
@@ -100,7 +100,8 @@
   top: 0;
   left: 0;
   right: 0;
-  padding: 6vh 6vw 0;
+  /* Floors at the top strip: at 6vh the "06" sat under the logo tile. */
+  padding: max(var(--top-strip-clear, 86px), 6vh) 6vw 0;
   z-index: 5;
   pointer-events: none;
   display: grid;
@@ -326,7 +327,7 @@
     padding: var(--top-strip-clear-mobile, calc(max(72px, 9vh) + env(safe-area-inset-top, 0px))) 6vw 0;
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
-    row-gap: 6px;
+    row-gap: 0;
     /* Scroll-linked entrance keeps its character; its rise uses the shared
        phone lift like every compact section entrance. */
     --reveal-lift: var(--reveal-lift-mobile, 12px);
@@ -336,6 +337,7 @@
     font-size: var(--hdr-num-mobile, clamp(13px, 3.4vw, 18px));
   }
   .portfolio-photos .other-gallery-title {
+    margin-top: var(--hdr-num-gap-mobile);
     font-size: var(--hdr-title-mobile, var(--hdr-title, clamp(48px, 13vw, 190px)));
   }
 }
