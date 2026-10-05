@@ -66,7 +66,7 @@ const DIAL_KICK = Math.PI * 2 * 1.1;
 // At 0.9, velocity halves every ~0.77s.
 export const DIAL_DAMP = 0.9;
 // Reflection strength of the studio environment on the metal parts only.
-const METAL_ENV_INTENSITY = 0.85;
+const METAL_ENV_INTENSITY = 0.75; // 0.85 read overexposed (owner)
 // World units the dial rises per unit of scale growth: hover +0.12 lifts it
 // ~0.07 (owner: 1.4 / ~0.17 "goes up too much").
 const DIAL_LIFT = 0.6;

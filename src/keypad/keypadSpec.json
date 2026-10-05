@@ -57,7 +57,7 @@
   },
   "materials": {
     "BrushedMetal": {
-      "hex": "#c9cdd3",
+      "hex": "#abaeb3",
       "rough": 0.16,
       "metal": 0.95
     },
