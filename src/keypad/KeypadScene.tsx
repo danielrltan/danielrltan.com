@@ -33,8 +33,8 @@ const TUNE_MODE = isTuneMode("keypad");
  *     <KeypadModel/> the gltf + click/hover/spin logic
  *
  * Motion:
- *   Drop-in: the model HOVERS (parked, bobbing) from section entry, then a
- *            600 ms time-based fall + impact (DROP_* below) once Keypad.tsx
+ *   Drop-in: the model waits HIDDEN above the canvas, then a
+ *            680 ms time-based fall + impact (DROP_* below) once Keypad.tsx
  *            arms it. Nothing here is scroll-linked.
  *   Desktop: face-tracking, the model turns toward the viewport cursor
  *            (±15° on X and Y, damped at PARALLAX_LERP_RATE).
@@ -93,44 +93,43 @@ const FLOAT_ROLL_PERIOD = 8.3;
 const FLOAT_ROLL_AMP = THREE.MathUtils.degToRad(1.3);
 const FLOAT_FADE_S = 1.0; // float amplitude fade-in after the landing
 
-// DROP-IN (motion spec W6): "hovering, then drops".
-//   PARKED (before the arm): the model hangs PARK height above rest with its
-//                 bottom edge at PARK_BOTTOM_FRAC of the canvas, so the moment
-//                 the section scrolls in, the keypad's lower body is already
-//                 there under the marquee, bobbing gently (the float bob and
-//                 sway). It never shows an empty stage on arrival (the owner's
-//                 "empty section" complaint; the hidden-start version left
-//                 ~0.4-0.75 s of bare dotted stage at 1000-1500 px/s).
-//   Then a time-based timeline, armed by Keypad.tsx when the section top
+// DROP-IN: "one and done, a surprise" (owner, 2026-10-04; replaces spec W6's
+// "hovering, then drops", whose parked keypad sat half in view, bobbing, for
+// as long as the user scrolled slowly or paused before the trigger line).
+//   HIDDEN (before the arm): the model waits just ABOVE the canvas, its
+//                 bottom edge PARK_BOTTOM_FRAC of the canvas height above the
+//                 top edge, so the canvas clips it out entirely: the section
+//                 arrives as the rice stage (its glow already up on approach)
+//                 with no keypad.
+//   Then a time-based timeline, armed ONCE by Keypad.tsx when the section top
 //   crosses DROP_TRIGGER_VH (held while an overlay covers the page), advanced
-//   by clamped frame dt (frame-rate independent). 600 ms total:
-//   0 -> 340 ms   FALL: from the parked height, ease.inCubic (GSAP power2.in),
-//                 so it accelerates INTO the landing: a drop, not a soft
-//                 glide. The hover bob/sway fades out across the fall.
-//   340 ms        CONTACT, in the same frame: the thud shockwave through the
+//   by clamped frame dt (frame-rate independent), never scroll-bound. 680 ms:
+//   0 -> 420 ms   FALL: from out of frame, ease.inCubic, so it accelerates
+//                 INTO the landing: it enters the stage ~250 ms in and slams
+//                 down over the last ~170 ms (long enough to read the shape).
+//   420 ms        CONTACT, in the same frame: the thud shockwave through the
 //                 rice (stampPulse) + a dial kick (kickDial).
-//   340 -> 560 ms SQUASH: scaleY 0.94 / XZ 1.03 at contact, decaying to 1,
+//   420 -> 640 ms SQUASH: scaleY 0.94 / XZ 1.03 at contact, decaying to 1,
 //                 through the same scale path as the knob-press wobble.
-//   340 -> 600 ms REBOUND: the fall overshoots rest by DROP_REBOUND, then
+//   420 -> 680 ms REBOUND: the fall overshoots rest by DROP_REBOUND, then
 //                 springs back up those +0.10 units with an ease.outBack
-//                 shape (a slam past the hover height and a recoil into it).
-//   600 ms        LANDED: the idle float clock starts.
+//                 shape (a slam past rest and a recoil into it).
+//   680 ms        LANDED: the idle float clock starts.
 // A late or fast arrival (Keypad.tsx sets dropRef.rate > 1) plays the same
 // timeline compressed, so the landing still happens inside the pin.
 // Every value is a named constant so the owner can tune the feel here.
-// Parked pose: the model's bottom edge sits this fraction of the canvas height
-// below the canvas top. At 1440x900 that is ~1.3 units (~260 px) above rest:
-// the lower keypad (caps, side buttons) shows the instant the section enters,
-// and the fall is still a clear drop. Derived per canvas size from the
-// projected rest pose (parkHeight), clamped to [PARK_MIN, PARK_MAX] units.
-const PARK_BOTTOM_FRAC = 0.5;
+// Hidden pose: the model's bottom edge sits this fraction of the canvas height
+// ABOVE the canvas top (negative = above), so not a pixel shows before the
+// drop. Derived per canvas size from the projected rest pose (parkHeight),
+// clamped to [PARK_MIN, PARK_MAX] units.
+const PARK_BOTTOM_FRAC = -0.04;
 const PARK_MIN = 0.8;
-const PARK_MAX = 3;
+const PARK_MAX = 10;
 // Probe offset (world units) used only to measure px-per-unit in parkHeight.
 const PARK_PROBE = 4;
-const DROP_FALL_S = 0.34; // fall duration; contact fires when t crosses it
-const DROP_SQUASH_S = 0.22; // squash decay after contact (ends at 560 ms)
-const DROP_TOTAL_S = 0.6; // rebound done; float bob may begin
+const DROP_FALL_S = 0.42; // fall duration; contact fires when t crosses it
+const DROP_SQUASH_S = 0.22; // squash decay after contact (ends at 640 ms)
+const DROP_TOTAL_S = 0.68; // rebound done; float bob may begin
 const DROP_REBOUND = 0.1; // contact overshoot below rest, recovered by outBack
 const LAND_SQUASH = 0.06; // scaleY 1 - 0.06 = 0.94, XZ 1 + 0.03 = 1.03
 const LAND_PULSE = { strength: 1.35, x: 0.5, y: 0.58 } as const; // thud ripple
@@ -179,17 +178,38 @@ function parkHeight(
   g.position.y = PARK_PROBE;
   g.updateMatrixWorld(true);
   const high = projectToViewport(g, camera, canvas);
+  const fallback = (PARK_MIN + PARK_MAX) / 2;
+  const r = canvas.getBoundingClientRect();
+  let h = fallback;
+  if (rest && high && r.height > 0) {
+    const pxPerUnit = (rest.bottom - high.bottom) / PARK_PROBE;
+    if (pxPerUnit > 0) {
+      // Linear first guess, then refine by re-projecting: perspective makes
+      // px-per-unit shrink with height, so the linear guess parks the model
+      // too LOW (its underside peeked out under the marquee). Secant steps
+      // on the real projected bottom edge converge in 2-3 iterations.
+      const target = r.top + PARK_BOTTOM_FRAC * r.height;
+      h = (rest.bottom - target) / pxPerUnit;
+      let h0 = 0, b0 = rest.bottom;
+      for (let i = 0; i < 4; i++) {
+        g.position.y = h;
+        g.updateMatrixWorld(true);
+        const p = projectToViewport(g, camera, canvas);
+        if (!p) break;
+        if (Math.abs(p.bottom - target) < 1) break;
+        const slope = (p.bottom - b0) / (h - h0 || 1e-6);
+        h0 = h;
+        b0 = p.bottom;
+        if (!(slope < 0)) break;
+        h += (target - p.bottom) / slope;
+      }
+    }
+  }
   g.position.y = pos;
   g.rotation.copy(rot);
   g.scale.copy(scl);
   g.updateMatrixWorld(true);
-  const fallback = (PARK_MIN + PARK_MAX) / 2;
-  if (!rest || !high) return fallback;
-  const r = canvas.getBoundingClientRect();
-  const pxPerUnit = (rest.bottom - high.bottom) / PARK_PROBE;
-  if (!(pxPerUnit > 0) || !(r.height > 0)) return fallback;
-  const need = (rest.bottom - r.top - PARK_BOTTOM_FRAC * r.height) / pxPerUnit;
-  return Math.min(PARK_MAX, Math.max(PARK_MIN, need));
+  return Math.min(PARK_MAX, Math.max(PARK_MIN, h));
 }
 
 /** Measurement mirror for the e2e probes (like window.__heroMotion). A cheap
@@ -609,9 +629,6 @@ function SceneContents({
   const tiltState = useRef({ x: BASE_TILT_X, y: BASE_TILT_Y });
   // Parked height, cached per canvas size (see parkHeight).
   const startHRef = useRef({ h: (PARK_MIN + PARK_MAX) / 2, w: 0, hgt: 0 });
-  // Hover clock (clamped-dt accumulator) for the parked bob/sway; it keeps
-  // running through the fall, where the hover amplitude fades to 0.
-  const hoverTimeRef = useRef(0);
   // Monotonic float clock (clamped-dt accumulator) so the idle bob/sway
   // advances smoothly and never pops when the demand-loop canvas resumes
   // after being scrolled off-screen (a raw clock delta could jump). It only
@@ -744,23 +761,9 @@ function SceneContents({
     }
     g.position.y = dropOffsetY(dropT, sh.h);
 
-    // PARKED HOVER: the float bob + sway while the model waits at its parked
-    // height, fading out linearly across the fall (gate 1 -> 0 by contact),
-    // so the hover hands over to the drop without a jump. Off under reduced
-    // motion (the model is already at rest there).
-    const hoverGate = rm ? 0 : Math.max(0, 1 - dropT / DROP_FALL_S);
-    let hoverPitch = 0;
-    let hoverRoll = 0;
-    if (hoverGate > 0) {
-      hoverTimeRef.current += clampDt(dt);
-      const ht = hoverTimeRef.current;
-      g.position.y +=
-        Math.sin((ht / FLOAT_BOB_PERIOD) * Math.PI * 2) * FLOAT_BOB_AMP * hoverGate;
-      hoverPitch =
-        Math.sin((ht / FLOAT_PITCH_PERIOD) * Math.PI * 2) * FLOAT_PITCH_AMP * hoverGate;
-      hoverRoll =
-        Math.sin((ht / FLOAT_ROLL_PERIOD) * Math.PI * 2) * FLOAT_ROLL_AMP * hoverGate;
-    }
+    // No pre-drop hover: the model waits out of frame (see HIDDEN above).
+    const hoverPitch = 0;
+    const hoverRoll = 0;
 
     // CONTACT: the frame the fall crosses DROP_FALL_S. Thud shockwave from
     // beneath the keypad + dial kick, both in THIS frame, so the ripple has

@@ -28,9 +28,10 @@ gsap.registerPlugin(ScrollTrigger);
  *   - GLOW: an approach observer (section top within 1.1vh) releases the
  *     RiceBlob wash, which fades in at λ 2.2, so the stage is already
  *     blooming when the model falls.
- *   - HOVER: until the drop arms, KeypadScene parks the model above its rest
- *     pose with its lower body already in the canvas, bobbing. The section
- *     never arrives as an empty stage ("hovering, then drops").
+ *   - HIDDEN: until the drop arms, KeypadScene holds the model just above
+ *     the canvas, clipped out of view, so the drop is a one-and-done surprise
+ *     (owner, 2026-10-04: the old parked half-in-view hover read as "held
+ *     halfway until you scroll").
  *   - DROP: a second observer ARMS a one-shot, time-based drop once the
  *     section top crosses DROP_TRIGGER_VH of the viewport. If an overlay
  *     (menu scrim, scroll-cover) still hides the page, the drop holds at
@@ -40,7 +41,7 @@ gsap.registerPlugin(ScrollTrigger);
  *     advances by frame dt. Time-based on purpose: the owner found a
  *     scroll-bound drop "overwhelming" (it arrived exactly as fast as they
  *     scrolled) and an after-the-fact drop "empty". A late or fast arrival
- *     (FAST_* below) plays the same timeline compressed to 420 ms so the
+ *     (FAST_* below) plays the same timeline compressed to 460 ms so the
  *     landing still happens inside the pin.
  *   - PIN: one GSAP pin (id "keypad-pin", start "top top", end +PIN_VH of the
  *     viewport) is a pure dwell beat before the footer. No scrub, no onUpdate.
@@ -65,41 +66,38 @@ gsap.registerPlugin(ScrollTrigger);
 
 const TUNE_MODE = isTuneMode("keypad");
 
-/** Pin length as a fraction of the viewport height. Pure dwell, sized so the
- *  600 ms drop lands inside the pin at scroll speeds up to ~1500 px/s. */
+/** Pin length as a fraction of the viewport height. Pure dwell: the drop
+ *  (armed 0.2 vh before it) makes contact inside it up to ~1500 px/s. */
 const PIN_VH = 0.6;
-/** The drop arms when the section top crosses this fraction of the viewport
- *  height (spec W6.2: 0.45, i.e. 405 px at 900 tall, band 375-435 px).
- *  Applied as an IO bottom inset; the IO callback lands about a frame after
- *  the crossing, so fast scrolls read a few px under the line.
+/** The drop arms ONCE when the section top crosses this fraction of the
+ *  viewport height, then plays its fixed time-based timeline (never
+ *  scroll-bound). Applied as an IO bottom inset; the callback lands about a
+ *  frame after the crossing.
  *
- *  Owner history: an early tuning armed late and made a fast scroll to
- *  Contact read as ~1.2-2.2 s of empty section "loading in" (the owner's
- *  "queued in wrong / delaying it" report). The glow still releases on
- *  approach (GLOW_APPROACH_MARGIN) so the stage is never dead, and the drop
- *  is a fixed 600 ms from this line, never scroll-bound.
- *
- *  The keypad is not hidden while it waits: KeypadScene parks it in view,
- *  hovering, from section entry, so the line only decides when it DROPS.
- *
- *  OWNER DECISION PENDING: at 1440x900 the landed model spans section y
- *  ~89-751, so a user who stops right on this line (or scrolls slower than
- *  ~600 px/s) sees the landing with its lower ~150-200 px below the fold.
- *  Arming lower (~0.15-0.2) keeps the whole landing in view but lengthens
- *  the hover before the drop (and with it the time to the thud). */
-const DROP_TRIGGER_VH = 0.45;
-/** Late / fast arrival: compress the 600 ms timeline to FAST_TOTAL_S when the
+ *  Owner, 2026-10-04: the old 0.45 line with a PARKED keypad (half in view,
+ *  bobbing, from section entry) read as "held halfway until you scroll"; the
+ *  keypad now waits out of frame and the drop should be "one and done, a
+ *  surprise". Why 0.2: at 1440x900 the landed model spans section y ~89-751
+ *  (~0.1-0.83 vh), so 0.2 is the LATEST line at which someone who stops
+ *  scrolling right on it still sees the whole landing (bottom at ~1.03 vh, a
+ *  sliver of the base at most) and the EARLIEST that keeps the empty stage
+ *  long enough to set up the surprise. It sits 0.2 vh before the "top top"
+ *  pin, so anyone scrolling through gets the contact inside the pin: at
+ *  1500 px/s contact lands ~0.5 vh into the 0.6 vh pin. Before the line the
+ *  stage is the rice backdrop with its glow already up (GLOW_APPROACH_MARGIN),
+ *  so it never reads as a dead section. */
+const DROP_TRIGGER_VH = 0.2;
+/** Late / fast arrival: compress the 680 ms timeline to FAST_TOTAL_S when the
  *  trigger is seen with the section top already above FAST_LATE_VH (a late IO
- *  delivery at speed), or the approach (glow line -> trigger line) ran faster
- *  than FAST_APPROACH_PX_S. Above the 1500 px/s acceptance speed the full
- *  600 ms settle would otherwise finish after the 0.6vh pin releases, with
- *  the model scrolling off the top. The speed bar sits above 1500 so the
- *  spec case (contact while pinned at 1500 px/s) plays the full timeline.
+ *  delivery at speed, or a jump that lands past the line), or the approach
+ *  (glow line -> trigger line) ran faster than FAST_APPROACH_PX_S. Trigger to
+ *  pin release is 0.2 + 0.6 = 0.8 vh (720 px at 900 tall): the full 680 ms
+ *  settles inside it up to ~1060 px/s, the compressed 460 ms up to ~1560 px/s.
  *  Never applied behind an overlay (menu / covered jumps). */
-const FAST_LATE_VH = 0.35;
-const FAST_APPROACH_PX_S = 1800;
-const FAST_TOTAL_S = 0.42;
-const DROP_TOTAL_S = 0.6; // mirrors KeypadScene's DROP_TOTAL_S
+const FAST_LATE_VH = 0.08;
+const FAST_APPROACH_PX_S = 1100;
+const FAST_TOTAL_S = 0.46;
+const DROP_TOTAL_S = 0.68; // mirrors KeypadScene's DROP_TOTAL_S
 /** The glow releases earlier, on approach (section top within 1.1vh). */
 const GLOW_APPROACH_MARGIN = "0px 0px 10% 0px";
 /** A full-screen overlay that hides the page: the section menu (while open
