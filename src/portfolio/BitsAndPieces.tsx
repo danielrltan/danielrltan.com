@@ -364,17 +364,14 @@ export function BitsAndPieces() {
           {narrow ? (
             <>
               <span className="section-marker bp-marker">05</span>
-              <span className="section-index bp-index">
-                05 / 07 &middot; Honours
-              </span>
             </>
           ) : (
-            // Podium layout: the trophy-lab "07" index line (05 —— 05 / 07 ·
-            // HONOURS), exactly as the owner approved it.
+            // Podium layout: the trophy-lab "07" index line, minus its
+            // "05 / 07 · Honours" text (owner: no redundant copy; the 05 is
+            // right there and the section dial reads "05 Honours").
             <div className="bp-idx">
               <span className="bp-idx-n">05</span>
               <span className="bp-idx-rule" aria-hidden />
-              <span>05 / 07 &middot; Honours</span>
             </div>
           )}
           <h2 className="bp-title">

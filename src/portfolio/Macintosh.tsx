@@ -623,7 +623,9 @@ export function Macintosh() {
         <span className="section-marker" data-reveal={revealAttr}>
           02
         </span>
-        <span className="section-index">02 / 07 &middot; Projects</span>
+        {/* No "02 / 07 · Projects" index line: the 02 marker and the title
+            already say it, and the section dial shows "02 Projects" (owner:
+            no redundant copy). */}
         <h2 data-reveal={revealAttr}>
           <ScrambleText text="Projects" />
         </h2>

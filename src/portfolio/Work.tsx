@@ -516,7 +516,6 @@ export function Work() {
           <div className="work-ledger-head-text">
             <div className="work-ledger-head-left">
               <span className="work-ledger-num">03</span>
-              <span className="work-ledger-index">03 / 07 · Work</span>
             </div>
             <h2 className="work-ledger-title">
               <ScrambleText text="Experience" />
