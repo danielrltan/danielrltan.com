@@ -23,14 +23,59 @@
   pointer-events: none;
 }
 
-/* The climbing count — the only element. Sitewide pixel display face. */
-.boot-loader__count {
-  font-family: "VT323", var(--font-pixel, "Offbit", monospace);
-  font-size: clamp(120px, 26vw, 340px);
-  line-height: 0.8;
-  letter-spacing: 0.01em;
+/* Once the gimbal has painted its own orange field (gimbal.ts), the scrim's
+   background steps aside and the exit is the gimbal's iris opening onto the
+   hero, not an opacity fade. Until then (and if the canvas never paints) the
+   plain orange scrim above stands in. */
+.boot-loader.is-painted,
+.boot-loader.is-painted.is-complete {
+  background: transparent;
+  opacity: 1;
+  transition: none;
+}
+
+/* The gimbal stage. Container units so the count and readouts scale with it;
+   the ring geometry itself is sized in gimbal.ts (0.3 × the short side,
+   centred at 45% height). */
+.gimbal {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  overflow: hidden;
   color: #ffffff;
+  font-family: "VT323", var(--font-pixel, "Offbit", monospace);
   font-variant-numeric: tabular-nums;
+  line-height: 1;
+  user-select: none;
+}
+.gimbal__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* The count sits in the inner ring; index.html's static #boot-screen "0"
+   mirrors this box exactly so the hand-off doesn't jump. */
+.gimbal__text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(45cqh - min(9cqmin, 76px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+.gimbal__pct {
+  font-size: min(18cqmin, 150px);
+}
+.gimbal__meta {
+  position: absolute;
+  top: calc(min(9cqmin, 76px) + min(36cqw, 36cqh));
+  display: flex;
+  gap: 1.4em;
+  font-size: min(5.5cqmin, 44px);
+  opacity: 0.92;
 }
 
 /* Reduced motion: the count snaps to target; the fade is instant. */

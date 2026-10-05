@@ -1,7 +1,8 @@
 /**
  * Real numbers for the loader's speed readouts. The 0→100 count is a paced
- * timeline (TIMELINE_FLOOR_MS), so the variants pair it with what the browser
- * actually did: wall-clock since navigation start, bytes and files fetched.
+ * timeline (TIMELINE_FLOOR_MS), so the loader pairs it with what the browser
+ * actually did: wall-clock since navigation start, bytes and files fetched,
+ * and the network rate.
  *
  * Cached and cross-origin (no Timing-Allow-Origin, e.g. Google Fonts) entries
  * report transferSize 0; we fall back to encodedBodySize and count them as
@@ -19,26 +20,6 @@ export interface LoadStats {
   /** average network rate in bytes/s over the time spent fetching; 0 if
    *  everything came from cache. */
   bytesPerSec: number;
-  /** most recent resource's file name, for tickers. */
-  last: string;
-  /** every resource seen, in arrival order (shared array, do not mutate). */
-  entries: LoadEntry[];
-}
-
-export interface LoadEntry {
-  bytes: number;
-  kind: "doc" | "script" | "style" | "font" | "image" | "data";
-  cached: boolean;
-}
-
-function kindOf(e: PerformanceResourceTiming): LoadEntry["kind"] {
-  if (e.entryType === "navigation") return "doc";
-  const n = e.name.split("?")[0];
-  if (/\.(woff2?|ttf|otf)$/.test(n) || /fonts\.gstatic/.test(n)) return "font";
-  if (/\.(png|jpe?g|webp|avif|gif|svg)$/.test(n)) return "image";
-  if (/\.css$/.test(n) || /fonts\.googleapis/.test(n)) return "style";
-  if (/\.(m?js|tsx?|jsx)$/.test(n) || e.initiatorType === "script") return "script";
-  return "data";
 }
 
 let started = false;
@@ -47,24 +28,16 @@ let netBytes = 0;
 let files = 0;
 let cached = 0;
 let netSpanEnd = 0;
-let last = "";
-const entries: LoadEntry[] = [];
 
 function add(e: PerformanceResourceTiming) {
   const t = e.transferSize || 0;
   const size = t || e.encodedBodySize || 0;
   files++;
   bytes += size;
-  entries.push({ bytes: size, kind: kindOf(e), cached: !t });
   if (t > 0) {
     netBytes += t;
     netSpanEnd = Math.max(netSpanEnd, e.responseEnd);
   } else cached++;
-  try {
-    last = new URL(e.name).pathname.split("/").pop() || e.name;
-  } catch {
-    last = e.name;
-  }
 }
 
 /** Idempotent: starts the buffered observer once per page. */
@@ -94,8 +67,6 @@ export function readLoadStats(): LoadStats {
     files,
     cached,
     bytesPerSec: span > 0 ? netBytes / span : 0,
-    last,
-    entries,
   };
 }
 

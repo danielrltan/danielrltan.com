@@ -9,30 +9,24 @@ import {
 import { reducedMotion } from "../motion";
 import { clamp01 } from "../math";
 import { readLoadStats, startLoadStats } from "./loadStats";
-import type { LoaderVariant } from "./variants/shared";
+import { createGimbal } from "./gimbal";
 import "./boot-loader.css";
-
-/** `?loader=1..18` previews an alternative 3D look (src/loading/variants). The
- *  variants chunk only loads when asked for; no param = the plain count. */
-const VARIANT_ID = (() => {
-  if (typeof location === "undefined") return 0;
-  const id = Number(new URLSearchParams(location.search).get("loader"));
-  return id >= 1 && id <= 18 ? id : 0;
-})();
 
 /**
  * Live loading overlay shown during html.loading-active.
  *
- * ONE big pixel number climbing 0 → 100 on the International Orange scrim. When
- * it reaches 100 it does NOT immediately fade (owner: the insta-fade "looked
- * vibecoded"). Instead it HOLDS there while the hero composes BEHIND the scrim
- * (the scrim is z-9000, the hero z-3/z-11 — it composes hidden underneath), then
- * the scrim FADES OUT to reveal the fully-ready hero — a real crossfade. The
- * moment that fade STARTS the loader dispatches `loader-reveal-start`, so the
- * hero's entrance plays over the fading scrim instead of behind it. Scroll
- * stays locked (html.loading-active) the whole time; the loader dispatches
- * `loader-revealed` once it has faded, which is the page unlock (see
- * AssemblyController). The same orange field the hero sits on, so no colour jump.
+ * The gimbal iris (gimbal.ts, owner's pick from the 2026-10-04 loader lab):
+ * three nested rings tumble around the pixel count 0 → 100 on the International
+ * Orange field, locking flat one by one, with the real elapsed time and
+ * download rate under them. When the count reaches 100 it does NOT immediately
+ * leave (owner: the insta-fade "looked vibecoded"). It HOLDS while the hero
+ * composes BEHIND it (the loader is z-9000, the hero z-3/z-11), then plays its
+ * exit over LOADER_FADE_MS: the rings fly outward and the orange field irises
+ * open onto the fully-ready hero. The moment that exit STARTS the loader
+ * dispatches `loader-reveal-start`, so the hero's entrance plays through the
+ * opening iris. Scroll stays locked (html.loading-active) the whole time; the
+ * loader dispatches `loader-revealed` once the exit has run, which is the page
+ * unlock (see AssemblyController). Same orange as the hero, so no colour jump.
  */
 
 /** Slack on the provider's (100 ms-stepped) combinedPct before the count's own
@@ -49,20 +43,17 @@ export function BootLoader() {
   // gone: the fade finished → unmount.
   const [reveal, setReveal] = useState(false);
   const [gone, setGone] = useState(false);
-  // A ?loader= variant that paints its own field and plays its own exit.
-  const [ownExit, setOwnExit] = useState(false);
+  // The gimbal has painted its first frame (its own orange field): the scrim's
+  // background steps aside and the exit is the gimbal's iris, not a fade.
+  const [painted, setPainted] = useState(false);
 
-  // The count is written straight to its text node: no React commit per frame
-  // (it used to setState ~every frame from a 0.14-per-frame chase lerp, which
-  // also ran twice as fast at 120 Hz). The JSX child stays a constant "0" so
-  // the provider's ~100 ms re-renders never overwrite the written number.
-  const countRef = useRef<HTMLDivElement>(null);
+  // The count clock writes what it shows here; the gimbal reads it every frame.
+  // No React commit per frame (the count used to setState ~every frame).
   const liveRef = useRef({ combinedPct, climaxReady });
   liveRef.current = { combinedPct, climaxReady };
-  // What the count clock is showing, for a ?loader= variant to draw.
   const shownRef = useRef({ p: 0, n: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
-  // performance.now() when the reveal (fade / variant exit) began.
+  // performance.now() when the reveal (the iris exit) began.
   const revealAtRef = useRef(0);
 
   // Count clock (motion spec W7.13): elapsed-time driven, eased with
@@ -78,7 +69,6 @@ export function BootLoader() {
   useEffect(() => {
     const t0 = performance.now();
     let raf = 0;
-    let shown = -1;
     const tick = () => {
       const { combinedPct: pct, climaxReady: done } = liveRef.current;
       let p: number;
@@ -100,10 +90,6 @@ export function BootLoader() {
       }
       const n = done ? 100 : Math.floor(p * 100 + 1e-6);
       shownRef.current = { p, n };
-      if (n !== shown && countRef.current) {
-        shown = n; // at most one DOM write per displayed integer
-        countRef.current.textContent = String(n);
-      }
       if (n >= 100) {
         raf = 0;
         return;
@@ -116,48 +102,39 @@ export function BootLoader() {
     };
   }, []);
 
-  // ?loader=N: mount the variant and give it every frame (it keeps animating
-  // through the hold and the fade) until the loader unmounts.
+  // The gimbal: every frame (it keeps turning through the hold and plays the
+  // exit) until the loader unmounts.
   useEffect(() => {
-    if (!VARIANT_ID) return;
+    const stage = stageRef.current;
+    if (!stage) return;
     startLoadStats();
+    const g = createGimbal(stage, reducedMotion.value);
+    // Readouts freeze the frame the count lands on 100: the hold and the exit
+    // after it are not load time.
+    let final: ReturnType<typeof readLoadStats> | null = null;
+    let first = true;
     let raf = 0;
-    let dead = false;
-    let variant: LoaderVariant | null = null;
-    import("./variants").then(({ VARIANTS }) => {
-      const info = VARIANTS.find((v) => v.id === VARIANT_ID);
-      if (dead || !info || !stageRef.current) return;
-      const v = info.create(stageRef.current, reducedMotion.value);
-      variant = v;
-      // Readouts freeze the frame the count lands on 100: the hold and the
-      // fade after it are not load time.
-      let final: ReturnType<typeof readLoadStats> | null = null;
-      let first = true;
-      const loop = (now: number) => {
-        const { p, n } = shownRef.current;
-        if (n >= 100 && !final) final = readLoadStats();
-        const at = revealAtRef.current;
-        const exit = at ? clamp01((now - at) / LOADER_FADE_MS) : 0;
-        v.frame(now, p, n, final ?? readLoadStats(), exit);
-        // Its first frame has painted the orange: the scrim can step aside
-        // and leave the exit to the variant.
-        if (first && info.ownsExit) setOwnExit(true);
-        first = false;
-        raf = requestAnimationFrame(loop);
-      };
+    const loop = (now: number) => {
+      const { p, n } = shownRef.current;
+      if (n >= 100 && !final) final = readLoadStats();
+      const at = revealAtRef.current;
+      const exit = at ? clamp01((now - at) / LOADER_FADE_MS) : 0;
+      g.frame(now, p, n, final ?? readLoadStats(), exit);
+      if (first) setPainted(true);
+      first = false;
       raf = requestAnimationFrame(loop);
-    });
+    };
+    raf = requestAnimationFrame(loop);
     return () => {
-      dead = true;
-      if (raf) cancelAnimationFrame(raf);
-      variant?.destroy();
+      cancelAnimationFrame(raf);
+      g.destroy();
     };
   }, []);
 
   // HOLD → REVEAL. Once the count reaches 100 (climaxReady), keep it on screen
   // and wait for BOTH a deliberate beat (HERO_HOLD_MS) AND the hero having
   // composed behind the scrim (`hero-composed`), whichever is later. Only then
-  // fade the loader out to reveal the ready hero. Failsafe: reveal anyway if the
+  // play the exit to reveal the ready hero. Failsafe: reveal anyway if the
   // compose signal stalls, so the loader can't get stuck on screen.
   useEffect(() => {
     if (!climaxReady) return;
@@ -206,16 +183,10 @@ export function BootLoader() {
 
   return (
     <div
-      className={`boot-loader${reveal ? " is-complete" : ""}${ownExit ? " is-own-exit" : ""}`}
+      className={`boot-loader${reveal ? " is-complete" : ""}${painted ? " is-painted" : ""}`}
       aria-hidden="true"
     >
-      {VARIANT_ID ? (
-        <div className="ldr-host" ref={stageRef} />
-      ) : (
-        <div className="boot-loader__count" ref={countRef}>
-          0
-        </div>
-      )}
+      <div className="gimbal" ref={stageRef} />
     </div>
   );
 }

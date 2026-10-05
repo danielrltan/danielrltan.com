@@ -216,10 +216,9 @@
     <style>
       html, body { margin: 0; background: #ff4f00; }
       /* Boot screen: visible immediately on first paint, before any JS parses.
-         A minimal on-brand orange frame (SYS / BOOT chip + LOADING caption)
-         on the SAME International Orange field as the live <BootLoader> dial
-         that React mounts a moment later — so the hand-off has no colour jump,
-         only the dial fading up in the centre. Literal values only (no CSS
+         A static "0" on the SAME International Orange field as the live
+         <BootLoader> gimbal that React mounts a moment later — so the hand-off
+         has no colour jump, only the rings appearing around the count. Literal values only (no CSS
          vars): index.css has not loaded yet at first paint. React removes
          #boot-screen on mount. */
       #boot-screen {
@@ -234,13 +233,19 @@
         font-family: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
         -webkit-font-smoothing: antialiased;
       }
-      /* Mirrors the live <BootLoader>: one big pixel number, centred, so the
-         React hand-off has no jump (the static 0 just starts climbing). */
+      /* Mirrors the live <BootLoader> gimbal's count (boot-loader.css
+         .gimbal__text / .gimbal__pct, in viewport units here since the stage is
+         the viewport): the "0" sits where the inner ring's count will be, so
+         the rings simply appear around it. */
       #boot-screen .bs-count {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(45vh - min(9vmin, 76px));
+        text-align: center;
         font-family: "VT323", monospace;
-        font-size: clamp(120px, 26vw, 340px);
-        line-height: 0.8;
-        letter-spacing: 0.01em;
+        font-size: min(18vmin, 150px);
+        line-height: 1;
       }
       /* Crawler-only fallback. Hidden from sighted users (the canvas covers
          everything) but indexable. Web-filter crawlers and search engines
