@@ -484,10 +484,6 @@ function RingScene({
   const { gl, scene, camera, size } = useThree();
   const torusRef = useRef<THREE.Mesh>(null);
   const lastTRef = useRef(performance.now() / 1000);
-  // Throttle the two-pass render to ~30fps (see useFrame). The ring is a slow
-  // 26s spin, so 30 vs 60 is imperceptible and ~halves the GPU cost of the
-  // RT + fullscreen-post pipeline on weak integrated GPUs.
-  const lastRenderRef = useRef(0);
   // Latched true once the hero composition is visible; the ring renders
   // nothing before that so it never flashes ahead of the reveal.
   const revealedRef = useRef(false);
@@ -510,9 +506,6 @@ function RingScene({
   const offscreenRef = useRef(false);
   const onOffscreenRef = useRef(onOffscreen);
   onOffscreenRef.current = onOffscreen;
-  // Timestamp (ms) of the last scroll — used to PAUSE the 2-pass render during
-  // active scroll outside the hero -> About pixel iris (heroState.wiping).
-  const lastScrollRef = useRef(0);
   // Base tile grid (cols, rows) derived from the canvas size.
   const baseGridRef = useRef<THREE.Vector2 | null>(null);
   useEffect(() => {
@@ -536,7 +529,6 @@ function RingScene({
       }
     };
     const onScroll = () => {
-      lastScrollRef.current = performance.now();
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(apply);
     };
@@ -746,26 +738,14 @@ function RingScene({
     // mid-dive — user: "freezing everything" — and is gone. The dive's cost is
     // the cheap 2-pass shader, not the long-removed main-thread SVG mosaic, so
     // rendering through it is fine.)
-    const wiping = heroState.wiping;
 
-    // PERF: pause the 2-pass render during ACTIVE scroll — but ONLY when NOT
-    // wiping. Outside the iris the slow 26s spin is imperceptible, so the
-    // scroll-event pause still frees the GPU.
-    if (
-      !wiping &&
-      revealedRef.current &&
-      performance.now() - lastScrollRef.current < 140
-    ) {
-      lastTRef.current = performance.now() / 1000;
-      return;
-    }
-
+    // UNCAPPED (owner, 2026-10-05: "uncap the fps"). The ring used to render at
+    // ~24fps at rest and pause entirely during active scroll to save the
+    // 2-pass RT + post pipeline on weak GPUs; both read as choppy (the cursor-
+    // reactive glyphs updated at 24fps). Weak GPUs never get here (the low
+    // tier shows the static ring), and the loop still stops when the hero is
+    // culled / offscreen. Measured: 8.3 ms median frames at DPR 2 on M4.
     const now = performance.now() / 1000;
-    // ~24fps cap at rest (was 30): the ring is a slow 26s spin, imperceptible
-    // at 24, and every skipped frame saves the whole RT + fullscreen-post
-    // pipeline. Uncapped only while the iris is on screen (spec Q2).
-    if (!wiping && now - lastRenderRef.current < 1 / 24) return;
-    lastRenderRef.current = now;
     const dt = Math.min(0.05, now - lastTRef.current);
     lastTRef.current = now;
 

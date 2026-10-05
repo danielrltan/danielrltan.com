@@ -2688,7 +2688,10 @@ function Scene({
         (THRESHOLDS.bootEnd - THRESHOLDS.bootStart),
     );
     const now = performance.now();
-    if (now - lastTickRef.current >= 33) {
+    // Uncapped (owner, 2026-10-05: "uncap the fps"): the mirror block used to
+    // step at ~30Hz; it now runs every frame (each setState still bails when
+    // its value hasn't moved, so a static screen costs no re-render).
+    if (now - lastTickRef.current >= 0) {
       lastTickRef.current = now;
       setBootProgress((prev) => (Math.abs(prev - newBoot) > 0.02 ? newBoot : prev));
       // Terminal caret blink (~1.9Hz): flips cursorOn so the boot/desktop/detail
@@ -2701,8 +2704,8 @@ function Scene({
       // so useScreenTexture re-runs and the ASCII sphere animates.
       const fa = !narrow && !selected && p < THRESHOLDS.bootStart;
       setFloatActive((prev) => (prev === fa ? prev : fa));
-      // Screensaver throttled to ~13Hz independent of this 30Hz mirror block.
-      if (fa && now - lastFloatSpinRef.current >= 75) {
+      // Screensaver: every frame (was ~13Hz; uncapped with the mirror block).
+      if (fa && now - lastFloatSpinRef.current >= 0) {
         lastFloatSpinRef.current = now;
         setFloatSpin((s) => (s + 1) % 1000000);
       }
