@@ -6,6 +6,9 @@ import "./bits-and-pieces.css";
 import { ScrambleText } from "./ScrambleText";
 import { useReveal } from "./useReveal";
 import { ease, matches, MQ, reducedMotion } from "../motion";
+import { useMedia } from "../useMedia";
+import { useSectionCanvasMount } from "../useSectionCanvasMount";
+import { HonoursPodium } from "./honours/HonoursPodium";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -273,6 +276,11 @@ function runCountUps(root: Element): () => void {
 
 export function BitsAndPieces() {
   const sectionRef = useRef<HTMLElement>(null);
+  // Desktop: the 3D podium + tower (owner pick from the trophy lab). Narrow
+  // (<=900, or a phone on its side): the card grid, whose text stays readable
+  // where the 3D labels would be a few px tall.
+  const narrow = useMedia(MQ.narrow);
+  const podiumActive = useSectionCanvasMount(sectionRef);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const stopCountRef = useRef<() => void>(() => {});
 
@@ -396,11 +404,26 @@ export function BitsAndPieces() {
           </div>
         </dl>
 
-        <ul className="bp-grid" aria-label="Awards, grants, scholarships and leadership roles">
-          {ENTRIES.map((e, i) => (
-            <BpTile key={i} entry={e} />
-          ))}
-        </ul>
+        {narrow ? (
+          <ul className="bp-grid" aria-label="Awards, grants, scholarships and leadership roles">
+            {ENTRIES.map((e, i) => (
+              <BpTile key={i} entry={e} />
+            ))}
+          </ul>
+        ) : (
+          <>
+            <HonoursPodium entries={ENTRIES} active={podiumActive} />
+            {/* The whole list, as text, for screen readers and crawlers (the
+                podium's labels live in canvas textures). */}
+            <ul className="sr-only" aria-label="Awards, grants, scholarships and leadership roles">
+              {ENTRIES.map((e, i) => (
+                <li key={i}>
+                  {[e.category, e.title, e.metric, e.context, e.blurb].filter(Boolean).join(". ")}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     </section>
   );

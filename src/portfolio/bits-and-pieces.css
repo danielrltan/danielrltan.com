@@ -645,3 +645,98 @@
     transition: border-color var(--t-base) var(--ease-out);
   }
 }
+
+/* ======================================================================
+   3D podium (desktop, > MQ.narrow): replaces the card grid. Owner pick
+   "07" from the trophy lab. The stage box is always laid out (fixed height),
+   so mounting the WebGL canvas never changes the section's height. The card
+   on the left shows the hovered / selected entry; the scene keeps the right.
+   ====================================================================== */
+.bp-podium {
+  position: relative;
+  height: clamp(520px, 74vh, 860px);
+  margin-top: var(--space-5);
+}
+.bp-podium-stage {
+  position: absolute;
+  inset: 0;
+}
+.bp-podium-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+}
+.bp-podium-canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.bp-podium-card {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: 50%;
+  width: min(320px, 23vw);
+  display: grid;
+  gap: 6px;
+  padding: 18px 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--ink-hairline);
+  box-shadow: 0 1px 0 rgba(13, 14, 16, 0.04), 0 24px 48px -32px rgba(194, 61, 0, 0.18);
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition:
+    opacity var(--t-fast) var(--ease-out),
+    transform var(--t-base) var(--ease-out);
+}
+.bp-podium-card.is-hidden {
+  opacity: 0;
+  transform: translateY(calc(-50% + 8px));
+}
+.bp-podium-cat,
+.bp-podium-ctx {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.bp-podium-cat { color: var(--accent-text); }
+.bp-podium-ctx { color: var(--ink-muted); }
+.bp-podium-title {
+  margin: 0;
+  font: 600 17px/1.25 var(--font-display);
+  color: var(--ink);
+  text-transform: none;
+}
+.bp-podium-metric {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: 36px;
+  line-height: 1;
+  color: var(--accent);
+}
+.bp-podium-blurb {
+  margin: 2px 0 0;
+  font-size: var(--fs-sub);
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+.bp-podium-count {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  top: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+.bp-podium-count b { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) {
+  .bp-podium-card { transition: none; }
+}

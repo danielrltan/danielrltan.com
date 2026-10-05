@@ -292,7 +292,8 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
   if (!mobile) {
     await waitFor(page, () => {
       const all = [...document.querySelectorAll(".portfolio-bp .bp-tile")];
-      return all.length > 0 && all.every((t) => t.classList.contains("is-revealed"));
+      // Desktop has no tiles now (the podium); phones keep the grid.
+      return all.length === 0 || all.every((t) => t.classList.contains("is-revealed"));
     }, { timeout: 8000 });
   } else await sleep(800);
   const tiles = await page.evaluate(() => {
@@ -307,10 +308,30 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
     // Phones skip the reveal observer; CSS renders every tile in place.
     check(tiles.total > 0 && tiles.visible === tiles.total, `all Honours tiles visible (${tiles.visible}/${tiles.total})`);
   } else {
-    check(
-      tiles.total > 0 && tiles.revealed === tiles.total,
-      `all Honours tiles revealed (${tiles.revealed}/${tiles.total})`,
+    // Desktop: the 3D podium replaces the tile grid. It mounts, plays its
+    // entrance once on screen, then shows the headliner's card; ←/→ on the
+    // focused canvas steps the card; all 12 entries stay in the SR list.
+    await scrollToSelector(page, ".bp-podium");
+    const podium = await waitFor(page, () => !!document.querySelector(".bp-podium-canvas"), { timeout: 10_000 });
+    check(podium, "Honours podium canvas mounted");
+    const carded = await waitFor(
+      page,
+      () => !document.querySelector(".bp-podium-card")?.classList.contains("is-hidden") &&
+        (document.querySelector(".bp-podium-title")?.textContent || "").length > 0,
+      { timeout: 15_000, step: 300 },
     );
+    check(carded, "Honours podium shows the headline card after its entrance");
+    if (carded) {
+      const before = await page.evaluate(() => document.querySelector(".bp-podium-title")?.textContent);
+      await page.focus(".bp-podium-canvas");
+      await page.keyboard.press("ArrowRight");
+      await page.evaluate((b) => { window.__bpBefore = b; }, before);
+      const stepped = await waitFor(page, () => document.querySelector(".bp-podium-title")?.textContent !== window.__bpBefore, { timeout: 3000 });
+      check(stepped, "Honours podium: arrow key steps to the next honour");
+      await page.evaluate(() => document.activeElement?.blur());
+    }
+    const srItems = await page.evaluate(() => document.querySelectorAll(".portfolio-bp ul.sr-only li").length);
+    check(srItems === 12, `Honours list kept for screen readers (${srItems}/12)`);
   }
 
   // 3c. Recents photo plane: the canvas draws photos inside the hold, a
