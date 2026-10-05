@@ -23,21 +23,13 @@
   pointer-events: none;
 }
 
-/* Once the gimbal has painted its own orange field (gimbal.ts), the scrim's
-   background steps aside and the exit is the gimbal's iris opening onto the
-   hero, not an opacity fade. Until then (and if the canvas never paints) the
-   plain orange scrim above stands in. */
-.boot-loader.is-painted,
-.boot-loader.is-painted.is-complete {
-  background: transparent;
-  opacity: 1;
-  transition: none;
-}
-
-/* The gimbal stage. Container units so the count and readouts scale with it;
-   the ring geometry itself is sized in gimbal.ts (0.3 × the short side,
-   centred at 45% height). */
-.gimbal {
+/* The voxel build stage (voxelBuild.ts). Everything is placed from one voxel
+   size --s, in container units, so index.html's static #boot-screen "0" can
+   mirror the count's box exactly (same formulas in vh / vmin there):
+     scene  6s × 5.4s, top 50% - 3.76s   (the whole block is 7.52s tall,
+     count  1.6s type, top 50% + 1.74s    centred on the stage)
+     meta   0.42s type, top 50% + 3.39s */
+.vbuild-stage {
   position: absolute;
   inset: 0;
   container-type: size;
@@ -48,33 +40,98 @@
   line-height: 1;
   user-select: none;
 }
-.gimbal__canvas {
+.vbuild {
+  --s: min(10.5cqmin, 78px);
+  --g: calc(var(--s) * 1.06);
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
 }
-/* The count sits in the inner ring; index.html's static #boot-screen "0"
-   mirrors this box exactly so the hand-off doesn't jump. */
-.gimbal__text {
+.vbuild__scene {
+  position: absolute;
+  left: 50%;
+  top: calc(50cqh - var(--s) * 3.76);
+  width: calc(var(--s) * 6);
+  height: calc(var(--s) * 5.4);
+  margin-left: calc(var(--s) * -3);
+  perspective: calc(var(--s) * 22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vbuild__world {
+  position: relative;
+  width: 0;
+  height: 0;
+  top: calc(var(--s) * 0.9);
+  transform-style: preserve-3d;
+}
+/* The build plate: a dashed footprint the blocks land on. */
+.vbuild__floor {
+  position: absolute;
+  width: calc(var(--g) * 4.2);
+  height: calc(var(--g) * 4.2);
+  left: calc(var(--g) * -2.1);
+  top: calc(var(--g) * -2.1);
+  background: rgba(168, 46, 0, 0.35);
+  border: 2px dashed rgba(255, 255, 255, 0.45);
+  transform: translateY(calc(var(--s) * 0.5)) rotateX(90deg);
+}
+/* A block drops from 4 voxels up with a little overshoot when its share of
+   the count lands. */
+.vbuild__cube {
+  position: absolute;
+  transform-style: preserve-3d;
+  --drop: calc(var(--s) * 4);
+  opacity: 0;
+  transform: translate3d(
+    calc(var(--x) * var(--g)),
+    calc(var(--y) * var(--g) * -1 - var(--drop)),
+    calc(var(--z) * var(--g))
+  );
+  transition:
+    transform 340ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 120ms linear;
+}
+.vbuild__cube.is-on {
+  --drop: 0px;
+  opacity: 1;
+}
+.vbuild.is-reduced .vbuild__cube {
+  transition: none;
+}
+/* Faces shade by hue shift, not darkening: white top, peach / light-orange
+   sides, rust underside. */
+.vbuild__f {
+  position: absolute;
+  width: var(--s);
+  height: var(--s);
+  left: calc(var(--s) / -2);
+  top: calc(var(--s) / -2);
+  box-shadow: inset 0 0 0 1px rgba(168, 46, 0, 0.25);
+}
+.vbuild__f--t { background: #ffffff; transform: rotateX(90deg) translateZ(calc(var(--s) / 2)); }
+.vbuild__f--u { background: #a82e00; transform: rotateX(-90deg) translateZ(calc(var(--s) / 2)); }
+.vbuild__f--f { background: #ffd2b4; transform: translateZ(calc(var(--s) / 2)); }
+.vbuild__f--b { background: #ffd2b4; transform: rotateY(180deg) translateZ(calc(var(--s) / 2)); }
+.vbuild__f--l { background: #ffa36b; transform: rotateY(-90deg) translateZ(calc(var(--s) / 2)); }
+.vbuild__f--r { background: #ffa36b; transform: rotateY(90deg) translateZ(calc(var(--s) / 2)); }
+.vbuild__pct {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(45cqh - min(9cqmin, 76px));
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  pointer-events: none;
+  top: calc(50cqh + var(--s) * 1.74);
+  text-align: center;
+  font-size: calc(var(--s) * 1.6);
 }
-.gimbal__pct {
-  font-size: min(18cqmin, 150px);
-}
-.gimbal__meta {
+.vbuild__meta {
   position: absolute;
-  top: calc(min(9cqmin, 76px) + min(36cqw, 36cqh));
+  left: 0;
+  right: 0;
+  top: calc(50cqh + var(--s) * 3.39);
   display: flex;
+  justify-content: center;
   gap: 1.4em;
-  font-size: min(5.5cqmin, 44px);
+  font-size: calc(var(--s) * 0.42);
   opacity: 0.92;
 }
 

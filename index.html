@@ -217,8 +217,8 @@
       html, body { margin: 0; background: #ff4f00; }
       /* Boot screen: visible immediately on first paint, before any JS parses.
          A static "0" on the SAME International Orange field as the live
-         <BootLoader> gimbal that React mounts a moment later — so the hand-off
-         has no colour jump, only the rings appearing around the count. Literal values only (no CSS
+         <BootLoader> voxel build that React mounts a moment later — so the hand-off
+         has no colour jump, only the blocks appearing above the count. Literal values only (no CSS
          vars): index.css has not loaded yet at first paint. React removes
          #boot-screen on mount. */
       #boot-screen {
@@ -233,18 +233,18 @@
         font-family: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
         -webkit-font-smoothing: antialiased;
       }
-      /* Mirrors the live <BootLoader> gimbal's count (boot-loader.css
-         .gimbal__text / .gimbal__pct, in viewport units here since the stage is
-         the viewport): the "0" sits where the inner ring's count will be, so
-         the rings simply appear around it. */
+      /* Mirrors the live <BootLoader> voxel build's count (boot-loader.css
+         .vbuild__pct, in viewport units here since the stage is the
+         viewport; --s = min(10.5vmin, 78px)): the "0" sits exactly where the
+         count will be, so the blocks simply start dropping in above it. */
       #boot-screen .bs-count {
         position: absolute;
         left: 0;
         right: 0;
-        top: calc(45vh - min(9vmin, 76px));
+        top: calc(50vh + min(18.27vmin, 135.72px));
         text-align: center;
         font-family: "VT323", monospace;
-        font-size: min(18vmin, 150px);
+        font-size: min(16.8vmin, 124.8px);
         line-height: 1;
       }
       /* Crawler-only fallback. Hidden from sighted users (the canvas covers

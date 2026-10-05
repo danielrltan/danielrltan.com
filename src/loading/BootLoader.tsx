@@ -9,24 +9,24 @@ import {
 import { reducedMotion } from "../motion";
 import { clamp01 } from "../math";
 import { readLoadStats, startLoadStats } from "./loadStats";
-import { createGimbal } from "./gimbal";
+import { createVoxelBuild } from "./voxelBuild";
 import "./boot-loader.css";
 
 /**
  * Live loading overlay shown during html.loading-active.
  *
- * The gimbal iris (gimbal.ts, owner's pick from the 2026-10-04 loader lab):
- * three nested rings tumble around the pixel count 0 → 100 on the International
- * Orange field, locking flat one by one, with the real elapsed time and
- * download rate under them. When the count reaches 100 it does NOT immediately
- * leave (owner: the insta-fade "looked vibecoded"). It HOLDS while the hero
- * composes BEHIND it (the loader is z-9000, the hero z-3/z-11), then plays its
- * exit over LOADER_FADE_MS: the rings fly outward and the orange field irises
- * open onto the fully-ready hero. The moment that exit STARTS the loader
- * dispatches `loader-reveal-start`, so the hero's entrance plays through the
- * opening iris. Scroll stays locked (html.loading-active) the whole time; the
- * loader dispatches `loader-revealed` once the exit has run, which is the page
- * unlock (see AssemblyController). Same orange as the hero, so no colour jump.
+ * The voxel build (voxelBuild.ts, owner's pick 2026-10-05): a 3×3×3 cube of
+ * voxel blocks assembles on a turntable as the pixel count climbs 0 → 100 on
+ * the International Orange scrim, with blocks placed and the real elapsed time
+ * under it. When the count reaches 100 it does NOT immediately leave (owner:
+ * the insta-fade "looked vibecoded"). It HOLDS while the hero composes BEHIND
+ * the scrim (the scrim is z-9000, the hero z-3/z-11), then the scrim FADES OUT
+ * to reveal the fully-ready hero: a real crossfade. The moment that fade
+ * STARTS the loader dispatches `loader-reveal-start`, so the hero's entrance
+ * plays over the fading scrim. Scroll stays locked (html.loading-active) the
+ * whole time; the loader dispatches `loader-revealed` once it has faded, which
+ * is the page unlock (see AssemblyController). Same orange as the hero, so no
+ * colour jump.
  */
 
 /** Slack on the provider's (100 ms-stepped) combinedPct before the count's own
@@ -43,18 +43,13 @@ export function BootLoader() {
   // gone: the fade finished → unmount.
   const [reveal, setReveal] = useState(false);
   const [gone, setGone] = useState(false);
-  // The gimbal has painted its first frame (its own orange field): the scrim's
-  // background steps aside and the exit is the gimbal's iris, not a fade.
-  const [painted, setPainted] = useState(false);
 
-  // The count clock writes what it shows here; the gimbal reads it every frame.
+  // The count clock writes what it shows here; the voxel build reads it every frame.
   // No React commit per frame (the count used to setState ~every frame).
   const liveRef = useRef({ combinedPct, climaxReady });
   liveRef.current = { combinedPct, climaxReady };
   const shownRef = useRef({ p: 0, n: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
-  // performance.now() when the reveal (the iris exit) began.
-  const revealAtRef = useRef(0);
 
   // Count clock (motion spec W7.13): elapsed-time driven, eased with
   // outQuad (see below) over TIMELINE_FLOOR_MS (it decelerates into 100 rather than
@@ -102,26 +97,21 @@ export function BootLoader() {
     };
   }, []);
 
-  // The gimbal: every frame (it keeps turning through the hold and plays the
-  // exit) until the loader unmounts.
+  // The voxel build: every frame (the turntable keeps turning through the hold
+  // and the fade) until the loader unmounts.
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
     startLoadStats();
-    const g = createGimbal(stage, reducedMotion.value);
-    // Readouts freeze the frame the count lands on 100: the hold and the exit
+    const g = createVoxelBuild(stage, reducedMotion.value);
+    // Readouts freeze the frame the count lands on 100: the hold and the fade
     // after it are not load time.
     let final: ReturnType<typeof readLoadStats> | null = null;
-    let first = true;
     let raf = 0;
     const loop = (now: number) => {
       const { p, n } = shownRef.current;
       if (n >= 100 && !final) final = readLoadStats();
-      const at = revealAtRef.current;
-      const exit = at ? clamp01((now - at) / LOADER_FADE_MS) : 0;
-      g.frame(now, p, n, final ?? readLoadStats(), exit);
-      if (first) setPainted(true);
-      first = false;
+      g.frame(now, p, n, final ?? readLoadStats());
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -134,7 +124,7 @@ export function BootLoader() {
   // HOLD → REVEAL. Once the count reaches 100 (climaxReady), keep it on screen
   // and wait for BOTH a deliberate beat (HERO_HOLD_MS) AND the hero having
   // composed behind the scrim (`hero-composed`), whichever is later. Only then
-  // play the exit to reveal the ready hero. Failsafe: reveal anyway if the
+  // fade the loader out to reveal the ready hero. Failsafe: reveal anyway if the
   // compose signal stalls, so the loader can't get stuck on screen.
   useEffect(() => {
     if (!climaxReady) return;
@@ -169,7 +159,6 @@ export function BootLoader() {
     if (!reveal) return;
     if (!revealStartSentRef.current) {
       revealStartSentRef.current = true;
-      revealAtRef.current = performance.now();
       window.dispatchEvent(new Event("loader-reveal-start"));
     }
     const t = window.setTimeout(() => {
@@ -183,10 +172,10 @@ export function BootLoader() {
 
   return (
     <div
-      className={`boot-loader${reveal ? " is-complete" : ""}${painted ? " is-painted" : ""}`}
+      className={`boot-loader${reveal ? " is-complete" : ""}`}
       aria-hidden="true"
     >
-      <div className="gimbal" ref={stageRef} />
+      <div className="vbuild-stage" ref={stageRef} />
     </div>
   );
 }
