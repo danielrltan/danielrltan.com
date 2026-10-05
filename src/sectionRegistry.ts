@@ -53,7 +53,7 @@ export const SECTION_REGISTRY: SectionEntry[] = [
   // Play is interests-only — the "Recents" photos live in their own Photos
   // section (below), so a jump lands on the section top (the 3D cluster).
   { number: "04", label: "Play", selector: ".other-pin-wrap" },
-  { number: "05", label: "Honours", selector: ".portfolio-bp" },
+  { number: "05", label: "Honours", selector: ".portfolio-bp", pinId: "bp-pin" },
   // Recents: the photo trains, a standalone section between Honours and Contact.
   { number: "06", label: "Recents", selector: ".portfolio-photos", pinId: "photos-pin" },
   { number: "07", label: "Contact", selector: ".keypad-section", pinId: "keypad-pin" },

@@ -269,9 +269,8 @@ export function About() {
         <header className="about-banner" aria-hidden="true">
           <div className="about-banner-meta">
             <span className="about-crumb-idx">01</span>
-            {/* Desktop crumb: "01 —— danielrltan.com". Narrow keeps only the
-                number tag (the site-wide mobile index rule, sections.css). */}
-            <span className="about-crumb-rule" />
+            {/* Desktop crumb: "01 danielrltan.com" (owner removed the orange
+                dash between them). Narrow keeps only the number tag. */}
             <span className="about-banner-domain">danielrltan.com</span>
           </div>
           <p className="about-banner-title">

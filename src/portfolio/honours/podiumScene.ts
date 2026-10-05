@@ -9,8 +9,8 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
  *   - The three FEATURED wins stand on a clay podium (headliner in the
  *     middle, tallest and orange), each topped with a voxel cup.
  *   - Every other entry is a labelled slab, dropped one by one into a
- *     leaning tower beside it (leadership in a light-orange tint,
- *     scholarships cool grey, the rest white).
+ *     leaning tower beside it, all one white clay (owner 2026-10-05: the
+ *     peach leadership and grey scholarship tints read as odd ones out).
  *   - Hover (mouse), click, or ←/→ while the canvas has focus picks an entry:
  *     a podium block lifts and its cup spins faster, a slab pulls out toward
  *     you. The section shows the picked entry's card (onFocus).
@@ -164,7 +164,7 @@ export function createPodiumScene(
     return canvasTex(c);
   }
   /** Tower slab face: metric left, category + title right. */
-  function blockTex(t: PodiumEntry, w: number, h: number, tint: boolean) {
+  function blockTex(t: PodiumEntry, w: number, h: number) {
     const PX = 300;
     const c = document.createElement("canvas");
     c.width = Math.round(w * PX);
@@ -174,7 +174,7 @@ export function createPodiumScene(
     const mid = c.height / 2;
     g.textBaseline = "middle";
     const COL = 1.12 * PX;
-    g.fillStyle = tint ? DEEP : "#ff4f00";
+    g.fillStyle = "#ff4f00";
     let fs = 0.46 * PX;
     g.font = `700 ${fs}px Offbit, monospace`;
     while (t.metric && g.measureText(t.metric).width > COL && fs > 12) {
@@ -187,7 +187,7 @@ export function createPodiumScene(
     g.font = `600 ${ts}px Geist, system-ui, sans-serif`;
     const tl = wrapLines(g, t.title, c.width - x2 - pad).slice(0, 2);
     const top = mid - (0.13 * PX + tl.length * 0.22 * PX) / 2;
-    g.fillStyle = tint ? DEEP : MUTED;
+    g.fillStyle = MUTED;
     g.font = `600 ${0.12 * PX}px Geist, system-ui, sans-serif`;
     g.fillText(t.category, x2, top + 0.04 * PX);
     g.letterSpacing = "0px";
@@ -203,8 +203,6 @@ export function createPodiumScene(
   const M_WHITE = clay(0xf6f7f9);
   const M_ORANGE = clay(ORANGE, 0.45);
   const M_DEEP = clay(0xc23d00, 0.5);
-  const M_PEACH = clay(0xffd8c4, 0.55);
-  const M_GREY = clay(0xd8dade);
 
   interface Item {
     i: number;
@@ -286,19 +284,17 @@ export function createPodiumScene(
   const BD = 1.8;
   const TX = 8.0;
   rest.forEach(({ e, i }, k) => {
-    const tint = e.category === "Leadership";
     const g = new THREE.Group();
     const y = k * (BH + 0.035);
     const yaw = (k % 2 ? 1 : -1) * (0.04 + (k % 3) * 0.018);
     g.position.set(TX + (k % 2 ? 0.07 : -0.07), y, -0.15);
     g.rotation.y = yaw;
-    const mat = tint ? M_PEACH : e.category === "Scholarship" ? M_GREY : M_WHITE;
-    const body = new THREE.Mesh(track(new RoundedBoxGeometry(BW, BH, BD, 3, 0.06)), mat);
+    const body = new THREE.Mesh(track(new RoundedBoxGeometry(BW, BH, BD, 3, 0.06)), M_WHITE);
     body.position.y = BH / 2;
     body.castShadow = body.receiveShadow = true;
     g.add(body);
     const faceMat = track(
-      new THREE.MeshBasicMaterial({ map: blockTex(e, BW - 0.1, BH - 0.08, tint), transparent: true, toneMapped: false }),
+      new THREE.MeshBasicMaterial({ map: blockTex(e, BW - 0.1, BH - 0.08), transparent: true, toneMapped: false }),
     );
     const face = new THREE.Mesh(track(new THREE.PlaneGeometry(BW - 0.1, BH - 0.08)), faceMat);
     face.position.set(0, BH / 2, BD / 2 + 0.002);

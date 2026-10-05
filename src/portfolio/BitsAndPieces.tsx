@@ -9,6 +9,7 @@ import { ease, matches, MQ, reducedMotion } from "../motion";
 import { useMedia } from "../useMedia";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 import { HonoursPodium } from "./honours/HonoursPodium";
+import { refreshScrollOnLoaderLift, requestScrollRefresh } from "./scrollRefresh";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -31,6 +32,15 @@ const COUNT_UP_MS = 1100;
  * full pass through the viewport (spec W5.6: 0.10, was 0.36). Tune here.
  */
 const GHOST_TRAVEL = 0.1;
+/**
+ * Podium dwell pin length as a fraction of the viewport height. Pure hold
+ * (no scrub, nothing reads its progress), like Contact's keypad pin. Owner,
+ * 2026-10-05: people scrolled straight past the trophy wall. The entrance
+ * (~2 s, time-based) starts when a third of the stage is on screen, ~0.67 vh
+ * before this pin, so 0.67 + 0.8 vh of in-frame travel plays it out at
+ * ~700 px/s on a 900px-tall window.
+ */
+const PIN_VH = 0.8;
 
 type Category =
   | "Launch"
@@ -346,8 +356,44 @@ export function BitsAndPieces() {
     };
   }, []);
 
+  // Podium layout only: a dwell pin so the entrance plays in view instead
+  // of being scrolled past. Narrow keeps the stacked card grid, unpinned
+  // (mirrors About/Work/Keypad: no pinned stages on phones).
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    if (narrow) {
+      // A desktop -> narrow flip kills the pin; refresh so the pins below
+      // (Recents, Contact) drop this section's old spacer from their start.
+      if (!document.documentElement.classList.contains("loading-active")) {
+        requestScrollRefresh();
+      }
+      return;
+    }
+    const st = ScrollTrigger.create({
+      id: "bp-pin",
+      trigger: el,
+      start: "top top",
+      end: () => "+=" + Math.round(window.innerHeight * PIN_VH),
+      invalidateOnRefresh: true,
+      pin: true,
+      pinSpacing: true,
+    });
+    const stopLoaderWatch = refreshScrollOnLoaderLift();
+    return () => {
+      stopLoaderWatch();
+      st.kill();
+    };
+  }, [narrow]);
+
   return (
-    <section ref={sectionRef} className={`portfolio-section portfolio-bp${narrow ? "" : " is-podium"}`}>
+    <section
+      ref={sectionRef}
+      className={`portfolio-section portfolio-bp${narrow ? "" : " is-podium"}`}
+      // A menu/footer jump lands at the pin START, so the entrance plays on
+      // arrival (from below, a bare element jump would land at pin END).
+      data-jump-progress={narrow ? undefined : "0"}
+    >
       <div className="bp-marquee" aria-hidden>
         <div ref={marqueeRef} className="bp-marquee-strip">
           {Array.from({ length: 3 }).map((_, k) => (
@@ -366,12 +412,10 @@ export function BitsAndPieces() {
               <span className="section-marker bp-marker">05</span>
             </>
           ) : (
-            // Podium layout: the trophy-lab "07" index line, minus its
-            // "05 / 07 · Honours" text (owner: no redundant copy; the 05 is
-            // right there and the section dial reads "05 Honours").
+            // Podium layout: just the 05 (owner removed the orange dash
+            // after it, and the "05 / 07 · Honours" text before that).
             <div className="bp-idx">
               <span className="bp-idx-n">05</span>
-              <span className="bp-idx-rule" aria-hidden />
             </div>
           )}
           <h2 className="bp-title">

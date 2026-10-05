@@ -239,12 +239,6 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
   line-height: 0.9;
   color: var(--accent-deep, #c23d00);
 }
-.about-crumb-rule {
-  width: 46px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--accent, #ff4f00);
-}
 .about-banner-domain {
   font-family: var(--font-pixel);
   font-size: var(--fs-label);
@@ -1119,7 +1113,6 @@ html[data-hero-covering] .render-frame {
   .about-crumb-idx {
     font-size: var(--hdr-num-mobile, clamp(13px, 3.4vw, 18px));
   }
-  .about-crumb-rule,
   .about-banner-domain {
     display: none;
   }
