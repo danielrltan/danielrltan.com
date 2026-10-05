@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { reducedMotion } from "./motion";
-import { ARROW, SPARKS, VOXEL, drawPixelRing, drawVoxels, type Pose } from "./voxelArt";
+import { ARROW, SPARKS, VOXEL, drawVoxels, sparkBurst, type Pose } from "./voxelArt";
 
 interface Props {
   /** True while the keypad reports the pointer is over an interactive cap/dial. */
@@ -20,17 +20,18 @@ interface Props {
  *  - Moving: it hangs from its tip like a card with inertia; acceleration
  *    swings it on underdamped springs and it wobbles back.
  *  - Over anything CLICKABLE (lock-on, the gimbal reticle idea in the site's
- *    pixel language): the arrow pops, the hover art's three sparks rise out
- *    as voxels, a pixel-staircase ring (the hero iris's vocabulary) blooms
- *    round the tip, and dotted pixel hairlines run out to the element's REAL
- *    edges with ticks where they land. Canvas hot-spots (keypad / Mac /
- *    Hobbies, which set body cursor to `pointer`) get the pop + sparks + ring
- *    but no hairlines (no DOM box to measure).
+ *    pixel language): the arrow pops, the hover art's three sparks (the
+ *    "exclamations") rise out as voxels, and dotted pixel hairlines run out to
+ *    the element's REAL edges with ticks where they land. Canvas hot-spots
+ *    (keypad / Mac / Hobbies, which set body cursor to `pointer`) get the pop
+ *    + sparks but no hairlines (no DOM box to measure). No ring: owner found
+ *    a ring on top of the sparks too much.
  *  - Press and HOLD: the block squashes flat like a key going down and stays
  *    down until release.
- *  - Release: springs back up, and the ring irises outward, its pixels
- *    growing as it opens (the hero → About iris, in miniature).
- *  - Reduced motion: no swing, no pulse; states switch without springs.
+ *  - Release (the click): springs back up and fires a RING OF EXCLAMATIONS,
+ *    eight spark bars bursting out radially from the tip, shrinking and
+ *    fading as they fly (the hover sparks, going off).
+ *  - Reduced motion: no swing, no burst; states switch without springs.
  *
  * Hotspot = the arrow's TIP, at the 0×0 root, which sits exactly on the
  * pointer (translate written on every move, never smoothed). The canvas around
@@ -47,7 +48,8 @@ const CLICKABLE_SEL =
 const CANVAS = 128;
 const HALF = CANVAS / 2;
 const REST: Pose = { rx: 0.42, ry: -0.6, depth: 1, scale: 1 };
-const RING_R = 15;
+/** Where the lock-on hairlines start, clear of the tip (px). */
+const LOCK_GAP = 12;
 
 interface Spring {
   x: number;
@@ -115,9 +117,8 @@ export function MoveableCursor({ hot }: Props) {
     const depth: Spring = { x: 1, v: 0 };
     const scale: Spring = { x: 1, v: 0 };
     const spark: Spring = { x: 0, v: 0 };
-    const ring: Spring = { x: 0, v: 0 };
     const lock: Spring = { x: 0, v: 0 };
-    const pulses: { t: number }[] = [];
+    const bursts: { t: number }[] = [];
 
     // Hidden until the first real pointer position so it doesn't ghost at the
     // viewport origin on load.
@@ -151,13 +152,13 @@ export function MoveableCursor({ hot }: Props) {
       schedule();
     };
 
-    /** Hairlines from the ring out to the element's real edges, + edge ticks. */
+    /** Hairlines from the tip out to the element's real edges, + edge ticks. */
     const layoutLock = (reach: number) => {
       const show = reach > 0.01 && hoverEl;
       lockEl.style.opacity = show ? String(Math.min(1, reach * 1.4)) : "0";
       if (!show || !hoverEl) return;
       const b = hoverEl.getBoundingClientRect();
-      const r = RING_R - 3; // start inside the ring's cardinal gaps
+      const r = LOCK_GAP;
       // One hairline: from (x0, y0) along `dir` to the edge coordinate `to`.
       const seg = (el: HTMLElement, x0: number, y0: number, dir: "l" | "r" | "u" | "d", to: number) => {
         const full = dir === "l" ? x0 - to : dir === "r" ? to - x0 : dir === "u" ? y0 - to : to - y0;
@@ -234,29 +235,26 @@ export function MoveableCursor({ hot }: Props) {
       busy = step(depth, down ? 0.18 : 1, dt, 520, down ? 0.9 : 0.3, reduced) || busy;
       busy = step(scale, down ? 0.88 : 1, dt, 380, down ? 0.9 : 0.4, reduced) || busy;
       busy = step(spark, hovering ? 1 : 0, dt, 300, 0.45, reduced) || busy;
-      busy = step(ring, hovering ? 1 : 0, dt, 260, 0.55, reduced) || busy;
       busy = step(lock, hovering && hoverEl ? 1 : 0, dt, 220, 0.85, reduced) || busy;
 
       // Draw.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, CANVAS, CANVAS);
-      if (ring.x > 0.02) {
-        // the ring sits in the same pixel grid as the voxels
-        drawPixelRing(ctx, HALF, HALF, RING_R * Math.min(1.15, ring.x), 2, Math.min(1, ring.x * 1.5), true);
-      }
-      for (let i = pulses.length - 1; i >= 0; i--) {
-        const p = pulses[i];
-        p.t += dt / 0.42;
-        if (p.t >= 1) {
-          pulses.splice(i, 1);
+      const pose: Pose = { rx: rx.x, ry: ry.x, depth: Math.max(0.05, depth.x), scale: scale.x };
+      // Click: the ring of exclamations, under the arrow.
+      for (let i = bursts.length - 1; i >= 0; i--) {
+        const b = bursts[i];
+        b.t += dt / 0.4;
+        if (b.t >= 1) {
+          bursts.splice(i, 1);
           continue;
         }
-        // iris: radius and cell size grow together ("pixels growing")
-        const r = RING_R + (HALF - 6 - RING_R) * (1 - Math.pow(1 - p.t, 2));
-        drawPixelRing(ctx, HALF, HALF, r, Math.max(2, r / 7), 1 - p.t);
+        const e = 1 - Math.pow(1 - b.t, 3); // fast out, easing to a stop
+        ctx.globalAlpha = b.t < 0.55 ? 1 : 1 - (b.t - 0.55) / 0.45;
+        drawVoxels(ctx, sparkBurst(13 + 22 * e, 4.5 - 3 * b.t), HALF, HALF, { ...pose, depth: 0.5 }, dpr, { shadow: false });
+        ctx.globalAlpha = 1;
         busy = true;
       }
-      const pose: Pose = { rx: rx.x, ry: ry.x, depth: Math.max(0.05, depth.x), scale: scale.x };
       if (spark.x > 0.02) {
         // sparks rise toward the viewer as their own little voxel bars
         drawVoxels(ctx, SPARKS, HALF, HALF, { ...pose, depth: pose.depth * 0.5 }, dpr, {
@@ -268,7 +266,7 @@ export function MoveableCursor({ hot }: Props) {
       layoutLock(lock.x);
 
       // Keep ticking while animating, moving, or a hit-test is pending; else PARK.
-      if (busy || moving || dirty || pulses.length) frame = requestAnimationFrame(tick);
+      if (busy || moving || dirty || bursts.length) frame = requestAnimationFrame(tick);
       else running = false;
     };
     const schedule = () => {
@@ -296,7 +294,7 @@ export function MoveableCursor({ hot }: Props) {
     const onUp = () => {
       if (!down) return;
       down = false;
-      if (!reducedMotion.value) pulses.push({ t: 0 });
+      if (!reducedMotion.value) bursts.push({ t: 0 });
       schedule();
     };
     // Page scrolled under a (possibly still) cursor: re-check what's under it,

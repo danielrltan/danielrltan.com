@@ -453,8 +453,8 @@ html.loading-active body {
   display: block;
 }
 
-/* Hover lock-on: dotted pixel hairlines leave the reticle's four gaps and run
-   to the hovered element's edges, with a tick where each lands. The dots are
+/* Hover lock-on: dotted pixel hairlines run from just off the tip to the
+   hovered element's edges, with a tick where each lands. The dots are
    deliberately light (2 px charcoal squares every 6 px at 55 %, no keyline) so
    they don't strike through link text; the ticks (charcoal, white keyline)
    carry the "locked on" read on white, orange and the dotted hero. JS lays

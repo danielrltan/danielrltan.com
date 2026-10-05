@@ -194,31 +194,25 @@ export function drawVoxels(
 }
 
 /**
- * The hover ring: a pixel-staircase circle (the hero iris's vocabulary) of
- * radius r about (cx, cy), drawn as an outline of square cells of size `cell`.
- * Charcoal cells with a white keyline, so it reads on every surface. `gaps`
- * opens the four cardinal points (a reticle), where the lock-on hairlines
- * leave the ring.
+ * The click burst: a ring of eight "exclamations" (1-voxel spark bars like the
+ * hover art's three) pointing out from the hotspot, starting `radius` px out
+ * and `len` voxels long. Rebuilt per frame (8 short bars: trivial).
  */
-export function drawPixelRing(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, cell: number, alpha = 1, gaps = false) {
-  if (r < cell) return;
-  const n = Math.ceil(r / cell) + 1;
-  const keep: Pt[] = [];
-  for (let gy = -n; gy < n; gy++)
-    for (let gx = -n; gx < n; gx++) {
-      const d = Math.hypot((gx + 0.5) * cell, (gy + 0.5) * cell);
-      if (d > r || d <= r - cell) continue;
-      if (gaps) {
-        const a = Math.atan2((gy + 0.5) * cell, (gx + 0.5) * cell);
-        const off = Math.abs(((a % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2) - Math.PI / 4);
-        if (off > Math.PI / 4 - 0.32) continue; // ~18° gap either side of N/E/S/W
+export function sparkBurst(radius: number, len: number): Cells {
+  const out: Cells = [];
+  const seen = new Set<string>();
+  const r0 = radius / VOXEL;
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    for (let d = r0; d <= r0 + Math.max(1, len); d += 0.5) {
+      const x = Math.round(ca * d), y = Math.round(sa * d);
+      const key = x + "," + y;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push([x, y]);
       }
-      keep.push([gx, gy]);
     }
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = "#ffffff";
-  for (const [gx, gy] of keep) ctx.fillRect(cx + gx * cell - 1, cy + gy * cell - 1, cell + 2, cell + 2);
-  ctx.fillStyle = CHAR;
-  for (const [gx, gy] of keep) ctx.fillRect(cx + gx * cell, cy + gy * cell, cell, cell);
-  ctx.globalAlpha = 1;
+  }
+  return out;
 }
