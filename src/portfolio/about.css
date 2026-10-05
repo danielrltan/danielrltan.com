@@ -338,15 +338,81 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
      lands it with intention instead of drifting for 540ms. (Emil: ease-out
      for entrances, custom curve, keep it brisk.) Cells crossed in the same
      scroll update cascade by --reveal-order (About.tsx), capped at 4 steps. */
+  /* POWER-ON (owner, 2026-10-05: "sequential box appearing? improve motion";
+     the old 16px fade-rise of a white card on a near-white page barely read).
+     Each panel now BUILDS: the box fills top to bottom in BOOT_STEPS chunky
+     scanline steps (the site's stepped pixel voice, kept to chrome, never on
+     a sliding photo), an orange scan line rides the build edge (::after),
+     then the contents rise in after it (label, headline, details). Cards
+     crossed in one scroll update cascade by --reveal-order (About.tsx) at
+     --boot-gap, so the order reads as a sequence. */
+  --boot-gap: 110ms;
+  --boot-delay: calc(min(var(--reveal-order, 0), 4) * var(--boot-gap));
+  --boot-dur: 360ms;
+  clip-path: inset(0 0 100% 0);
   transition:
-    opacity var(--t-med) var(--ease-out),
+    clip-path var(--boot-dur) steps(9, jump-end),
+    opacity 120ms linear,
     transform var(--t-med) var(--ease-out);
-  transition-delay: calc(min(var(--reveal-order, 0), 4) * var(--stagger));
+  transition-delay: var(--boot-delay);
   /* No permanent will-change: the reveal is a one-shot, latched transition,
      and the compositor promotes a card only while its transition runs, then
      releases it. A standing will-change pinned ~8 layers for the session. */
 }
 .card.is-revealed {
+  opacity: 1;
+  transform: none;
+  clip-path: inset(0 0 0 0);
+}
+/* The room card is the floating render: it overflows its cell by design, so
+   it never gets clipped (a clip-path inset(0) would cut the room off); it
+   keeps the plain fade-rise. */
+.card.c-render,
+.card.c-render.is-revealed {
+  clip-path: none;
+}
+/* Scan line: a 2px orange bar that rides the build edge down the panel, then
+   goes out. Plays once per reveal (the class latches). */
+.card:not(.c-render)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  z-index: 3;
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+.card.is-revealed:not(.c-render)::after {
+  animation: card-scan calc(var(--boot-dur) + 160ms) steps(11, jump-end) var(--boot-delay) both;
+}
+@keyframes card-scan {
+  0% { top: 0; opacity: 1; }
+  70% { top: calc(100% - 2px); opacity: 1; }
+  100% { top: calc(100% - 2px); opacity: 0; }
+}
+/* Contents rise in after their panel has built: label, then headline, then
+   the details, --boot-item apart. Direct children only (their own hover
+   transitions live on deeper elements). */
+.card .pad > *,
+.card .c-info-body > * {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 320ms var(--ease-out),
+    transform 420ms var(--ease-out);
+  transition-delay: calc(var(--boot-delay, 0ms) + 0.55 * var(--boot-dur, 360ms) + var(--k, 0) * 70ms);
+}
+.card .pad > :nth-child(2),
+.card .c-info-body > :nth-child(1) { --k: 1; }
+.card .pad > :nth-child(3),
+.card .c-info-body > :nth-child(2) { --k: 2; }
+.card .pad > :nth-child(n + 4),
+.card .c-info-body > :nth-child(n + 3) { --k: 3; }
+.card.is-revealed .pad > *,
+.card.is-revealed .c-info-body > * {
   opacity: 1;
   transform: none;
 }
@@ -1058,9 +1124,12 @@ html[data-hero-covering] .render-frame {
   }
   /* Enter reveal (useReveal latches .is-revealed as a cell crosses the line):
      cells that enter together cascade by their batch index --i. */
-  .about-banner,
-  .card {
+  .about-banner {
     transition-delay: calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));
+  }
+  .card {
+    --boot-delay: calc(min(var(--i, 0), var(--stagger-max)) * var(--boot-gap));
+    transition-delay: var(--boot-delay);
   }
 
   /* Single readable column: drop the 12-col grid, stack everything. */
@@ -1331,8 +1400,17 @@ html[data-hero-covering] .render-frame {
    ====================================================================== */
 @media (prefers-reduced-motion: reduce) {
   .about-banner,
-  .card {
+  .card,
+  .card .pad > *,
+  .card .c-info-body > * {
     transition: none !important;
+  }
+  .card {
+    clip-path: none !important;
+  }
+  .card::after {
+    animation: none !important;
+    opacity: 0 !important;
   }
   .render-frame {
     animation: none !important;
