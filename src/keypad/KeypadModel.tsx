@@ -144,7 +144,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   // Clone + traverse synchronously so caps & dial are known before
   // the first render returns. Hit-volume meshes need their world
   // positions on mount.
-  const { cloned, recenterOffset, sphereRadius, caps, dial, dialHitPos, screenMat } = useMemo(() => {
+  const { cloned, recenterOffset, sphereRadius, caps, dial, dialHitPos, dialHitSize, screenMat } = useMemo(() => {
     const cl = scene.clone(true);
     const capMap: Record<string, CapState> = {};
     let dialObj: THREE.Object3D | null = null;
@@ -261,6 +261,16 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     const dialHitPos = dialObj
       ? hb.setFromObject(dialObj).getCenter(new THREE.Vector3())
       : null;
+    // Dial hit volume sized from the dial itself: radius a hair past its edge
+    // (inside the casing ring), height covering the lift on hover. The old
+    // fixed 1.1-radius cylinder was 2.4x the dial and reached over the screen
+    // and the LinkedIn cap (owner: the hover boundary "feels too big").
+    const dialHitSize = dialObj
+      ? (() => {
+          const sz = hb.setFromObject(dialObj).getSize(new THREE.Vector3());
+          return { r: (Math.max(sz.x, sz.z) / 2) * 1.12, h: sz.y * 1.6 };
+        })()
+      : null;
 
     const box = new THREE.Box3().setFromObject(cl);
     const center = new THREE.Vector3();
@@ -274,6 +284,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       caps: capMap,
       dial: dialObj as THREE.Object3D | null,
       dialHitPos,
+      dialHitSize,
       screenMat: screenMaterial as THREE.Material | null,
     };
   }, [scene, metalEnv]);
@@ -480,17 +491,16 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
             </mesh>
           );
         })}
-        {dial && dialHitPos && (
+        {dial && dialHitPos && dialHitSize && (
           <mesh
             position={[dialHitPos.x, dialHitPos.y, dialHitPos.z]}
             onPointerOver={handleDialEnter}
             onPointerOut={handleDialLeave}
             onClick={handleDialClick}
           >
-            {/* Hit volume sized generously around the actual knob
-                mesh so clicks consistently register. Cylinder axis
-                is +Y, matching the knob's vertical rotational axis. */}
-            <cylinderGeometry args={[1.1, 1.1, 1.5, 24]} />
+            {/* Hit volume fitted to the dial (see dialHitSize). Cylinder
+                axis is +Y, matching the dial's rotational axis. */}
+            <cylinderGeometry args={[dialHitSize.r, dialHitSize.r, dialHitSize.h, 32]} />
             <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           </mesh>
         )}
