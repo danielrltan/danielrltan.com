@@ -57,9 +57,9 @@
   },
   "materials": {
     "BrushedMetal": {
-      "hex": "#dfe2e6",
-      "rough": 0.32,
-      "metal": 0.27
+      "hex": "#c9cdd3",
+      "rough": 0.16,
+      "metal": 0.95
     },
     "keycap": {
       "hex": "#ffffff",

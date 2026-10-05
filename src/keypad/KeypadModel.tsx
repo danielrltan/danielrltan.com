@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useGLTF } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { track } from "../analytics";
 import { SOCIALS } from "../socials";
 // keypad.glb is imported as a Vite asset so the build gives it a content-
@@ -64,9 +65,11 @@ const DIAL_KICK = Math.PI * 2 * 1.1;
 // rapid click stack actually reaches "spinning hard" before fading.
 // At 0.9, velocity halves every ~0.77s.
 export const DIAL_DAMP = 0.9;
-// World units the dial rises per unit of scale growth (hover +0.12 lifts it
-// ~0.17, clear of its casing lip).
-const DIAL_LIFT = 1.4;
+// Reflection strength of the studio environment on the metal parts only.
+const METAL_ENV_INTENSITY = 0.85;
+// World units the dial rises per unit of scale growth: hover +0.12 lifts it
+// ~0.07 (owner: 1.4 / ~0.17 "goes up too much").
+const DIAL_LIFT = 0.6;
 // Hard cap so a determined spammer can't push velocity into the
 // 'spinning so fast it looks frozen' territory.
 const DIAL_MAX_VEL = Math.PI * 2 * 12; // 12 revs/sec ceiling
@@ -125,6 +128,18 @@ interface KeypadModelProps {
 export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   const { scene } = useGLTF(keypadUrl);
   const { camera, size, gl } = useThree();
+  // Studio reflections for the METAL parts only (body, casing, dial side):
+  // owner wanted the body "more shiny and metallic", and metal with nothing to
+  // reflect renders black and streaky (the old model's "wonky" look). The
+  // keycaps, screen and icons keep the direct key/fill lighting; a scene-wide
+  // environment was tried before and made everything read flat.
+  const metalEnv = useMemo(() => {
+    const pm = new THREE.PMREMGenerator(gl);
+    const tex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+    pm.dispose();
+    return tex;
+  }, [gl]);
+  useEffect(() => () => metalEnv.dispose(), [metalEnv]);
 
   // Clone + traverse synchronously so caps & dial are known before
   // the first render returns. Hit-volume meshes need their world
@@ -174,6 +189,10 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
           if (!mat) continue;
           const stdMat = mat as THREE.MeshStandardMaterial;
           stdMat.flatShading = false;
+          if (mat.name === "BrushedMetal") {
+            stdMat.envMap = metalEnv;
+            stdMat.envMapIntensity = METAL_ENV_INTENSITY;
+          }
           // Anisotropic filtering on every texture map on the
           // material. Default anisotropy is 1, which makes textures
           // look fuzzy/dithered when sampled at oblique angles. The
@@ -257,7 +276,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       dialHitPos,
       screenMat: screenMaterial as THREE.Material | null,
     };
-  }, [scene]);
+  }, [scene, metalEnv]);
 
   // Camera-aware fit. Re-runs on resize so portrait/landscape both
   // get a sensible scale. Uses visible camera HEIGHT at world z=0
