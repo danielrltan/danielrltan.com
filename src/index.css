@@ -312,23 +312,11 @@ body,
   color: var(--ink);
 }
 
-/* Subtle film grain: a tiny SVG noise overlay across the entire
-   wrapper bg. Adds material warmth and a hint of analog texture
-   without overwhelming the page. Only ~3% opacity. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  /* PERF: was mix-blend-mode:multiply, which forces a per-frame backdrop
-     read-back of the whole viewport on the compositor (real cost on weak GPUs,
-     esp. during scroll). The noise is black-on-alpha over a near-white page, so a
-     plain normal-blend at the same low opacity darkens essentially identically —
-     the multiply was imperceptible here. Opacity nudged 0.06→0.05 to match. */
-  opacity: 0.05;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.85 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
+/* (The fixed body::before film-grain overlay was removed, 2026-10-05: every
+   section paints an opaque #eef0f3 above it, so the grain only ever showed in
+   the gaps between sections, as slightly darker #e8eaed bars, e.g. under a
+   pinned section easing away on release (owner: "mismatched color bars
+   between each section"). It also cost a full-viewport layer per frame.) */
 
 html, body { min-height: 100%; }
 /* Horizontal scroll should never appear; vertical scroll drives the
