@@ -311,10 +311,8 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, wakeRef 
         ctx!.lineWidth = 2;
         ctx!.strokeRect(hr.x - 1, hr.y - 1, hr.w + 2, hr.h + 2);
         const tag = photos[hr.i].tag;
-        const label = `${pad2(hr.i + 1)}${tag ? ` · ${tag.toUpperCase()}` : ""}`;
+        const label = `${pad2(hr.i + 1)}${tag ? ` · ${tag}` : ""}`;
         ctx!.font = chipFont;
-        // letterSpacing is newer canvas API; harmless where unsupported.
-        (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = "2px";
         const tw = ctx!.measureText(label).width + 16;
         ctx!.fillStyle = accent;
         ctx!.fillRect(hr.x - 1, hr.y + hr.h + 1, tw, 22);

@@ -84,15 +84,16 @@
   /* Was an <div>; now an <h3> for landmark structure; strip UA
      heading margins/size so the visual treatment is unchanged. */
   margin: 0 0 var(--space-4h) 0;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label);
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
   /* Base --accent (#ff4f00) on the bg-deep band is < 2.6:1, fails AA
      for this 10.5px label. --accent-text is the on-palette darkened
      orange that clears 4.5:1. */
   color: var(--accent-text);
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* All three column HEADERS + rows still top-align (the signature lives BELOW
@@ -233,12 +234,13 @@
   }
 }
 .footer-meta-key {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label-sm);
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
   color: var(--ink-muted);
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1;
 }
 .footer-meta-val {
   margin: 0; /* reset UA <dd> indent */
@@ -257,10 +259,10 @@
   flex-wrap: wrap;
   border-top: 1px solid var(--ink-hairline);
   padding-top: var(--space-5);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: var(--fs-meta);
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ink-muted);
   font-weight: 500;
 }

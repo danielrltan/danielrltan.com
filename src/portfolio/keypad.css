@@ -196,11 +196,12 @@
       border-color var(--t-fast) var(--ease-out);
   }
   .keypad-section .keypad-email-k {
-    font-family: var(--font-mono);
-    font-size: var(--fs-mono);
-    font-weight: 500;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
+    font-family: var(--font-pixel);
+    font-size: var(--fs-label);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    text-transform: lowercase;
     color: var(--ink-muted);
   }
   .keypad-section .keypad-email-v {
@@ -228,12 +229,13 @@
     gap: var(--space-3);
   }
   .keypad-section .keypad-elsewhere-k {
-    font-family: var(--font-mono);
-    font-size: var(--fs-mono);
-    font-weight: 500;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
+    font-family: var(--font-pixel);
+    font-size: var(--fs-label);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-transform: lowercase;
     color: var(--ink-muted);
+    line-height: 1;
   }
 
   /* Contact links: a full-width editorial link LIST, not a grid of chips

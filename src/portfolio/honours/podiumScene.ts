@@ -139,8 +139,7 @@ export function createPodiumScene(
     const pad = 0.16 * PX;
     g.fillStyle = onOrange ? "rgba(255,255,255,.82)" : DEEP;
     g.font = `600 ${0.15 * PX}px Geist, system-ui, sans-serif`;
-    g.letterSpacing = `${0.025 * PX}px`;
-    g.fillText(t.category.toUpperCase(), pad, pad + 0.15 * PX);
+    g.fillText(t.category, pad, pad + 0.15 * PX);
     g.letterSpacing = "0px";
     const metric = t.metric ?? "";
     g.fillStyle = onOrange ? "#ffffff" : "#ff4f00";
@@ -159,8 +158,7 @@ export function createPodiumScene(
     if (t.context) {
       g.fillStyle = onOrange ? "rgba(255,255,255,.85)" : MUTED;
       g.font = `600 ${0.15 * PX}px Geist, system-ui, sans-serif`;
-      g.letterSpacing = `${0.02 * PX}px`;
-      g.fillText(t.context.toUpperCase(), pad, y0 + 0.38 * PX + lines.length * 0.3 * PX + 0.08 * PX);
+      g.fillText(t.context, pad, y0 + 0.38 * PX + lines.length * 0.3 * PX + 0.08 * PX);
       g.letterSpacing = "0px";
     }
     return canvasTex(c);
@@ -191,8 +189,7 @@ export function createPodiumScene(
     const top = mid - (0.13 * PX + tl.length * 0.22 * PX) / 2;
     g.fillStyle = tint ? DEEP : MUTED;
     g.font = `600 ${0.12 * PX}px Geist, system-ui, sans-serif`;
-    g.letterSpacing = `${0.018 * PX}px`;
-    g.fillText(t.category.toUpperCase(), x2, top + 0.04 * PX);
+    g.fillText(t.category, x2, top + 0.04 * PX);
     g.letterSpacing = "0px";
     g.fillStyle = SLATE;
     g.font = `600 ${ts}px Geist, system-ui, sans-serif`;

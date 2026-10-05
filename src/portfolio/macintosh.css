@@ -561,11 +561,13 @@
     gap: 2px;
   }
   .mac-project-meta {
-    font-family: var(--font-mono, sans-serif);
-    font-size: var(--fs-mono);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-family: var(--font-pixel);
+    font-size: var(--fs-label-sm);
+    letter-spacing: 0.01em;
+    text-transform: lowercase;
     color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+    font-weight: 700;
+    line-height: 1;
   }
   .mac-project-title {
     font-family: var(--font-display, "Geist", system-ui, sans-serif);
@@ -668,16 +670,16 @@
     color: var(--bg-surface, #fff);
     border: none;
     border-radius: 0;
-    font-family: var(--font-mono, sans-serif);
-    font-size: var(--text-base);
+    font-family: var(--font-body);
+    font-size: var(--fs-sub);
     font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    text-transform: none;
     text-decoration: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
     transition: background-color var(--t-fast) ease;
-  }
+}
   .mac-acc-panel .mac-acc-link:active {
     background: var(--accent-hot, #ff4f00);
     opacity: 1;
@@ -704,13 +706,14 @@
   .mac-detail-tags li {
     margin: 0;
     padding: 5px 12px;
-    font-family: var(--font-mono, sans-serif);
-    font-size: var(--fs-mono);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-family: var(--font-body);
+    font-size: var(--fs-meta);
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--ink-muted, rgba(13, 14, 16, 0.62));
     border: 1px solid var(--ink-hairline, rgba(13, 14, 16, 0.1));
     border-radius: 0;
+    font-weight: 500;
   }
 }
 

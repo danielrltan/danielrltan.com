@@ -104,12 +104,13 @@
   user-select: none;
 }
 .work-ledger-index {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label);
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
   color: var(--hdr-eyebrow, var(--ink-muted));
-  font-weight: 500;
+  font-weight: 700;
+  line-height: 1;
 }
 /* Specificity MUST beat the shared `.portfolio-section h2` (0,1,1) or it forces
    --fs-h1 (~187px) and the title starves the pinned frame. (.portfolio-section
@@ -254,10 +255,10 @@
   padding: 12px 18px;
   background: transparent;
   color: var(--ink) !important;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: var(--fs-sub);
+  letter-spacing: 0;
+  text-transform: none;
   text-decoration: none;
   font-weight: 600;
   white-space: nowrap;
@@ -498,11 +499,12 @@
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  font-weight: 600;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label);
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
+  font-weight: 700;
+  line-height: 1;
 }
 .work-acc-brand-text {
   color: var(--accent);
@@ -511,8 +513,8 @@
   padding: 3px 9px;
   background: var(--accent);
   color: #fff;
-  font-size: var(--text-xs);
-  letter-spacing: 0.2em;
+  font-size: var(--fs-label-sm);
+  letter-spacing: 0.01em;
   font-weight: 700;
   transition: background var(--hover-dur) var(--hover-ease),
     color var(--hover-dur) var(--hover-ease),
@@ -552,10 +554,10 @@
   white-space: nowrap;
 }
 .work-acc-when {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: var(--fs-meta);
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ink-muted);
   font-weight: 500;
 }
@@ -630,10 +632,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 10px;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: var(--fs-meta);
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ink-muted);
   font-weight: 500;
 }

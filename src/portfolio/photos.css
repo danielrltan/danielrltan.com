@@ -214,11 +214,11 @@
   bottom: 28px;
   display: flex;
   pointer-events: none;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   font-variant-numeric: tabular-nums;
   color: var(--ink-muted);
 }
@@ -275,11 +275,11 @@
   display: flex;
   gap: 10px;
   align-items: center;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   font-variant-numeric: tabular-nums;
   color: var(--ink-muted);
 }

@@ -95,6 +95,13 @@ Section headers share `--hdr-num` (the tiny section number) and
 
 **HUD micro-scale:** `--text-xs` 10, `--text-base` 12.
 
+**Labels: no tracked all-caps sans.** The owner rejected small uppercase,
+letter-spaced Geist labels (2026-10-05). Labels and eyebrows use the room
+callout's voice: Offbit Bold, lowercase, `--fs-label` (16) or `--fs-label-sm`
+(14), `letter-spacing: 0.01em`. Dates, roles and readouts use Geist 500 at
+`--fs-meta`, sentence case, no tracking. Big pixel display type (section
+wordmarks, names, values) and the diegetic Mac CRT text keep their caps.
+
 ---
 
 ## Spacing / radii / motion
@@ -140,11 +147,10 @@ All cards keep sharp corners (TE/industrial).
 border: 1px solid var(--accent);
 color: var(--accent);
 background: transparent;
-font-family: var(--font-mono);
-font-size: 11px;
-letter-spacing: 0.18em;
-text-transform: uppercase;
+font-family: var(--font-body);
+font-size: 14px;
 font-weight: 600;
+/* sentence case, no tracking */
 padding: 14px 24px;
 border-radius: 0;
 

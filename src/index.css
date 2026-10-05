@@ -76,8 +76,8 @@
  *   Card:      --bg-surface (or --bg-elevated for secondary), 1px
  *              ink-hairline border, sharp corners (TE/industrial).
  *   Button:    border + color = --accent, transparent bg; on hover bg
- *              fills accent, color goes white. Mono 11px 0.18em
- *              uppercase 600.
+ *              fills accent, color goes white. Geist 14px 600,
+ *              sentence case.
  *
  * LOADING SCREEN
  * --------------
@@ -111,6 +111,12 @@
   /* HUD micro-scale (photo card labels, cursor readouts). */
   --text-xs: 10px;
   --text-base: 12px;
+
+  /* Label voice: lowercase Offbit Bold, the room callout's voice. Owner
+     2026-10-05: no tracked all-caps sans labels or eyebrows. Dates and
+     readouts use Geist sentence case at --fs-meta instead. */
+  --fs-label: 16px;
+  --fs-label-sm: 14px;
 
   /* -- Surfaces ------------------------------------------------------ */
   --bg-page: #eef0f3;                /* cool off-white wrapper */

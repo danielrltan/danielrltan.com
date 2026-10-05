@@ -246,12 +246,13 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
   background: var(--accent, #ff4f00);
 }
 .about-banner-domain {
-  font-family: var(--font-mono, sans-serif);
-  font-size: var(--fs-mono, 11px);
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
   color: var(--ink-muted, rgba(13, 14, 16, 0.62));
+  line-height: 1;
 }
 /* Scoped under .portfolio-about so it beats the sitewide `.portfolio-section p`
    rule (0,1,1) — a bare `.about-banner-title` (0,1,0) loses to it and the big
@@ -432,13 +433,14 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
 
 /* Shared eyebrow label. */
 .card .label {
-  font-family: var(--font-mono, sans-serif);
-  font-size: var(--fs-mono, 11px);
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label);
   font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
   color: var(--accent-deep, #c23d00);
   margin: 0 0 auto;
+  line-height: 1;
 }
 
 /* ===== grid placement: a clean THREE-COLUMN bento =====
@@ -656,11 +658,11 @@ html[data-hero-covering] .render-frame {
   align-self: flex-start;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-mono, sans-serif);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--accent-deep, #c23d00);
   background: var(--accent-tint, rgba(255, 79, 0, 0.1));
   border: 1px solid rgba(255, 79, 0, 0.22);
@@ -723,13 +725,14 @@ html[data-hero-covering] .render-frame {
   margin-left: 16px;
 }
 .c-study .mini {
-  font-family: var(--font-mono, sans-serif);
-  font-size: 10px;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label-sm);
   font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
   color: var(--ink-faint, rgba(13, 14, 16, 0.4));
   margin-bottom: 5px;
+  line-height: 1;
 }
 .c-study .val {
   font-family: var(--font-body, "Geist", sans-serif);
@@ -826,13 +829,14 @@ html[data-hero-covering] .render-frame {
 .c-reach .ch-name {
   flex: 0 0 auto;
   min-width: 86px;
-  font-family: var(--font-mono, sans-serif);
-  font-size: 11px;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label);
   font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: none;
   color: var(--accent-deep, #c23d00);
   transition: color var(--hover-dur) var(--hover-ease);
+  line-height: 1;
 }
 .c-reach .ch-handle {
   flex: 1;
@@ -881,12 +885,13 @@ html[data-hero-covering] .render-frame {
   }
 }
 .c-reach .hint {
-  font-family: var(--font-mono, sans-serif);
-  font-size: 10px;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label-sm);
   font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
   color: var(--ink-faint, rgba(13, 14, 16, 0.4));
+  line-height: 1;
 }
 
 /* Location */
@@ -963,12 +968,13 @@ html[data-hero-covering] .render-frame {
   color: var(--ink, #0d0e10);
 }
 .portrait-info .r {
-  font-family: var(--font-mono, sans-serif);
-  font-size: 10px;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label-sm);
   font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
   color: var(--ink-muted, rgba(13, 14, 16, 0.55));
+  line-height: 1;
 }
 /* The shared .portfolio-section a rule adds an accent underline; the bento
    uses bespoke link treatments per-card, so neutralise the base here. */

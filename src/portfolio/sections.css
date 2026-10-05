@@ -140,18 +140,19 @@
   transform: translateY(-0.05em);
 }
 .section-index {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-label);
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
   color: var(--hdr-eyebrow, var(--ink-muted));
-  font-weight: 500;
+  font-weight: 700;
   /* 18px → 10px → 16px: the first tightening (for the pixel face's
      internal headroom) overshot — the eyebrow sat cramped against the
      title's cap (user: "a bit tight, balance that out"). 16px reads
      attached but breathing. */
   margin-bottom: 16px;
   display: block;
+  line-height: 1;
 }
 
 /* Section heading: OffBit pixel display. The playful counterweight to
