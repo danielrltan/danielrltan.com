@@ -15,13 +15,13 @@
     "gapBelow": 0.18
   },
   "display": {
-    "w": 1.52,
+    "w": 1.4,
     "recess": 0.045,
     "corner": 0.1,
     "inset": 0.05
   },
   "knob": {
-    "r": 0.5,
+    "r": 0.46,
     "h": 0.4,
     "collarR": 0.42,
     "collarH": 0.06,
@@ -29,12 +29,12 @@
     "ridges": 28
   },
   "well": {
-    "pad": 0.09,
+    "pad": 0.036,
     "depth": 0.24,
     "corner": 0.2
   },
   "keys": {
-    "gap": 0.12,
+    "gap": 0.048,
     "height": 0.62,
     "corner": 0.2,
     "taper": 0.9,
@@ -56,8 +56,8 @@
   "materials": {
     "BrushedMetal": {
       "hex": "#dfe2e6",
-      "rough": 0.4,
-      "metal": 0.18
+      "rough": 0.32,
+      "metal": 0.27
     },
     "keycap": {
       "hex": "#ffffff",
@@ -87,9 +87,18 @@
     "iconPx": 1024,
     "displayCrop": [
       0,
-      230,
+      192,
       500,
-      270
-    ]
+      308
+    ],
+    "_comment": "display.png in blend-src/keypad/tex is the original 500x500 screen art cropped to displayCrop [x,y,w,h] (matches the glass aspect (w-2*inset)/(topRow.h-2*inset)) and scaled 2x"
+  },
+  "casing": {
+    "_comment": "raised bezel ring around the dial; the dial sits in it with a dark gap",
+    "clear": 0.035,
+    "wall": 0.075,
+    "h": 0.2,
+    "bevel": 0.03,
+    "edgeInset": 0.06
   }
 }

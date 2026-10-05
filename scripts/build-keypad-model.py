@@ -253,9 +253,18 @@ for name, (sx, sz) in caps.items():
     set_origin(cap, (cx, (cap_y0 + cap_y1) / 2, cz))
 
 # ---------------------------------------------------------------- knob (cat dial)
-knob_cx = W / 2 - M - KN["r"] * 0.55
+# Casing (owner: the dial looked bare): a raised bezel ring around the dial,
+# with a dark collar showing in the gap between them. The ring's outer edge
+# sits CS["edgeInset"] in from the body's right edge.
+CS = SPEC["casing"]
+case_in = KN["r"] + CS["clear"]
+case_out = case_in + CS["wall"]
+knob_cx = W / 2 - CS["edgeInset"] - case_out
 knob_cz = row_cz
-collar = cylinder("knob_collar", KN["collarR"], Y1 - 0.01, Y1 + KN["collarH"], knob_cx, knob_cz, mat=MAT_DARK)
+casing = cylinder("knob_casing", case_out, Y1 - 0.01, Y1 + CS["h"], knob_cx, knob_cz, mat=MAT_BODY)
+boolean(casing, cylinder("cut_casing", case_in, Y1 - 0.5, Y1 + CS["h"] + 0.5, knob_cx, knob_cz))
+bevel(casing, CS["bevel"], 4, angle=40)
+collar = cylinder("knob_collar", case_in, Y1 - 0.01, Y1 + KN["collarH"], knob_cx, knob_cz, mat=MAT_DARK)
 kb0 = Y1 + KN["collarH"]
 kb1 = kb0 + KN["h"]
 knob = cylinder("knob", KN["r"], kb0, kb1, knob_cx, knob_cz, segs=72, mat=MAT_BODY)
@@ -282,7 +291,7 @@ for i, bz in enumerate(SB["z"]):
 # Join the static parts into "frame" (one node, several materials).
 activate(body)
 for ob in list(bpy.data.objects):
-    if ob.name.startswith(("well_floor", "knob_collar", "side_btn_")):
+    if ob.name.startswith(("well_floor", "knob_collar", "knob_casing", "side_btn_")):
         ob.select_set(True)
 bpy.ops.object.join()
 body.name = "frame"
