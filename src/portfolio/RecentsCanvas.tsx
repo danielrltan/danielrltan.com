@@ -234,6 +234,7 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, wakeRef 
       const R2 = cx * cx + cy * cy;
       const maxD = Math.sqrt(R2);
       const rects: Hit[] = [];
+      const draws: Array<Hit & { mx: number; my: number; rot: number; a: number; r2: number }> = [];
       const pitch = colW + gap;
       const scrollY = (0.5 - progressRef.current) * H * SCROLL_TRAVEL_VH;
       const yCam = py + scrollY;
@@ -275,19 +276,29 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, wakeRef 
             const y = my - h / 2;
             if (x > W || x + w < 0 || y > H || y + h < 0) continue;
             const key = `${cg}:${k}:${it.i}`;
-            rects.push({ x, y, w, h, i: it.i, key });
-            ctx!.globalAlpha = a;
             // Frames lean into a fling, a little more toward the edges.
             const rot = tilt * (0.6 + 0.8 * Math.min(1, r2 * 2)) * (dx < 0 ? 1 : 0.85);
-            ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-            ctx!.translate(mx, my);
-            if (rot) ctx!.rotate(rot);
-            if (ready[it.i]) ctx!.drawImage(imgs[it.i], -w / 2, -h / 2, w, h);
-            else {
-              ctx!.fillStyle = ghost;
-              ctx!.fillRect(-w / 2, -h / 2, w, h);
-            }
+            draws.push({ x, y, w, h, i: it.i, key, mx, my, rot, a, r2 });
           }
+        }
+      }
+      // Paint FAR to NEAR: the lens pulls outer frames in toward the centre,
+      // so they can overlap the centre ones; painted in column order (left to
+      // right) the right side landed ON TOP of the frames at the front of the
+      // ball (owner bug). Sorting by distance from the centre, farthest first,
+      // keeps the front frames on top everywhere. Hit-testing walks `rects`
+      // last-to-first, so it follows the same stacking.
+      draws.sort((p, q) => q.r2 - p.r2);
+      for (const d of draws) {
+        rects.push({ x: d.x, y: d.y, w: d.w, h: d.h, i: d.i, key: d.key });
+        ctx!.globalAlpha = d.a;
+        ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx!.translate(d.mx, d.my);
+        if (d.rot) ctx!.rotate(d.rot);
+        if (ready[d.i]) ctx!.drawImage(imgs[d.i], -d.w / 2, -d.h / 2, d.w, d.h);
+        else {
+          ctx!.fillStyle = ghost;
+          ctx!.fillRect(-d.w / 2, -d.h / 2, d.w, d.h);
         }
       }
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
