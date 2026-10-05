@@ -1,10 +1,10 @@
 /* ======================================================================
    Photos: "Recents"
    ----------------------------------------------------------------------
-   The photo-train stack, extracted from the opening beat of the Play (Other)
+   The Recents photo section, extracted from the opening beat of the Play (Other)
    section into its own pinned section between Honours and Contact. This file
-   owns the section shell, the corner header, and the three-row train rack
-   (OtherPhotoTrains). The `.other-*` class names are historical.
+   owns the section shell, the corner header, and the infinite photo plane
+   (RecentsCanvas). The `.other-*` class names are historical.
    ====================================================================== */
 
 /* THE HOLD (all viewports): a CSS sticky stage, NOT a GSAP pin. The section
@@ -91,13 +91,7 @@
 }
 
 /* ======================================================================
-   Photo train stack
-   ----------------------------------------------------------------------
-   Corner header + three horizontal rows, each `overflow: hidden` (cards
-   hard-clip at the row edge, no gradient mask). The inner strip is
-   `display: flex` with cards laid out left-to-right; React writes a per-row
-   translate3d via inline style every rAF tick (the lerp loop runs in
-   OtherPhotoTrains). The class names keep their historical `other-` prefix:
+   Corner header. The class names keep their historical `other-` prefix:
    these rules started life as the opening beat of the Play section.
    ====================================================================== */
 
@@ -138,151 +132,193 @@
   color: var(--hdr-num-color, #c23d00);
 }
 
-/* The trains wrap: centered vertical band between the header and the
-   foot HUD. Holds the three-row train stack.
+/* ======================================================================
+   The photo plane (RecentsCanvas): an endless, pannable plane of every
+   Recents photo, drawn on one 2D canvas. Owner pick from the 10-option
+   recents lab (r04, "super sick"), 2026-10-05.
 
-   OVERLAP FIX: the band top was 28vh while the header+blurb
-   occupy the top ~21vh AND the three-row stack used to be ~670px tall
-   inside a ~540px band, so, being centred, it overflowed ~65px UPWARD
-   and the top row collided with the right-side blurb's last line
-   ("…keyboard."). Two guards now keep them apart at every scrub
-   position:
-     1. `top: 30vh` drops the band start to a clear ~9vh below the
-        blurb's lowest line (blurb bottom ≈ 21vh).
-     2. `overflow: hidden` clips the band so its rows can NEVER escape
-        upward into the header zone even if a future card size change
-        re-overflows.
-   The row/card heights below are also vh-tuned so the three rows fit
-   inside the band (no clipping of card content; the clip is a belt-
-   and-braces guard, not the primary mechanism). */
-.other-trains-wrap {
+   Gesture ownership on a scrolling page: vertical wheel / touch belong to
+   the PAGE (the hold's scroll progress pans the plane vertically), so the
+   plane only takes horizontal drags, horizontal trackpad swipes and mouse
+   drags. touch-action: pan-y keeps a vertical swipe scrolling the page.
+   ====================================================================== */
+.recents-plane {
   position: absolute;
-  /* Centre the stack vertically between the "Recents" header (top) and the
-     "CURATED REEL" index line (bottom). It was bottom-heavy and jammed
-     against the footer line; 30/12vh + slightly shorter rows (18vh, below)
-     give a balanced ~57px of breathing room on both sides. Verified via
-     Playwright against the real pinned view.
-
-     svh (with a vh fallback) so the band geometry references the SAME viewport
-     unit as the section (height:100svh) + the cards (19svh). Mixing vh here was
-     the iOS bug: real Safari resolves `vh` to the LARGE (URL-bar-collapsed)
-     viewport while `svh` is the small one, so on a real iPhone the band sat in
-     a different box than the section and `justify-content:space-between` blew the
-     row gaps out — yet DevTools (where vh==svh) looked correct. */
-  top: 30vh;
-  top: 30svh;
-  bottom: 12vh;
-  bottom: 12svh;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 3;
+  inset: 0;
+  z-index: 1;
+  /* <main> is pointer-events:none (PortfolioSections); sections opt back in. */
+  pointer-events: auto;
+  touch-action: pan-y;
+  overscroll-behavior-x: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
 }
-
-.other-trains {
-  width: 100%;
-  /* Fill the whole train band and distribute the three rows evenly across
-     it (equal gaps) instead of clustering them in the centre with empty
-     headroom above/below. */
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: 0;
-  /* Row gap: half the old spacing (owner: "2x tighter"; was ~18px via
-     space-between). Rows sit as one tight block centred in the band. svh to
-     match the section/cards/band (see .other-trains-wrap): a vh gap diverged on iOS. */
-  gap: clamp(4px, 0.67vh, 7px); /* a third tighter again (owner) */
-  gap: clamp(4px, 0.67svh, 7px);
+.recents-plane:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
-
-.other-train-row {
-  position: relative;
-  overflow: hidden;
-  width: 100%;
-  /* Centre the (much wider) strip so its resting position overflows BOTH
-     sides. The rAF drift then translates around centre and never runs past
-     an edge — that left-anchored overrun was the mid-scroll gap. */
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  /* No left/right edge fade — the gradient mask read as a "weird fade" the
-     owner flagged. Cards hard-clip at the row edge instead (clean, gradient-
-     free, on both desktop and mobile). */
-}
-
-.other-train-strip {
-  display: flex;
-  gap: var(--space-2); /* 8px: a third tighter than --space-3 (owner; was --space-5 24px before that) */
-  will-change: transform;
-  /* No CSS transition: OtherPhotoTrains' damp loop writes the transform
-     (only while the row is still moving); a CSS transition would add lag. */
-}
-
-/* Each card is a SQUARE tile. Placeholder gradient fill until the real
-   photos from /photos/manifest.json arrive.
-
-   OVERLAP FIX: height is vh-driven (16vh, clamped 118–180px) so the
-   three-row stack scales with the vh-defined train band and fits inside
-   at 900px tall the stack is ~3x144 + 2x18 = 468px in a 522px band,
-   leaving headroom on both edges. Width is derived from height via
-   aspect-ratio:1 so the card reads as a square photo tile. */
-.other-train-card {
-  flex: 0 0 auto;
-  /* Tile size: 18vh so three rows + gaps fit the centred band with
-     balanced padding above ("Recents") and below. */
-  height: clamp(132px, 18vh, 220px);
-  aspect-ratio: 1 / 1;
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  padding: var(--space-4);
-  color: var(--bg-surface);
-  border: 1px solid var(--ink-hairline);
-  /* Flat ground: the soft orange-cast elevation shadow read "cheap" (user) —
-     the photo tile now sits flush on its 1px hairline border, matching the
-     flat spec-sheet card voice used across the rest of the site. */
-  overflow: hidden;
-}
-
-/* Cover photo inside the card: real <img> (not background-image) so
-   loading="lazy" / decoding="async" apply — the background variant
-   decoded every WebP synchronously at section entry (scroll jank). */
-.other-train-photo {
+.recents-plane canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
   display: block;
-  user-select: none;
-  -webkit-user-drag: none;
 }
+/* Edge vignette sells the lens; it deepens while you drag (--rv-warp,
+   written by the plane only when it changes). CSS, not canvas: a full-frame
+   gradient fill every frame was the most expensive op in the lab draft. */
+.recents-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(farthest-corner at 50% 50%, transparent 48%, var(--bg-page) 100%);
+  opacity: calc(0.55 + var(--rv-warp, 0) * 0.3);
+}
+/* The page fades up behind the wordmark so it stays legible over the plane. */
+.recents-head-plate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: min(1180px, 86vw);
+  height: 52vh;
+  height: 52svh;
+  z-index: 3;
+  pointer-events: none;
+  background: radial-gradient(farthest-side at 0 0, var(--bg-page) 62%, transparent);
+  opacity: 0.92;
+}
+.recents-cross {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  margin: -5px 0 0 -5px;
+  pointer-events: none;
+}
+.recents-cross::before,
+.recents-cross::after {
+  content: "";
+  position: absolute;
+  background: var(--accent);
+}
+.recents-cross::before { left: 5px; top: 0; width: 1px; height: 11px; }
+.recents-cross::after { top: 5px; left: 0; width: 11px; height: 1px; }
 
-.other-train-card-label {
+.recents-hud {
+  position: absolute;
+  z-index: 4;
+  bottom: 28px;
+  display: flex;
+  pointer-events: none;
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--bg-surface);
   font-weight: 600;
-  padding: 5px 10px;
-  background: rgba(13, 14, 16, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+.recents-hud > span {
+  background: var(--bg-page);
+  padding: 6px 8px;
+  box-shadow: 0 0 0 1px var(--ink-hairline);
+}
+.recents-hud b { color: var(--ink); font-weight: 600; }
+.recents-hud--xy { left: 6vw; }
+.recents-hud--xy b { display: inline-block; min-width: 5ch; text-align: right; }
+.recents-hud--count { right: 6vw; }
+
+/* Focus view: portalled to <body> (the stage clips, and an ancestor may
+   transform). Above the status bar / menu, below the scroll cover (9500)
+   and the voxel cursor (10000). */
+.recents-focus {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg-page) 90%, transparent);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--t-base) var(--ease-out), visibility 0s linear var(--t-base);
+}
+.recents-focus.is-open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--t-base) var(--ease-out), visibility 0s;
+}
+.recents-focus figure {
+  margin: 0;
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+.recents-focus-frame {
+  background: var(--bg-surface);
+  padding: 10px;
+  box-shadow: 0 1px 0 rgba(13, 14, 16, 0.06), 0 40px 60px -30px rgba(13, 14, 16, 0.45);
+  cursor: zoom-out;
+}
+.recents-focus-frame img {
+  display: block;
+  max-width: min(520px, 84vw);
+  max-height: min(520px, 62vh);
+  max-height: min(520px, 62svh);
+  width: auto;
+  height: auto;
+}
+.recents-focus figcaption {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+.recents-focus figcaption b { color: var(--ink); }
+.recents-focus-tag { color: var(--accent-text); }
+.recents-focus-btn {
+  font: inherit;
+  background: var(--bg-surface);
+  color: var(--ink);
+  border: 1px solid var(--ink-hairline);
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  transition: border-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+}
+.recents-focus-btn:hover { border-color: var(--accent); color: var(--accent); }
+.recents-focus-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Pixel chevron (stepped clip path, the site's arrow voice). */
+.recents-chev {
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  clip-path: polygon(60% 0, 80% 0, 80% 20%, 60% 20%, 60% 40%, 40% 40%, 40% 60%, 60% 60%, 60% 80%, 80% 80%, 80% 100%, 60% 100%, 60% 80%, 40% 80%, 40% 60%, 20% 60%, 20% 40%, 40% 40%, 40% 20%, 60% 20%);
+}
+.recents-chev--r { transform: scaleX(-1); }
+
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
+  .recents-hud { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .recents-hud--xy { left: 16px; }
+  .recents-hud--count { right: 16px; }
+  .recents-head-plate { width: 100vw; height: 40svh; }
 }
 
 /* ======================================================================
    Compact (phones, incl. a phone on its side: <=768px wide OR landscape
-   <=500px tall — mirrors motion.ts MQ.compact): the photo CAROUSEL runs on
-   phones too, exactly like desktop — the sticky hold scrubs it as a
-   swipe-through carousel (restored per the owner; the vertical grid was bad
-   mobile UX).
+   <=500px tall — mirrors motion.ts MQ.compact): the photo plane runs on
+   phones too, exactly like desktop.
    ====================================================================== */
 @media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   /* Same HUD clearance as the Play header (shared top-strip token). */
@@ -302,64 +338,15 @@
   .portfolio-photos .other-gallery-title {
     font-size: var(--hdr-title-mobile, var(--hdr-title, clamp(48px, 13vw, 190px)));
   }
-  /* Train band starts below the pushed-down header and ends above the
-     foot hint. overflow:hidden on the band (+ .portfolio-photos) means the
-     rows slide via transform WITHOUT ever creating page horizontal
-     scroll. */
-  .other-trains-wrap {
-    top: 26vh;
-    top: 26svh;
-    bottom: 13vh;
-    bottom: 13svh;
-  }
-  .other-trains {
-    gap: clamp(4px, 0.67vh, 6px);
-    gap: clamp(4px, 0.67svh, 6px);
-  }
-  /* SQUARE CARD IN PORTRAIT: sized to FILL the train band. The band is
-     100svh - 26vh header - 13vh foot ≈ 61svh; three rows + two gaps
-     should consume it. The old 13.5vh rows used only ~366px of a
-     ~515px band (user: "the squares don't fill out the screen") —
-     19svh rows land 3×rows + gaps within a few px of the band height
-     on both tall (844) and short (640) phones. svh so the size doesn't
-     jump when the URL bar collapses; vh fallback for older engines. */
-  .other-train-card {
-    /* Square (aspect-ratio:1 inherited from the base rule); height
-       drives the side length. */
-    height: clamp(112px, 19vh, 190px);
-    height: clamp(112px, 19svh, 190px);
-    padding: 10px;
-  }
-  .other-train-card-label {
-    font-size: var(--text-xs);
-    padding: 4px 7px;
-    letter-spacing: 0.18em;
-  }
 }
 
 /* A phone on its side (landscape, <=500px tall): only ~390-430px of height.
    The header floats over a one-viewport stage, so the wordmark is capped by
    height (the same cap as Play's stage; flow sections keep the shared 64px
-   cap) and the train band + cards re-fit so all three rows show: band from
-   just under the header to the bottom edge, rows ~18svh. */
+   cap). */
 @media (orientation: landscape) and (max-height: 500px) {
   .portfolio-photos .other-gallery-title {
     font-size: min(var(--hdr-title-mobile, 64px), 11vh);
-  }
-  .other-trains-wrap {
-    top: 36vh;
-    top: 36svh;
-    bottom: 4vh;
-    bottom: 4svh;
-  }
-  .other-train-card {
-    height: clamp(56px, 18vh, 120px);
-    height: clamp(56px, 18svh, 120px);
-    padding: 6px;
-  }
-  .other-train-card-label {
-    padding: 2px 5px;
-    letter-spacing: 0.12em;
   }
 }
 
@@ -369,8 +356,5 @@
     transition: none;
     transform: none;
     opacity: 1;
-  }
-  .other-train-strip {
-    transition: none;
   }
 }

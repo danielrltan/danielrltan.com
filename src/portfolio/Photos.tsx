@@ -6,7 +6,7 @@ import { smoothstep } from "../math";
 import "./sections.css";
 import "./photos.css";
 import { ScrambleText } from "./ScrambleText";
-import { OtherPhotoTrains } from "../other/OtherPhotoTrains";
+import { RecentsCanvas } from "./RecentsCanvas";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 import { reducedMotion } from "../motion";
 
@@ -15,44 +15,26 @@ gsap.registerPlugin(ScrollTrigger);
 /**
  * PHOTOS — "Recents".
  *
- * The horizontal photo-train stack (originally the opening beat of the Play
- * section), now its own standalone section near the end of the page (after
- * Honours, before Contact). Three rows of cards slide as the page scrolls:
- * ONE continuous train-progress span (the "photos-train" trigger) runs from
- * the section entering the viewport, through the sticky hold, to half a
- * viewport past it, so the rack is never parked static on the way in or out.
- * OtherPhotoTrains follows that progress through a dt-based damp that sleeps
- * once converged. Real
- * uploads stream in from /photos/manifest.json; until they exist the tinted
- * placeholders below render.
+ * A standalone section near the end of the page (after Honours, before
+ * Contact). Every photo sits on an endless plane you can drag through
+ * (RecentsCanvas: the owner's pick from the recents lab, 2026-10-05, which
+ * replaced the three scroll-scrubbed photo trains). The section holds for
+ * --photos-hold while ONE continuous progress span (the "photos-plane"
+ * trigger) runs from the section entering the viewport, through the sticky
+ * hold, to half a viewport past it. That progress pans the plane vertically,
+ * so scrolling still moves you through the photos; dragging moves you
+ * anywhere. Photos stream in from /photos/manifest.json.
  */
 
-// Placeholder photo vocabulary (moved here from Other.tsx with the trains).
-const TRAIN_PHOTOS = [
-  { color: "#2a1f1a", label: "Kickboxing" },
-  { color: "#1a1714", label: "Piano" },
-  { color: "#262120", label: "Keys" },
-  { color: "#5a3a1f", label: "Cars" },
-  { color: "#a8c4d0", label: "Skiing" },
-  { color: "#ff4f00", label: "Design" },
-  { color: "#3d4a52", label: "Travel" },
-  { color: "#c08c6c", label: "3D Modelling" },
-  { color: "#3a2418", label: "Fashion" },
-  { color: "#d4a574", label: "Coffee" },
-  { color: "#7a4f30", label: "Photography" },
-  { color: "#1f1a17", label: "Books" },
-];
-
 // Hold length (2 viewports) lives in photos.css as --photos-hold: the section
-// is that much taller than its sticky stage. The train progress span ends
-// TRAIN_TAIL_VH viewports past the end of the hold.
-const TRAIN_TAIL_VH = 0.5;
+// is that much taller than its sticky stage. The plane's progress span ends
+// PLANE_TAIL_VH viewports past the end of the hold.
+const PLANE_TAIL_VH = 0.5;
 
-
-// Write the gallery header reveal STRAIGHT to CSS vars (no React state → the
-// ~108 card nodes never re-render on a scroll tick). Driven by ScrollTrigger
-// on the Lenis-smoothed scroll (Lenis is the one smoother; photos.css keeps
-// no transition on these vars). Skips the write when nothing changed.
+// Write the gallery header reveal STRAIGHT to CSS vars (no React state, so
+// the plane never re-renders on a scroll tick). Driven by ScrollTrigger on the
+// Lenis-smoothed scroll (Lenis is the one smoother; photos.css keeps no
+// transition on these vars). Skips the write when nothing changed.
 function applyGalleryHead(el: HTMLElement | null, p: number) {
   if (!el) return;
   const eye = smoothstep(0, 0.4, p).toFixed(3);
@@ -65,25 +47,18 @@ function applyGalleryHead(el: HTMLElement | null, p: number) {
 
 export function Photos() {
   const sectionRef = useRef<HTMLElement>(null);
-  // Train progress 0..1 across the photos-train span, written per ScrollTrigger
-  // update into a REF (not state) so the ~108 card nodes never re-render on a
-  // scroll tick; the trains' rAF loop reads it directly.
-  const progressRef = useRef(0);
-  // The trains' follow loop sleeps once converged; each progress write wakes it.
-  const trainWakeRef = useRef<(() => void) | null>(null);
+  // Plane progress 0..1 across the photos-plane span, written per
+  // ScrollTrigger update into a REF (not state); the plane's rAF loop reads it.
+  const progressRef = useRef(0.5);
+  // The plane's loop parks when idle; each progress write wakes it.
+  const planeWakeRef = useRef<(() => void) | null>(null);
   // Header reveal written straight to CSS vars (no per-tick setState).
   const headerRef = useRef<HTMLElement>(null);
-  // Defer the ~5MB of photo webp off the INITIAL load: mount the trains only as
-  // the section approaches (a generous 2vh lead so images fetch before arrival).
-  // .other-trains-wrap is position:absolute, so this never changes section height
-  // or strands the pin; once fetched, the browser caches them across remounts.
-  // Trains mount on ALL viewports (incl. phones): the horizontal photo carousel
-  // IS this section's experience — restored on mobile per the owner ("restore
-  // the prod carousel; the vertical stack is terrible mobile UX"). The trains
-  // fetch their own /photos/manifest.json. disableOnMobile:false overrides the
-  // section-canvas keystone (which is for the live-WebGL sections, not this DOM
-  // rack).
-  const trainsMounted = useSectionCanvasMount(sectionRef, {
+  // Mount the plane (and fetch its photos) as the section approaches. The
+  // plane wrapper is position:absolute, so mounting never changes section
+  // height or strands a trigger. It mounts on ALL viewports including phones
+  // (disableOnMobile:false): the plane IS this section's experience.
+  const planeMounted = useSectionCanvasMount(sectionRef, {
     mountVh: 3,
     unmountVh: 4.5,
     disableOnMobile: false,
@@ -102,8 +77,8 @@ export function Photos() {
     // ~0.97 on release. Sticky is resolved by the compositor with the native
     // scroll, so there is no engage frame and nothing shifts.
     //
-    // Reduced motion: no hold (photos.css drops the extra height), rack parked
-    // at its neutral centred frame with the header up.
+    // Reduced motion: no hold (photos.css drops the extra height), plane
+    // parked at its neutral centred frame with the header up.
     if (reducedMotion.value) {
       applyGalleryHead(headerRef.current, 1);
       progressRef.current = 0.5;
@@ -123,30 +98,29 @@ export function Photos() {
       onUpdate: () => applyGalleryHead(headerRef.current, 1),
     });
 
-    // One continuous train span: from the section's top entering the viewport
-    // bottom, through the hold, to TRAIN_TAIL_VH past the hold's end. Not
-    // pinning; scrubbed by the trains' own damp loop.
-    const train = ScrollTrigger.create({
-      id: "photos-train",
+    // One continuous plane span: from the section's top entering the viewport
+    // bottom, through the hold, to PLANE_TAIL_VH past the hold's end. Not
+    // pinning, and read raw by the plane (Lenis already smooths the scroll).
+    const plane = ScrollTrigger.create({
+      id: "photos-plane",
       trigger: el,
       start: "top bottom",
-      end: () => `bottom ${Math.round((1 - TRAIN_TAIL_VH) * 100)}%`,
+      end: () => `bottom ${Math.round((1 - PLANE_TAIL_VH) * 100)}%`,
       invalidateOnRefresh: true,
       onUpdate: (s) => {
         progressRef.current = s.progress;
-        trainWakeRef.current?.();
+        planeWakeRef.current?.();
       },
       // Callbacks don't fire for refresh-time changes; keep the ref seeded.
       onRefresh: (s) => {
         progressRef.current = s.progress;
-        trainWakeRef.current?.();
+        planeWakeRef.current?.();
       },
     });
 
     // Entrance reveal: fade the header up as the section RISES into view,
-    // before the pin engages. Mirrors the Other Beat-A entrance so the
-    // Honors→Photos seam is a cross-dissolve, not a blank gap. Direct on the
-    // Lenis-smoothed scroll (a numeric scrub here was inert: nothing attached).
+    // before the hold engages. Mirrors the Other Beat-A entrance so the
+    // Honours→Photos seam is a cross-dissolve, not a blank gap.
     const entrance = ScrollTrigger.create({
       trigger: el,
       start: "top bottom",
@@ -160,7 +134,7 @@ export function Photos() {
 
     return () => {
       stopLoaderWatch();
-      train.kill();
+      plane.kill();
       st.kill();
       entrance.kill();
     };
@@ -177,47 +151,35 @@ export function Photos() {
       {/* Sticky stage: the viewport-tall frame that holds while the taller
           section scrolls past (photos.css). */}
       <div className="photos-stage">
-      {/* Accessible heading: the visible header + trains are decorative
-          placeholders (aria-hidden below), so this carries the section name
-          for AT and crawlers. When real captioned photos land, give each card
-          a real <img alt> and promote the visible header. */}
-      <h2 id="photos-sr-heading" className="sr-only">
-        Recents: a few frames from off the clock
-      </h2>
-
-      <header
-        ref={headerRef}
-        className="other-gallery-header"
-        aria-hidden="true"
-        style={
-          {
-            // Initial state only; applyGalleryHead writes these after mount.
-            "--gh-eye": reducedMotion.value ? "1" : "0",
-            "--gh-title": reducedMotion.value ? "1" : "0",
-          } as React.CSSProperties
-        }
-      >
-        {/* Cohesive corner header: big "06" + UPPERCASE wordmark. */}
-        <div className="other-gallery-eyebrow">
-          <span className="other-gallery-num">06</span>
-        </div>
-        <h2 className="other-gallery-title">
-          <ScrambleText text="Recents" />
+        <h2 id="photos-sr-heading" className="sr-only">
+          Recents: a few frames from off the clock
         </h2>
-      </header>
 
-      {/* The horizontal photo train rack (three parallax rows) — the carousel,
-          on every viewport. The pin scrubs it; on mobile it's the swipe-through
-          carousel the owner wanted back. */}
-      <div className="other-trains-wrap" aria-hidden="true">
-        {trainsMounted && (
-          <OtherPhotoTrains
-            photos={TRAIN_PHOTOS}
-            progressRef={progressRef}
-            wakeRef={trainWakeRef}
-          />
+        <header
+          ref={headerRef}
+          className="other-gallery-header"
+          aria-hidden="true"
+          style={
+            {
+              // Initial state only; applyGalleryHead writes these after mount.
+              "--gh-eye": reducedMotion.value ? "1" : "0",
+              "--gh-title": reducedMotion.value ? "1" : "0",
+            } as React.CSSProperties
+          }
+        >
+          {/* Cohesive corner header: big "06" + UPPERCASE wordmark. */}
+          <div className="other-gallery-eyebrow">
+            <span className="other-gallery-num">06</span>
+          </div>
+          <h2 className="other-gallery-title">
+            <ScrambleText text="Recents" />
+          </h2>
+        </header>
+
+        {/* The photo plane: canvas, HUD and the portalled focus view. */}
+        {planeMounted && (
+          <RecentsCanvas progressRef={progressRef} wakeRef={planeWakeRef} />
         )}
-      </div>
       </div>
     </section>
   );

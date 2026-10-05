@@ -193,6 +193,7 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
   const seen = new Set();
   const docH = await page.evaluate(() => document.documentElement.scrollHeight);
   const vh = viewport.height;
+  const vw = viewport.width;
   let shot = 1;
   for (let y = 0; y <= docH; y += Math.round(vh * 0.6)) {
     await scrollTo(page, y);
@@ -310,6 +311,68 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
       tiles.total > 0 && tiles.revealed === tiles.total,
       `all Honours tiles revealed (${tiles.revealed}/${tiles.total})`,
     );
+  }
+
+  // 3c. Recents photo plane: the canvas draws photos inside the hold, a
+  //     click / tap opens the focus view (scroll locked), Escape / the
+  //     backdrop closes it and unlocks, and the plane never traps page scroll.
+  {
+    const top = await page.evaluate(() => {
+      const el = document.querySelector(".portfolio-photos");
+      return el ? el.getBoundingClientRect().top + window.scrollY : -1;
+    });
+    check(top >= 0, "Recents section present");
+    await scrollTo(page, top + Math.round(vh * 0.6));
+    await settleScroll(page);
+    const mounted = await waitFor(page, () => !!document.querySelector(".portfolio-photos .recents-plane canvas"), { timeout: 10_000 });
+    check(mounted, "Recents plane canvas mounted in view");
+    // Non-background pixels = photos drawn (decode is async; give frames time).
+    const drawn = await waitFor(page, () => {
+      const c = document.querySelector(".recents-plane canvas");
+      if (!c || !c.width) return false;
+      const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4 * 211) if (Math.abs(d[i] - 238) + Math.abs(d[i + 1] - 240) + Math.abs(d[i + 2] - 243) > 40) n++;
+      return n > 200;
+    }, { timeout: 15_000, step: 300 });
+    check(drawn, "Recents plane draws photos");
+    // Find a photo: on desktop the hover sets body cursor:pointer; on a phone
+    // just tap a grid of points until the focus view opens.
+    const pts = [];
+    for (const fy of [0.5, 0.62, 0.42, 0.72]) for (const fx of [0.5, 0.35, 0.65, 0.2, 0.8]) pts.push([Math.round(vw * fx), Math.round(vh * fy)]);
+    let opened = false;
+    for (const [x, y] of pts) {
+      if (mobile) await page.touchscreen.tap(x, y);
+      else {
+        await page.mouse.move(x, y);
+        await sleep(200);
+        if (!(await page.evaluate(() => document.body.style.cursor === "pointer"))) continue;
+        await page.mouse.click(x, y);
+      }
+      opened = await waitFor(page, () => document.querySelector(".recents-focus")?.classList.contains("is-open") === true, { timeout: 1500 });
+      if (opened) break;
+    }
+    check(opened, "Recents photo opens the focus view");
+    if (opened) {
+      const locked = await page.evaluate(() => document.documentElement.style.overflow === "hidden");
+      check(locked, "Recents focus view locks scroll");
+      if (mobile) await page.touchscreen.tap(8, Math.round(vh * 0.97));
+      else await page.keyboard.press("Escape");
+      const closed = await waitFor(page, () =>
+        !document.querySelector(".recents-focus")?.classList.contains("is-open") &&
+        document.documentElement.style.overflow !== "hidden", { timeout: 3000 });
+      check(closed, `Recents focus view closes (${mobile ? "backdrop tap" : "Escape"}) and unlocks scroll`);
+    }
+    // Not a scroll trap: scrolling over the plane still moves the page.
+    const y0 = await page.evaluate(() => window.scrollY);
+    if (mobile) await page.evaluate((dy) => window.scrollBy(0, dy), vh);
+    else {
+      await page.mouse.move(Math.round(vw / 2), Math.round(vh / 2));
+      for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, 300); await sleep(120); }
+    }
+    await settleScroll(page);
+    const y1 = await page.evaluate(() => window.scrollY);
+    check(y1 > y0 + 100, `page scrolls over the Recents plane (+${Math.round(y1 - y0)}px)`);
   }
 
   // 4. Work accordion: expanding a collapsed role toggles aria-expanded.
