@@ -29,8 +29,10 @@ interface Props {
  *  - Release (the click): springs back up and the sparks GO OFF: seven spark
  *    bars burst out over the open 240° round the tip (never through the
  *    arrow's body), shrinking and fading as they fly. The hover sparks stay
- *    retracted until the burst has cleared, then grow back if still hovering,
- *    so the two never crowd each other (owner: both at once felt off).
+ *    retracted until the burst has cleared, then grow back only if the pointer
+ *    is STILL over a live clickable (re-checked every frame for SETTLE_MS
+ *    after the click, since clicks remove / hide / move their targets under a
+ *    still mouse; owner bug: sparks came back over nothing and flickered).
  *  - Reduced motion: no swing, no burst; states switch without springs.
  *
  * Hotspot = the arrow's TIP, at the 0×0 root, which sits exactly on the
@@ -48,6 +50,12 @@ const CLICKABLE_SEL =
 const CANVAS = 128;
 const HALF = CANVAS / 2;
 const REST: Pose = { rx: 0.42, ry: -0.6, depth: 1, scale: 1 };
+/** After a click, hit-test every frame this long (targets vanish / move). */
+const SETTLE_MS = 900;
+/** Hover must hold this long before the sparks come out (anti-flicker). */
+const HOVER_ON_MS = 70;
+/** Minimum gap between hover pops. */
+const POP_COOLDOWN_MS = 300;
 
 interface Spring {
   x: number;
@@ -102,9 +110,20 @@ export function MoveableCursor({ hot }: Props) {
     // last tick's pointer + smoothed velocity / acceleration, for the swing
     let lx = 0, ly = 0, vx = 0, vy = 0, ax = 0, ay = 0, pvx = 0, pvy = 0;
 
-    // Hovering a clickable element or a canvas hot-spot.
+    // Hovering a clickable element or a canvas hot-spot. `hoverEl` is the
+    // DOM element (null for canvas hot-spots), kept to validate it per frame.
     let hovering = false;
+    let hoverEl: Element | null = null;
     let down = false;
+    // A click often removes, hides or moves what was under the pointer (a menu
+    // closes, a section jumps) while the mouse sits still, so no move event
+    // re-checks it. For SETTLE_MS after a release, hit-test every frame.
+    let settleUntil = 0;
+    // Hover ON is debounced (must hold for HOVER_ON_MS) so a target that
+    // flickers in and out under a still pointer can't pulse the sparks; OFF is
+    // immediate. The pop has its own cooldown.
+    let pendingOnSince = -1;
+    let lastPop = -1e9;
 
     const rx: Spring = { x: REST.rx, v: 0 };
     const ry: Spring = { x: REST.ry, v: 0 };
@@ -156,18 +175,55 @@ export function MoveableCursor({ hot }: Props) {
       // pointerover/out: those only fire on pointer MOVEMENT, so the hover got
       // "stuck" while the page scrolled under a still mouse. Canvases (Mac /
       // Hobbies / keypad) signal via body cursor:pointer or the hot prop.
+      if (now < settleUntil) dirty = true;
+      // Still hovering a DOM target? It must still be in the page, visible and
+      // under the pointer; if not, re-check now rather than on the next move.
+      if (!dirty && hovering && hoverEl) {
+        const r = hoverEl.getBoundingClientRect();
+        const gone =
+          !hoverEl.isConnected ||
+          px < r.left || px > r.right || py < r.top || py > r.bottom ||
+          (typeof hoverEl.checkVisibility === "function" &&
+            !hoverEl.checkVisibility({ opacityProperty: true, visibilityProperty: true }));
+        if (gone) dirty = true;
+      }
+      let pending = false;
       if (dirty) {
         dirty = false;
         let el: Element | null = null;
         if (revealed) {
           const hit = document.elementFromPoint(px, py);
           el = hit && hit.closest ? hit.closest(CLICKABLE_SEL) : null;
+          if (
+            el &&
+            typeof el.checkVisibility === "function" &&
+            !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+          )
+            el = null;
         }
         const next = !!el || hotRef.current || document.body.style.cursor === "pointer";
-        if (next && !hovering && !reduced) {
-          scale.v += 5; // the pop
+        if (!next) {
+          hovering = false; // OFF: immediate
+          hoverEl = null;
+          pendingOnSince = -1;
+        } else if (hovering) {
+          hoverEl = el; // moved between clickables
+        } else {
+          // ON: only once it has held for HOVER_ON_MS (re-tested each frame)
+          if (pendingOnSince < 0) pendingOnSince = now;
+          if (now - pendingOnSince >= HOVER_ON_MS) {
+            hovering = true;
+            hoverEl = el;
+            pendingOnSince = -1;
+            if (!reduced && now - lastPop > POP_COOLDOWN_MS) {
+              scale.v += 5; // the pop
+              lastPop = now;
+            }
+          } else {
+            pending = true;
+            dirty = true;
+          }
         }
-        hovering = next;
       }
 
       // Velocity / acceleration of the tip, smoothed, for the swing.
@@ -223,7 +279,7 @@ export function MoveableCursor({ hot }: Props) {
       drawVoxels(ctx, ARROW, HALF, HALF, pose, dpr);
 
       // Keep ticking while animating, moving, or a hit-test is pending; else PARK.
-      if (busy || moving || dirty || bursts.length) frame = requestAnimationFrame(tick);
+      if (busy || moving || dirty || pending || bursts.length || now < settleUntil) frame = requestAnimationFrame(tick);
       else running = false;
     };
     const schedule = () => {
@@ -252,10 +308,11 @@ export function MoveableCursor({ hot }: Props) {
       if (!down) return;
       down = false;
       if (!reducedMotion.value) bursts.push({ t: 0 });
+      settleUntil = performance.now() + SETTLE_MS;
+      dirty = true;
       schedule();
     };
-    // Page scrolled under a (possibly still) cursor: re-check what's under it,
-    // and keep the hairlines on the element as it moves.
+    // Page scrolled under a (possibly still) cursor: re-check what's under it.
     const onScroll = () => {
       dirty = true;
       schedule();
