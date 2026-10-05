@@ -19,13 +19,11 @@ interface Props {
  *  - Rest: a slight three-quarter pose that shows the extrusion.
  *  - Moving: it hangs from its tip like a card with inertia; acceleration
  *    swings it on underdamped springs and it wobbles back.
- *  - Over anything CLICKABLE (lock-on, the gimbal reticle idea in the site's
- *    pixel language): the arrow pops, the hover art's three sparks (the
- *    "exclamations") rise out as voxels, and dotted pixel hairlines run out to
- *    the element's REAL edges with ticks where they land. Canvas hot-spots
- *    (keypad / Mac / Hobbies, which set body cursor to `pointer`) get the pop
- *    + sparks but no hairlines (no DOM box to measure). No ring: owner found
- *    a ring on top of the sparks too much.
+ *  - Over anything CLICKABLE: the arrow pops and the hover art's three
+ *    sparks (the "exclamations") rise out as voxels. That's all: the owner
+ *    found a reticle ring and lock-on hairlines on top of the sparks too much.
+ *    Canvas hot-spots (keypad / Mac / Hobbies, which set body cursor to
+ *    `pointer`) get the same.
  *  - Press and HOLD: the block squashes flat like a key going down and stays
  *    down until release.
  *  - Release (the click): springs back up and fires a RING OF EXCLAMATIONS,
@@ -48,8 +46,6 @@ const CLICKABLE_SEL =
 const CANVAS = 128;
 const HALF = CANVAS / 2;
 const REST: Pose = { rx: 0.42, ry: -0.6, depth: 1, scale: 1 };
-/** Where the lock-on hairlines start, clear of the tip (px). */
-const LOCK_GAP = 12;
 
 interface Spring {
   x: number;
@@ -70,7 +66,6 @@ function step(s: Spring, target: number, dt: number, k: number, zeta: number, sn
 export function MoveableCursor({ hot }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const lockRef = useRef<HTMLDivElement>(null);
   // The keypad's hot signal, read by the loop (no re-subscribe on change).
   const hotRef = useRef(hot);
   const wakeRef = useRef<() => void>(() => {});
@@ -82,11 +77,9 @@ export function MoveableCursor({ hot }: Props) {
   useEffect(() => {
     const rootEl = root.current;
     const canvas = canvasRef.current;
-    const lockEl = lockRef.current;
-    if (!rootEl || !canvas || !lockEl) return;
+    if (!rootEl || !canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const lines = Array.from(lockEl.children) as HTMLElement[]; // 4 hairlines + 4 ticks
 
     let dpr = 1;
     const fitCanvas = () => {
@@ -107,8 +100,7 @@ export function MoveableCursor({ hot }: Props) {
     // last tick's pointer + smoothed velocity / acceleration, for the swing
     let lx = 0, ly = 0, vx = 0, vy = 0, ax = 0, ay = 0, pvx = 0, pvy = 0;
 
-    // Hover target: the clickable element (for its box) or a canvas hot-spot.
-    let hoverEl: Element | null = null;
+    // Hovering a clickable element or a canvas hot-spot.
     let hovering = false;
     let down = false;
 
@@ -117,7 +109,6 @@ export function MoveableCursor({ hot }: Props) {
     const depth: Spring = { x: 1, v: 0 };
     const scale: Spring = { x: 1, v: 0 };
     const spark: Spring = { x: 0, v: 0 };
-    const lock: Spring = { x: 0, v: 0 };
     const bursts: { t: number }[] = [];
 
     // Hidden until the first real pointer position so it doesn't ghost at the
@@ -152,40 +143,6 @@ export function MoveableCursor({ hot }: Props) {
       schedule();
     };
 
-    /** Hairlines from the tip out to the element's real edges, + edge ticks. */
-    const layoutLock = (reach: number) => {
-      const show = reach > 0.01 && hoverEl;
-      lockEl.style.opacity = show ? String(Math.min(1, reach * 1.4)) : "0";
-      if (!show || !hoverEl) return;
-      const b = hoverEl.getBoundingClientRect();
-      const r = LOCK_GAP;
-      // One hairline: from (x0, y0) along `dir` to the edge coordinate `to`.
-      const seg = (el: HTMLElement, x0: number, y0: number, dir: "l" | "r" | "u" | "d", to: number) => {
-        const full = dir === "l" ? x0 - to : dir === "r" ? to - x0 : dir === "u" ? y0 - to : to - y0;
-        const len = Math.max(0, full) * reach;
-        const sx = dir === "l" ? x0 - len : x0;
-        const sy = dir === "u" ? y0 - len : y0;
-        el.style.transform = `translate3d(${Math.round(sx)}px,${Math.round(sy)}px,0)`;
-        if (dir === "l" || dir === "r") el.style.width = `${Math.round(len)}px`;
-        else el.style.height = `${Math.round(len)}px`;
-      };
-      const yC = Math.round(py) - 2, xC = Math.round(px) - 2;
-      seg(lines[0], px - r, yC, "l", b.left);
-      seg(lines[1], px + r, yC, "r", b.right);
-      seg(lines[2], xC, py - r, "u", b.top);
-      seg(lines[3], xC, py + r, "d", b.bottom);
-      // ticks where the hairlines land (only once they've arrived)
-      const tickA = reach > 0.92 ? "1" : "0";
-      const tick = (el: HTMLElement, x: number, y: number) => {
-        el.style.opacity = tickA;
-        el.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
-      };
-      tick(lines[4], b.left - 2, py - 5);
-      tick(lines[5], b.right - 2, py - 5);
-      tick(lines[6], px - 5, b.top - 2);
-      tick(lines[7], px - 5, b.bottom - 2);
-    };
-
     const tick = () => {
       const now = performance.now();
       const dt = Math.min(0.05, Math.max(0.001, (now - lastT) / 1000));
@@ -209,7 +166,6 @@ export function MoveableCursor({ hot }: Props) {
           scale.v += 5; // the pop
         }
         hovering = next;
-        hoverEl = el;
       }
 
       // Velocity / acceleration of the tip, smoothed, for the swing.
@@ -235,7 +191,6 @@ export function MoveableCursor({ hot }: Props) {
       busy = step(depth, down ? 0.18 : 1, dt, 520, down ? 0.9 : 0.3, reduced) || busy;
       busy = step(scale, down ? 0.88 : 1, dt, 380, down ? 0.9 : 0.4, reduced) || busy;
       busy = step(spark, hovering ? 1 : 0, dt, 300, 0.45, reduced) || busy;
-      busy = step(lock, hovering && hoverEl ? 1 : 0, dt, 220, 0.85, reduced) || busy;
 
       // Draw.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -263,7 +218,6 @@ export function MoveableCursor({ hot }: Props) {
         });
       }
       drawVoxels(ctx, ARROW, HALF, HALF, pose, dpr);
-      layoutLock(lock.x);
 
       // Keep ticking while animating, moving, or a hit-test is pending; else PARK.
       if (busy || moving || dirty || bursts.length) frame = requestAnimationFrame(tick);
@@ -331,26 +285,12 @@ export function MoveableCursor({ hot }: Props) {
   }, []);
 
   return (
-    <>
-      {/* Lock-on hairlines + edge ticks: a fixed full-viewport layer under the
-          arrow, laid out from JS only while hovering a clickable. */}
-      <div ref={lockRef} className="moveable-cursor-lock" aria-hidden>
-        <i className="mcl-h" />
-        <i className="mcl-h" />
-        <i className="mcl-v" />
-        <i className="mcl-v" />
-        <i className="mcl-tick mcl-tick--v" />
-        <i className="mcl-tick mcl-tick--v" />
-        <i className="mcl-tick mcl-tick--h" />
-        <i className="mcl-tick mcl-tick--h" />
-      </div>
-      <div ref={root} className="moveable-cursor" aria-hidden>
-        <canvas
-          ref={canvasRef}
-          className="moveable-cursor__canvas"
-          style={{ left: -HALF, top: -HALF, width: CANVAS, height: CANVAS }}
-        />
-      </div>
-    </>
+    <div ref={root} className="moveable-cursor" aria-hidden>
+      <canvas
+        ref={canvasRef}
+        className="moveable-cursor__canvas"
+        style={{ left: -HALF, top: -HALF, width: CANVAS, height: CANVAS }}
+      />
+    </div>
   );
 }

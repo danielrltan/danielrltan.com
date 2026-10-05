@@ -59,8 +59,7 @@
 
 /* Hide the regular arrow cursor while panning (it sets its own inline opacity,
    so this override needs !important). */
-html.pan-scrolling .moveable-cursor,
-html.pan-scrolling .moveable-cursor-lock {
+html.pan-scrolling .moveable-cursor {
   opacity: 0 !important;
 }
 
