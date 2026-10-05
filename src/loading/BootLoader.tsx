@@ -125,9 +125,13 @@ export function BootLoader() {
       if (dead || !info || !stageRef.current) return;
       const v = info.create(stageRef.current, reducedMotion.value);
       variant = v;
+      // Readouts freeze the frame the count lands on 100: the hold and the
+      // fade after it are not load time.
+      let final: ReturnType<typeof readLoadStats> | null = null;
       const loop = (now: number) => {
         const { p, n } = shownRef.current;
-        v.frame(now, p, n, readLoadStats());
+        if (n >= 100 && !final) final = readLoadStats();
+        v.frame(now, p, n, final ?? readLoadStats());
         raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
