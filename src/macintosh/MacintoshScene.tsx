@@ -820,20 +820,67 @@ function ensureUppercase(text: string): string {
  * ──────────────────────────────────────────────────────────────── */
 
 /**
- * CRT post shader for the screen overlay: scanlines, a slow upward
- * refresh band, corner vignette, and a faint flicker, all time-driven
- * in GLSL. Doing this in the material (instead of painting into the
- * canvas texture) means the effects move EVERY frame without a single
- * CanvasTexture re-upload; the UI texture keeps its repaint-on-change
- * regime. uOpacity replaces MeshBasicMaterial.opacity for the boot
- * power-on ramp. `colorspace_fragment` is mandatory: custom shaders
- * bypass three's output encoding, and without it the screen renders
- * dark/wrong under ColorManagement (see project rule).
+ * CURVED GLASS shared by the picture overlay and the OFF-tube backing: the
+ * unlit phosphor's grey-black floor plus a broad, soft room reflection on the
+ * bulged faceplate. Both planes add the SAME term in the SAME glass-space
+ * coordinates (g: 0..1 across the glass rect), so the picture's edge never
+ * reads as a lighter rectangle sitting inside the black glass, and the dark
+ * tube still looks like glass when the picture is off. Values are LINEAR and
+ * tiny on purpose: colorspace_fragment's sRGB encode lifts 0.004 to ~12/255.
+ */
+const CRT_GLASS_GLSL = /* glsl */ `
+  vec3 crtGlass(vec2 g) {
+    vec2 c = g - 0.5;
+    // Unlit P134-ish phosphor: a warm grey, never pure black.
+    vec3 floorCol = vec3(0.0032, 0.0029, 0.0025);
+    // Broad diffuse reflection of the room in the upper-left of the glass,
+    // stretched along the curve. Low-frequency only: a crisp "window"
+    // highlight is its own fake tell.
+    vec2 rp = c - vec2(-0.18, 0.26);
+    float sheen = exp(-dot(rp * vec2(1.6, 2.4), rp * vec2(1.6, 2.4)) * 3.0);
+    // A faint lit rim where the faceplate curves back toward the top light.
+    float rim = smoothstep(0.30, 0.50, c.y) * (1.0 - smoothstep(0.30, 0.52, abs(c.x)));
+    // The glass curves away from the viewer at its edges and reflects less.
+    float edge = 1.0 - 0.55 * smoothstep(0.25, 0.62, length(c * vec2(1.0, 1.15)));
+    vec3 refl = vec3(0.86, 0.90, 1.0) * (0.0055 * sheen + 0.0022 * rim);
+    return (floorCol + refl) * edge;
+  }
+`;
+
+/**
+ * CRT post shader for the screen overlay, modelled on how an amber
+ * monochrome tube looks IN PERSON (not filmed): no rolling bar, no crawling
+ * stripes. The read comes from
+ *   - phosphor HALATION: bright strokes bloom into the glass around them;
+ *   - BEAM width tracking brightness: dark areas show the raster's seams,
+ *     bright text swells and fills them (the scanlines sit still);
+ *   - a soft horizontal beam spot (no pixel-crisp edges) and slight
+ *     radial misconvergence toward the corners;
+ *   - luminance falling off toward the corners of the tube;
+ *   - the curved glass (CRT_GLASS_GLSL) sitting over everything.
+ * Doing this in the material (instead of painting into the canvas texture)
+ * keeps the UI texture on its repaint-on-change regime. uOpacity replaces
+ * MeshBasicMaterial.opacity for the boot power-on ramp. `colorspace_fragment`
+ * is mandatory: custom shaders bypass three's output encoding, and without it
+ * the screen renders dark/wrong under ColorManagement (see project rule).
  */
 function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
+  const img = map.image as { width?: number; height?: number } | undefined;
   return new THREE.ShaderMaterial({
     uniforms: {
       uMap: { value: map },
+      // 1 / texture size in texels (set by MacBody when the texture changes).
+      uTexel: {
+        value: new THREE.Vector2(1 / (img?.width || 900), 1 / (img?.height || 640)),
+      },
+      // Picture rect as a fraction of the glass rect (same centre), mapping
+      // the overlay's UVs into the glass space the reflection is defined in.
+      uPicInGlass: {
+        value: new THREE.Vector2(
+          MAC_SCREEN_RECT.w / MAC_SEAT.w,
+          MAC_SCREEN_RECT.h / MAC_SEAT.h,
+        ),
+      },
       uOpacity: { value: 0 },
       uTime: { value: 0 },
       // Page-transition glitch intensity 0..1: pulsed by the Scene on
@@ -855,11 +902,19 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
     `,
     fragmentShader: /* glsl */ `
       uniform sampler2D uMap;
+      uniform vec2 uTexel;
+      uniform vec2 uPicInGlass;
       uniform float uOpacity;
       uniform float uTime;
       uniform float uGlitch;
       uniform float uPowerOff;
       varying vec2 vUv;
+      ${CRT_GLASS_GLSL}
+      // The painter's tube ground (CRT_BASE #0a0806) in linear: treated as
+      // "no phosphor lit" so the raster's black IS the glass floor.
+      const vec3 BASE = vec3(0.0030, 0.0024, 0.0018);
+      vec3 phos(vec2 p) { return max(texture2D(uMap, p).rgb - BASE, 0.0); }
+      vec3 phosB(vec2 p, float bias) { return max(texture2D(uMap, p, bias).rgb - BASE, 0.0); }
       void main() {
         // PAGE-TRANSITION GLITCH (uGlitch 0..1, decaying pulse): the
         // tube loses sync for a beat when "switching pages" —
@@ -872,18 +927,16 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
 
         // SCREEN BULGE: barrel-distort the sample space so the picture
         // curves like tube glass — the image swells at centre and its
-        // edges pull in, leaving a thin curved black bezel at the
-        // corners of the flat quad. k kept subtle (corner overshoot
-        // ~3%) so the DOM click hotspots (positioned on the FLAT rect)
-        // stay within a few px of the painted UI.
+        // edges pull in. k kept subtle (corner overshoot ~3%) so the DOM
+        // click hotspots (positioned on the FLAT rect) stay within a few
+        // px of the painted UI.
         vec2 cb = vUv - 0.5;
         float r2 = dot(cb, cb);
         vec2 uv = 0.5 + cb * (1.0 + 0.12 * r2);
-        // Bezel mask: anything sampled past the texture edge is tube
-        // rim, fading over ~1% so the curve reads smooth.
+        // Raster edge: the beam's scan area ends softly, not on a ruled line.
         vec2 edgeD = abs(uv - 0.5);
         float outside = max(edgeD.x, edgeD.y) - 0.5;
-        float bezel = 1.0 - smoothstep(0.0, 0.012, outside);
+        float bezel = 1.0 - smoothstep(-0.012, 0.004, outside);
 
         if (uGlitch > 0.001) {
           float row = floor(uv.y * 36.0);
@@ -896,7 +949,7 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
         // RETRO CRT POWER-OFF: squeeze the picture into a shrinking lit window —
         // VERTICAL first (-> a hot horizontal line), then HORIZONTAL (-> a centre
         // dot) — compressing the image into it rather than clipping. poWin masks
-        // everything outside the window; the flash + fade land at the end.
+        // the phosphor outside the window; the flash + fade land at the end.
         float poWin = 1.0;
         if (uPowerOff > 0.0001) {
           float poV = smoothstep(0.0, 0.5, uPowerOff);
@@ -907,74 +960,75 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
           poWin = step(abs(c2.y), bH) * step(abs(c2.x), bW);
           uv = 0.5 + vec2(c2.x * (0.5 / bW), c2.y * (0.5 / bH));
         }
-        float ca = 0.006 * uGlitch;
+
+        // BEAM SPOT: a soft horizontal gaussian instead of square texels,
+        // with each gun landing slightly off toward the corners
+        // (misconvergence), widened by the glitch's chroma split.
+        vec2 dx = vec2(uTexel.x * 0.85, 0.0);
+        vec2 conv = cb * uTexel * 0.6 + vec2(0.006 * uGlitch, 0.0);
         vec3 col;
-        col.r = texture2D(uMap, uv + vec2(ca, 0.0)).r;
-        col.g = texture2D(uMap, uv).g;
-        col.b = texture2D(uMap, uv - vec2(ca, 0.0)).b;
+        col.r = phos(uv + conv).r;
+        col.g = phos(uv).g;
+        col.b = phos(uv - conv).b;
+        col = col * 0.5 + (phos(uv - dx) + phos(uv + dx)) * 0.25;
         if (uGlitch > 0.001) {
           float n = fract(sin(dot(uv + uTime, vec2(12.9898, 78.233))) * 43758.5453);
-          col += (n - 0.5) * 0.35 * uGlitch;
+          col = max(col + (n - 0.5) * 0.35 * uGlitch, 0.0);
         }
 
-        // RASTER LINES: ~96 fat scanlines (was 210 hairlines at 6%
-        // depth — invisible at viewing distance). Trapezoid profile:
-        // a bright line core with a soft DARK SEAM between rows, the
-        // way a real tube's beam rows actually read. The whole raster
-        // crawls slowly downward so it reads as live scan, not print.
-        // Raster follows the BULGED beam-space so the scanlines curve
-        // with the glass like a real tube.
-        float line = uv.y * 96.0 + uTime * 0.8;
-        float ph = fract(line);
-        float scan = 0.70 + 0.30 *
-          (smoothstep(0.03, 0.36, ph) * (1.0 - smoothstep(0.64, 0.97, ph)));
+        // HALATION: light from bright strokes scatters in the phosphor and
+        // the faceplate, haloing text. Two rings of taps on the texture's
+        // mip chain (bias keeps it to a handful of cheap, pre-blurred
+        // samples): a tight glow and a wide, faint veil.
+        vec3 glowN = vec3(0.0);
+        vec3 glowW = vec3(0.0);
+        for (int i = 0; i < 6; i++) {
+          float a = float(i) * 1.0472 + 0.5;
+          vec2 o = vec2(cos(a), sin(a));
+          glowN += phosB(uv + o * uTexel * 3.5, 1.5);
+          glowW += phosB(uv + o.yx * uTexel * 11.0, 3.0);
+        }
+        vec3 halo = glowN * (0.20 / 6.0) + glowW * (0.07 / 6.0);
 
-        // INTERLACE SHIMMER: odd/even line fields trade ~3% brightness
-        // on alternating ticks — the gentle row-flicker of an
-        // interlaced tube. Field clock ~12Hz, far below strobe range.
-        float odd = mod(floor(line), 2.0);
-        float fieldClock = step(0.5, fract(uTime * 12.0));
-        float interlace = 1.0 - 0.03 * abs(odd - fieldClock);
+        // SCANLINE BEAM: fixed raster (it never crawls). Each line is a
+        // gaussian whose width grows with brightness, normalised to keep
+        // the line's average light constant, so the dark seams show on
+        // dim areas and bright strokes swell to fill them.
+        float lines = 220.0;
+        float line = uv.y * lines;
+        float d = fract(line) - 0.5;
+        float lum = max(col.r, max(col.g, col.b));
+        float sigma = mix(0.22, 0.50, sqrt(clamp(lum, 0.0, 1.0)));
+        float beam = exp(-d * d / (2.0 * sigma * sigma));
+        // Mean of the gaussian over its line: sigma*sqrt(2pi)*erf(0.5/(sigma*sqrt2)),
+        // erf via the sqrt(1 - exp(-4x^2/pi)) approximation.
+        float ex = 0.5 / (sigma * 1.41421);
+        float mean = sigma * 2.5066 * sqrt(1.0 - exp(-1.2732 * ex * ex));
+        float scan = beam / mean;
+        // Anti-alias: fade the raster out where lines shrink toward a pixel
+        // (small/tilted float pose, phones) so it never moirés.
+        float fw = fwidth(line);
+        scan = mix(scan, 1.0, smoothstep(0.22, 0.45, fw));
 
-        // APERTURE GRILLE: faint vertical phosphor triads. Pure chroma
-        // texture (no geometry), reads as tube glass up close. WARM-BIASED:
-        // on a monochrome amber screen a full R/G/B triad injects stray
-        // green/blue shimmer, so the G and (especially) B legs are damped to
-        // keep the grille's flicker inside the orange wedge.
-        float gx = uv.x * 320.0 * 6.2832;
-        vec3 triad = vec3(
-          0.97 + 0.05 * cos(gx),
-          0.97 + 0.022 * cos(gx + 2.094),
-          0.97 + 0.010 * cos(gx + 4.189)
-        );
+        // Luminance falls off toward the tube's corners.
+        float vig = 1.0 - 0.30 * smoothstep(0.18, 0.62, length(cb * vec2(1.0, 0.9)));
 
-        // REFRESH BAND: a soft bright bar rolling DOWN the face every
-        // ~6s (doubled presence vs the old 5%), with a faint dark
-        // retrace shadow trailing just behind it.
-        float roll = fract(uv.y - uTime * 0.16);
-        float band = 1.0 + 0.10 * exp(-pow((roll - 0.5) * 8.0, 2.0))
-                         - 0.045 * exp(-pow((roll - 0.62) * 12.0, 2.0));
+        // Mains ripple: well under 1%, two incommensurate sines.
+        float flick = 1.0 + 0.007 * sin(uTime * 47.0) * sin(uTime * 13.7);
 
-        // Corner vignette: tube glass falloff.
-        float d = distance(vUv, vec2(0.5));
-        float vig = 1.0 - 0.18 * smoothstep(0.32, 0.72, d);
-
-        // Supply flicker (sub-2%, two incommensurate sines so it never
-        // reads as a loop).
-        float flick = 1.0 + 0.018 * sin(uTime * 47.0) * sin(uTime * 13.7);
-
-        vec3 outCol = col * scan * interlace * band * vig * flick * triad;
-        // PHOSPHOR LIFT: the seams must not crush detail to black — a
-        // touch of unmodulated bleed keeps text legible through the
-        // raster, like real phosphor glow spilling between rows.
-        outCol += col * 0.13;
+        vec3 lit = (col * scan + halo) * vig * flick;
+        // Phosphor saturation: the hottest cores run toward white.
+        float over = max(lit.r - 0.85, 0.0);
+        lit.gb += over * vec2(0.40, 0.22);
         // POWER-OFF: the collapsing line/dot glows HOT as the beam pinches,
         // then the dot fades out to black (the classic CRT sleep).
-        outCol *= 1.0 + 3.5 * smoothstep(0.0, 0.5, uPowerOff) * (1.0 - smoothstep(0.86, 1.0, uPowerOff));
-        // Tube rim: black out the curved over-edge region; poWin gates the
-        // power-off window; the last 0.86->1 fades the dot.
-        float poAlpha = uOpacity * poWin * (1.0 - smoothstep(0.86, 1.0, uPowerOff));
-        gl_FragColor = vec4(outCol * bezel, poAlpha);
+        lit *= 1.0 + 3.5 * smoothstep(0.0, 0.5, uPowerOff) * (1.0 - smoothstep(0.86, 1.0, uPowerOff));
+        lit *= bezel * poWin * (1.0 - smoothstep(0.86, 1.0, uPowerOff));
+
+        // The glass sits over the phosphor; added after the bezel / power-off
+        // masks so the reflection never blacks out or flares with the dot.
+        vec2 g = 0.5 + (vUv - 0.5) * uPicInGlass;
+        gl_FragColor = vec4(lit + crtGlass(g), uOpacity);
         #include <colorspace_fragment>
       }
     `,
@@ -988,6 +1042,28 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
     depthTest: true,
     depthWrite: false,
     side: THREE.DoubleSide,
+  });
+}
+
+/** The OFF-tube backing: the same curved glass as the picture's, unlit. */
+function makeCrtGlassMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      varying vec2 vUv;
+      ${CRT_GLASS_GLSL}
+      void main() {
+        gl_FragColor = vec4(crtGlass(vUv), 1.0);
+        #include <colorspace_fragment>
+      }
+    `,
+    depthWrite: false,
   });
 }
 
@@ -1078,19 +1154,15 @@ function MacBody({
     screenOverlayRef.current = overlay;
     overlayMatRef.current = overlayMat;
 
-    // OFF-SCREEN BACKING: a near-black plane behind the picture, sized to the
-    // GLASS. When the CRT powers off (the picture double-blinks then collapses,
+    // OFF-SCREEN BACKING: the unlit curved glass behind the picture, sized to
+    // the GLASS (same reflection as the picture's, so the two never seam). When the CRT powers off (the picture double-blinks then collapses,
     // going transparent), this reads through as a dark, inert OFF tube instead
     // of the model's pale screen material showing white (owner-flagged).
     // renderOrder 998 keeps it behind the picture (999); depthWrite:false so it
     // never z-fights the glass it sits just in front of.
     const maskMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(MAC_SEAT.w, MAC_SEAT.h),
-      new THREE.MeshBasicMaterial({
-        color: "#050505",
-        toneMapped: false,
-        depthWrite: false,
-      }),
+      makeCrtGlassMaterial(),
     );
     maskMesh.position.set(MAC_SEAT.cx, MAC_SEAT.cy, MAC_SEAT.cz);
     maskMesh.rotation.x = MAC_SCREEN_TILT_X;
@@ -1148,6 +1220,10 @@ function MacBody({
     if (!overlay) return;
     const mat = overlay.material as THREE.ShaderMaterial;
     mat.uniforms.uMap!.value = screenTexture;
+    const img = screenTexture.image as { width?: number; height?: number } | undefined;
+    if (img?.width && img.height) {
+      (mat.uniforms.uTexel!.value as THREE.Vector2).set(1 / img.width, 1 / img.height);
+    }
   }, [screenTexture]);
 
   if (!clone) return null;
