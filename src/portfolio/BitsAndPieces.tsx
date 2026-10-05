@@ -59,6 +59,8 @@ interface Entry {
 // so card edges align top-to-bottom with no ragged trailing column.
 const ENTRIES: Entry[] = [
   // --- Hero row: the three marquee placements, each with a verified metric ---
+  // Owner (2026-10-05): IBM Watsonx Top 50 takes the podium's third spot and
+  // WFN Odyssey Cup moves into the tower.
   // Headliner (owner, 2026-10-05): Poddle placed #25 on Product Hunt on its
   // Oct 4 2026 launch day. It leads the hero row; TRREB moved down to the
   // supporting grid so the row stays three-up.
@@ -80,10 +82,10 @@ const ENTRIES: Entry[] = [
   },
   {
     category: "Competition",
-    title: "WFN Odyssey Cup",
-    metric: "1st",
-    context: "$500",
-    blurb: "Western Founders Network annual venture competition.",
+    title: "IBM Watsonx Orchestrate",
+    metric: "Top 50",
+    context: "of 2000+",
+    blurb: "Global agentic-AI build challenge.",
     featured: true,
   },
   {
@@ -96,10 +98,10 @@ const ENTRIES: Entry[] = [
   // --- Supporting grid ---
   {
     category: "Competition",
-    title: "IBM Watsonx Orchestrate",
-    metric: "Top 50",
-    context: "of 2000+",
-    blurb: "Global agentic-AI build challenge.",
+    title: "WFN Odyssey Cup",
+    metric: "1st",
+    context: "$500",
+    blurb: "Western Founders Network annual venture competition.",
   },
   {
     category: "Competition",

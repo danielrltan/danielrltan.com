@@ -56,10 +56,7 @@ export function HonoursPodium({ entries, active }: { entries: readonly HonoursEn
       <article className={`bp-podium-card${e ? "" : " is-hidden"}`} aria-live="polite">
         {e && (
           <>
-            <span className="bp-podium-cat">
-              {e.category}
-              {e.featured ? " · Headline" : ""}
-            </span>
+            <span className="bp-podium-cat">{e.category}</span>
             <h3 className="bp-podium-title">{e.title}</h3>
             {e.metric && <span className="bp-podium-metric">{e.metric}</span>}
             {e.context && <span className="bp-podium-ctx">{e.context}</span>}
