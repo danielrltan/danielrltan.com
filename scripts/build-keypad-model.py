@@ -54,6 +54,7 @@ def material(name, hex_=None, rough=0.5, metal=0.0, image=None):
         tex = nt.nodes.new("ShaderNodeTexImage")
         tex.image = bpy.data.images.load(os.path.join(TEX, image))
         tex.interpolation = "Linear"
+        tex.extension = "EXTEND"  # clamp: a rim face past the art never repeats it
         nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
     bsdf.inputs["Roughness"].default_value = rough
     bsdf.inputs["Metallic"].default_value = metal
@@ -235,6 +236,78 @@ activate(display)
 bpy.ops.object.shade_flat()
 
 # ---------------------------------------------------------------- keycaps
+# Real keyboard keycaps, not square buttons (owner, 2026-10-05): sloped sides
+# with the top clearly smaller than the base, tighter corners at the base and
+# rounder ones at the top, a slightly convex side profile, and a spherical
+# DISH scooped into the top where a finger sits. The icon is planar-mapped onto
+# the dish (the faces that face up), so it sits in the scoop like a legend.
+def keycap(name, cx, cz, w, d, y0, y1, mat):
+    segs = 10
+    taper = KY["taper"]
+    rings = []  # side loops, base to top: (scale, corner r, y)
+    for t in (0.0, 0.18, 0.45, 0.75, 1.0):
+        # Convex profile: the side bows out a little before it reaches the top.
+        sc = 1.0 - (1.0 - taper) * (t ** 1.35)
+        r = KY["cornerBase"] + (KY["cornerTop"] - KY["cornerBase"]) * t
+        rings.append((sc, r, y0 + (y1 - y0) * t))
+    bm = bmesh.new()
+    loops = []
+    for (sc, r, y) in rings:
+        pts = rrect_loop(w * sc, d * sc, r, segs)
+        loops.append([bm.verts.new(B(cx + x, y, cz + z)) for (x, z) in pts])
+    # Dish: concentric copies of the top loop shrinking to the centre, each
+    # lowered on a sphere-like curve (deepest in the middle).
+    sc_top, r_top, _ = rings[-1]
+    top_pts = rrect_loop(w * sc_top, d * sc_top, r_top, segs)
+    n_dish = 6
+    dish = [loops[-1]]
+    for k in range(1, n_dish):
+        f = 1.0 - k / n_dish                    # 1 at the rim -> 0 at centre
+        drop = KY["dish"] * (1.0 - f * f)
+        dish.append([bm.verts.new(B(cx + x * f, y1 - drop, cz + z * f)) for (x, z) in top_pts])
+    centre = bm.verts.new(B(cx, y1 - KY["dish"], cz))
+    allrings = loops + dish[1:]
+    n = len(top_pts)
+    for a, b in zip(allrings[:-1], allrings[1:]):
+        for i in range(n):
+            j = (i + 1) % n
+            bm.faces.new((a[i], a[j], b[j], b[i]))
+    last = allrings[-1]
+    for i in range(n):
+        bm.faces.new((last[i], last[(i + 1) % n], centre))
+    bm.faces.new(list(reversed(loops[0])))  # base
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(ob)
+    ob.data.materials.append(mat)
+    # Round the rim where the sides meet the dish (the only sharp edge left).
+    bevel(ob, KY["topBevel"], KY["bevelSegs"], angle=28)
+    # Legend: every face in the dish (facing up, below the rim) gets the icon.
+    if MAT_ICON[name].name not in [m.name for m in ob.data.materials]:
+        ob.data.materials.append(MAT_ICON[name])
+    slot = [m.name for m in ob.data.materials].index(MAT_ICON[name].name)
+    size_x = w * taper * 0.9
+    size_z = d * taper * 0.9
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    uv = bm.loops.layers.uv.verify()
+    for f in bm.faces:
+        c = f.calc_center_median()
+        for lp in f.loops:
+            p = lp.vert.co
+            lp[uv].uv = ((p.x - cx) / size_x + 0.5, 0.5 - (-p.y - cz) / size_z)
+        if f.normal.z > 0.8 and c.z > y1 - KY["dish"] - 0.02:
+            f.material_index = slot
+    bm.to_mesh(ob.data)
+    bm.free()
+    activate(ob)
+    bpy.ops.object.shade_smooth_by_angle(angle=math.radians(35), keep_sharp_edges=True)
+    return ob
+
+
 caps = {"github": (-1, -1), "linkedin": (1, -1), "x": (-1, 1), "pinterest": (1, 1)}
 pitch_x = key + KY["gap"]
 pitch_z = key_d + KY["gap"]
@@ -243,13 +316,7 @@ cap_y1 = cap_y0 + KY["height"]
 for name, (sx, sz) in caps.items():
     cx = sx * pitch_x / 2
     cz = well_cz + sz * pitch_z / 2
-    cap = prism(name, key, key_d, KY["corner"], cap_y0, cap_y1, cx, cz, segs=12, top_scale=KY["taper"], mat=MAT_CAP)
-    bevel(cap, KY["topBevel"], KY["bevelSegs"], angle=30)
-    top_w = key * KY["taper"] - 2 * KY["topBevel"]
-    top_d = key_d * KY["taper"] - 2 * KY["topBevel"]
-    # The icon art is a circle on white: map it over the cap's whole top so the
-    # badge sits centred with an even white rim.
-    map_top(cap, MAT_ICON[name], cap_y1, cx, cz, key * KY["taper"] * 0.92, key_d * KY["taper"] * 0.92)
+    cap = keycap(name, cx, cz, key, key_d, cap_y0, cap_y1, MAT_CAP)
     set_origin(cap, (cx, (cap_y0 + cap_y1) / 2, cz))
 
 # ---------------------------------------------------------------- knob (cat dial)

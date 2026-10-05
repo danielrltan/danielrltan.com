@@ -36,10 +36,12 @@
   "keys": {
     "gap": 0.048,
     "height": 0.62,
-    "corner": 0.2,
-    "taper": 0.9,
-    "topBevel": 0.11,
-    "bevelSegs": 6
+    "taper": 0.78,
+    "topBevel": 0.06,
+    "bevelSegs": 5,
+    "cornerBase": 0.1,
+    "cornerTop": 0.17,
+    "dish": 0.08
   },
   "sideButtons": {
     "x": -1.45,
