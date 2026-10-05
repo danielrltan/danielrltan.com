@@ -267,12 +267,26 @@
 .recents-focus-frame img {
   display: block;
   max-width: min(520px, 84vw);
-  max-height: min(520px, 62vh);
-  max-height: min(520px, 62svh);
+  /* Never taller than the room above the fixed controls. */
+  max-height: min(520px, 62vh, calc(100vh - var(--focus-ctl-bottom) - 144px));
+  max-height: min(520px, 62svh, calc(100svh - var(--focus-ctl-bottom) - 144px));
   width: auto;
   height: auto;
 }
+/* Controls are FIXED near the bottom centre (owner: "make their position
+   static ... so users can click through fast without repositioning the mouse
+   based on image res"). The photo centres in the space above them. */
+.recents-focus {
+  --focus-ctl-bottom: max(7vh, 40px);
+  --focus-ctl-bottom: max(7svh, 40px);
+  padding-bottom: calc(var(--focus-ctl-bottom) + 64px);
+}
 .recents-focus figcaption {
+  position: fixed;
+  left: 50%;
+  bottom: var(--focus-ctl-bottom);
+  transform: translateX(-50%);
+  white-space: nowrap;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -285,6 +299,11 @@
   color: var(--ink-muted);
 }
 .recents-focus figcaption b { color: var(--ink); }
+/* Fixed-width label so the arrows never shift with "· ski" vs "· travel". */
+.recents-focus figcaption > span {
+  width: 15ch;
+  text-align: center;
+}
 .recents-focus-tag { color: var(--accent-text); }
 .recents-focus-btn {
   font: inherit;
