@@ -248,8 +248,16 @@ export function MoveableCursor({ hot }: Props) {
       busy = step(ry, ty, dt, 110, 0.32, reduced) || busy;
       busy = step(depth, down ? 0.18 : 1, dt, 520, down ? 0.9 : 0.3, reduced) || busy;
       busy = step(scale, down ? 0.88 : 1, dt, 380, down ? 0.9 : 0.4, reduced) || busy;
-      // Sparks: out while hovering, in while pressed or bursting.
-      busy = step(spark, hovering && !down && !bursts.length ? 1 : 0, dt, down ? 600 : 300, down ? 0.9 : 0.45, reduced) || busy;
+      // Sparks: out while hovering, in while pressed or bursting. OUT keeps a
+      // springy overshoot (the pop); IN is critically damped, so it can never
+      // swing back above zero (owner bug: an underdamped retract bounced back
+      // to ~0.03 and flashed the full sparks ~400 ms after a click).
+      const sparkOn = hovering && !down && !bursts.length;
+      busy = step(spark, sparkOn ? 1 : 0, dt, sparkOn ? 300 : 600, sparkOn ? 0.45 : 1, reduced) || busy;
+      if (!sparkOn && spark.x < 0) {
+        spark.x = 0;
+        spark.v = 0;
+      }
 
       // Draw.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -269,12 +277,15 @@ export function MoveableCursor({ hot }: Props) {
         ctx.globalAlpha = 1;
         busy = true;
       }
-      if (spark.x > 0.02) {
-        // sparks rise toward the viewer as their own little voxel bars
+      if (spark.x > 0.04) {
+        // sparks rise toward the viewer as their own little voxel bars, and
+        // fade with the spring (never pop on at full strength from ~0)
+        ctx.globalAlpha = Math.min(1, spark.x * 1.6);
         drawVoxels(ctx, SPARKS, HALF, HALF, { ...pose, depth: pose.depth * 0.5 }, dpr, {
           lift: spark.x * VOXEL * 4,
           shadow: false,
         });
+        ctx.globalAlpha = 1;
       }
       drawVoxels(ctx, ARROW, HALF, HALF, pose, dpr);
 
