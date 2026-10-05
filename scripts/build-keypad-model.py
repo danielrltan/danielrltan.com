@@ -369,10 +369,22 @@ activate(collar)
 bpy.ops.object.shade_smooth_by_angle(angle=math.radians(35))
 
 # ---------------------------------------------------------------- side buttons
+# The top one is a pill; the bottom one is a round cylinder button pointing out
+# of the side (owner: "make the bottom second button a cylinder like the old
+# blender model, to add some variation").
 for i, bz in enumerate(SB["z"]):
-    btn = prism("side_btn_%d" % i, SB["thick"] * 2, SB["len"], SB["corner"], SB["y"] - SB["tall"] / 2,
-                SB["y"] + SB["tall"] / 2, SB["x"], bz, segs=8, mat=MAT_ORANGE)
-    bevel(btn, SB["corner"] * 0.9, 5, angle=30)
+    if i == len(SB["z"]) - 1:
+        RB = SB["round"]
+        bpy.ops.mesh.primitive_cylinder_add(vertices=48, radius=RB["r"], depth=SB["thick"] * 2,
+                                            location=B(SB["x"], SB["y"], bz), rotation=(0, math.pi / 2, 0))
+        btn = bpy.context.active_object
+        btn.name = "side_btn_%d" % i
+        btn.data.materials.append(MAT_ORANGE)
+        bevel(btn, RB["bevel"], 5, angle=30)
+    else:
+        btn = prism("side_btn_%d" % i, SB["thick"] * 2, SB["len"], SB["corner"], SB["y"] - SB["tall"] / 2,
+                    SB["y"] + SB["tall"] / 2, SB["x"], bz, segs=8, mat=MAT_ORANGE)
+        bevel(btn, SB["corner"] * 0.9, 5, angle=30)
 
 # Join the static parts into "frame" (one node, several materials).
 activate(body)

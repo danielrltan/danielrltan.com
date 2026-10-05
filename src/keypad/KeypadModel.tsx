@@ -41,7 +41,7 @@ const SOCIAL_URLS: Record<string, string> = Object.fromEntries(
 
 const SOCIAL_KEYS = Object.keys(SOCIAL_URLS);
 
-const HOVER_DIP = 0.095;
+const HOVER_DIP = 0.1045; // +10% (owner: keys go down a bit more on hover)
 const PRESS_DIP = 0.19;
 const PRESS_HOLD_MS = 110;
 const PRESS_LERP_RATE = 18;
@@ -369,21 +369,22 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       dialVelRef.current *= Math.exp(-dt * DIAL_DAMP);
     }
 
-    // Dial scale feedback: 1.0 at rest, +12% on hover, a decaying extra
-    // +16% pop on click that eases back down (owner: "make the knob increase
-    // in size bigger"; was +5% / +8%). The dial sits in a casing ring, so it
+    // Dial scale feedback: 1.0 at rest, +10.8% on hover, a decaying extra
+    // +14.4% pop on click that eases back down (owner: "make the knob increase
+    // in size bigger", then 10% less of that; originally +5% / +8%). The dial
+    // sits in a casing ring, so it
     // also LIFTS out of it as it grows (DIAL_LIFT per unit of growth) instead
     // of swelling into the ring. Independent of the spin rotation above.
     if (dial) {
       if (!dialBaseScaleRef.current) dialBaseScaleRef.current = dial.scale.clone();
       if (dialBaseYRef.current == null) dialBaseYRef.current = dial.position.y;
       const base = dialBaseScaleRef.current;
-      let target = dialHoveredRef.current ? 1.12 : 1.0;
+      let target = dialHoveredRef.current ? 1.108 : 1.0;
       const pAt = dialPressedAtRef.current;
       if (pAt != null) {
         const since = (now - pAt) / 1000;
         if (since < 0.32) {
-          target += (1 - since / 0.32) * 0.16; // up to ~+0.28 at the click instant
+          target += (1 - since / 0.32) * 0.144; // up to ~+0.25 at the click instant
         } else {
           dialPressedAtRef.current = null;
         }
