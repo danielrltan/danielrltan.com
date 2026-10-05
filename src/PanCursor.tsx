@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { panScrollTo } from "./scroll";
+import { PAN_DOWN, PAN_NEUTRAL, PAN_UP, drawVoxels } from "./voxelArt";
 import "./pan-cursor.css";
 
 /**
@@ -8,17 +9,16 @@ import "./pan-cursor.css";
  * Press the mouse-wheel button to start panning: the click point becomes the
  * scroll REFERENCE (anchorRef) and the page scrolls in whichever direction you
  * move away from it, faster the further you go. The pan icon itself FOLLOWS the
- * pointer freely (it is NOT locked to the click point): it shows Pan-Neutral.svg
- * (up + down chevrons around a central gap) within the deadzone, and
- * Pan-Direction.svg (one big arrow + motion feathers) flipped up/down while
- * scrolling. Press the wheel again, click any other button, or hit Escape to
+ * pointer freely (it is NOT locked to the click point): within the deadzone it
+ * shows the neutral art (up + down darts around a central gap), and while
+ * scrolling the direction art (one big dart + motion feathers) pointing up or
+ * down. Both are VOXEL art (voxelArt.ts, rasterised from Pan-Neutral.svg and
+ * Pan-Direction.svg paths) matching the voxel arrow. Press the wheel again, click any other button, or hit Escape to
  * stop.
  *
  * HOTSPOT: each art's ANCHOR point (the gap centre of Neutral; the notch above
- * Direction's arrow) sits at the LIVE pointer, so the neutral->direction swap
- * never jumps and the pointer's location is preserved across both. Both arts
- * draw the chevron at the same coordinates, so a single SCALE keeps the
- * on-screen size + hotspot consistent.
+ * Direction's arrow) is the canvas centre, which sits at the LIVE pointer, so
+ * the neutral->direction swap never jumps.
  *
  * POSITION is a ref written to the root's `transform: translate3d()` from the
  * pan rAF loop: no React render per pointermove, and a compositor translate
@@ -29,35 +29,17 @@ import "./pan-cursor.css";
  * the regular arrow cursor is suppressed while panning (html.pan-scrolling).
  */
 
-// SVG viewBox dims + the anchor point (where the pointer sits) inside each.
-const NEUTRAL = { w: 148, h: 317, ax: 74, ay: 150.8 };
-const DIRN = { w: 147, h: 212, ax: 73.5, ay: 46 };
-// px per SVG unit. The pan arts are authored at the SAME coordinate scale as the
-// normal cursor (Cursor.svg is 151 wide, rendered at ART_W = 32; identical 7.4
-// stroke + drop-shadow), so using its exact scale renders the pan cursor at the
-// EXACT same size (matching stroke weight + shadow) as the normal arrow.
-const SCALE = 32 / 151;
+// Voxel art (voxelArt.ts, rasterised from the old Pan-Neutral / Pan-Direction SVGs
+// at the arrow's exact scale, so the pan cursor matches the voxel arrow). The
+// canvas is centred on the anchor; the art fits in ±PAN_W/2 × ±PAN_H/2.
+const PAN_W = 72;
+const PAN_H = 112;
+const PAN_POSE = { rx: 0.42, ry: -0.6, depth: 1, scale: 1 };
 
 const DEADZONE = 16; // px around the anchor with no scroll (stays neutral)
 // Time-based (px/SECOND) so the rate is identical at 60Hz / 120Hz / headless.
 const MAX_SPEED = 3400; // px/s cap
 const SPEED_GAIN = 32; // px/s per px of pointer offset past the deadzone
-
-const PAN_ARTS = ["/Pan-Neutral.svg", "/Pan-Direction.svg"];
-// Warm the pan art into the HTTP + decode cache once the pan cursor mounts
-// (after the loader), so the first middle-click never shows a blank icon on a
-// cold cache. A JS warm rather than <link rel=preload>: panning is rare, and an
-// unused preload warns on every page load. Module scope keeps the Images alive.
-let panArtWarm: HTMLImageElement[] | null = null;
-function warmPanArt() {
-  if (panArtWarm || typeof Image === "undefined") return;
-  panArtWarm = PAN_ARTS.map((src) => {
-    const img = new Image();
-    img.src = src;
-    img.decode?.().catch(() => {});
-    return img;
-  });
-}
 
 function placeRoot(el: HTMLDivElement | null, p: { x: number; y: number }) {
   if (el) el.style.transform = `translate3d(${p.x}px,${p.y}px,0)`;
@@ -80,18 +62,22 @@ export function PanCursor() {
   // rate is deterministic and never compounds.
   const targetRef = useRef(0);
 
-  useEffect(() => {
-    const w = window as unknown as {
-      requestIdleCallback?: (cb: () => void) => number;
-      cancelIdleCallback?: (id: number) => void;
-    };
-    if (typeof w.requestIdleCallback === "function") {
-      const id = w.requestIdleCallback(warmPanArt);
-      return () => w.cancelIdleCallback?.(id);
-    }
-    const t = window.setTimeout(warmPanArt, 1000);
-    return () => window.clearTimeout(t);
-  }, []);
+  // Draw the voxel art for the current state (neutral / up / down) once per
+  // state change; the throb is CSS.
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useLayoutEffect(() => {
+    const c = canvasRef.current;
+    if (!active || !c) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    c.width = PAN_W * dpr;
+    c.height = PAN_H * dpr;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, PAN_W, PAN_H);
+    const cells = dir === 0 ? PAN_NEUTRAL : dir > 0 ? PAN_DOWN : PAN_UP;
+    drawVoxels(ctx, cells, PAN_W / 2, PAN_H / 2, PAN_POSE, dpr);
+  }, [active, dir]);
 
   // Place the root at the pointer before the first paint of a pan (the rAF
   // loop keeps it there afterwards).
@@ -208,37 +194,17 @@ export function PanCursor() {
 
   if (!active) return null;
 
-  const isDir = dir !== 0;
-  const vb = isDir ? DIRN : NEUTRAL;
-  const w = vb.w * SCALE;
-  const h = vb.h * SCALE;
-  const ax = vb.ax * SCALE;
-  const ay = vb.ay * SCALE;
-  const src = isDir ? "/Pan-Direction.svg" : "/Pan-Neutral.svg";
-
   return (
     <div className="pan-cursor" aria-hidden ref={rootRef}>
       {/* Pop layer: the drop-in pop animates `transform` here, so it never
-          fights the root's positioning transform. */}
+          fights the root's positioning transform. The throb lives on the
+          canvas inside, toward the arrow (down or up). */}
       <div className="pan-cursor__pop">
-        {/* Flip layer: the down-art is mirrored vertically (around the anchor)
-            for the UP direction. Throb lives on the img inside, so the
-            transforms never collide. */}
-        <div
-          className="pan-cursor__flip"
-          style={{ transform: dir === -1 ? "scaleY(-1)" : "none" }}
-        >
-          <img
-            key={isDir ? `d${dir}` : "n"}
-            className={`pan-cursor__art${isDir ? " is-dir" : ""}`}
-            src={src}
-            width={w}
-            height={h}
-            alt=""
-            draggable={false}
-            style={{ left: -ax, top: -ay }}
-          />
-        </div>
+        <canvas
+          ref={canvasRef}
+          className={`pan-cursor__art${dir > 0 ? " is-down" : dir < 0 ? " is-up" : ""}`}
+          style={{ left: -PAN_W / 2, top: -PAN_H / 2, width: PAN_W, height: PAN_H }}
+        />
       </div>
     </div>
   );

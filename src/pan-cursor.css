@@ -34,39 +34,33 @@
   }
 }
 
-.pan-cursor__flip {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform-origin: 0 0; /* flip the up-direction art around the anchor */
-}
-
 .pan-cursor__art {
   position: absolute;
   display: block;
-  user-select: none;
-  -webkit-user-drag: none;
 }
 
-/* While scrolling, the directional art throbs toward its arrow (local +Y; the
-   flip layer mirrors it for the up direction) so the autoscroll feels alive and
-   snappy. Ambient loop: exempt from the duration tokens. */
-.pan-cursor__art.is-dir {
-  animation: pan-throb 0.46s ease-in-out infinite;
+/* While scrolling, the directional art throbs toward its arrow so the
+   autoscroll feels alive and snappy. Ambient loop: exempt from the duration
+   tokens. */
+.pan-cursor__art.is-down {
+  animation: pan-throb-down 0.46s ease-in-out infinite;
 }
-@keyframes pan-throb {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(7px);
-  }
+.pan-cursor__art.is-up {
+  animation: pan-throb-up 0.46s ease-in-out infinite;
+}
+@keyframes pan-throb-down {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(7px); }
+}
+@keyframes pan-throb-up {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
 }
 
 /* Hide the regular arrow cursor while panning (it sets its own inline opacity,
    so this override needs !important). */
-html.pan-scrolling .moveable-cursor {
+html.pan-scrolling .moveable-cursor,
+html.pan-scrolling .moveable-cursor-lock {
   opacity: 0 !important;
 }
 
@@ -74,7 +68,8 @@ html.pan-scrolling .moveable-cursor {
   .pan-cursor__pop {
     animation: none;
   }
-  .pan-cursor__art.is-dir {
+  .pan-cursor__art.is-down,
+  .pan-cursor__art.is-up {
     animation: none;
   }
 }

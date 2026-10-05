@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { DECAY, damp, reducedMotion } from "./motion";
+import { useEffect, useRef } from "react";
+import { reducedMotion } from "./motion";
+import { ARROW, SPARKS, VOXEL, drawPixelRing, drawVoxels, type Pose } from "./voxelArt";
 
 interface Props {
   /** True while the keypad reports the pointer is over an interactive cap/dial. */
@@ -7,84 +8,123 @@ interface Props {
 }
 
 /**
- * Custom site pointer: the charcoal (#1B1B1F) arrow from public/Cursor.svg with
- * a white keyline and soft shadow. Charcoal is the one tone NOT in the site's
- * white+orange palette, so the pointer stays legible on the white page, on solid
- * orange UI, and on the orange dotted texture alike. The OS cursor is hidden
- * site-wide (see the global `cursor: none` in index.css) so this is the only
- * pointer shown.
+ * Custom site pointer: the VOXEL ARROW (owner's pick from the 2026-10-04 cursor
+ * lab). The site's own dart (the old Cursor.svg path, rasterised to voxels in
+ * voxelArt.ts) extruded into a little 3D block: charcoal face, hue-shifted
+ * orange walls, a white keyline round the whole volume and a soft shadow, so it
+ * reads on the white page, solid orange UI and the dotted hero alike. The OS
+ * cursor is hidden site-wide (`cursor: none` in index.css) once this takes over.
  *
- * Over anything CLICKABLE the arrow swaps to public/Cursor-Hover.svg — the same
- * charcoal arrow with three little charcoal spark lines by the tip — and pops in.
- * "Clickable" = the keypad `hot` signal, OR a DOM element matching the
- * interactive selector below, OR a canvas that set body cursor to `pointer`.
+ * STATES (all drawn here; PanCursor draws the middle-button ones):
+ *  - Rest: a slight three-quarter pose that shows the extrusion.
+ *  - Moving: it hangs from its tip like a card with inertia; acceleration
+ *    swings it on underdamped springs and it wobbles back.
+ *  - Over anything CLICKABLE (lock-on, the gimbal reticle idea in the site's
+ *    pixel language): the arrow pops, the hover art's three sparks rise out
+ *    as voxels, a pixel-staircase ring (the hero iris's vocabulary) blooms
+ *    round the tip, and dotted pixel hairlines run out to the element's REAL
+ *    edges with ticks where they land. Canvas hot-spots (keypad / Mac /
+ *    Hobbies, which set body cursor to `pointer`) get the pop + sparks + ring
+ *    but no hairlines (no DOM box to measure).
+ *  - Press and HOLD: the block squashes flat like a key going down and stays
+ *    down until release.
+ *  - Release: springs back up, and the ring irises outward, its pixels
+ *    growing as it opens (the hero → About iris, in miniature).
+ *  - Reduced motion: no swing, no pulse; states switch without springs.
  *
- * Hotspot = the arrow's TIP: the 0×0 root sits exactly at the pointer and each
- * SVG is nudged up-left by ITS OWN tip offset so the tip stays put when the
- * spark variant swaps in.
+ * Hotspot = the arrow's TIP, at the 0×0 root, which sits exactly on the
+ * pointer (translate written on every move, never smoothed). The canvas around
+ * it only redraws while something is animating; the loop PARKS when idle (a
+ * loop running forever, hit-testing every frame, was a real perf bug here).
  */
 
-// Both SVGs draw the identical dart; only the canvas size (hence the tip's
-// coordinate) differs. Rendering both at the same SCALE keeps one fixed arrow
-// size and a fixed hotspot. Tip points: Cursor.svg (151×165) -> (19.9652,
-// 14.4321); Cursor-Hover.svg (189×205) -> (57.6095, 54.9027).
-const ART_W = 32; // default canvas width on screen
-const SCALE = ART_W / 151;
-const TIP_X = 19.9652 * SCALE; // ≈ 4.23px
-const TIP_Y = 14.4321 * SCALE; // ≈ 3.06px
-const HOVER_W = 189 * SCALE; // wider canvas, same arrow size (≈ 40px)
-const HOVER_TIP_X = 57.6095 * SCALE; // ≈ 12.21px
-const HOVER_TIP_Y = 54.9027 * SCALE; // ≈ 11.64px
-
-// Elements that should show the spark (clickable) variant. `closest()` against
-// this walks ancestors, so a span inside a button still counts.
+// Elements that count as clickable. `closest()` walks ancestors, so a span
+// inside a button still counts.
 const CLICKABLE_SEL =
   'a[href], button, [role="button"], [role="link"], [role="menuitem"], summary, label[for], select, [data-clickable]';
 
+/** Canvas around the tip (CSS px). Big enough for the release iris. */
+const CANVAS = 128;
+const HALF = CANVAS / 2;
+const REST: Pose = { rx: 0.42, ry: -0.6, depth: 1, scale: 1 };
+const RING_R = 15;
+
+interface Spring {
+  x: number;
+  v: number;
+}
+/** Damped spring step; returns true while still moving. */
+function step(s: Spring, target: number, dt: number, k: number, zeta: number, snap: boolean) {
+  if (snap) {
+    s.x = target;
+    s.v = 0;
+    return false;
+  }
+  s.v += (k * (target - s.x) - 2 * zeta * Math.sqrt(k) * s.v) * dt;
+  s.x += s.v * dt;
+  return Math.abs(target - s.x) > 1e-3 || Math.abs(s.v) > 1e-3;
+}
+
 export function MoveableCursor({ hot }: Props) {
   const root = useRef<HTMLDivElement>(null);
-  // Whether the pointer is over a clickable surface (drives the spark variant).
-  const [clickable, setClickable] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lockRef = useRef<HTMLDivElement>(null);
+  // The keypad's hot signal, read by the loop (no re-subscribe on change).
+  const hotRef = useRef(hot);
+  const wakeRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    hotRef.current = hot;
+    wakeRef.current(); // re-evaluate hover now
+  }, [hot]);
 
   useEffect(() => {
     const rootEl = root.current;
-    if (!rootEl) return;
+    const canvas = canvasRef.current;
+    const lockEl = lockRef.current;
+    if (!rootEl || !canvas || !lockEl) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const lines = Array.from(lockEl.children) as HTMLElement[]; // 4 hairlines + 4 ticks
+
+    let dpr = 1;
+    const fitCanvas = () => {
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = CANVAS * dpr;
+      canvas.height = CANVAS * dpr;
+    };
+    fitCanvas();
 
     let px = 0;
     let py = 0; // live pointer
     let revealed = false;
     let frame = 0;
-    let lastClick = false; // last value pushed to React (setState only on change)
-    // PERF: the loop PARKS when idle instead of re-arming the rAF forever. Every
-    // desktop visitor ran this loop continuously — doing an elementFromPoint() +
-    // closest() forced hit-test EVERY frame even on a perfectly still page. Now
-    // `running` guards re-arm and `dirty` marks a pending clickable hit-test (set
-    // on move + scroll). Once the press spring has settled AND no hit-test is
-    // pending, tick() stops scheduling, so a stationary cursor costs nothing.
     let running = false;
+    // `dirty` marks a pending hover hit-test (set on move + scroll + hot change).
     let dirty = true;
-    // Time of the last tick (performance.now ms). Reset whenever the loop wakes
-    // from park, so the first frame's dt is one frame, not the idle gap (which
-    // clampDt would cap at 0.1 s and jump the press ~98% in one frame).
     let lastT = 0;
+    // last tick's pointer + smoothed velocity / acceleration, for the swing
+    let lx = 0, ly = 0, vx = 0, vy = 0, ax = 0, ay = 0, pvx = 0, pvy = 0;
 
-    // PRESS-AND-HOLD dip. pressTarget is 1 (up) or PRESS_SCALE (held down);
-    // pressCur eases toward it every frame — fast on the way DOWN (reactive
-    // click) and softer on the way UP (a little spring on release). The scale is
-    // composed into the ROOT transform (alongside the translate) so it scales
-    // around the root origin = the arrow's TIP, and it never fights the inner
-    // arrow's hover-pop animation. Holding the button keeps it dipped; the old
-    // one-shot keyframe popped back up even while you were still holding.
-    const PRESS_SCALE = 0.82;
-    let pressTarget = 1;
-    let pressCur = 1;
+    // Hover target: the clickable element (for its box) or a canvas hot-spot.
+    let hoverEl: Element | null = null;
+    let hovering = false;
+    let down = false;
+
+    const rx: Spring = { x: REST.rx, v: 0 };
+    const ry: Spring = { x: REST.ry, v: 0 };
+    const depth: Spring = { x: 1, v: 0 };
+    const scale: Spring = { x: 1, v: 0 };
+    const spark: Spring = { x: 0, v: 0 };
+    const ring: Spring = { x: 0, v: 0 };
+    const lock: Spring = { x: 0, v: 0 };
+    const pulses: { t: number }[] = [];
 
     // Hidden until the first real pointer position so it doesn't ghost at the
     // viewport origin on load.
     rootEl.style.opacity = "0";
 
-    const applyTransform = () => {
-      rootEl.style.transform = `translate3d(${px}px,${py}px,0) scale(${pressCur})`;
+    const place = () => {
+      rootEl.style.transform = `translate3d(${px}px,${py}px,0)`;
     };
 
     // MOUSE ONLY. On a hybrid (touchscreen laptop, iPad + trackpad) a finger or
@@ -97,64 +137,139 @@ export function MoveableCursor({ hot }: Props) {
       if (!isMouse(e)) return;
       px = e.clientX;
       py = e.clientY;
-      applyTransform(); // follow IMMEDIATELY — never wait on the (parkable) tick
+      place(); // follow IMMEDIATELY: never wait on the (parkable) tick
       if (!revealed) {
         revealed = true;
+        lx = px;
+        ly = py;
         rootEl.style.opacity = "1";
         // Only now hide the OS cursor (index.css keys off this class), so the
         // page never shows NO pointer before the first move.
         document.documentElement.classList.add("custom-cursor");
       }
-      dirty = true; // pointer moved → re-check what's underneath
+      dirty = true;
       schedule();
     };
 
-    const tick = () => {
-      // Ease the press scale toward its target: snappy DOWN (DECAY.press, τ
-      // 25 ms), softer UP (DECAY.fast, τ 55 ms). dt-based, so the press feels
-      // the same at 60 and 120 Hz (the old 0.5 / 0.26 per-frame lerp ran twice
-      // as fast at 120 Hz; these rates match it at 60 Hz).
-      const now = performance.now();
-      const dt = (now - lastT) / 1000;
-      lastT = now;
-      const rate = pressTarget < pressCur ? DECAY.press : DECAY.fast;
-      pressCur = damp(pressCur, pressTarget, rate, dt);
-      let springActive = true;
-      if (Math.abs(pressTarget - pressCur) < 0.001) {
-        pressCur = pressTarget;
-        springActive = false;
-      }
-      applyTransform();
+    /** Hairlines from the ring out to the element's real edges, + edge ticks. */
+    const layoutLock = (reach: number) => {
+      const show = reach > 0.01 && hoverEl;
+      lockEl.style.opacity = show ? String(Math.min(1, reach * 1.4)) : "0";
+      if (!show || !hoverEl) return;
+      const b = hoverEl.getBoundingClientRect();
+      const r = RING_R - 3; // start inside the ring's cardinal gaps
+      // One hairline: from (x0, y0) along `dir` to the edge coordinate `to`.
+      const seg = (el: HTMLElement, x0: number, y0: number, dir: "l" | "r" | "u" | "d", to: number) => {
+        const full = dir === "l" ? x0 - to : dir === "r" ? to - x0 : dir === "u" ? y0 - to : to - y0;
+        const len = Math.max(0, full) * reach;
+        const sx = dir === "l" ? x0 - len : x0;
+        const sy = dir === "u" ? y0 - len : y0;
+        el.style.transform = `translate3d(${Math.round(sx)}px,${Math.round(sy)}px,0)`;
+        if (dir === "l" || dir === "r") el.style.width = `${Math.round(len)}px`;
+        else el.style.height = `${Math.round(len)}px`;
+      };
+      const yC = Math.round(py) - 2, xC = Math.round(px) - 2;
+      seg(lines[0], px - r, yC, "l", b.left);
+      seg(lines[1], px + r, yC, "r", b.right);
+      seg(lines[2], xC, py - r, "u", b.top);
+      seg(lines[3], xC, py + r, "d", b.bottom);
+      // ticks where the hairlines land (only once they've arrived)
+      const tickA = reach > 0.92 ? "1" : "0";
+      const tick = (el: HTMLElement, x: number, y: number) => {
+        el.style.opacity = tickA;
+        el.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
+      };
+      tick(lines[4], b.left - 2, py - 5);
+      tick(lines[5], b.right - 2, py - 5);
+      tick(lines[6], px - 5, b.top - 2);
+      tick(lines[7], px - 5, b.bottom - 2);
+    };
 
-      // Re-derive the clickable (spark) state from whatever is under the pointer
-      // — via elementFromPoint, NOT pointerover/pointerout (those only fire on
-      // pointer MOVEMENT, so the spark got "stuck" while the page SCROLLED under a
-      // stationary mouse). Run it only when `dirty` (a move or scroll happened),
-      // not every frame — same coverage, none of the idle hit-test storm.
-      // Canvases (Mac / Hobbies tiles) signal via body cursor:pointer (an inline
-      // string; the global `cursor:none !important` only changes the COMPUTED
-      // value), set during their own pointer events, which also mark us dirty.
+    const tick = () => {
+      const now = performance.now();
+      const dt = Math.min(0.05, Math.max(0.001, (now - lastT) / 1000));
+      lastT = now;
+      const reduced = reducedMotion.value;
+
+      // Re-derive what's under the pointer only when `dirty` (a move, scroll
+      // or hot change happened), never every frame. elementFromPoint, NOT
+      // pointerover/out: those only fire on pointer MOVEMENT, so the hover got
+      // "stuck" while the page scrolled under a still mouse. Canvases (Mac /
+      // Hobbies / keypad) signal via body cursor:pointer or the hot prop.
       if (dirty) {
         dirty = false;
-        let domClick = false;
+        let el: Element | null = null;
         if (revealed) {
-          const el = document.elementFromPoint(px, py);
-          domClick = !!(el && el.closest && el.closest(CLICKABLE_SEL));
+          const hit = document.elementFromPoint(px, py);
+          el = hit && hit.closest ? hit.closest(CLICKABLE_SEL) : null;
         }
-        const next = domClick || document.body.style.cursor === "pointer";
-        if (next !== lastClick) {
-          lastClick = next;
-          setClickable(next);
+        const next = !!el || hotRef.current || document.body.style.cursor === "pointer";
+        if (next && !hovering && !reduced) {
+          scale.v += 5; // the pop
         }
+        hovering = next;
+        hoverEl = el;
       }
 
-      // Keep ticking while the spring is animating OR a hit-test is pending; once
-      // both are idle, PARK (stop re-arming) until the next move/scroll/press.
-      if (springActive || dirty) {
-        frame = requestAnimationFrame(tick);
-      } else {
-        running = false;
+      // Velocity / acceleration of the tip, smoothed, for the swing.
+      const rvx = (px - lx) / dt, rvy = (py - ly) / dt;
+      lx = px;
+      ly = py;
+      const kv = 1 - Math.exp(-20 * dt), ka = 1 - Math.exp(-12 * dt);
+      vx += (rvx - vx) * kv;
+      vy += (rvy - vy) * kv;
+      ax += ((vx - pvx) / dt - ax) * ka;
+      ay += ((vy - pvy) / dt - ay) * ka;
+      pvx = vx;
+      pvy = vy;
+      const moving = Math.hypot(vx, vy) > 4 || Math.hypot(ax, ay) > 30;
+
+      // Swing: hangs from the tip, so it trails the motion.
+      const cl = (v: number) => Math.max(-0.85, Math.min(0.85, v));
+      const tx = reduced ? REST.rx : REST.rx + cl(-ay / 7000 - vy / 4200);
+      const ty = reduced ? REST.ry : REST.ry + cl(ax / 7000 + vx / 4200);
+      let busy = false;
+      busy = step(rx, tx, dt, 110, 0.32, reduced) || busy;
+      busy = step(ry, ty, dt, 110, 0.32, reduced) || busy;
+      busy = step(depth, down ? 0.18 : 1, dt, 520, down ? 0.9 : 0.3, reduced) || busy;
+      busy = step(scale, down ? 0.88 : 1, dt, 380, down ? 0.9 : 0.4, reduced) || busy;
+      busy = step(spark, hovering ? 1 : 0, dt, 300, 0.45, reduced) || busy;
+      busy = step(ring, hovering ? 1 : 0, dt, 260, 0.55, reduced) || busy;
+      busy = step(lock, hovering && hoverEl ? 1 : 0, dt, 220, 0.85, reduced) || busy;
+
+      // Draw.
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, CANVAS, CANVAS);
+      if (ring.x > 0.02) {
+        // the ring sits in the same pixel grid as the voxels
+        drawPixelRing(ctx, HALF, HALF, RING_R * Math.min(1.15, ring.x), 2, Math.min(1, ring.x * 1.5), true);
       }
+      for (let i = pulses.length - 1; i >= 0; i--) {
+        const p = pulses[i];
+        p.t += dt / 0.42;
+        if (p.t >= 1) {
+          pulses.splice(i, 1);
+          continue;
+        }
+        // iris: radius and cell size grow together ("pixels growing")
+        const r = RING_R + (HALF - 6 - RING_R) * (1 - Math.pow(1 - p.t, 2));
+        drawPixelRing(ctx, HALF, HALF, r, Math.max(2, r / 7), 1 - p.t);
+        busy = true;
+      }
+      const pose: Pose = { rx: rx.x, ry: ry.x, depth: Math.max(0.05, depth.x), scale: scale.x };
+      if (spark.x > 0.02) {
+        // sparks rise toward the viewer as their own little voxel bars
+        drawVoxels(ctx, SPARKS, HALF, HALF, { ...pose, depth: pose.depth * 0.5 }, dpr, {
+          lift: spark.x * VOXEL * 4,
+          shadow: false,
+        });
+      }
+      drawVoxels(ctx, ARROW, HALF, HALF, pose, dpr);
+      layoutLock(lock.x);
+
+      // Keep ticking while animating, moving, or a hit-test is pending; else PARK.
+      if (busy || moving || dirty || pulses.length) frame = requestAnimationFrame(tick);
+      else running = false;
     };
     const schedule = () => {
       if (!running) {
@@ -163,28 +278,35 @@ export function MoveableCursor({ hot }: Props) {
         frame = requestAnimationFrame(tick);
       }
     };
+    wakeRef.current = () => {
+      dirty = true;
+      schedule();
+    };
 
-    // Press AND HOLD: dip on pointerdown and STAY dipped until the button is
-    // released (or the gesture is cancelled / the window blurs), so holding the
-    // mouse down keeps the cursor pressed instead of bouncing straight back.
+    // Press AND HOLD: squash on pointerdown and STAY down until the button is
+    // released (or the gesture is cancelled / the window blurs).
     const onDown = (e: PointerEvent) => {
       // Only the LEFT button (0) is a real click. Right-click (2) is disabled
       // site-wide (App.tsx suppresses the context menu) and middle-click (1)
-      // drives the pan cursor — so don't play the press dip for either, or the
-      // cursor would animate an action that can't happen.
+      // drives the pan cursor, so neither plays the press.
       if (e.button !== 0 || !isMouse(e)) return;
-      if (!reducedMotion.value) pressTarget = PRESS_SCALE;
-      schedule(); // wake the loop to animate the press dip
+      down = true;
+      schedule();
     };
     const onUp = () => {
-      pressTarget = 1;
-      schedule(); // wake the loop to animate the release spring
+      if (!down) return;
+      down = false;
+      if (!reducedMotion.value) pulses.push({ t: 0 });
+      schedule();
     };
-    // Page scrolled under a (possibly stationary) cursor → the content beneath it
-    // changed, so re-check the clickable state. This is the stuck-spark fix that
-    // the old per-frame hit-test covered for free; now it's an explicit wake.
+    // Page scrolled under a (possibly still) cursor: re-check what's under it,
+    // and keep the hairlines on the element as it moves.
     const onScroll = () => {
       dirty = true;
+      schedule();
+    };
+    const onResize = () => {
+      fitCanvas();
       schedule();
     };
 
@@ -192,7 +314,8 @@ export function MoveableCursor({ hot }: Props) {
     window.addEventListener("pointerdown", onDown, { passive: true });
     window.addEventListener("pointerup", onUp, { passive: true });
     window.addEventListener("pointercancel", onUp, { passive: true });
-    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    window.addEventListener("resize", onResize);
     window.addEventListener("blur", onUp);
     schedule();
     return () => {
@@ -200,50 +323,36 @@ export function MoveableCursor({ hot }: Props) {
       window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
-      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", onScroll, { capture: true });
+      window.removeEventListener("resize", onResize);
       window.removeEventListener("blur", onUp);
       cancelAnimationFrame(frame);
+      wakeRef.current = () => {};
       document.documentElement.classList.remove("custom-cursor");
     };
   }, []);
 
-  const showHover = hot || clickable;
-
-  // BOTH arts are always rendered and the inactive one is transparent, so the
-  // spark variant is fetched + decoded at mount. Swapping `src` on first hover
-  // left a blank cursor for a frame or more on a cold cache.
   return (
-    <div
-      ref={root}
-      className={`moveable-cursor${showHover ? " moveable-cursor--clickable" : ""}`}
-      aria-hidden
-    >
-      <img
-        className="moveable-cursor__arrow"
-        src="/Cursor.svg"
-        width={ART_W}
-        alt=""
-        draggable={false}
-        style={{
-          left: -TIP_X,
-          top: -TIP_Y,
-          transformOrigin: `${TIP_X}px ${TIP_Y}px`,
-          opacity: showHover ? 0 : 1,
-        }}
-      />
-      <img
-        className="moveable-cursor__arrow"
-        src="/Cursor-Hover.svg"
-        width={HOVER_W}
-        alt=""
-        draggable={false}
-        style={{
-          left: -HOVER_TIP_X,
-          top: -HOVER_TIP_Y,
-          transformOrigin: `${HOVER_TIP_X}px ${HOVER_TIP_Y}px`,
-          opacity: showHover ? 1 : 0,
-        }}
-      />
-    </div>
+    <>
+      {/* Lock-on hairlines + edge ticks: a fixed full-viewport layer under the
+          arrow, laid out from JS only while hovering a clickable. */}
+      <div ref={lockRef} className="moveable-cursor-lock" aria-hidden>
+        <i className="mcl-h" />
+        <i className="mcl-h" />
+        <i className="mcl-v" />
+        <i className="mcl-v" />
+        <i className="mcl-tick mcl-tick--v" />
+        <i className="mcl-tick mcl-tick--v" />
+        <i className="mcl-tick mcl-tick--h" />
+        <i className="mcl-tick mcl-tick--h" />
+      </div>
+      <div ref={root} className="moveable-cursor" aria-hidden>
+        <canvas
+          ref={canvasRef}
+          className="moveable-cursor__canvas"
+          style={{ left: -HALF, top: -HALF, width: CANVAS, height: CANVAS }}
+        />
+      </div>
+    </>
   );
 }

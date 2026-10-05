@@ -394,7 +394,8 @@ canvas {
    is heavily blocked during scene init (shader compile / texture upload),
    which makes the parallax-tracked cursor visibly stutter. The overlay
    toggles this class on the root element. */
-html.loading-active .moveable-cursor {
+html.loading-active .moveable-cursor,
+html.loading-active .moveable-cursor-lock {
   display: none;
 }
 
@@ -432,11 +433,10 @@ html.loading-active body {
   }
 }
 
-/* Custom pointer (see MoveableCursor.tsx): the bold accent-orange arrow from
-   /Cursor.svg (white keyline + soft baked shadow). JS places the 0×0 root at
-   the pointer (the arrow's tip is the hotspot) and toggles opacity for the
-   reveal. Over a clickable it swaps to the spark variant (Cursor-Hover.svg)
-   and pops. */
+/* Custom pointer (MoveableCursor.tsx): the voxel arrow, drawn on a small
+   canvas around the tip (voxelArt.ts). JS places the 0×0 root at the pointer
+   (the tip is the hotspot) and toggles opacity for the reveal; every state
+   (rest, swing, hover lock-on, press, release iris) is drawn on the canvas. */
 .moveable-cursor {
   position: fixed;
   left: 0;
@@ -448,32 +448,49 @@ html.loading-active body {
   will-change: transform, opacity;
   transition: opacity var(--t-fast) var(--ease-out);
 }
-
-/* The arrow (or spark variant). Per-state left/top (inline) pin the tip to the
-   pointer; press/pop scale about the tip (inline transform-origin). */
-.moveable-cursor__arrow {
+.moveable-cursor__canvas {
   position: absolute;
   display: block;
 }
 
-/* Over a clickable: the arrow + sparks pop in. */
-.moveable-cursor--clickable .moveable-cursor__arrow {
-  animation: moveable-cursor-pop var(--t-base) var(--ease-bounce);
+/* Hover lock-on: dotted pixel hairlines leave the reticle's four gaps and run
+   to the hovered element's edges, with a tick where each lands. The dots are
+   deliberately light (2 px charcoal squares every 6 px at 55 %, no keyline) so
+   they don't strike through link text; the ticks (charcoal, white keyline)
+   carry the "locked on" read on white, orange and the dotted hero. JS lays
+   them out (translate + length) only while hovering a clickable. */
+.moveable-cursor-lock {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
 }
-
-/* Click PRESS is no longer a CSS keyframe: it is a sustained scale composed
-   into the root transform from JS (see MoveableCursor.tsx) so it holds while the
-   button is held and springs back on release. */
-@keyframes moveable-cursor-pop {
-  0%   { transform: scale(0.86); }
-  60%  { transform: scale(1.08); }
-  100% { transform: scale(1); }
+.moveable-cursor-lock i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
 }
-@media (prefers-reduced-motion: reduce) {
-  .moveable-cursor--clickable .moveable-cursor__arrow {
-    animation: none;
-  }
+.mcl-h,
+.mcl-v {
+  opacity: 0.55;
 }
+.mcl-h {
+  height: 4px;
+  background: linear-gradient(90deg, #1b1b1f 2px, transparent 2px) 0 1px / 6px 2px repeat-x;
+}
+.mcl-v {
+  width: 4px;
+  background: linear-gradient(180deg, #1b1b1f 2px, transparent 2px) 1px 0 / 2px 6px repeat-y;
+}
+.mcl-tick {
+  background: #1b1b1f;
+  box-shadow: 0 0 0 1px #fff;
+  transition: opacity var(--t-fast) var(--ease-out);
+}
+.mcl-tick--v { width: 4px; height: 10px; }
+.mcl-tick--h { width: 10px; height: 4px; }
 
 /* Brand mark (RoomHUD.tsx): the top-left signature on a SOLID WHITE TILE.
    Same surface language as the SectionDial bar top-right (.snc-dial: flat

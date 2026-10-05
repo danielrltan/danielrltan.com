@@ -9,14 +9,6 @@ import { track } from "./analytics";
 const SignatureCapture = lazy(() =>
   import("./SignatureCapture").then((m) => ({ default: m.SignatureCapture })),
 );
-// Dev/preview: ?cursor=N swaps in cursor-lab design N (src/cursors). Lazy, so
-// the lab's code is never fetched without the param.
-const CursorPreview = lazy(() => import("./cursors/CursorPreview"));
-const CURSOR_ID = (() => {
-  if (typeof location === "undefined") return 0;
-  const id = Number(new URLSearchParams(location.search).get("cursor"));
-  return id >= 1 && id <= 24 ? id : 0;
-})();
 import { AssemblyProvider } from "./loading";
 import { BootLoader } from "./loading/BootLoader";
 import { HeroSignature } from "./hero/HeroSignature";
@@ -377,12 +369,7 @@ export default function App() {
         {/* Custom pointer. Mounted from first paint (not gated on `ready`) so a
             cursor is visible over the boot loader too; the OS arrow stays
             until it takes over (see html.custom-cursor in index.css). */}
-        {finePointer && !CURSOR_ID && <MoveableCursor hot={moveableHover} />}
-        {finePointer && CURSOR_ID > 0 && (
-          <Suspense fallback={null}>
-            <CursorPreview id={CURSOR_ID} hot={moveableHover} />
-          </Suspense>
-        )}
+        {finePointer && <MoveableCursor hot={moveableHover} />}
         {/* Middle-button pan / autoscroll cursor (mouse only, like the above). */}
         {ready && finePointer && <PanCursor />}
 
