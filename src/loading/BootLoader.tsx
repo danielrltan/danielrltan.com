@@ -12,12 +12,12 @@ import { readLoadStats, startLoadStats } from "./loadStats";
 import type { LoaderVariant } from "./variants/shared";
 import "./boot-loader.css";
 
-/** `?loader=1..12` previews an alternative 3D look (src/loading/variants). The
+/** `?loader=1..18` previews an alternative 3D look (src/loading/variants). The
  *  variants chunk only loads when asked for; no param = the plain count. */
 const VARIANT_ID = (() => {
   if (typeof location === "undefined") return 0;
   const id = Number(new URLSearchParams(location.search).get("loader"));
-  return id >= 1 && id <= 12 ? id : 0;
+  return id >= 1 && id <= 18 ? id : 0;
 })();
 
 /**

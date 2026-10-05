@@ -58,7 +58,7 @@ const main = document.getElementById("grid")!;
 
 interface Card { host: HTMLElement; v: LoaderVariant; info: (typeof VARIANTS)[number]; t0: number }
 const cards: Card[] = [];
-for (const [title, from, to] of [["Batch 2", 7, 12], ["Batch 1", 1, 6]] as const) {
+for (const [title, from, to] of [["Batch 3 · circles", 13, 18], ["Batch 2", 7, 12], ["Batch 1", 1, 6]] as const) {
   const h = document.createElement("h2");
   h.className = "lab-h";
   h.textContent = title;

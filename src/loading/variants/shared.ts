@@ -123,3 +123,72 @@ export function poly(ctx: CanvasRenderingContext2D, pts: number[][]) {
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
   ctx.closePath();
 }
+
+/** 4×4 Bayer threshold, 0..15. */
+export const bayer4 = (x: number, y: number) =>
+  [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5][(y & 3) * 4 + (x & 3)];
+
+/** Cells per radius: the same staircase as the hero's scroll iris
+ *  (heroWipe.ts IRIS_CELLS), so the loader's exit reads as that gesture. */
+export const IRIS_CELLS = 15;
+
+/**
+ * The hero's pixel iris, drawn on a canvas: the orange field with a
+ * cell-staircase hole of radius r about (cx, cy). Cells are r / IRIS_CELLS,
+ * so they grow as it opens ("pixels growing"), and a sparse half-cell white
+ * rim dithers the edge (two rings at 4/16 and 1/16, as heroWipe's
+ * RIM_LEVELS), fading as the hole clears the frame.
+ */
+export function pixelIris(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  r: number,
+) {
+  ctx.fillStyle = "#ff4f00";
+  ctx.fillRect(0, 0, w, h);
+  if (r <= 0.5) return;
+  const c = Math.max(1, r / IRIS_CELLS);
+  const rows = Math.ceil(r / c) + 1;
+  for (let j = -rows; j < rows; j++) {
+    const dy = (j < 0 ? -j - 0.5 : j + 0.5) * c;
+    if (dy >= r) continue;
+    const half = Math.round(Math.sqrt(r * r - dy * dy) / c) * c;
+    if (half > 0) ctx.clearRect(cx - half, cy + j * c, half * 2, c + 0.5);
+  }
+  const far = Math.max(Math.hypot(cx, cy), Math.hypot(w - cx, cy), Math.hypot(cx, h - cy), Math.hypot(w - cx, h - cy));
+  const fade = 1 - Math.min(1, Math.max(0, (r / far - 0.75) / 0.25));
+  if (fade <= 0) return;
+  const hc = c / 2;
+  ctx.fillStyle = `rgba(255,255,255,${fade.toFixed(3)})`;
+  const levels = [4, 1];
+  const n = Math.ceil((r + hc * 3) / hc);
+  for (let gy = -n; gy < n; gy++)
+    for (let gx = -n; gx < n; gx++) {
+      const d = Math.hypot((gx + 0.5) * hc, (gy + 0.5) * hc);
+      const ring = Math.floor((d - r) / hc);
+      if (ring < 0 || ring >= levels.length) continue;
+      if (bayer4(gx + 64, gy + 64) < levels[ring]) ctx.fillRect(cx + gx * hc, cy + gy * hc, hc, hc);
+    }
+}
+
+/** Iris radius at exit progress e: accelerating (p^k, like the hero's
+ *  dive), from r0 to past the farthest corner. */
+export function irisRadius(e: number, w: number, h: number, cx: number, cy: number, r0 = 0) {
+  const far = Math.max(Math.hypot(cx, cy), Math.hypot(w - cx, cy), Math.hypot(cx, h - cy), Math.hypot(w - cx, h - cy));
+  return r0 + (far * 1.08 - r0) * Math.pow(Math.min(1, e), 1.7);
+}
+
+/** Exit push-in, like the hero's scale-about-the-seed as the iris opens:
+ *  content scales up about (cx, cy) and clears well before the hole does.
+ *  Call after pixelIris(); pair with ctx.restore(). */
+export function diveIn(ctx: CanvasRenderingContext2D, e: number, cx: number, cy: number) {
+  ctx.save();
+  const k = 1 + e * e * 2.2;
+  ctx.translate(cx, cy);
+  ctx.scale(k, k);
+  ctx.translate(-cx, -cy);
+  ctx.globalAlpha = Math.max(0, 1 - e * 2.6);
+}
