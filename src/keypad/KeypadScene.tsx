@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, TransformControls } from "@react-three/drei";
 import * as THREE from "three";
-import { KeypadModel, type KeypadModelApi } from "./KeypadModel";
+import { DIAL_DAMP, KeypadModel, type KeypadModelApi } from "./KeypadModel";
 import { RiceBlob } from "./RiceBlob";
 import {
   RipplePost,
@@ -112,7 +112,8 @@ const FLOAT_FADE_S = 1.0; // float amplitude fade-in after the landing
 //                 place: no impact frame, nothing to stop dead.
 //   250 ms        TOUCHDOWN, ~90% of the travel done: a soft ripple through
 //                 the rice (stampPulse at LAND_PULSE, a third of a press) +
-//                 a small dial nudge (kickDial). No squash.
+//                 one full turn of the dial (kickDial), so the cat lands
+//                 upright. No squash.
 //   250 -> 800 ms SETTLE: a shallow dip below rest and back (DROP_DIP, a sin²
 //                 bell, smaller than the idle bob), with a slight lean while
 //                 it descends (PULL_TILT) that levels out as it arrives.
@@ -135,7 +136,11 @@ const DROP_TOTAL_S = 0.8; // settle done; float bob may begin
 const DROP_DIP = 0.05; // settle dip below rest (world units; the idle bob is 0.12)
 const PULL_TILT = THREE.MathUtils.degToRad(3); // lean while descending, 0 at rest
 const LAND_PULSE = { strength: 0.45, x: 0.5, y: 0.58 } as const; // soft touchdown ripple
-const LAND_DIAL_KICK = 3; // rad/s added to the dial at touchdown
+// Dial nudge at touchdown: exactly one full turn. The dial's velocity decays
+// exponentially at DIAL_DAMP, so its total travel is v / DIAL_DAMP; 2π·DAMP
+// spins it once and the cat face lands upright again (3 rad/s left it upside
+// down).
+const LAND_DIAL_KICK = Math.PI * 2 * DIAL_DAMP;
 
 /** Remaining pull (1 = parked, 0 = arrived) at drop time t: an ease-out
  *  quartic, fastest at the start (while the model is still entering). */

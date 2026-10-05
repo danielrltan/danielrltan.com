@@ -1,0 +1,95 @@
+{
+  "_comment": "Keypad geometry, glTF space (Y up, display toward -Z), world units. scripts/build-keypad-model.py reads this; npm run model:keypad rebuilds public/keypad.glb. Tune proportions HERE.",
+  "body": {
+    "w": 2.9,
+    "d": 3.96,
+    "y0": 0.05,
+    "y1": 0.95,
+    "corner": 0.46,
+    "edgeBevel": 0.09,
+    "bevelSegs": 6
+  },
+  "margin": 0.22,
+  "topRow": {
+    "h": 0.9,
+    "gapBelow": 0.18
+  },
+  "display": {
+    "w": 1.52,
+    "recess": 0.045,
+    "corner": 0.1,
+    "inset": 0.05
+  },
+  "knob": {
+    "r": 0.5,
+    "h": 0.4,
+    "collarR": 0.42,
+    "collarH": 0.06,
+    "topBevel": 0.07,
+    "ridges": 28
+  },
+  "well": {
+    "pad": 0.09,
+    "depth": 0.24,
+    "corner": 0.2
+  },
+  "keys": {
+    "gap": 0.12,
+    "height": 0.62,
+    "corner": 0.2,
+    "taper": 0.9,
+    "topBevel": 0.11,
+    "bevelSegs": 6
+  },
+  "sideButtons": {
+    "x": -1.45,
+    "len": 0.5,
+    "thick": 0.13,
+    "tall": 0.3,
+    "z": [
+      -0.55,
+      0.15
+    ],
+    "y": 0.5,
+    "corner": 0.065
+  },
+  "materials": {
+    "BrushedMetal": {
+      "hex": "#dfe2e6",
+      "rough": 0.4,
+      "metal": 0.18
+    },
+    "keycap": {
+      "hex": "#ffffff",
+      "rough": 0.55,
+      "metal": 0.0
+    },
+    "dark": {
+      "hex": "#26282c",
+      "rough": 0.6,
+      "metal": 0.0
+    },
+    "orange": {
+      "hex": "#ff4f00",
+      "rough": 0.42,
+      "metal": 0.0
+    },
+    "display": {
+      "rough": 0.25,
+      "metal": 0.0
+    },
+    "icon": {
+      "rough": 0.55,
+      "metal": 0.0
+    }
+  },
+  "textures": {
+    "iconPx": 1024,
+    "displayCrop": [
+      0,
+      230,
+      500,
+      270
+    ]
+  }
+}

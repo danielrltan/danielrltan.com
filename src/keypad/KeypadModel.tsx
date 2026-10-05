@@ -9,18 +9,15 @@ import { SOCIALS } from "../socials";
  * Loads /keypad.glb and wires up four social keycaps + the spinnable
  * dial. Other meshes render unchanged.
  *
- * GLB nodes (confirmed via scripts/dump-glb-nodes.mjs):
- *   x, linkedin, github, pinterest  - social keycaps (clickable)
- *   knob                              - spinnable dial; parent group
- *                                       with Cylinder006/Cylinder006_1
- *                                       (brushed-metal body + cat
- *                                       face decal) as children;
- *                                       rotating this node spins
- *                                       both meshes together
- *   frame                             - body + sidebutton (parent
- *                                       group with Cube003/Cube003_1
- *                                       child meshes)
- *   Cube006                           - display screen
+ * GLB nodes (built by scripts/build-keypad-model.py from
+ * src/keypad/keypadSpec.json; `npm run model:keypad`):
+ *   x, linkedin, github, pinterest  - social keycaps (clickable), origin at
+ *                                       each cap's centre, pressed along Y
+ *   knob                              - spinnable cat dial, origin on its
+ *                                       spin axis (rotation.y)
+ *   frame                             - body, well floor, dial collar and
+ *                                       side buttons (static)
+ *   display                           - the screen (flashes on presses)
  *
  * Animations driven from useFrame with fixed-rate damping
  * (per the project's scroll-animations-fixed-rate rule): no spring
@@ -29,86 +26,6 @@ import { SOCIALS } from "../socials";
 
 useGLTF.preload("/keypad.glb");
 
-/**
- * Smooth the normal attribute by averaging across vertices at the
- * SAME POSITION, without merging vertices or touching UV/position/
- * index data. This is the runtime equivalent of Blender's "Shade
- * Smooth" applied per shared position: solves the case where the
- * GLB ships with face-normal-per-vertex on chamfer subdivisions
- * (32 of 40 position-clusters on the keypad caps had normals 26°–60°
- * apart, producing the visible triangulation).
- *
- * Important properties:
- *   - positions UNCHANGED (silhouette unaffected)
- *   - UVs UNCHANGED (icon decals on cap tops stay intact)
- *   - index buffer UNCHANGED (no merging across UV seams)
- *   - ONLY the normal attribute is rewritten
- *
- * Hard edges where the two surfaces don't share a position
- * (e.g. cap top→side 90° seam, where the GLB has slightly-offset
- * vertices on each side) are naturally preserved because they
- * never enter the same position cluster.
- */
-function smoothNormalsAcrossSharedPositions(
-  geom: THREE.BufferGeometry,
-  posTol = 1e-4,
-): void {
-  const pos = geom.attributes.position as THREE.BufferAttribute | undefined;
-  const norm = geom.attributes.normal as THREE.BufferAttribute | undefined;
-  if (!pos || !norm) return;
-  // Round each coordinate to the same 1e-6 grid toFixed(6) used.
-  // OLD: O(n) string alloc — `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`
-  //      per vertex; heavy per-character heap allocation for n ≈ thousands.
-  // NEW: O(1) space per vertex — three integer quantizations, no strings.
-  //      Nested Map is collision-free: (qx,qy,qz) → vertex list maps
-  //      IDENTICALLY to the old string key because both quantize to the
-  //      same 1e-6 grid (Math.round(v/1e-4)*1e-4 then ×1e6 = Math.round
-  //      (v*1e4)*100, but toFixed(6) of that === the integer → no difference
-  //      in grouping). Nested structure avoids any hash-collision risk.
-  const invTol = 1 / posTol; // e.g. 1e4 for default posTol=1e-4
-  const clusters = new Map<number, Map<number, Map<number, number[]>>>();
-  let clusterCount = 0;
-  for (let i = 0; i < pos.count; i++) {
-    const qx = Math.round(pos.getX(i) * invTol);
-    const qy = Math.round(pos.getY(i) * invTol);
-    const qz = Math.round(pos.getZ(i) * invTol);
-    let byY = clusters.get(qx);
-    if (!byY) { byY = new Map(); clusters.set(qx, byY); }
-    let byZ = byY.get(qy);
-    if (!byZ) { byZ = new Map(); byY.set(qy, byZ); }
-    let arr = byZ.get(qz);
-    if (!arr) { arr = []; byZ.set(qz, arr); clusterCount++; }
-    arr.push(i);
-  }
-  // Flatten nested map values into a single iterable for the averaging loop.
-  const clusterValues: number[][] = [];
-  for (const byY of clusters.values())
-    for (const byZ of byY.values())
-      for (const arr of byZ.values())
-        clusterValues.push(arr);
-  let merged = 0;
-  for (const verts of clusterValues) {
-    if (verts.length < 2) continue;
-    let ax = 0,
-      ay = 0,
-      az = 0;
-    for (const v of verts) {
-      ax += norm.getX(v);
-      ay += norm.getY(v);
-      az += norm.getZ(v);
-    }
-    const len = Math.hypot(ax, ay, az);
-    if (len === 0) continue;
-    ax /= len;
-    ay /= len;
-    az /= len;
-    for (const v of verts) {
-      norm.setXYZ(v, ax, ay, az);
-    }
-    merged++;
-  }
-  norm.needsUpdate = true;
-}
 
 // Keycap NODE name → URL (src/socials.ts owns the list).
 const SOCIAL_URLS: Record<string, string> = Object.fromEntries(
@@ -140,7 +57,7 @@ const DIAL_KICK = Math.PI * 2 * 1.1;
 // Slow decay so accumulated velocity persists long enough that a
 // rapid click stack actually reaches "spinning hard" before fading.
 // At 0.9, velocity halves every ~0.77s.
-const DIAL_DAMP = 0.9;
+export const DIAL_DAMP = 0.9;
 // Hard cap so a determined spammer can't push velocity into the
 // 'spinning so fast it looks frozen' territory.
 const DIAL_MAX_VEL = Math.PI * 2 * 12; // 12 revs/sec ceiling
@@ -161,6 +78,9 @@ interface CapState {
    *  spark cursor, since one handler drives both). Geometry-centre tracks where
    *  the cap actually renders regardless of baked transforms. */
   hitPos: THREE.Vector3;
+  /** Hit-volume size: the cap's own footprint (a fixed 0.55 box covered only
+   *  the middle of each cap, so clicks near a cap's edge missed it). */
+  hitSize: THREE.Vector3;
   pressT: number;
   hovered: boolean;
   pressedAt: number | null;
@@ -205,14 +125,8 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     const capMap: Record<string, CapState> = {};
     let dialObj: THREE.Object3D | null = null;
     let screenMaterial: THREE.Material | null = null;
-    // Shading fix: force flatShading off and recompute vertex
-    // normals on every mesh. Per the user's instruction this stays
-    // STRICTLY at the geometry/normal level: no subdivision, no
-    // UV-merging, no material/roughness/lighting changes. A previous
-    // attempt at runtime smoothing interpolated UVs across cap
-    // top/side seams and wrecked the icon decals; this version
-    // touches only normals + material.flatShading flag and leaves
-    // the indexed buffer + UVs untouched.
+    // Find the caps / dial / display, sharpen texture sampling, and turn on
+    // shadows. Geometry and normals are used exactly as the build exported them.
     cl.traverse((obj) => {
       const name = obj.name;
       if (SOCIAL_KEYS.includes(name)) {
@@ -221,6 +135,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
           baseY: obj.position.y,
           // Filled below from geometry centre once world matrices are current.
           hitPos: new THREE.Vector3(),
+          hitSize: new THREE.Vector3(0.55, 0.4, 0.55),
           pressT: 0,
           hovered: false,
           pressedAt: null,
@@ -232,7 +147,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
         // gets renamed again, console will warn and list available
         // node names (see warning block below).
         dialObj = obj;
-      } else if (name === "Cube006") {
+      } else if (name === "display") {
         // Display screen: captured (and its material CLONED so the
         // useGLTF cache stays pristine) for the interaction flash —
         // the OLED blips brighter on cap/dial presses.
@@ -273,15 +188,9 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
           }
           mat.needsUpdate = true;
         }
-        // Normal averaging across position-shared vertices. Smooths
-        // hard-shaded chamfer-subdivision boundaries (the GLB ships
-        // face-normal-per-vertex on those) WITHOUT touching positions,
-        // UVs, or the index buffer. Tried LoopSubdivision earlier on
-        // non-textured meshes; it smoothed the brushed-metal body's
-        // 90° hard edges into mirror-smooth curves, making the frame
-        // read as chrome/glass instead of brushed metal. Reverted:
-        // the chamfer normals averaging alone is what we want here.
-        smoothNormalsAcrossSharedPositions(m.geometry);
+        // Normals come from the model build (bevels with hardened normals,
+        // smooth-by-angle), so they are used as exported. The old runtime
+        // averaging across shared positions would round off the new edges.
         m.castShadow = true;
         m.receiveShadow = true;
       }
@@ -314,7 +223,12 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     // re-export baked their node translations to zero.
     const hb = new THREE.Box3();
     for (const key of Object.keys(capMap)) {
-      hb.setFromObject(capMap[key]!.obj).getCenter(capMap[key]!.hitPos);
+      const c = capMap[key]!;
+      hb.setFromObject(c.obj).getCenter(c.hitPos);
+      // Footprint of the cap, a hair inside its edges so neighbours never
+      // overlap; height covers the cap above the hover/press dip.
+      const sz = hb.getSize(new THREE.Vector3());
+      c.hitSize.set(sz.x * 0.96, Math.max(0.4, sz.y), sz.z * 0.96);
     }
     const dialHitPos = dialObj
       ? hb.setFromObject(dialObj).getCenter(new THREE.Vector3())
@@ -527,7 +441,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
               onPointerOut={handleCapLeave(name)}
               onClick={handleCapClick(name)}
             >
-              <boxGeometry args={[0.55, 0.4, 0.55]} />
+              <boxGeometry args={[cap.hitSize.x, cap.hitSize.y, cap.hitSize.z]} />
               <meshBasicMaterial transparent opacity={0} depthWrite={false} />
             </mesh>
           );
