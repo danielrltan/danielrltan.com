@@ -194,16 +194,18 @@ export function drawVoxels(
 }
 
 /**
- * The click burst: a ring of eight "exclamations" (1-voxel spark bars like the
- * hover art's three) pointing out from the hotspot, starting `radius` px out
- * and `len` voxels long. Rebuilt per frame (8 short bars: trivial).
+ * The click burst: "exclamations" (1-voxel spark bars like the hover art's
+ * three) pointing out from the hotspot, starting `radius` px out and `len`
+ * voxels long. They fan over the OPEN 240° around the tip and skip the wedge
+ * the arrow's own body fills (down-right, ~20-80° in screen angles), so
+ * nothing fires through the cursor. Rebuilt per frame (7 short bars).
  */
+const BURST_ANGLES = [105, 145, 185, 225, 265, 305, 345].map((d) => (d * Math.PI) / 180);
 export function sparkBurst(radius: number, len: number): Cells {
   const out: Cells = [];
   const seen = new Set<string>();
   const r0 = radius / VOXEL;
-  for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * Math.PI * 2;
+  for (const a of BURST_ANGLES) {
     const ca = Math.cos(a), sa = Math.sin(a);
     for (let d = r0; d <= r0 + Math.max(1, len); d += 0.5) {
       const x = Math.round(ca * d), y = Math.round(sa * d);

@@ -25,10 +25,12 @@ interface Props {
  *    Canvas hot-spots (keypad / Mac / Hobbies, which set body cursor to
  *    `pointer`) get the same.
  *  - Press and HOLD: the block squashes flat like a key going down and stays
- *    down until release.
- *  - Release (the click): springs back up and fires a RING OF EXCLAMATIONS,
- *    eight spark bars bursting out radially from the tip, shrinking and
- *    fading as they fly (the hover sparks, going off).
+ *    down until release; the sparks retract into the tip (charging).
+ *  - Release (the click): springs back up and the sparks GO OFF: seven spark
+ *    bars burst out over the open 240° round the tip (never through the
+ *    arrow's body), shrinking and fading as they fly. The hover sparks stay
+ *    retracted until the burst has cleared, then grow back if still hovering,
+ *    so the two never crowd each other (owner: both at once felt off).
  *  - Reduced motion: no swing, no burst; states switch without springs.
  *
  * Hotspot = the arrow's TIP, at the 0×0 root, which sits exactly on the
@@ -190,7 +192,8 @@ export function MoveableCursor({ hot }: Props) {
       busy = step(ry, ty, dt, 110, 0.32, reduced) || busy;
       busy = step(depth, down ? 0.18 : 1, dt, 520, down ? 0.9 : 0.3, reduced) || busy;
       busy = step(scale, down ? 0.88 : 1, dt, 380, down ? 0.9 : 0.4, reduced) || busy;
-      busy = step(spark, hovering ? 1 : 0, dt, 300, 0.45, reduced) || busy;
+      // Sparks: out while hovering, in while pressed or bursting.
+      busy = step(spark, hovering && !down && !bursts.length ? 1 : 0, dt, down ? 600 : 300, down ? 0.9 : 0.45, reduced) || busy;
 
       // Draw.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
