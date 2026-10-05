@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { softReleasePin } from "./softRelease";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import { isTuneMode } from "../tuneMode";
 import "./sections.css";
@@ -360,6 +361,9 @@ export function Macintosh() {
       // progress for a trigger created mid-page (it refreshes on create).
       onRefresh: (self) => syncProgress(self.progress),
     });
+    // Soft release: the section eases into scroll speed instead of snapping
+    // off the pin (softRelease.ts).
+    const stopSoftRelease = softReleasePin(st);
 
     // Click-to-zoom: the floating Mac dispatches `mac-zoom-request` (see the
     // 3D hitbox in MacintoshScene). Glide to the landed/booted CRT (LANDED_P)
@@ -430,6 +434,7 @@ export function Macintosh() {
     return () => {
       stopLoaderWatch();
       stageST.kill();
+      stopSoftRelease();
       st.kill();
       // Crossing into the static-landed path must not strand a mid-fade
       // header (the var is only written while the pin exists).

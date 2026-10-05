@@ -1,6 +1,7 @@
 import { lazy, memo, Suspense, useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { softReleasePin } from "./softRelease";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import { SOCIALS } from "../socials";
 import { isTuneMode } from "../tuneMode";
@@ -302,6 +303,9 @@ export const Keypad = memo(function Keypad() {
       pin: true,
       pinSpacing: true,
     });
+    // Soft release: the section eases into scroll speed instead of snapping
+    // off the pin (softRelease.ts).
+    const stopSoftRelease = softReleasePin(pinST);
 
     // Refresh once after the layout settles (loading-active removed): the
     // page's height shifts as fonts load + lazy sections mount, and a stale
@@ -310,6 +314,7 @@ export const Keypad = memo(function Keypad() {
 
     return () => {
       stopLoaderWatch();
+      stopSoftRelease();
       pinST.kill();
     };
     // Re-run when the breakpoint flips (rotate / resize across 768px)

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { softReleasePin } from "./softRelease";
 import { requestScrollRefresh, refreshScrollOnLoaderLift } from "./scrollRefresh";
 import "./sections.css";
 import "./about.css";
@@ -241,6 +242,9 @@ export function About() {
       onUpdate: (self) => apply(self.progress),
       onRefresh: (self) => apply(self.progress),
     });
+    // Soft release: the section eases into scroll speed instead of snapping
+    // off the pin (softRelease.ts).
+    const stopSoftRelease = softReleasePin(st);
     // Refresh after THIS pin is (re)created — not only after the loading
     // scrim clears. When the breakpoint flips mid-session (rotation), the
     // pin is killed and recreated with a different duration, which changes
@@ -250,6 +254,7 @@ export function About() {
     const stopLoaderWatch = refreshScrollOnLoaderLift();
     return () => {
       stopLoaderWatch();
+      stopSoftRelease();
       st.kill();
     };
     // Re-create (or skip) the pin when the breakpoint flips so the layout

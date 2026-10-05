@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { softRelease } from "./softRelease";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import { smoothstep } from "../math";
 import "./sections.css";
@@ -132,8 +133,15 @@ export function Photos() {
     // during initial layout. Same pattern as Other / Macintosh / Keypad.
     const stopLoaderWatch = refreshScrollOnLoaderLift();
 
+    // Soft release of the sticky stage at the end of the hold (softRelease.ts).
+    const stage = el.querySelector<HTMLElement>(".photos-stage");
+    const stopSoftRelease = stage
+      ? softRelease({ trigger: el, start: () => st.start, end: () => st.end, target: stage })
+      : () => {};
+
     return () => {
       stopLoaderWatch();
+      stopSoftRelease();
       plane.kill();
       st.kill();
       entrance.kill();

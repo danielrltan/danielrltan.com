@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { softReleasePin } from "./softRelease";
 import "./sections.css";
 import "./bits-and-pieces.css";
 import { ScrambleText } from "./ScrambleText";
@@ -379,9 +380,13 @@ export function BitsAndPieces() {
       pin: true,
       pinSpacing: true,
     });
+    // Soft release: the section eases into scroll speed instead of snapping
+    // off the pin (softRelease.ts).
+    const stopSoftRelease = softReleasePin(st);
     const stopLoaderWatch = refreshScrollOnLoaderLift();
     return () => {
       stopLoaderWatch();
+      stopSoftRelease();
       st.kill();
     };
   }, [narrow]);

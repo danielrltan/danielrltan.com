@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { softRelease } from "./softRelease";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import { reducedMotion } from "../motion";
 import "./sections.css";
@@ -157,8 +158,24 @@ export function Other() {
     // paint. Same pattern as the other sections.
     const stopLoaderWatch = refreshScrollOnLoaderLift();
 
+    // Soft release of the sticky section at the end of the hold
+    // (softRelease.ts). The hold runs while the wrapper's top is above the
+    // viewport top by up to (wrapper - section) px; on phones there is no
+    // sticky, the lengths match, and the release zone is empty.
+    const section = sectionRef.current;
+    const holdStart = () => el.getBoundingClientRect().top + window.scrollY;
+    const stopSoftRelease = section
+      ? softRelease({
+          trigger: el,
+          start: holdStart,
+          end: () => holdStart() + Math.max(0, el.offsetHeight - section.offsetHeight),
+          target: section,
+        })
+      : () => {};
+
     return () => {
       stopLoaderWatch();
+      stopSoftRelease();
       entrance?.kill();
       presence.kill();
     };

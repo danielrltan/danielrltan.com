@@ -7,6 +7,7 @@ import {
 } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { softReleasePin } from "./softRelease";
 import { refreshScrollOnLoaderLift, requestScrollRefresh } from "./scrollRefresh";
 import "./sections.css";
 import "./work-timeline.css";
@@ -337,6 +338,9 @@ export function Work() {
       onUpdate: (self) => applyProgress(self.progress),
       onRefresh: (self) => applyProgress(self.progress),
     });
+    // Soft release: the section eases into scroll speed instead of snapping
+    // off the pin (softRelease.ts).
+    const stopSoftRelease = softReleasePin(st);
     stRef.current = st;
     applyProgress(st.progress);
 
@@ -357,6 +361,7 @@ export function Work() {
       stopLoaderWatch();
       ro.disconnect();
       clearJumpRef.current?.(false);
+      stopSoftRelease();
       st.kill();
       stRef.current = null;
       geoRef.current = null;
