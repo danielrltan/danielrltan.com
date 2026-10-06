@@ -6,7 +6,8 @@ import "./sections.css";
 import "./about.css";
 import { ScrambleText } from "./ScrambleText";
 import { track } from "../analytics";
-import { MQ, reducedMotion as reducedMotionPref } from "../motion";
+import { MQ, SEAM_MQ, ease, reducedMotion as reducedMotionPref } from "../motion";
+import { mountSeam } from "../seams/seam";
 import { useMedia } from "../useMedia";
 import { heroHandoff } from "../hero/heroState";
 import { useReveal } from "./useReveal";
@@ -42,7 +43,11 @@ gsap.registerPlugin(ScrollTrigger);
  * no longer pins. On the desk layout the section is 200svh with a sticky inner
  * .about-hold (src/seams/stack.css, keyed on this section's data-seam-stack),
  * so the parked room simply stays still from the hero hand-off on, and the
- * Projects sheet rises 1:1 over it (the Mac side lives in Macintosh.tsx).
+ * Projects sheet rises 1:1 over it (the Mac side lives in Macintosh.tsx). Two
+ * seams ride that curtain here: `about-projects` stops painting the hold and
+ * pauses the room bob once the sheet covers it, and `about-arrow` turns the
+ * owner's "my room in real life!" arrow on its tail to point down at the
+ * arriving Mac (gate G3).
  *
  * NARROW (MQ.narrow: ≤900px, or a phone on its side) has no hold and no
  * curtain (mirrors Work): a pinned, internally-scrolling stage was a nested
@@ -101,6 +106,17 @@ const ROOM_ARROW_SEGS = (() => {
     .filter(Boolean)
     .map((cells) => cells.map((c) => { const [x, y] = c.split(","); return `M${x} ${y}h1v1h-1z`; }).join(""));
 })();
+
+/** Owner gate G3 (seam overhaul, default ON): while the Projects sheet rises
+ *  over the still room, the "my room in real life!" arrow turns on its tail
+ *  to point down at the arriving Mac, and swings back on scroll-up. No words
+ *  are added. false = the static arrow. */
+const ARROW_SWIVEL = true;
+/** The arrow's turn when the sheet edge is 0.1vh below it (deg; negative =
+ *  counter-clockwise on screen). The head starts out pointing left at the
+ *  room; the Mac arrives down and to the left of the arrow's tail, so a
+ *  ~50 deg turn aims the head at the Mac (judged at 1440x900 and 1280x720). */
+const ARROW_TURN_DEG = -50;
 
 /** The rest of the bento, revealed together after the arrival trio. */
 const BENTO_REST = ["portrait", "now", "explore", "study", "reach", "loc"]
@@ -282,6 +298,77 @@ export function About() {
       st.kill();
     };
   }, [mobile]);
+
+  /* about -> projects, About side (seam overhaul; the Mac side is
+     Macintosh.tsx). The Projects sheet rises 1:1 over the still room; once it
+     covers About completely (the sheet's top at the viewport top), the hold
+     stops painting and the room bob pauses (html[data-about-covered],
+     about.css). Desk only: elsewhere nothing covers About. A class-like
+     toggle, not a per-frame write. Driven by the sheet, an in-flow trigger. */
+  useEffect(() => {
+    const el = sectionRef.current;
+    const hold = el?.querySelector<HTMLElement>(".about-hold");
+    if (!el || !hold) return;
+    const html = document.documentElement;
+    let covered: boolean | null = null;
+    const setCovered = (on: boolean) => {
+      if (on === covered) return;
+      covered = on;
+      hold.style.visibility = on ? "hidden" : "";
+      html.toggleAttribute("data-about-covered", on);
+    };
+    return mountSeam({
+      id: "about-projects",
+      trigger: () => document.querySelector(".portfolio-mac"),
+      start: "top bottom",
+      end: "top top",
+      render: (p) => setCovered(p >= 0.999),
+      final: () => setCovered(false),
+      reset: () => setCovered(false),
+    });
+  }, []);
+
+  /* The arrow swivel (gate G3): the sheet's rise turns the room callout's
+     arrow on its tail, from the room to the arriving Mac. Fine pointers on
+     the desk layout only (a scroll-linked rotate on touch lags threaded
+     scroll); writes the individual `rotate` property only (about.css puts
+     transform-origin on the tail). Ends when the sheet edge is 0.1vh below
+     the arrow, so the head is aimed before the sheet reaches it. */
+  useEffect(() => {
+    const el = sectionRef.current;
+    const arrow = el?.querySelector<SVGSVGElement>(".about-room-callout-arrow");
+    const stage = el?.querySelector<HTMLElement>(".about-stage");
+    const banner = el?.querySelector<HTMLElement>(".about-banner");
+    if (!ARROW_SWIVEL || !el || !arrow || !stage || !banner) return;
+    // The arrow's parked bottom, px below the hold's top. Layout offsets only
+    // (offsetTop ignores the park translate, the iris pull-back scale and the
+    // banner's reveal lift), so it reads the same at any scroll position.
+    let line = 0;
+    const write = (deg: number) => {
+      arrow.style.rotate = deg ? `${deg.toFixed(2)}deg` : "";
+    };
+    return mountSeam({
+      id: "about-arrow",
+      when: SEAM_MQ.fine,
+      trigger: () => document.querySelector(".portfolio-mac"),
+      start: "top bottom",
+      end: () => {
+        const mac = document.querySelector(".portfolio-mac");
+        const top = mac ? mac.getBoundingClientRect().top + window.scrollY : 0;
+        const vh = window.innerHeight;
+        // The sheet's top at (line + 0.1vh) on screen; never before the start.
+        return Math.max(top - vh + 1, top - line - 0.1 * vh);
+      },
+      measure: () => {
+        const cs = getComputedStyle(arrow);
+        const h = parseFloat(cs.height) || arrow.getBoundingClientRect().height;
+        line = stage.offsetTop + banner.offsetTop + (parseFloat(cs.top) || 0) + h;
+      },
+      render: (p) => write(ARROW_TURN_DEG * ease.inOutCubic(p)),
+      final: () => write(0),
+      reset: () => write(0),
+    });
+  }, [roomless]);
 
   return (
     <section

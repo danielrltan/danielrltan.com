@@ -227,6 +227,9 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
   height: auto;
   fill: var(--accent, #ff4f00);
   overflow: visible;
+  /* The arrow swivel (About.tsx, gate G3) turns it on its TAIL: the shaft's
+     first cell, (57.5, 7.5) in the 62x24 viewBox. JS writes only `rotate`. */
+  transform-origin: 92.74% 31.25%;
 }
 /* DRAW-IN (owner 2026-10-06): the callout waits for the bento, then the
    label lands and the arrow draws itself from the label down to the room,
@@ -599,9 +602,12 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
    (html[data-hero-covering], heroWipe.ts, is set while the hero layer is
    visible). The parked stage counts as on screen under the hero, so without
    the second guard the bob would run behind the opaque field at rest; it
-   also keeps the porthole onto a still room during the iris. */
+   also keeps the porthole onto a still room during the iris. Same once the
+   Projects sheet has covered About (html[data-about-covered], About.tsx):
+   the room is under an opaque sheet, still "intersecting". */
 .portfolio-about:not(.is-onscreen) .render-frame,
-html[data-hero-covering] .render-frame {
+html[data-hero-covering] .render-frame,
+html[data-about-covered] .render-frame {
   animation-play-state: paused;
 }
 @keyframes about-room-bob {
