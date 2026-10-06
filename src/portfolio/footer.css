@@ -1,14 +1,16 @@
 /* Footer: full-width band at the bottom of the page. Holds the
-   jump-link grid, colophon, copyright, and the signature replay
-   (renders fixed-position over the viewport while the footer is in
-   view; IntersectionObserver fires the replay once).
+   jump-link grid, colophon, copyright, and the signature replay.
+   Seam 8 (Footer.tsx header): on wide screens the band is a sheet that
+   feeds up over the stuck keypad, edged with pixel perforation teeth, and
+   its rows print as they clear the bottom of the screen.
 */
 
 .portfolio-footer {
   position: relative;
   /* Solid bg-deep (was a 2-stop vertical gradient down to #c8cacf;
      felt overdesigned). Separation from the keypad section comes from
-     the 1px ink hairline on top. */
+     the 1px ink hairline on top, or, with the seam flag, the perforation
+     teeth below (owner gate G6: the hairline is the fallback). */
   background: var(--bg-deep);
   border-top: 1px solid var(--ink-hairline);
   /* Intentional rhythm break: top is 96px (20% tighter than the 120px
@@ -27,6 +29,68 @@
 .footer-inner {
   max-width: 1280px;
   margin: 0 auto;
+}
+
+/* ── Seam 8: perforation edge ───────────────────────────────────────────
+   The sheet's top edge is a static row of 8px squares every 16px in the
+   sheet's own colour, standing 8px proud of it: tear-off teeth instead of
+   a hairline, in the site's pixel voice. Flat fill, hard steps, no shadow
+   (the ground is flat and gradient-free). Painted through a mask so the
+   fill stays the --bg-deep token. Static at every width and under reduced
+   motion; never takes the pointer. */
+.portfolio-footer[data-seam-stack] {
+  border-top: 0;
+}
+.portfolio-footer[data-seam-stack]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  height: 8px;
+  background: var(--bg-deep);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='8'%3E%3Crect width='8' height='8'/%3E%3C/svg%3E") 0 0 / 16px 8px repeat-x;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='8'%3E%3Crect width='8' height='8'/%3E%3C/svg%3E") 0 0 / 16px 8px repeat-x;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+/* ── Seam 8: the print ──────────────────────────────────────────────────
+   Each [data-print-row] group is clipped from the right until Footer.tsx
+   toggles .is-printed (its row has cleared the bottom of the screen), then
+   wipes in left to right in 9 hard steps over --t-med: the About boot
+   timing (about.css .card), the owner-approved print voice. A transition
+   on a CLASS TOGGLE, never on a per-frame property; scrolling back up
+   removes the class and un-prints in reverse.
+   The insets bleed 16px past the row box on the other three sides (and on
+   the right once printed): the links sit 6px proud of their column
+   (margin-left: -6px) with a focus ring outside that, and the 07 marker's
+   glyphs overflow its 0.9 line box, so a plain inset(0) would shave them.
+   Keyboard focus prints a row at once (:focus-within, no transition), so
+   a focused link is never invisible. */
+[data-print-row] {
+  clip-path: inset(-16px 100% -16px -16px);
+  transition: clip-path var(--t-med) steps(9, end);
+}
+[data-print-row].is-printed {
+  clip-path: inset(-16px);
+}
+[data-print-row]:focus-within {
+  clip-path: inset(-16px);
+  transition: none;
+}
+/* A cut jump lands printed: Footer.tsx sets .print-snap for the landing
+   render so the rows do not wipe in after the cover lifts. */
+.print-snap [data-print-row] {
+  transition: none;
+}
+/* No motion: every row printed (also before the seam mounts, so there is
+   never a frame of clipped rows). */
+@media (prefers-reduced-motion: reduce) {
+  [data-print-row] {
+    clip-path: none;
+    transition: none;
+  }
 }
 
 /* Terminal landmark: the footer is the page's final section but carried
@@ -179,28 +243,6 @@
   color: var(--accent);
 }
 
-/* Scroll-in reveal: Footer.tsx adds .footer-revealed once the band
-   enters the viewport. Items start lifted (individual `translate`, so the
-   hover's `transform` stays independent) + transparent and settle over
-   --reveal-dur on --reveal-ease. The stagger delay (--i, capped at
-   --stagger-max steps) sits ONLY on the translate/opacity entries of the
-   transition list; color/transform (hover) keep 0 delay. */
-.footer-nav .footer-link {
-  opacity: 0;
-  translate: 0 var(--chrome-lift);
-  transition:
-    color var(--hover-dur) var(--hover-ease),
-    transform var(--hover-dur) var(--hover-ease),
-    translate var(--reveal-dur) var(--reveal-ease)
-      calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger)),
-    opacity var(--reveal-dur) var(--reveal-ease)
-      calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));
-}
-.footer-revealed .footer-nav .footer-link {
-  opacity: 1;
-  translate: 0 0;
-}
-
 /* Colophon is now a real description list (<dl> of <dt>/<dd> pairs)
    for correct key→value semantics. UA margins reset below.
    ONE shared key column: each row used to be its own grid with a
@@ -349,23 +391,6 @@
     gap: var(--space-3);
     text-align: center;
   }
-
-  /* Mobile entrance: the same one-shot rise as the other compact sections
-     (shared phone tokens, sections.css: --reveal-lift-mobile 12px over
-     --reveal-dur-mobile ~400ms), instead of the desktop chrome lift. */
-  .footer-nav .footer-link {
-    translate: 0 var(--reveal-lift-mobile, 12px);
-    transition:
-      color var(--hover-dur) var(--hover-ease),
-      transform var(--hover-dur) var(--hover-ease),
-      translate var(--reveal-dur-mobile, var(--t-med)) var(--reveal-ease)
-        calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger)),
-      opacity var(--reveal-dur-mobile, var(--t-med)) var(--reveal-ease)
-        calc(min(var(--i, 0), var(--stagger-max)) * var(--stagger));
-  }
-  .footer-revealed .footer-nav .footer-link {
-    translate: 0 0;
-  }
 }
 
 /* Narrow phones (360×640 and below): tighten the outer padding a touch
@@ -388,13 +413,5 @@
 @media (prefers-reduced-motion: reduce) {
   .footer-link:hover {
     transform: none;
-  }
-  /* No motion → no scroll-in reveal. Show every link immediately and at
-     rest so the reveal's opacity:0 start state never strands the nav for
-     reduced-motion users (or if the JS observer never fires). */
-  .footer-nav .footer-link,
-  .footer-revealed .footer-nav .footer-link {
-    opacity: 1;
-    translate: none;
   }
 }
