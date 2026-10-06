@@ -114,10 +114,14 @@ const FLOAT_FADE_S = 1.0; // float amplitude fade-in after the landing
 //                 the rice (stampPulse at LAND_PULSE, a third of a press) +
 //                 one full turn of the dial (kickDial), so the cat lands
 //                 upright. No squash.
-//   250 -> 800 ms SETTLE: a shallow dip below rest and back (DROP_DIP, a sin²
-//                 bell, smaller than the idle bob), with a slight lean while
-//                 it descends (PULL_TILT) that levels out as it arrives.
-//   800 ms        LANDED: the idle float clock starts.
+//   250 ms ->     FLOAT BOUNCE (owner, 2026-10-06: "a soft float bounce to
+//                 really sell that levitating effect"): from the touchdown the
+//                 model rides an air cushion, a damped sine that carries the
+//                 pull's downward motion into a sag below rest, floats back up
+//                 past it, and dies out over ~3.5 s (BOUNCE_*). A slight lean
+//                 while it descends (PULL_TILT) levels out as it arrives.
+//   800 ms        LANDED: the idle float clock starts (the bounce keeps
+//                 fading out underneath it; `t` runs on to DROP_BOUNCE_END_S).
 // A late or fast arrival (Keypad.tsx sets dropRef.rate > 1) plays the same
 // timeline compressed, so the landing still happens inside the pin.
 // Every value is a named constant so the owner can tune the feel here.
@@ -132,8 +136,14 @@ const PARK_MAX = 10;
 const PARK_PROBE = 4;
 const DROP_ARRIVE_S = 0.56; // the pull's travel is done (ease-out quartic)
 const DROP_FALL_S = 0.25; // touchdown beat (~90% travelled): soft ripple + nudge
-const DROP_TOTAL_S = 0.8; // settle done; float bob may begin
-const DROP_DIP = 0.05; // settle dip below rest (world units; the idle bob is 0.12)
+const DROP_TOTAL_S = 0.8; // landed; float bob may begin
+// Float bounce from the touchdown: -AMP·sin(2πτ/PERIOD)·e^(-DAMP·τ). With
+// these values the first sag bottoms out ~0.1 below rest (the idle bob is
+// 0.12), the float back up overshoots ~0.04 and the next sag ~0.016.
+const BOUNCE_AMP = 0.15; // world units
+const BOUNCE_PERIOD = 1.4; // s per sag + float
+const BOUNCE_DAMP = 1.3; // 1/s: each half swing ~40% of the last
+const DROP_BOUNCE_END_S = DROP_FALL_S + 3.5; // e^(-1.3·3.5) ≈ 1%: done
 const PULL_TILT = THREE.MathUtils.degToRad(3); // lean while descending, 0 at rest
 const LAND_PULSE = { strength: 0.45, x: 0.5, y: 0.58 } as const; // soft touchdown ripple
 // Dial nudge at touchdown: exactly one full turn. The dial's velocity decays
@@ -150,13 +160,15 @@ function pullLeft(t: number): number {
 }
 
 /** Model Y offset (world units, 0 = rest) at drop time t (s), pulled down from
- *  `height`, plus the settle dip: a sin² bell (zero slope at both ends) from
- *  the touchdown to the end, so it eases into the idle float with no step. */
+ *  `height`, plus the float bounce from the touchdown. The bounce starts at 0
+ *  moving DOWN, so it continues the pull's descent instead of reversing it,
+ *  and is ~1% of its amplitude at DROP_BOUNCE_END_S, so it ends with no step. */
 function dropOffsetY(t: number, height: number): number {
-  if (t >= DROP_TOTAL_S) return 0;
-  const s = Math.min(1, Math.max(0, (t - DROP_FALL_S) / (DROP_TOTAL_S - DROP_FALL_S)));
-  const bell = Math.sin(Math.PI * s);
-  return height * pullLeft(t) - DROP_DIP * bell * bell;
+  if (t >= DROP_BOUNCE_END_S) return 0;
+  const tau = Math.max(0, t - DROP_FALL_S);
+  const bounce =
+    BOUNCE_AMP * Math.sin((tau / BOUNCE_PERIOD) * Math.PI * 2) * Math.exp(-BOUNCE_DAMP * tau);
+  return height * pullLeft(t) - bounce;
 }
 
 /** Parked height (world units above rest) that puts the model's bottom edge
@@ -734,9 +746,9 @@ function SceneContents({
     if (rm) {
       // Reduced motion: the model rests from its first frame. Spend the
       // contact latch so no thud or dial kick ever fires.
-      d.t = Math.max(d.t, DROP_TOTAL_S);
+      d.t = Math.max(d.t, DROP_BOUNCE_END_S);
       d.contactFired = true;
-    } else if (d.armed && d.t < DROP_TOTAL_S) {
+    } else if (d.armed && d.t < DROP_BOUNCE_END_S) {
       // Plain clampDt (MAX_DT 0.1 s): the drop keeps its 800 ms wall-clock
       // length down to 10 fps. Contact is a latch, so a large step still
       // fires it, just on that frame.
