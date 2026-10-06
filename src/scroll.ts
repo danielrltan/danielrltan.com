@@ -49,6 +49,8 @@ import {
   reducedMotion,
 } from "./motion";
 import { SECTION_REGISTRY } from "./sectionRegistry";
+// Direct import, never the ./seams barrel: seam.ts imports this module.
+import { isHoldTrigger } from "./seams/holds";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -539,7 +541,8 @@ export function scrollToY(target: number | HTMLElement, opts: ScrollOpts = {}): 
 }
 
 /**
- * Jump to a registry section (index or label). Lands on the section's pin at
+ * Jump to a registry section (index or label). Lands on the section's
+ * `pinId` trigger (a GSAP pin, or a seam hold trigger from softHold) at
  * `data-jump-progress` (section element attribute, wins) or the registry's
  * `jumpProgress`; otherwise on the section's document top. Default preset
  * "jump". No analytics: callers keep their own track().
@@ -591,12 +594,16 @@ export function panScrollTo(y: number): void {
 // internal array order, and a pin's start only includes the spacers of pins
 // refreshed BEFORE it. That array is creation order (or, once any trigger sets
 // refreshPriority, a sort on live getBoundingClientRect() tops, which is
-// wrong for a pin that is fixed mid-scroll). About, Mac and Work skip their
-// pins at <=900px, so after a narrow load + widen (an iPad rotation) those
-// pins are created AFTER the always-on Photos/Keypad pins, which then
-// refreshed first and pinned a whole About+Mac length early. Every refresh
-// now orders triggers by refreshPriority (desc), then document order
-// (ancestor before descendant); ties keep creation order (stable sort).
+// wrong for a pin that is fixed mid-scroll). Sections that create their
+// triggers only above a breakpoint (desktop pins, then the seam hold triggers
+// that replace them) are created AFTER the ones that always exist when a
+// narrow load is widened (an iPad rotation); in creation order the later
+// sections then refreshed first, against a layout missing the earlier
+// sections' length. Every refresh now orders triggers by refreshPriority
+// (desc), then document order (ancestor before descendant); ties keep
+// creation order (stable sort), which softHold relies on: its writer is
+// created after its hold trigger on the same section and reads the hold's
+// fresh start/end.
 // Overriding the static sort also covers the built-in no-argument call that
 // refresh makes when any trigger has a refreshPriority (StatusBar's -10s).
 
@@ -620,8 +627,9 @@ function domOrder(a: ScrollTrigger, b: ScrollTrigger): number {
   return 0;
 }
 
-// 2. KEEP THE BEAT ACROSS A RESIZE. Pin lengths are viewport-relative (spec
-// §3), so a resize changes every spacer above the reader while ScrollTrigger
+// 2. KEEP THE BEAT ACROSS A RESIZE. Pin and hold lengths are viewport-relative
+// (spec §3; seam holds are svh tokens in src/seams/stack.css), so a resize
+// changes every spacer / tall section above the reader while ScrollTrigger
 // restores the same ABSOLUTE scrollY: 1440x900 -> 1280x720 at Work p0.5 used
 // to land in Play. The section geometry is cached after every refresh; when a
 // refresh follows a viewport change, the pre-resize position is located in
@@ -654,7 +662,10 @@ function measureGeom(): Geom {
     const el = document.querySelector<HTMLElement>(e.selector);
     if (!el) return null;
     const st = e.pinId ? ScrollTrigger.getById(e.pinId) : undefined;
-    const pin = st && st.pin ? Math.max(0, st.end - st.start) : 0;
+    // A GSAP pin, or a seam hold trigger (src/seams/softHold.ts: a non-pinning
+    // trigger over an inner sticky's span). Either way [start, end] is the
+    // held beat range a resize should keep the reader inside.
+    const pin = st && (st.pin || isHoldTrigger(st)) ? Math.max(0, st.end - st.start) : 0;
     return { top: docTop(el), pin };
   });
 }

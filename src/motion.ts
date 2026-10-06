@@ -146,3 +146,43 @@ export const reducedMotion = (() => {
   return { get value() { return value; }, subscribe(f: (v: boolean) => void) { subs.add(f); return () => { subs.delete(f); }; } };
 })();
 export const isCoarsePointer = () => typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+
+/**
+ * Section seams (src/seams, spec .scratch/seams/SPEC.md). Additive tokens: the
+ * existing DUR / EASE / SCROLL values above are not retuned for the seams.
+ * Hold LENGTHS are not here: they are CSS tokens (--seam-*-hold in
+ * src/seams/stack.css) read back from layout, so no JS duplicates them.
+ */
+export const SEAM = {
+  overlayZ: 12,            // #seam-layer, mirrors --seam-z
+  cell: 8,                 // seam paint cell (px), mirrors --seam-cell
+  holdEdgeVh: 0.3,         // softHold zone length L = min(holdEdgeVh * vh, holdEdgeFrac * hold)
+  holdEdgeFrac: 0.4,
+  relayDockAt: 0.28,       // Work top at 28% of the viewport: the relay pixel lands AND the spine starts (W2 + W3 contract)
+  relayPx: 12,             // the relay pixel's edge (px)
+  irisCell: 16, irisCellPhone: 12, irisRimCells: 2,  // Recents in-canvas iris (echo of the hero's)
+  bootGapMs: 110,          // mirrors --boot-gap
+  oneShotMs: 560,          // touch/phone one-shot variants
+} as const;
+
+/**
+ * The seam gates (spec §3.2). CSS mirrors these exactly in stack.css:
+ * - desk:  (width > 900px) and (height > 500px) and motion OK. The exact
+ *          complement of MQ.narrow (a viewport wider than 900 and at most 500
+ *          tall is always landscape). About curtain, Mac hold, Honours hold.
+ * - wide:  (width > 768px) and (height > 500px) and motion OK, the complement of
+ *          MQ.compact. Keypad sticky + footer overlap.
+ * - motion: no reduced motion. Recents hold (every width).
+ * - fine:  desk and not touch-primary. Scroll-linked DOM writes (the overlay
+ *          relay, arrow swivel, drum rotation, zero-g lift): touch scroll is
+ *          threaded, so a JS transform per scroll frame lags it and judders.
+ * Functions, not values: they read the live media state on every call.
+ */
+export const SEAM_MQ = {
+  /** The media queries the gates depend on (seams re-evaluate when any flips). */
+  queries: [MQ.narrow, MQ.compact, MQ.touchPrimary] as readonly string[],
+  motion: () => !reducedMotion.value,
+  desk: () => !matches(MQ.narrow) && !reducedMotion.value,
+  wide: () => !matches(MQ.compact) && !reducedMotion.value,
+  fine: () => !matches(MQ.narrow) && !reducedMotion.value && !matches(MQ.touchPrimary),
+} as const;

@@ -1,0 +1,85 @@
+/*
+ * SEAM LAYOUT CONTRACT (spec §3; one file, one gate).
+ *
+ * Owner brief (2026-10-06): section boundaries should never stop the page.
+ * The GSAP pins are replaced by tall in-flow section roots with an inner
+ * `position: sticky` stage, and two sections overlap their neighbour as a
+ * moving sheet (Projects rises over a still About; the footer rides over the
+ * stuck keypad). All cross-section geometry (section-root heights, negative
+ * margins, z-index, overflow) lives HERE so the two halves of a seam can never
+ * disagree. Section CSS owns only its internals.
+ *
+ * Activation: every rule is keyed on a static `data-seam-stack` attribute that
+ * ONLY its own section's code sets, once that section's internals are in place.
+ * With no flag on the page this file is inert (docH identical to the pinned
+ * layout), and reverting one section's commit deactivates exactly its seam.
+ * Cross-section rules need BOTH flags (adjacent-sibling combinator), so either
+ * half can land first:
+ * - About alone: About sticks for 1vh with nothing covering it (a still frame).
+ * - Mac alone: the Mac hold works, no curtain margin.
+ *
+ * Specificity: section CSS is imported by each component, so load order is not
+ * guaranteed; the attribute selector out-specifies the rule it overrides
+ * ((0,2,0) beats .portfolio-about / .portfolio-mac; (0,3,0) beats
+ * .portfolio-section.keypad-section / .portfolio-section.portfolio-photos).
+ *
+ * Gates (CSS mirrors SEAM_MQ in motion.ts exactly):
+ * - desk  (width > 900px) and (height > 500px), motion OK: the complement of MQ.narrow
+ * - wide  (width > 768px) and (height > 500px), motion OK: the complement of MQ.compact
+ * - motion (prefers-reduced-motion: no-preference)
+ * Reduced motion: no holds, no curtains; every section is plain flow.
+ *
+ * Sticky containment: nothing between a sticky stage and <html> may be
+ * overflow hidden/auto/scroll (it would bind the sticky to that box and it
+ * would never stick). Use `clip`.
+ */
+
+:root {
+  --seam-z: 12;
+  --seam-cell: 8px;
+  --seam-line: 2px;
+  --seam-about-cover: 100svh;  /* About stays still under the rising Projects sheet for this long */
+  --seam-mac-hold: 180svh;     /* gate G1 (fallback 220svh: the extra goes to the landed dwell) */
+  --seam-bp-hold: 30svh;       /* gate G7 (fallback 50svh) */
+  --seam-photos-hold: 80svh;
+  --footer-h: 0px;             /* written by Footer.tsx (W8) via ResizeObserver; 0 = no overlap (a valid interim) */
+}
+
+/* Recents hold applies at every width while motion is OK (photos.css keeps its RM rule). */
+.portfolio-section.portfolio-photos[data-seam-stack] { --photos-hold: var(--seam-photos-hold); }
+
+@media (width > 900px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
+  /* 2: About under the curtain */
+  .portfolio-about[data-seam-stack] { height: calc(100svh + var(--seam-about-cover)); overflow: clip; z-index: 0; }
+  .portfolio-about[data-seam-stack] .about-hold { position: sticky; top: 0; height: 100svh; }
+  .portfolio-about[data-seam-stack] + .portfolio-mac[data-seam-stack] {
+    margin-top: calc(-1 * var(--seam-about-cover));
+  }
+  /* Mac: the hold and the sheet */
+  .portfolio-mac[data-seam-stack] {
+    height: calc(100svh + var(--seam-mac-hold));
+    position: relative; z-index: 1;
+    pointer-events: auto;   /* the sheet is opaque to input as well as paint: <main> is pe:none and
+                               .portfolio-mac had no opt-in, so its bare ground let clicks/hover fall
+                               through to About's links underneath during the curtain */
+    overflow-x: clip; overflow-y: visible;   /* was overflow:hidden: that kills sticky and the edge shadow */
+  }
+  .portfolio-mac[data-seam-stack] .mac-sticky { position: sticky; top: 0; height: 100svh; }
+  /* Honours dwell */
+  .portfolio-bp[data-seam-stack] { height: calc(100svh + var(--seam-bp-hold)); }
+  .portfolio-bp[data-seam-stack] .bp-hold { position: sticky; top: 0; height: 100svh; }
+}
+
+@media (width > 768px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
+  /* 8: keypad under the footer */
+  .portfolio-section.keypad-section[data-seam-stack] { height: calc(100svh + var(--footer-h)); }
+  .keypad-section[data-seam-stack] .keypad-hold { position: sticky; top: 0; height: 100svh; }
+  .keypad-section[data-seam-stack] + .portfolio-footer[data-seam-stack] {
+    margin-top: calc(-1 * var(--footer-h)); position: relative; z-index: 5;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* 7: the drum silhouette (1.41 x band height mid-turn) must not be clipped; .st-marquee still clips each track */
+  .section-transition[data-seam-stack] { overflow: visible; position: relative; z-index: 4; }
+}

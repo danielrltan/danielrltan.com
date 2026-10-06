@@ -13,6 +13,11 @@ import { AssemblyProvider } from "./loading";
 import { BootLoader } from "./loading/BootLoader";
 import { HeroSignature } from "./hero/HeroSignature";
 import { PortfolioSections } from "./portfolio/PortfolioSections";
+// The seam layout contract (section heights, overlaps, inner stickies). After
+// the sections so it lands later in the bundle; its rules also out-specify the
+// section CSS on their own (each is keyed on [data-seam-stack]).
+import "./seams/stack.css";
+import { SeamLayer } from "./seams/SeamLayer";
 import { installHeroWipe } from "./hero/heroWipe";
 import { useFinePointer } from "./useMedia";
 import { StatusBar } from "./StatusBar";
@@ -374,6 +379,11 @@ export default function App() {
         {ready && finePointer && <PanCursor />}
 
         <PortfolioSections />
+
+        {/* The single fixed cross-section overlay (#seam-layer, z 12, hidden
+            until a seam claims it). A sibling of <main>; it renders itself only
+            on desktop with a fine pointer and motion OK (src/seams/overlay.ts). */}
+        <SeamLayer />
 
         {/* Brand mark (signature). Gated on hudVisible so it reveals AFTER the
             hero (the hero already carries the big signature wordmark, and a
