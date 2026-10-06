@@ -1,4 +1,4 @@
-import { SEAM, SEAM_MQ, ease } from "../motion";
+import { SEAM, SEAM_MQ } from "../motion";
 import { claimOverlay, releaseOverlay } from "../seams/overlay";
 import { mountSeam, type SeamCtx } from "../seams/seam";
 import { seamBus } from "../seams/bus";
@@ -13,15 +13,17 @@ import { MAC_BEATS } from "../macintosh/macBeats";
  * The CRT powers off by scroll to a single signal-orange dot (MacintoshScene,
  * uPowerOff / uDot). Across the last 0.06vh of the Mac hold that shader dot
  * fades out exactly under one 12px #ff4f00 DOM pixel on #seam-layer, which
- * then hangs almost still in mid-air (a shallow arc down and left) while the
- * dark Mac housing scrolls away 1:1 and Work rises underneath, and lands on
+ * then runs like a signal trace (down past Work's title, along the gap under
+ * Work's header, down onto the node; rounded corners) while the dark Mac
+ * housing scrolls away 1:1 and Work rises underneath, and lands on
  * Work's node 0 ([data-seam-target="work-node-0"], W3) when Work's top reaches
  * SEAM.relayDockAt (28%). At that same scroll position the overlay hides, node
  * 0 lights and the spine starts drawing from it (Work.tsx 'work-spine').
  *
- * Why it barely moves on screen: the source (the CRT centre on the released
- * sticky stage) and the target (node 0) both travel 1:1 with scroll, so the
- * lerp between them reads as a slow glide, not a flight. Flat paint only: a
+ * The source (the CRT centre on the released sticky stage) and the target
+ * (node 0) both travel 1:1 with scroll, so the trace is a fixed shape in
+ * Work's frame that rides up with the page while the pixel runs it at a
+ * near-constant pace. Flat paint only: a
  * square with two flat square halo rings, no blur, no comet trail (§8).
  *
  * Desktop with a fine pointer only (the single #seam-layer claimant). Touch
@@ -35,8 +37,65 @@ import { MAC_BEATS } from "../macintosh/macBeats";
  */
 
 const ORANGE = "#ff4f00";
-// Arc depth of the glide as a fraction of vh, bowing toward the lower left.
-const ARC_VH = 0.06;
+// Corner radius (px) of the routed trace, and the clearance the down-lane
+// keeps from the right end of Work's title.
+const CORNER_PX = 48;
+const LANE_CLEAR_PX = 24;
+// Speed profile: ease in and out over the first / last 20% with a constant
+// cruise between (peak speed 1.25x the mean; an inOutCubic peaks at 1.5x).
+const RAMP = 0.2;
+const cruise = (t: number) => {
+  const v = 1 / (1 - RAMP);
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  if (t < RAMP) return (v * t * t) / (2 * RAMP);
+  if (t > 1 - RAMP) return 1 - (v * (1 - t) * (1 - t)) / (2 * RAMP);
+  return v * (t - RAMP / 2);
+};
+
+type Pt = { x: number; y: number };
+/**
+ * A polyline with rounded corners, sampled to a dense point list with
+ * cumulative lengths, so a fraction of its length maps to a point. Pure.
+ */
+function tracePoint(pts: Pt[], f: number): Pt {
+  const dense: Pt[] = [pts[0]!];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1]!;
+    const c = pts[i]!;
+    const p1 = pts[i + 1]!;
+    const l0 = Math.hypot(c.x - p0.x, c.y - p0.y);
+    const l1 = Math.hypot(p1.x - c.x, p1.y - c.y);
+    const r = Math.min(CORNER_PX, l0 / 2, l1 / 2);
+    if (!(r > 0.5)) {
+      dense.push(c);
+      continue;
+    }
+    const a = { x: c.x + ((p0.x - c.x) / l0) * r, y: c.y + ((p0.y - c.y) / l0) * r };
+    const b = { x: c.x + ((p1.x - c.x) / l1) * r, y: c.y + ((p1.y - c.y) / l1) * r };
+    for (let k = 0; k <= 8; k++) {
+      const t = k / 8;
+      const u = 1 - t;
+      dense.push({ x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y });
+    }
+  }
+  dense.push(pts[pts.length - 1]!);
+  let total = 0;
+  const cum = [0];
+  for (let i = 1; i < dense.length; i++) {
+    total += Math.hypot(dense[i]!.x - dense[i - 1]!.x, dense[i]!.y - dense[i - 1]!.y);
+    cum.push(total);
+  }
+  const want = clamp01(f) * total;
+  for (let i = 1; i < dense.length; i++) {
+    if (cum[i]! >= want) {
+      const seg0 = cum[i]! - cum[i - 1]!;
+      const t = seg0 > 0 ? (want - cum[i - 1]!) / seg0 : 0;
+      return { x: lerp(dense[i - 1]!.x, dense[i]!.x, t), y: lerp(dense[i - 1]!.y, dense[i]!.y, t) };
+    }
+  }
+  return dense[dense.length - 1]!;
+}
 
 export function mountMacRelay(opts: {
   /** The Mac hold (softHold 'mac-pin'): its pure stageTopAt is the source's y. */
@@ -62,6 +121,11 @@ export function mountMacRelay(opts: {
   let n0: { x: number; y: number; size: number } | null = null;
   let stickyLeft = 0;
   let fallback = { x: 0, y: 0 };
+  // The trace's lanes (Work-relative px): the down-lane must clear the right
+  // end of Work's title (laneMinX, viewport x), and the cross-lane runs in the
+  // gap between Work's header and its first row (gapY).
+  let laneMinX = -Infinity;
+  let gapY = 0;
   let ctxRef: SeamCtx | null = null;
 
   const work = () => document.querySelector<HTMLElement>(".portfolio-work");
@@ -72,25 +136,23 @@ export function mountMacRelay(opts: {
       dot.style.opacity = "0";
       return;
     }
-    const vh = ctx.vh;
     const s = start + p * ctx.len;
     const crt = seamBus.crtLocal ?? fallback;
-    const S = { x: stickyLeft + crt.x, y: hold.stageTopAt(s) + crt.y };
-    const T = { x: n0.x, y: workTop + n0.y - s };
-    const w = ease.inOutCubic(seg(p, a, 1));
-    // Unit normal of the S -> T chord, the one pointing down-left.
-    const dx = T.x - S.x;
-    const dy = T.y - S.y;
-    const d = Math.hypot(dx, dy) || 1;
-    let nx = -dy / d;
-    let ny = dx / d;
-    if (ny - nx < 0) {
-      nx = -nx;
-      ny = -ny;
-    }
-    const bow = ARC_VH * vh * Math.sin(Math.PI * w);
-    const x = lerp(S.x, T.x, w) + nx * bow;
-    const y = lerp(S.y, T.y, w) + ny * bow;
+    // Everything below is in WORK-relative px (y from Work's top): after the
+    // release the CRT and Work both scroll 1:1, so the source is (almost) a
+    // fixed point of Work's frame and the trace is a fixed shape that rides
+    // up with Work while the pixel runs along it.
+    const wt = workTop - s; // Work's top on screen
+    const S = { x: stickyLeft + crt.x, y: hold.stageTopAt(s) + crt.y - wt };
+    const T = { x: n0.x, y: n0.y };
+    const lane = Math.max(S.x, laneMinX);
+    const w = cruise(seg(p, a, 1));
+    const q = tracePoint(
+      [S, { x: lane, y: gapY }, { x: T.x, y: gapY }, T],
+      w,
+    );
+    const x = q.x;
+    const y = q.y + wt;
     const size = w < 0.92 ? SEAM.relayPx : lerp(SEAM.relayPx, n0.size, seg(w, 0.92, 1));
     dot.style.transform = `translate3d(${(x - size / 2).toFixed(2)}px, ${(y - size / 2).toFixed(2)}px, 0) scale(${(size / SEAM.relayPx).toFixed(4)})`;
     dot.style.opacity = clamp01(seg(p, 0, a)).toFixed(3);
@@ -119,6 +181,23 @@ export function mountMacRelay(opts: {
           y: r.top + sy + r.height / 2 - workTop,
           size: Math.max(1, Math.min(r.width, r.height)),
         };
+        // Owner-facing reason for the route (2026-10-06 filmstrip review): a
+        // straight glide from the CRT centre to node 0 dragged the pixel
+        // through the "Experience" title, where it read as a stray glyph.
+        // Instead the signal runs like a trace: down past the title's right
+        // end, left along the gap under the header, down onto the node.
+        const title = el.querySelector("h2");
+        if (title) {
+          const range = document.createRange();
+          range.selectNodeContents(title);
+          const tr = range.getBoundingClientRect();
+          laneMinX = tr.width > 0 ? tr.right + LANE_CLEAR_PX + SEAM.relayPx / 2 : -Infinity;
+        } else laneMinX = -Infinity;
+        const head = el.querySelector("header") ?? title;
+        const headBottom = head ? head.getBoundingClientRect().bottom + sy - workTop : n0.y - 4 * SEAM.relayPx;
+        const row = t.closest("li");
+        const rowTop = row ? row.getBoundingClientRect().top + sy - workTop : n0.y - 2 * SEAM.relayPx;
+        gapY = Math.min((headBottom + rowTop) / 2, n0.y - SEAM.relayPx);
       } else n0 = null;
     },
     render(p, ctx) {
