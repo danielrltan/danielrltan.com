@@ -3,7 +3,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import { ease, reducedMotion } from "../motion";
-import { mountSeam, oneShot, SEAM_MQ } from "../seams";
+import { mountSeam, oneShot, smooth, SEAM_MQ } from "../seams";
 import "./sections.css";
 import "./other.css";
 import { ScrambleText } from "./ScrambleText";
@@ -70,6 +70,10 @@ const ARRIVAL_DEPTH_TOUCH = 0.9;
 const ARRIVAL_LINE = 0.7;
 const ARRIVAL_RISE_MS = 700;
 const ARRIVAL_SINK_MS = 400;
+// Doors range (seam play-honours-doors): Honours' top from 85% to 25% of the
+// viewport, so the middle is clear before its podium build finishes.
+const DOORS_START = "top 85%";
+const DOORS_END = "top 25%";
 
 // Longest the deferred canvas mount waits for an idle period. The mount band
 // is ~2.5 viewports ahead, so even the cap lands it long before arrival.
@@ -269,8 +273,33 @@ export function Other() {
       },
     });
 
+    // DOORS (seam play-honours-doors, spec §5.5; Honours builds its podium on
+    // the same rise, W5). As "The trophy wall" comes up, the props slide apart
+    // like elevator doors to make room for it, over Honours' top from 85% to
+    // 25% of the viewport, and close again on the way back up. Honours'
+    // section is read as a trigger only (an in-flow element it owns).
+    // Desktop with a fine pointer only: there is no touch variant (on phones
+    // Play and Honours stack as plain screens), and reduced motion keeps the
+    // doors shut.
+    const setDoors = (d: number) => {
+      if (d === hobbiesMotion.doors) return;
+      hobbiesMotion.doors = d;
+      hobbiesChanged();
+    };
+    const stopDoors = mountSeam({
+      id: "play-honours-doors",
+      trigger: () => document.querySelector(".portfolio-bp"),
+      start: DOORS_START,
+      end: DOORS_END,
+      when: SEAM_MQ.fine,
+      render: (p) => setDoors(smooth(p)),
+      final: () => setDoors(0),
+      reset: () => setDoors(0),
+    });
+
     return () => {
       stopLoaderWatch();
+      stopDoors();
       stopArrival();
       entrance?.kill();
       presence.kill();

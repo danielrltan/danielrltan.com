@@ -30,8 +30,9 @@ const SEEN_HOBBIES = new Set<string>();
  * open space and fill the frame edge-to-edge with low padding (the reference
  * the user supplied). There is no one-at-a-time focus: every object is vivid
  * the whole time. The only scroll link is at the section's seams (2026-10-06
- * seam overhaul): the props rise into place as Play arrives (zero-g arrival),
- * applied as render-time offsets from the shared store in ./hobbies.ts.
+ * seam overhaul): the props rise into place as Play arrives (zero-g arrival)
+ * and part like doors as Honours rises, applied as render-time offsets from
+ * the shared store in ./hobbies.ts.
  *
  * MOTION — gentle zero-g drift (NOT a vertical bob):
  *   Each object is a soft body that drifts slowly around its home slot
@@ -880,10 +881,11 @@ function SceneInner({
       refreshHobbiesMirror();
     }
     const arrival = motion.arrival;
+    const doors = motion.doors;
     // While a seam is moving the props, their drawn positions are not their
     // body positions, so the collision solver and the frame clamp (which only
     // know body state) stand down until the props are home again.
-    const seamActive = arrival < 1;
+    const seamActive = arrival < 1 || doors > 0;
 
     const hoveredIdx = hoveredIndexRef.current;
 
@@ -1004,15 +1006,30 @@ function SceneInner({
     // them along the same curve and a cut jump lands on the same frame; the
     // drift sim underneath never knows (a sim-replayed lift is
     // non-deterministic after a jump, spec §8.16).
+    // DOORS (seam play-honours-doors, spec §5.5): as the trophy wall rises
+    // under Play, the props slide apart sideways from the frame centre like
+    // elevator doors, each with a slight yaw outward, clearing the middle for
+    // Honours. Inner props travel further than outer ones, but every on-screen
+    // position stays in order: the paths only meet beyond 1.2 half-widths,
+    // off-frame, so nothing crosses in view.
+    const cx = frameX;
     for (let i = 0; i < bodies.length; i++) {
       const b = bodies[i]!;
       const g = posRefs.current[i];
       if (!g) continue;
       const rank = ranks[i] ?? 0;
-      const lift = seamActive ? D * liftOf(rank, arrival) : 0;
-      const roll = seamActive ? 0.25 * (1 - arrivalOf(rank, arrival)) : 0;
-      g.position.set(b.pos.x, b.pos.y - lift, b.pos.z);
-      g.rotation.set(0, 0, roll);
+      const lift = arrival < 1 ? D * liftOf(rank, arrival) : 0;
+      const roll = arrival < 1 ? 0.25 * (1 - arrivalOf(rank, arrival)) : 0;
+      let slide = 0;
+      let yaw = 0;
+      if (doors > 0) {
+        const dx = b.home.x - cx;
+        const side = Math.sign(dx);
+        slide = side * visHalfW * 1.1 * doors * (1.2 - Math.abs(dx) / visHalfW);
+        yaw = side * 0.35 * doors;
+      }
+      g.position.set(b.pos.x + slide, b.pos.y - lift, b.pos.z);
+      g.rotation.set(0, yaw, roll);
     }
   });
 
