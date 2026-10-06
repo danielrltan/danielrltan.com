@@ -16,13 +16,15 @@ export const bayer4 = (i: number, j: number) => BAYER4[mod(j, 4) * 4 + mod(i, 4)
 
 /**
  * 8x8 Bayer threshold, 0..63, built by the standard recursion
- * B8[j][i] = 4 * B2[j%2][i%2] + B4[j>>1][i>>1] (which also yields BAYER4 from B2).
+ * B8 = [[4·B4, 4·B4 + 2], [4·B4 + 3, 4·B4 + 1]], i.e.
+ * B8[j][i] = 4 * B4[j%4][i%4] + B2[j>>2][i>>2] (the same step yields BAYER4
+ * from B2). First row: 0 32 8 40 2 34 10 42.
  */
 const BAYER2 = [0, 2, 3, 1];
 const BAYER8: number[] = (() => {
   const t: number[] = [];
   for (let j = 0; j < 8; j++)
-    for (let i = 0; i < 8; i++) t.push(4 * BAYER2[(j % 2) * 2 + (i % 2)]! + BAYER4[(j >> 1) * 4 + (i >> 1)]!);
+    for (let i = 0; i < 8; i++) t.push(4 * BAYER4[(j % 4) * 4 + (i % 4)]! + BAYER2[(j >> 2) * 2 + (i >> 2)]!);
   return t;
 })();
 export const bayer8 = (i: number, j: number) => BAYER8[mod(j, 8) * 8 + mod(i, 8)]!;
