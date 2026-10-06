@@ -250,8 +250,9 @@ Stagger idiom:
 - `scrollToY(y | el, { preset })`: `"glide"` (default, inOutCubic, 0.45-0.9 s
   by distance), `"nudge"` (short outCubic), `"jump"` (glide under 3 viewports,
   covered cut beyond).
-- `jumpToSection(indexOrLabel)`: lands on the section's pin at its
-  `data-jump-progress` attribute (wins) or the registry `jumpProgress`.
+- `jumpToSection(indexOrLabel)`: lands on the section's `pinId` trigger (now
+  a softHold hold trigger, below) at its `data-jump-progress` attribute
+  (wins) or the registry `jumpProgress`; otherwise on the section's doc top.
 - `lockScroll(reason)` / `unlockScroll(reason)`: named locks ("loader",
   "menu", "jump:<seq>"). A smooth request while locked becomes an instant cut.
 - `onScrollJump(cb)`: on a cut's `end`, snap followers to the target in the
@@ -260,17 +261,84 @@ Stagger idiom:
   wheel smoothing is off. The global CSS net zeroes durations and delays,
   except on `.pin-spacer` and its pinned child (`transition-property: none`):
   a 0.01 ms transition on a spacer's height made ScrollTrigger measure every
-  later pin one spacer early.
+  later pin one spacer early. No section pins any more (seams, below), so
+  this only guards a future GSAP pin.
 - Refresh order: every `ScrollTrigger.refresh()` sorts triggers by
-  `refreshPriority`, then DOM order (scroll.ts), so pins created late by a
-  breakpoint flip still measure the spacers above them. Don't add per-pin
-  priorities. A viewport resize restores the same section beat (pin progress)
-  in one global handler; don't add per-section resize restores.
+  `refreshPriority`, then DOM order (scroll.ts), so a trigger created late by
+  a breakpoint flip still measures the layout above it. Don't add per-trigger
+  priorities. A viewport resize restores the same section beat (hold
+  progress; `isHoldTrigger` makes measureGeom read a hold like a pin) in one
+  global handler; don't add per-section resize restores.
 - Touch-primary devices (`MQ.touchPrimary`) run with NO Lenis: native
   scrolling end to end (Lenis's non-passive touch listeners blocked the
   compositor). `getLenis()` is null there; always handle null. Smooth
   programmatic scrolls run on a small rAF tween in scroll.ts, and a held lock
   blocks touch panning with its own temporary touchmove guard.
+
+### Seams (`src/seams/`, overhaul 2026-10-06)
+
+Owner brief: section boundaries never stop the page. Something on screen
+moves 1:1 with the wheel at every boundary, so there are no GSAP section pins
+(`git grep "pin: true" src/` stays empty). Each boundary is a seam: one
+scroll-linked hand-off from the section above to the one below.
+
+- **`mountSeam` / `useSeam` (seam.ts)** is the only way a seam binds to
+  scroll: one non-scrub ScrollTrigger (`seam:<id>`) on an IN-FLOW trigger
+  (never a sticky element: its start is wrong after a refresh). No numeric
+  scrub, no pin, no snap, no `refreshPriority`. Layout is read only in
+  `measure()` (onRefreshInit); `render(p)` is a pure write of progress, so a
+  seam reverses exactly and lands right after a cut jump (`ctx.jumping`;
+  `cross` one-shots latch silently). `final()` is the static end state for
+  reduced motion and for a gate that is off with no `fallback`.
+  `window.__seams[id]` mirrors `{ p, active, mode }` in every build.
+- **Touch and phones** get time-based variants (`oneShot`, a WAAPI play or a
+  class toggle on a line crossing), never a per-frame JS transform: touch
+  scroll is threaded and a scroll-linked write lags it.
+- **Holds** replace pins: a tall in-flow section root with an inner
+  `position: sticky; top: 0; height: 100svh` stage (`.about-hold`,
+  `.mac-sticky`, `.bp-hold`, `.photos-stage`, `.keypad-hold`). The hold
+  length is a CSS token (`--seam-mac-hold`, `--seam-bp-hold`,
+  `--seam-photos-hold`, `--seam-about-cover`, `--footer-h`); no JS
+  duplicates it.
+- **`softHold` (softHold.ts, math in holdMath.ts)** writes a small
+  `translate` on the stage around each sticky edge so its velocity ramps
+  linearly over L = min(0.3 x viewport, 0.4 x hold): C1 engage and release, nothing
+  left over after the zone (no page-tone strip; it replaced softRelease,
+  whose permanent -L/2 left one). The keypad engages only (it never
+  releases). It also creates the hold trigger: a NON-pinning ScrollTrigger
+  over the sticky span with the id the old pin used (`mac-pin`, `bp-pin`,
+  `photos-pin`, `keypad-pin`), registered in holds.ts so `jumpToSection` and
+  the resize restore treat it like a pin.
+- **`src/seams/stack.css`** owns ALL cross-section geometry (root heights,
+  the sheets' negative margins, z-index, overflow); section CSS owns only its
+  internals. Every rule is keyed on a `data-seam-stack` attribute that only
+  that section's own code sets, and a cross-section rule needs BOTH flags
+  (adjacent-sibling combinator), so reverting one section's commit turns off
+  exactly its seam. Two sections are sheets: Projects rises over a still
+  About, and the footer rides over the stuck keypad.
+- **Gates** (CSS in stack.css mirrors `SEAM_MQ` in motion.ts exactly):
+  `desk` = width > 900 and height > 500, motion OK (About curtain, Mac hold,
+  Honours dwell); `wide` = width > 768 and height > 500, motion OK (keypad
+  under the footer); `motion` = no reduced motion (the Recents hold, every
+  width); `fine` = desk and not touch-primary (scroll-linked DOM writes such
+  as the relay pixel, the arrow swivel, the drum). Reduced motion: no holds,
+  no sheets, plain flow, every seam at `final()`.
+- **Sticky containment:** nothing between a sticky stage and `<html>` may be
+  `overflow: hidden | auto | scroll` (it binds the sticky to that box and it
+  never sticks). Use `overflow: clip`.
+- **The overlay rule:** the page has at most ONE fixed cross-section layer,
+  `#seam-layer` (SeamLayer.tsx: a sibling of `<main>`, z 12, pointer-events
+  none, `fine` gate only). A seam takes it with `claimOverlay(id)` and gives
+  it back with `releaseOverlay(id)`; it stays `visibility: hidden` the rest of
+  the time. Its single claimant is the Projects to Work relay pixel. Never add
+  a per-seam fixed layer: stacked fixed layers are what made the old
+  boundaries read as bars.
+- **`seamBus`** (bus.ts) carries the few anchors one scene writes and a seam
+  reads at measure time (the CRT centre). Keep it that small; no per-frame
+  cross-scene coupling.
+- Smoke (`scripts/smoke-test.mjs`) guards the contract: no pin-spacers, About
+  still under the sheet, the overlay idle at rest, no strip after the Recents
+  release, the keypad under the footer, every footer row printed at the end.
 
 ## Breakpoints and mobile
 

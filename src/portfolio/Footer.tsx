@@ -98,9 +98,9 @@ const ELSEWHERE: ElsewhereLink[] = [
 ];
 
 /* Index jumps go through the shared scroll core (src/scroll.ts), the same
-   routing the spill menu uses: pinned sections land on their registered beat
-   (data-jump-progress / registry jumpProgress through the pin's
-   ScrollTrigger), short hops glide on the SCROLL.glide preset, anything past
+   routing the spill menu uses: held sections land on their registered beat
+   (data-jump-progress / registry jumpProgress through the section's
+   softHold hold trigger), short hops glide on the SCROLL.glide preset, anything past
    3 viewports cuts behind the CRT cover, and reduced motion is an instant
    cut. Never native smooth scroll. */
 function jumpTo(link: JumpLink) {
