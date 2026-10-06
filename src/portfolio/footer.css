@@ -69,7 +69,10 @@
    Keyboard focus prints a row at once (:focus-within, no transition), so
    a focused link is never invisible. */
 [data-print-row] {
-  clip-path: inset(-16px 100% -16px -16px);
+  /* Right edge at -16px too: a zero-width box at the bleed line (a plain
+     100% left the 16px left bleed showing, the link glyphs and the
+     colophon's dotted rules peeking out of unprinted rows). */
+  clip-path: inset(-16px calc(100% + 16px) -16px -16px);
   transition: clip-path var(--t-med) steps(9, end);
 }
 [data-print-row].is-printed {
