@@ -882,10 +882,14 @@ function SceneInner({
     }
     const arrival = motion.arrival;
     const doors = motion.doors;
-    // While a seam is moving the props, their drawn positions are not their
-    // body positions, so the collision solver and the frame clamp (which only
-    // know body state) stand down until the props are home again.
-    const seamActive = arrival < 1 || doors > 0;
+    // The drift sim below (spring, collisions, frame clamp) keeps running
+    // unchanged while a seam moves the props: the seam offsets are added only
+    // when drawing, so body state never sees them. The spec suggested pausing
+    // the solver during the seams, but several homes overlap by design (the
+    // GPU and the donut sit 0.56 inside each other's collision radii; the
+    // solver is what holds them apart), so a paused solver let them sag back
+    // together mid-rise and then shoved them apart in one frame the moment
+    // the props landed: a visible pop. Running it keeps every frame smooth.
 
     const hoveredIdx = hoveredIndexRef.current;
 
@@ -936,7 +940,7 @@ function SceneInner({
     // expensive per-frame work here and the slow drift alone reads fine on a
     // small screen (the EDGE_MARGIN + spread home slots already keep visible
     // gaps). Desktop keeps the full bump-apart sim. frameloop stays 'demand'.
-    if (!isTouch && !seamActive) {
+    if (!isTouch) {
       for (let i = 0; i < bodies.length; i++) {
         const a = bodies[i]!;
         for (let j = i + 1; j < bodies.length; j++) {
@@ -980,19 +984,17 @@ function SceneInner({
     // the band MUST be computed around lookY — a symmetric-about-origin clamp would
     // be wrong. Each limit is then unioned with the body's tuned home so the clamp
     // never pulls a body inward of its tuned slot, only stops outward drift.
-    if (!seamActive) {
-      for (let i = 0; i < bodies.length; i++) {
-        const b = bodies[i]!;
-        // Same clamp whether or not this body is focused, so hovering never snaps it.
-        const er = b.radius;
-        const sideLim = Math.max(visHalfW - er - EDGE_MARGIN, Math.abs(b.home.x));
-        const topLim = Math.max(lookY + visHalfH - er - EDGE_MARGIN, b.home.y);
-        const botLim = Math.min(lookY - visHalfH + er + EDGE_MARGIN, b.home.y);
-        if (b.pos.x > sideLim) { b.pos.x = sideLim; if (b.vel.x > 0) b.vel.x *= -0.3; }
-        else if (b.pos.x < -sideLim) { b.pos.x = -sideLim; if (b.vel.x < 0) b.vel.x *= -0.3; }
-        if (b.pos.y > topLim) { b.pos.y = topLim; if (b.vel.y > 0) b.vel.y *= -0.3; }
-        else if (b.pos.y < botLim) { b.pos.y = botLim; if (b.vel.y < 0) b.vel.y *= -0.3; }
-      }
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i]!;
+      // Same clamp whether or not this body is focused, so hovering never snaps it.
+      const er = b.radius;
+      const sideLim = Math.max(visHalfW - er - EDGE_MARGIN, Math.abs(b.home.x));
+      const topLim = Math.max(lookY + visHalfH - er - EDGE_MARGIN, b.home.y);
+      const botLim = Math.min(lookY - visHalfH + er + EDGE_MARGIN, b.home.y);
+      if (b.pos.x > sideLim) { b.pos.x = sideLim; if (b.vel.x > 0) b.vel.x *= -0.3; }
+      else if (b.pos.x < -sideLim) { b.pos.x = -sideLim; if (b.vel.x < 0) b.vel.x *= -0.3; }
+      if (b.pos.y > topLim) { b.pos.y = topLim; if (b.vel.y > 0) b.vel.y *= -0.3; }
+      else if (b.pos.y < botLim) { b.pos.y = botLim; if (b.vel.y < 0) b.vel.y *= -0.3; }
     }
 
     // ---- Draw: body position + the seams' RENDER-TIME offsets ----
