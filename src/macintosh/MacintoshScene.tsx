@@ -2399,10 +2399,12 @@ interface MacDebug {
   commits: number;
   powerOff: number;
   dot: number;
+  /** The published landed CRT centre (seamBus.crtLocal), px relative to .mac-sticky. */
+  crt: { x: number; y: number; w: number } | null;
 }
 function macDebug(): MacDebug {
   const w = window as unknown as { __mac?: MacDebug };
-  return (w.__mac ??= { c: 0, beat: "", canOpen: false, frames: 0, commits: 0, powerOff: 0, dot: 1 });
+  return (w.__mac ??= { c: 0, beat: "", canOpen: false, frames: 0, commits: 0, powerOff: 0, dot: 1, crt: null });
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -2485,6 +2487,9 @@ function Scene({
     [narrow, cineRef],
   );
   const macSelfSpinRef = useRef(0);
+  // The cursor-parallax yaw / pitch, eased toward the pointer (before the
+  // settle envelope is applied).
+  const yawPitchRef = useRef<[number, number]>([0, 0]);
   // Detail-zoom progress, LERPED toward its target each frame (1 when a
   // project is open, 0 when not) so the camera push-in / pull-out is
   // smooth and fixed-rate, never bound straight to the open/closed flag.
@@ -2544,7 +2549,14 @@ function Scene({
     cursorOn,
     selected ? hoveredControl ?? null : null,
   );
-  const { invalidate, camera, size } = useThree();
+  // Narrow selectors, not the whole store: the canvas measures its offset on
+  // scroll, so a bare useThree() re-rendered this Scene on every scroll step
+  // while the sheet rises (the orbit pre-roll runs then; seam overhaul).
+  const invalidate = useThree((s) => s.invalidate);
+  const camera = useThree((s) => s.camera);
+  const sizeW = useThree((s) => s.size.width);
+  const sizeH = useThree((s) => s.size.height);
+  const size = { width: sizeW, height: sizeH };
 
   // Repaint the screen once a late-decoding thumbnail becomes ready (the
   // canvas is only redrawn on demand).
@@ -2689,8 +2701,15 @@ function Scene({
         (pointerRef.current.x * PARALLAX_YAW + idle) * spinFactor;
       const targetPitch = pointerRef.current.y * PARALLAX_PITCH * spinFactor;
       const k = 1 - Math.exp(-PARALLAX_RATE * Math.min(dt, 0.05));
-      g.rotation.y += (targetYaw - g.rotation.y) * k;
-      g.rotation.x += (targetPitch - g.rotation.x) * k;
+      const yp = yawPitchRef.current;
+      yp[0] += (targetYaw - yp[0]) * k;
+      yp[1] += (targetPitch - yp[1]) * k;
+      // The eased value is applied under the same scroll envelope, so the Mac
+      // is EXACTLY square-on from spinSettleEnd on even after a fast flick
+      // (the time-based ease alone could still be turning at the landing):
+      // the CRT centre the relay pixel starts from is then a fixed point.
+      g.rotation.y = yp[0] * spinFactor;
+      g.rotation.x = yp[1] * spinFactor;
     }
 
     // (No ground element — the Mac floats clean; see the note by the refs.)
@@ -2793,6 +2812,7 @@ function Scene({
           Math.abs(prev.w - fw) > 0.5
         ) {
           seamBus.crtLocal = { x: cx, y: cy, w: fw };
+          macDbg.crt = seamBus.crtLocal;
           const m = overlayMatRef.current;
           if (m && fw > 1 && fh > 1) {
             (m.uniforms.uDotUv!.value as THREE.Vector2).set(
