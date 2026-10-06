@@ -812,6 +812,9 @@
     --bp-podium-bleed: 36svh;
     top: calc(-1 * var(--bp-podium-bleed));
     height: calc(100% + var(--bp-podium-bleed));
+    /* Keyboard focus scrolls the canvas into view by its box: trim the bleed
+       back off so Tab lands on the stage flush (p = 1, card on), as before. */
+    scroll-margin-top: calc(-1 * var(--bp-podium-bleed));
   }
   /* The focus ring stays on the stage box (the bleed is mostly off screen). */
   .portfolio-bp[data-seam-stack].is-podium .bp-podium-canvas:focus-visible {
