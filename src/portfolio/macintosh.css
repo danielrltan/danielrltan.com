@@ -1,12 +1,24 @@
-/* Macintosh section: pinned full-viewport stage with the CRT centre-stage,
+/* Macintosh section: a full-viewport sticky stage with the CRT centre-stage,
    section marker + heading in the top-right rail. A clicked project tile
-   dollies the camera into the CRT and paints its detail on the screen. */
+   dollies the camera into the CRT and paints its detail on the screen.
+
+   Seam overhaul (2026-10-06): on desktop the section's HEIGHT, overflow,
+   z-index and the curtain margin over About come from src/seams/stack.css
+   (keyed on data-seam-stack; 100svh + --seam-mac-hold, overflow-x clip so the
+   inner .mac-sticky can stick). The rules below are the narrow / reduced-
+   motion base, where the section is plain flow and nothing sticks. */
 
 .portfolio-mac {
   position: relative;
   height: 100vh;
   height: 100svh;
   overflow: hidden;
+  /* Block, unpadded: the shared .portfolio-section flex centring and 140px
+     padding would push the in-flow .mac-sticky off the section top (it must
+     start flush with it to stick at top 0) and shrink it to zero width. The
+     narrow block below restores its own flex column and padding. */
+  display: block;
+  padding: 0;
   /* Solid page bg so the global body::before dot texture doesn't bleed through
      the transparent 3D canvas and read as a darker "viewport" band against the
      solid-bg sections around it (Work/keypad). This section was the only one
@@ -56,6 +68,35 @@
   outline-offset: 2px;
 }
 
+/* The stage wrapper: one viewport tall. stack.css makes it sticky on
+   desktop and softHold writes its `translate` around the hold's edges. It is
+   the positioning box for the stage, the corner header and the CRT hotspots
+   (all placed in viewport/canvas px), so they ride the hold together. */
+.mac-sticky {
+  position: relative;
+  height: 100%;
+}
+
+/* The sheet's leading edge (seam 2): a static two-row hard pixel shadow cast
+   onto About as the opaque Projects sheet rises over it. 8px of ink at 6%,
+   then a flat 8px offset row at 3%; no blur, no gradient (the owner's ground
+   is flat). Only while the curtain exists: both sections' seam flags, desktop
+   gate (narrow sets overflow:visible, so an ungated strip would paint above
+   Projects on phones). */
+@media (width > 900px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
+  .portfolio-about[data-seam-stack] + .portfolio-mac[data-seam-stack]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -8px;
+    height: 8px;
+    background: rgba(13, 14, 16, 0.06);
+    box-shadow: 0 -8px 0 rgba(13, 14, 16, 0.03);
+    pointer-events: none;
+  }
+}
+
 .mac-stage {
   position: absolute;
   top: 0;
@@ -68,10 +109,9 @@
   width: 100%;
   height: 100%;
   pointer-events: auto;
-  /* Hidden until the section pins. Without this the orbit ring's
-     cards bleed up into the bottom of the About section as the
-     user scrolls toward the Macintosh section; see Macintosh.tsx's
-     STAGE_REVEAL_VH gate. */
+  /* Hidden until the section approaches (Macintosh.tsx's stage-reveal
+     trigger, a viewport ahead of the sheet's top edge), so nothing is drawn
+     for a section far below. */
   opacity: 0;
   transition: opacity var(--t-med) var(--ease-out);
 }
@@ -375,9 +415,9 @@
      │                              │     user (no scroll-orbit). Tap
      └──────────────────────────────┘     tiles to open the work.
 
-   The section is no longer pinned at these widths (Macintosh.tsx skips
-   the pin ≤ 900px), so the wrapper becomes a normal-flow auto-height
-   column instead of a 100vh overflow:hidden stage.
+   The section never holds at these widths (stack.css gates the hold to
+   the complement of this query), so the wrapper becomes a normal-flow
+   auto-height column instead of a 100vh overflow:hidden stage.
    Query = MQ.narrow (≤900, or a phone on its side), the same one
    useMacNarrow() reads, so layout + behaviour always agree. */
 @media (max-width: 900px), (orientation: landscape) and (max-height: 500px) {
@@ -388,12 +428,17 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    /* Restore normal section breathing room (the desktop pin path
+    /* Restore normal section breathing room (the desktop hold path
        zeroes this out via the 100vh stage). 64px top+bottom matches the
        shared mobile section rhythm so the About→Mac→Work gaps stay even
        (was 96/64, which made the About→Mac gap read larger than its
        neighbours). */
     padding: 64px 0;
+  }
+  /* The desktop sticky wrapper dissolves into the column so the header,
+     ticker, stage and list keep their flex `order` as siblings. */
+  .mac-sticky {
+    display: contents;
   }
 
   /* Header is a normal in-flow block at the TOP: full content width,
@@ -462,7 +507,7 @@
     order: 3;
     width: 100%;
     height: min(58vh, 460px);
-    /* On mobile there's no scroll-pin gate driving data-stage-visible,
+    /* On mobile there's no scroll gate driving data-stage-visible,
        so force the canvas visible. */
     opacity: 1;
   }
@@ -755,7 +800,7 @@
 }
 
 /* ── REDUCED MOTION ───────────────────────────────────────────────
-   Macintosh.tsx skips the GSAP pin + scroll cinematic (orbit/dolly/
+   Macintosh.tsx skips the hold + scroll cinematic (orbit/dolly/
    boot) for reduced-motion users and lands the Mac immediately. The
    detail view now renders in the CRT (no drawer/backdrop to flatten). */
 @media (prefers-reduced-motion: reduce) {

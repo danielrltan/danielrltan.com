@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { softReleasePin } from "./softRelease";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
+import { softHold } from "../seams";
 import { isTuneMode } from "../tuneMode";
 import "./sections.css";
 import "./macintosh.css";
@@ -23,13 +23,19 @@ import { useMacNarrow } from "../macintosh/useMacNarrow";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 import { useReveal } from "./useReveal";
 import { scrollToY } from "../scroll";
-import { GSAP_EASE } from "../motion";
+import {
+  MAC_BEATS,
+  MAC_CINE_END_DEFAULT,
+  macJumpProgress,
+  macLandedC,
+  type MacCine,
+} from "../macintosh/macBeats";
 
 gsap.registerPlugin(ScrollTrigger);
 
-// Honour the OS "reduce motion" preference. When set we skip the GSAP
-// pin + the scroll-driven orbit/dolly/boot cinematic entirely and park
-// the Mac in its LANDED state (pinProgress = 1) so users who opt out of
+// Honour the OS "reduce motion" preference. When set we skip the hold +
+// the scroll-driven orbit/dolly/boot cinematic entirely and park
+// the Mac in its LANDED state (STATIC_LANDED_C) so users who opt out of
 // motion still see the booted CRT + clickable tiles immediately: same
 // graceful-degradation path the narrow layout already takes.
 function usePrefersReducedMotion() {
@@ -49,64 +55,50 @@ function usePrefersReducedMotion() {
 }
 
 /**
- * Stack + Projects section. GSAP-pinned for PIN_VH viewports; pin progress
- * drives the orbit, the Mac's descent + CRT boot + desktop reveal, and the
- * exit inside MacintoshScene (beat map at its THRESHOLDS). Pin progress is
- * written into a ref every ScrollTrigger update and read 1:1 by the scene:
+ * Stack + Projects section: the sheet that slides up over About, then holds.
+ *
+ * Seam overhaul (2026-10-06, spec .scratch/seams/SPEC.md §5.2-5.3; owner
+ * brief "one workstation, one signal, never stopping"). The GSAP pin, its
+ * landed magnet and the timed exit blink/shrink are gone:
+ * - Layout (src/seams/stack.css, desktop only): the section is 100svh +
+ *   --seam-mac-hold tall and in normal flow; the inner .mac-sticky holds the
+ *   stage. With About's flag set too, a -100svh margin makes the section an
+ *   opaque sheet that rises 1:1 over the still About room (the curtain).
+ * - softHold ('mac-pin', a NON-pinning hold trigger) eases the sticky's
+ *   engage and release (C1 edges) and is what jumpToSection lands inside.
+ * - One plain ScrollTrigger ('mac-cine') writes c, the cine distance in vh
+ *   since the sheet's top edge entered, into cineRef; MacintoshScene reads it
+ *   every frame (beat map in src/macintosh/macBeats.ts). The orbit pre-rolls
+ *   on the rising sheet, the Mac lands mid-hold, and at the hold end the CRT
+ *   picture powers off by scroll and hands its last dot to the relay pixel
+ *   (./macRelay.ts) that carries it onto the first Work node.
  * Lenis is the one smoother on wheel input (touch gets a single follower
- * inside the scene).
+ * inside the scene). No snap: a rest anywhere stays where the reader left it.
  */
 
-// Pin length, viewport-relative (motion spec §3). Was a fixed 5800px, of
-// which ~1044px was dead entry and ~2200px padding. 4.0vh keeps the orbit at
-// the owner-approved ~0.068°/px and still can't be cleared by one hard
-// trackpad flick.
-const PIN_VH = 4.0;
-
-// LANDED pose: fully zoomed, booted CRT (= MacintoshScene THRESHOLDS.bootEnd,
-// which also gates the detail zoom). The magnet, the click-to-zoom CTA and
-// the menu/footer jump (data-jump-progress on the section) all land here.
-const LANDED_P = 0.76;
-// Direction-aware landed-pose MAGNET (replaces the 4-station directional
-// rail, which auto-played beats at 4-5x speed and trapped the exit by
-// pulling any rest in 0.85-1.0 back up). A rest inside the window for the
-// current scroll direction settles onto LANDED_P; every other rest is
-// user-paced. The narrow down-window tail (0.76-0.80) only catches a flick
-// that just overshot the landed pose, so there is no snap-back trap on the
-// way down, and a rest in the exit (>= 0.80) stays put.
-const MAGNET_DOWN: readonly [number, number] = [0.64, 0.8];
-const MAGNET_UP: readonly [number, number] = [0.72, 0.84];
-const MAGNET_DELAY_S = 0.12;
-const MAGNET_DURATION_S = { min: 0.35, max: 0.6 } as const;
-// "Projects" header fade across the descent: gone before the CRT fills
-// the frame. opacity = 1 - clamp((p - START) / SPAN).
-const HEADER_FADE_START = 0.38;
-const HEADER_FADE_SPAN = 0.2;
+// Static-landed path (narrow / reduced motion): park on the landed pose (the
+// middle of the landed dwell), NOT the hold end, which is the powered-off
+// picture.
+const STATIC_LANDED_C = macLandedC(MAC_CINE_END_DEFAULT);
 // Click-to-zoom CTA glide cap (seconds; distance-scaled below it).
 const CTA_MAX_DURATION_S = 1.2;
-// Static-landed path (narrow / reduced motion): park inside the landed dwell
-// (0.76-0.88), NOT at 1.0, which is the end of the exit (collapsed CRT,
-// faded housing) now that the exit is scroll-bound.
-const STATIC_LANDED_P = 0.82;
 
-// ?tune=mac skips the pin so OrbitControls inside MacintoshScene can
-// drive the camera freely for re-framing.
+// ?tune=mac skips the scroll binding so OrbitControls inside MacintoshScene
+// can drive the camera freely for re-framing.
 const TUNE_MODE = isTuneMode("mac");
 
-// ?pin=<0..1> parks pinProgress at a fixed value WITHOUT pinning the
-// section: useful for QA-ing a specific beat (e.g. ?pin=0.10 to see
-// the float pose, ?pin=0.80 to see the landed CRT) without having to
-// scroll through the full pin window. Differs from ?tune=mac in that
-// the orbit + Mac choreography STILL animates (it just reads from
-// this static value), so what you see is exactly what the user sees
-// at that scroll depth. Ignored if not in [0,1]; falls through to
-// real scroll-driven progress.
+// ?pin=<c> parks the cine at a fixed c (cine vh, 0..3; see macBeats.ts)
+// WITHOUT binding it to scroll: useful for QA-ing a specific beat (e.g.
+// ?pin=0.8 for the orbit, ?pin=2.4 for the landed CRT, ?pin=2.75 for the
+// power-off dot). The orbit + Mac choreography STILL animate (they just read
+// this static value), so what you see is exactly what the user sees at that
+// scroll depth. Ignored outside [0, 3].
 const PIN_FREEZE: number | null = (() => {
   if (typeof window === "undefined") return null;
   const raw = new URLSearchParams(window.location.search).get("pin");
   if (raw == null) return null;
   const v = parseFloat(raw);
-  if (!Number.isFinite(v) || v < 0 || v > 1) return null;
+  if (!Number.isFinite(v) || v < 0 || v > 3) return null;
   return v;
 })();
 
@@ -120,10 +112,10 @@ export function Macintosh() {
   // context once it's well out of view (the weak-GPU freeze fix). The reliable
   // mount-on-approach gate (generous margin + hysteresis) avoids the old IO
   // gate's "scrolled past before it spun up" bug. .mac-stage is position:absolute
-  // so mounting/unmounting the canvas never changes layout under the pin. The GLB
+  // so mounting/unmounting the canvas never changes layout under the hold. The GLB
   // is module-scope preloaded so a remount on scroll-back is instant.
   // mountVh 3.5 (vs the 1.75 default): mount the Mac scene a couple extra
-  // viewports earlier — while the user is still in the pinned About section
+  // viewports earlier — while the user is still in the About section
   // above it (which has NO canvas of its own, so this adds no concurrent WebGL
   // context) — so the CRT textures + scene have time to spin up BEFORE arrival.
   // Without the longer lead the section read blank/empty on scroll-in
@@ -134,9 +126,14 @@ export function Macintosh() {
     mountVh: 3.5,
     unmountVh: 5,
   });
-  const pinProgressRef = useRef(
-    TUNE_MODE ? 1 : PIN_FREEZE != null ? PIN_FREEZE : 0,
-  );
+  // The cine state (c, the hold end, the live gate) the scene reads every
+  // frame. Written from ScrollTrigger callbacks only; never React state.
+  const cineRef = useRef<MacCine>({
+    c: TUNE_MODE ? STATIC_LANDED_C : PIN_FREEZE != null ? PIN_FREEZE : 0,
+    end: MAC_CINE_END_DEFAULT,
+    live: true,
+    wake: null,
+  });
   // The open project. Selecting one (3D tile click OR the accessible
   // project buttons) dollies the camera INTO the CRT and swaps the
   // screen to the project DETAIL view. There is no longer a side
@@ -170,7 +167,7 @@ export function Macintosh() {
   // to matter (the scene already throttles to ~30Hz).
   const [screenRect, setScreenRect] = useState<ScreenRect | null>(null);
   // The element that had focus when the project was opened, so we can
-  // restore focus to it on close WITHOUT scrolling the pinned page
+  // restore focus to it on close WITHOUT scrolling the held page
   // (preventScroll). Clicking a 3D tile leaves focus on <body>.
   const openerFocusRef = useRef<HTMLElement | null>(null);
   // Real DOM "BACK" button rendered over the CRT (desktop) while a
@@ -229,8 +226,8 @@ export function Macintosh() {
   // Centralised close: clear the project, then restore focus to the
   // opener with preventScroll. THE JITTER FIX: a bare prevFocus.focus()
   // on an sr-only (off-screen, clipped) project button forces the
-  // browser to SCROLL the page to reveal it; on a GSAP-pinned section
-  // that jolts the pin → the reported open/ESC jitter. preventScroll
+  // browser to SCROLL the page to reveal it; on a held (sticky) section
+  // that jolts the stage → the reported open/ESC jitter. preventScroll
   // restores focus without moving the scroll position.
   const closeProject = () => {
     if (selected) track("project_close", { project: selected.title });
@@ -247,7 +244,7 @@ export function Macintosh() {
   // ESC closes the open project (camera pulls back to the tile grid).
   // Also move focus onto the on-CRT BACK button when a project opens so
   // keyboard users have a control inside the detail view: focused with
-  // preventScroll so opening never scrolls the pinned page either.
+  // preventScroll so opening never scrolls the held page either.
   useEffect(() => {
     if (!selected) return;
     // Defer so the button is mounted before we focus it.
@@ -268,21 +265,19 @@ export function Macintosh() {
     // closeProject is stable enough for this effect; selected drives it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
-  // ≤900px: skip the GSAP pin + orbit choreography. The section becomes
+  // ≤900px: skip the hold + orbit choreography. The section becomes
   // a normal-flow vertical stack (header → ticker → landed Mac) and the
-  // 3D scene reads a fixed landed progress instead of scroll. Keeping
-  // the pin alive here would lock scroll over an unpinnable auto-height
-  // flex column and re-introduce the blank-canvas bug.
+  // 3D scene reads a fixed landed c instead of scroll (stack.css gates the
+  // hold to the same complement of MQ.narrow, so layout and behaviour agree).
   const narrow = useMacNarrow();
   // Reduced-motion users get the same "no cinematic, land it now" path
-  // as narrow viewports: the scene reads progress=1 and the pin never
-  // engages.
+  // as narrow viewports: plain 100svh flow, the static landed frame.
   const reducedMotion = usePrefersReducedMotion();
   // Either condition lands the Mac without scroll choreography.
   const staticLanded = narrow || reducedMotion;
   // Narrow: header, ticker and project list rise in once as they enter (shared
   // [data-reveal] primitive; 400ms / 12px on stacked layouts). Desktop keeps
-  // its pinned cinematic.
+  // its scroll-bound cinematic.
   useReveal(sectionRef, { enabled: narrow && !reducedMotion });
   const revealAttr = narrow ? "" : undefined;
 
@@ -293,86 +288,95 @@ export function Macintosh() {
     }, 100);
   }, []);
 
-  // GSAP ScrollTrigger pin. Skipped at narrow widths (stacked layout)
-  // and in the dev freeze/tune modes. Re-runs when `narrow` flips so
-  // crossing the breakpoint creates or tears down the pin cleanly.
-  // Set once the pin has been created, so a later re-creation (breakpoint
-  // round trip) knows to re-sort the trigger list.
-  const pinCreatedRef = useRef(false);
+  // The hold, the cine driver and the stage reveal. Skipped on the static
+  // path (narrow / reduced motion: no hold exists, stack.css is gated off)
+  // and in the dev freeze/tune modes. Re-runs when the path flips, so
+  // crossing the breakpoint creates or tears everything down cleanly.
+  // Set once the triggers have been created, so a later re-creation
+  // (breakpoint round trip) knows to re-sort the trigger list.
+  const createdRef = useRef(false);
   useEffect(() => {
     if (TUNE_MODE || PIN_FREEZE != null || staticLanded) return;
     const el = sectionRef.current;
-    if (!el) return;
-    // Everything scroll progress drives outside the 3D scene. Shared by
-    // onUpdate and onRefresh so a refresh can't leave either one stale.
-    const syncProgress = (p: number) => {
-      pinProgressRef.current = p;
-      // Fade the "Projects" header out across the descent so it has cleared
-      // before the CRT zoom fills the frame. Written to a CSS var (no
-      // transition on it): the .is-detail-open fade owns .mac-col's own
-      // opacity, so the two never fight.
+    const sticky = el?.querySelector<HTMLElement>(".mac-sticky");
+    if (!el || !sticky) return;
+    const cine = cineRef.current;
+
+    // Soft hold over [s0, s1] = the sticky span (id 'mac-pin': the registry
+    // and data-jump-progress resolve against it; measureGeom treats it as a
+    // pin). C1 engage as the sheet finishes covering About, C1 release as
+    // the powered-off Mac leaves.
+    const hold = softHold({ id: "mac-pin", section: el, stage: sticky });
+
+    // "Projects" header fade across the landing so it has cleared before the
+    // CRT zoom fills the frame. Written to a CSS var (no transition on it):
+    // the .is-detail-open fade owns .mac-col's own opacity, so the two never
+    // fight.
+    const syncHeader = (c: number) => {
       const h = headerRef.current;
-      if (h) {
-        const f = Math.min(
-          1,
-          Math.max(0, (p - HEADER_FADE_START) / HEADER_FADE_SPAN),
-        );
-        const v = (1 - f).toFixed(3);
-        if (h.style.getPropertyValue("--mac-head-fade") !== v) {
-          h.style.setProperty("--mac-head-fade", v);
-        }
+      if (!h) return;
+      const f = Math.min(
+        1,
+        Math.max(0, (c - MAC_BEATS.headFadeStart) / (MAC_BEATS.headFadeEnd - MAC_BEATS.headFadeStart)),
+      );
+      const v = (1 - f).toFixed(3);
+      if (h.style.getPropertyValue("--mac-head-fade") !== v) {
+        h.style.setProperty("--mac-head-fade", v);
       }
     };
+    // Menu / footer jumps land on the landed pose. The hold length is a CSS
+    // token (gate G1), so the fraction is derived from layout, not hard-coded.
+    const syncJump = () => {
+      const v = macJumpProgress(cine.end).toFixed(3);
+      if (el.getAttribute("data-jump-progress") !== v) el.setAttribute("data-jump-progress", v);
+    };
+    // The cine driver: c = scroll since the section top crossed the viewport
+    // bottom, in vh. The trigger runs on until the section bottom reaches the
+    // viewport top (the sticky stage's bottom edge leaving), so it also owns
+    // the scene's `live` gate; c itself clamps at the hold end (1 + H).
+    const syncCine = (self: ScrollTrigger) => {
+      const vh = window.innerHeight || 1;
+      const len = Math.max(0, self.end - self.start);
+      const end = Math.max(1, (len - vh) / vh);
+      const c = Math.min(end, Math.max(0, (self.progress * len) / vh));
+      cine.c = c;
+      cine.end = end;
+      const live = self.progress < 1;
+      if (live !== cine.live) {
+        cine.live = live;
+        if (live) cine.wake?.();
+      }
+      syncHeader(c);
+    };
     const st = ScrollTrigger.create({
-      // Named so a nav/dial jump can target a specific beat of this pin
-      // (see sectionRegistry "Projects" → pinId:"mac-pin", jumpProgress:0.85)
-      // instead of an element jump that lands on pin-start or pin-end depending
-      // on scroll direction (the blank-on-jump-from-below bug).
-      id: "mac-pin",
+      id: "mac-cine",
       trigger: el,
-      start: "top top",
-      end: () => "+=" + Math.round(window.innerHeight * PIN_VH),
+      start: "top bottom",
+      end: "bottom top",
       invalidateOnRefresh: true,
-      pin: true,
-      pinSpacing: true,
-      // No scrub (nothing is attached to this trigger, so a numeric scrub was
-      // inert) and no anticipatePin (it pinned early under Lenis smoothing).
-      snap: {
-        // Function snapTo receives (naturalEnd, self); with inertia:false the
-        // natural end is the rest position itself, so `return v` never turns
-        // into a velocity-projected micro-tween.
-        snapTo: (v: number, self?: ScrollTrigger) => {
-          const dir = self?.direction ?? 0;
-          if (dir > 0 && v >= MAGNET_DOWN[0] && v <= MAGNET_DOWN[1]) return LANDED_P;
-          if (dir < 0 && v >= MAGNET_UP[0] && v <= MAGNET_UP[1]) return LANDED_P;
-          return v;
-        },
-        inertia: false,
-        delay: MAGNET_DELAY_S,
-        duration: MAGNET_DURATION_S,
-        ease: GSAP_EASE.settle,
+      onUpdate: syncCine,
+      onEnter: syncCine,
+      onLeave: syncCine,
+      onEnterBack: syncCine,
+      onLeaveBack: syncCine,
+      // onUpdate does not fire when a refresh moves progress (a resize
+      // changes the svh hold, so the same scrollY maps to a new c). Also
+      // seeds c for a trigger created mid-page.
+      onRefresh: (self) => {
+        syncCine(self);
+        syncJump();
       },
-      onUpdate: (self) => syncProgress(self.progress),
-      // onUpdate does not fire when a refresh moves progress (a desktop resize
-      // changes this vh-relative pin's px length, so the same scrollY maps to
-      // a new progress). Without this the scene kept drawing the old pose,
-      // e.g. the landed CRT left on screen past the pin end, which then
-      // hard-cut off the top edge instead of playing the exit. Also seeds
-      // progress for a trigger created mid-page (it refreshes on create).
-      onRefresh: (self) => syncProgress(self.progress),
     });
-    // Soft release: the section eases into scroll speed instead of snapping
-    // off the pin (softRelease.ts).
-    const stopSoftRelease = softReleasePin(st);
 
     // Click-to-zoom: the floating Mac dispatches `mac-zoom-request` (see the
-    // 3D hitbox in MacintoshScene). Glide to the landed/booted CRT (LANDED_P)
-    // so a pointer user can dive straight in without dragging through the
-    // pin. Symmetric ease-in-out, duration scaled to distance (glide preset,
+    // 3D hitbox in MacintoshScene). Glide to the landed/booted CRT so a
+    // pointer user can dive straight in without scrolling through the orbit.
+    // Symmetric ease-in-out, duration scaled to distance (glide preset,
     // capped at CTA_MAX_DURATION_S). Normal scrolling still works; this is an
-    // additive shortcut. st.start/end are the pin's scroll px.
+    // additive shortcut. The hold starts at c = 1.
     const onMacZoom = () => {
-      void scrollToY(st.start + LANDED_P * (st.end - st.start), {
+      const vh = window.innerHeight;
+      void scrollToY(hold.st.start + (macLandedC(cine.end) - 1) * vh, {
         preset: "glide",
         mode: "smooth",
         maxDuration: CTA_MAX_DURATION_S,
@@ -381,22 +385,18 @@ export function Macintosh() {
     window.addEventListener("mac-zoom-request", onMacZoom);
 
     // Reveal the Mac stage once the SECTION is about to arrive, and keep it on
-    // for everything below (section-relative; replaces the absolute
-    // STAGE_REVEAL_VH = 2.25 scrollY gate, which broke as soon as a pin above
-    // changed length). Same semantics as that gate: on from the trigger start
-    // onward, off only when scrolling back above it. Nothing needs hiding
-    // below the section because the stage is clipped to its own box, and
-    // staying on means a cut INTO Projects from further down (footer jump,
-    // menu, JumpToTop) never lands on a CRT still fading up from opacity 0.
+    // for everything below (section-relative). Same semantics as the old
+    // absolute gate: on from the trigger start onward, off only when
+    // scrolling back above it. Nothing needs hiding below the section because
+    // the stage is clipped to its own box, and staying on means a cut INTO
+    // Projects from further down (footer jump, menu, JumpToTop) never lands
+    // on a CRT still fading up from opacity 0.
     const stage = el.querySelector(".mac-stage") as HTMLElement | null;
     const setStageVisible = (v: boolean) =>
       stage?.setAttribute("data-stage-visible", String(v));
     // STAGE_LEAD_VH: reveal a full viewport BEFORE the section's top reaches
     // the viewport bottom, so the stage's opacity fade (macintosh.css,
-    // --t-med) finishes off screen even on a fast flick at short viewports
-    // (0.5 left it visibly mid-fade at 1280x720; the old absolute gate led by
-    // ~0.64vh at 900px tall and ~1.0vh at 720px). The stage is clipped to its
-    // own box, so the lead can't show through About.
+    // --t-med) finishes off screen even on a fast flick at short viewports.
     const STAGE_LEAD_VH = 1.0;
     const stageST = ScrollTrigger.create({
       trigger: el,
@@ -417,38 +417,39 @@ export function Macintosh() {
 
     // Re-creation after a breakpoint round trip (wide -> narrow -> wide, or a
     // reduced-motion toggle): these triggers are appended AFTER the ones for
-    // the sections below (Work, Photos...), so a refresh would measure those
-    // before this pin's spacer exists and Work would pin over Projects.
-    // Restore document order, then re-measure. First mount is already in DOM
-    // order, so it skips this.
-    if (pinCreatedRef.current) {
+    // the sections below, so restore document order (scroll.ts domOrder),
+    // then re-measure. First mount is already in DOM order, so it skips this.
+    if (createdRef.current) {
       ScrollTrigger.sort();
       ScrollTrigger.refresh();
     }
-    pinCreatedRef.current = true;
+    createdRef.current = true;
 
-    // Refresh once loading-active drops: pin positions shift during
+    // Refresh once loading-active drops: section positions shift during
     // initial layout.
     const stopLoaderWatch = refreshScrollOnLoaderLift();
 
     return () => {
       stopLoaderWatch();
       stageST.kill();
-      stopSoftRelease();
       st.kill();
+      hold.kill();
+      cine.live = true;
       // Crossing into the static-landed path must not strand a mid-fade
-      // header (the var is only written while the pin exists).
+      // header (the var is only written while the cine exists).
       headerRef.current?.style.removeProperty("--mac-head-fade");
       window.removeEventListener("mac-zoom-request", onMacZoom);
     };
   }, [staticLanded]);
 
   // When we drop into the static-landed path (narrow OR reduced-motion),
-  // park the pin progress at the landed value so the 3D scene shows the
-  // booted CRT + clickable tiles even though scroll never drives it.
+  // park c on the landed pose so the 3D scene shows the booted CRT +
+  // clickable tiles even though scroll never drives it.
   useEffect(() => {
     if (staticLanded && PIN_FREEZE == null && !TUNE_MODE) {
-      pinProgressRef.current = STATIC_LANDED_P;
+      cineRef.current.c = STATIC_LANDED_C;
+      cineRef.current.end = MAC_CINE_END_DEFAULT;
+      cineRef.current.live = true;
     }
     // Reduced motion on a WIDE viewport shows the landed, zoomed CRT with the
     // header still in the absolute top-right rail, where it sits over the
@@ -472,35 +473,161 @@ export function Macintosh() {
     <section
       ref={sectionRef}
       className="portfolio-section portfolio-mac"
-      // Menu / footer jumps land on the landed CRT (scroll.ts jumpToSection).
-      data-jump-progress={LANDED_P}
+      // Seam layout flag: activates this section's stack.css rules (the hold,
+      // the sheet, and the curtain margin once About's flag is set too).
+      data-seam-stack=""
+      // Menu / footer jumps land on the landed CRT (scroll.ts jumpToSection,
+      // against the 'mac-pin' hold trigger). 0.797 at the shipped hold; the
+      // cine driver rewrites it from layout on every refresh (gate G1).
+      data-jump-progress={macJumpProgress(MAC_CINE_END_DEFAULT).toFixed(3)}
     >
-      {/* Stage opacity is gated by `data-stage-visible` so the canvas
-          doesn't peek into the About section above before the pin
-          engages (set by the section-relative ScrollTrigger above, or forced on
-          for the static-landed narrow/reduced-motion path). */}
-      <div
-        className="mac-stage"
-        data-stage-visible={
-          TUNE_MODE || PIN_FREEZE != null || staticLanded ? "true" : "false"
-        }
-        style={stageStyle}
-        // The canvas content is decorative: the sr-only list above is
-        // the accessible equivalent. So hide the visual stage from AT.
-        aria-hidden="true"
-      >
-        {macMounted && (
-          <Suspense fallback={null}>
-            <MacintoshScene
-              pinProgressRef={pinProgressRef}
-              projects={MAC_PROJECTS}
-              onSelectProject={openProject}
-              selected={selected}
-              onScreenRect={staticLanded ? undefined : handleScreenRect}
-              hoveredControl={hoveredControl}
-            />
-          </Suspense>
-        )}
+      {/* The sticky stage (src/seams/stack.css makes it `position: sticky`
+          on desktop; softHold eases its engage/release with `translate`).
+          It holds everything that must stay put on screen while the hold
+          runs: the canvas, the corner header and the CRT hotspots, which are
+          placed in canvas px. The sr-only nav and the a11y detail stay
+          OUTSIDE it: a translated ancestor would become the containing block
+          of their position:fixed focus popups. On the narrow stacked layout
+          it is display:contents, so its children keep their flex order. */}
+      <div className="mac-sticky">
+        {/* Stage opacity is gated by `data-stage-visible` so the canvas
+            doesn't paint before the section approaches (set by the
+            section-relative ScrollTrigger above, or forced on for the
+            static-landed narrow/reduced-motion path). */}
+        <div
+          className="mac-stage"
+          data-stage-visible={
+            TUNE_MODE || PIN_FREEZE != null || staticLanded ? "true" : "false"
+          }
+          style={stageStyle}
+          // The canvas content is decorative: the sr-only list above is
+          // the accessible equivalent. So hide the visual stage from AT.
+          aria-hidden="true"
+        >
+          {macMounted && (
+            <Suspense fallback={null}>
+              <MacintoshScene
+                cineRef={cineRef}
+                projects={MAC_PROJECTS}
+                onSelectProject={openProject}
+                selected={selected}
+                onScreenRect={staticLanded ? undefined : handleScreenRect}
+                hoveredControl={hoveredControl}
+              />
+            </Suspense>
+          )}
+        </div>
+        {/* Editorial header fades out while a project detail is open:
+            the camera dollies into the CRT and the header was left
+            floating over the black screen edge in the top-right corner —
+            barely legible, read as a glitch (user). */}
+        <div
+          ref={headerRef}
+          className={`portfolio-col mac-col${selected ? " is-detail-open" : ""}`}
+        >
+          {/* data-reveal on the children, not .mac-col: its className
+              changes with the detail view, which would drop .is-revealed. */}
+          <span className="section-marker" data-reveal={revealAttr}>
+            02
+          </span>
+          {/* No "02 / 07 · Projects" index line: the 02 marker and the title
+              already say it, and the section dial shows "02 Projects" (owner:
+              no redundant copy). */}
+          <h2 data-reveal={revealAttr}>
+            <ScrambleText text="Projects" />
+          </h2>
+        </div>
+
+        {/* On-CRT controls overlay: DESKTOP ONLY. A real DOM layer
+            positioned over the CRT screen so the canvas-drawn affordances
+            are actually clickable. The CRT paints the visual "VIEW LIVE →"
+            button + the "‹ BACK" hint; these transparent DOM elements sit on
+            top at the matching spots so a pointer user clicks a genuine
+            <a>/<button> after the camera dollies into the screen.
+
+            NOT rendered on the narrow/touch path: there's no dolly-into-CRT
+            on mobile, so invisible hotspots can't reliably track the painted
+            labels; the mobile accordion above carries the live/source links. */}
+        {selected && !staticLanded && screenRect && screenRect.vis > 0.4 && (() => {
+          // Map the painted controls' canvas fractions onto the screen's
+          // live on-screen rect so the real clickable hotspots sit EXACTLY
+          // over their faces (the zoom is now dead-on/square, so this is
+          // reliable). Fractions mirror CRT_LAYOUT + the painter in
+          // MacintoshScene: title-bar height 0.135·h, content inset
+          // 0.06·w, close box ~0.42·barH square top-left, live button
+          // 0.085·h tall pinned bottom-left of the panel.
+          const { x, y, w, h } = screenRect;
+          const pad = 0.06 * w;
+          const barH = 0.135 * h;
+          // "← BACK" button rect (mirrors CRT_LAYOUT.backWFrac / backHFrac in the
+          // painter) so the clickable hotspot + its CSS hover glow cover the whole
+          // painted button.
+          const backW = 0.16 * w;
+          const backH = 0.56 * barH;
+          const btnH = 0.085 * h;
+          // BULGE COMPENSATION: the CRT shader barrel-distorts its sample
+          // space (k=0.12), so painted content near the edges appears
+          // pulled ~1-2% toward the screen centre relative to this flat
+          // rect. Nudge each hotspot the same direction so it stays
+          // centred on its painted face: close box (top-left) shifts
+          // right+down, link button (bottom-left) shifts right+up.
+          const bx = 0.007 * w;
+          const by = 0.010 * h;
+          const closeStyle: React.CSSProperties = {
+            left: x + pad + bx,
+            top: y + (barH - backH) / 2 + by,
+            width: backW,
+            height: Math.max(backH, 30),
+          };
+          const linkStyle: React.CSSProperties = {
+            left: x + pad + bx,
+            top: y + h - pad - btnH - by,
+            height: Math.max(btnH, 34),
+            // Match the painted CTA width exactly: the painter reports the live
+            // button's width as a fraction of the screen face (linkWFrac), since it
+            // varies by label. A fixed fraction overshot it by ~120px (the empty
+            // box right of "VIEW DEV POST" the owner flagged); +6px forgiveness.
+            width:
+              (screenRect.linkWFrac && screenRect.linkWFrac > 0
+                ? screenRect.linkWFrac
+                : 0.26) *
+                w +
+              6,
+          };
+          return (
+            <div className="mac-crt-controls" aria-hidden="true">
+              <button
+                ref={backBtnRef}
+                type="button"
+                className="mac-crt-close"
+                style={closeStyle}
+                onClick={closeProject}
+                onPointerEnter={() => setHoveredControl("back")}
+                onPointerLeave={() => setHoveredControl(null)}
+                aria-label="Close project"
+              />
+              {(selected.liveHref || selected.repoHref) && (
+                <a
+                  className="mac-crt-link"
+                  style={linkStyle}
+                  href={(selected.liveHref || selected.repoHref)!}
+                  target="_blank"
+                  rel="noreferrer"
+                  onPointerEnter={() => setHoveredControl("link")}
+                  onPointerLeave={() => setHoveredControl(null)}
+                  onClick={() =>
+                    track("project_link", {
+                      project: selected.title,
+                      type: selected.liveHref ? "live" : "repo",
+                    })
+                  }
+                >
+                  {selected.liveHref ? liveLinkLabel(selected.liveHref) : "Source"}
+                </a>
+              )}
+            </div>
+          );
+        })()}
       </div>
       <div className="mac-ticker-slot" data-reveal={revealAttr}>
         <TechStackTicker />
@@ -615,27 +742,6 @@ export function Macintosh() {
           })}
         </ul>
       )}
-      {/* Editorial header fades out while a project detail is open:
-          the camera dollies into the CRT and the header was left
-          floating over the black screen edge in the top-right corner —
-          barely legible, read as a glitch (user). */}
-      <div
-        ref={headerRef}
-        className={`portfolio-col mac-col${selected ? " is-detail-open" : ""}`}
-      >
-        {/* data-reveal on the children, not .mac-col: its className
-            changes with the detail view, which would drop .is-revealed. */}
-        <span className="section-marker" data-reveal={revealAttr}>
-          02
-        </span>
-        {/* No "02 / 07 · Projects" index line: the 02 marker and the title
-            already say it, and the section dial shows "02 Projects" (owner:
-            no redundant copy). */}
-        <h2 data-reveal={revealAttr}>
-          <ScrambleText text="Projects" />
-        </h2>
-      </div>
-
       {/* Accessible, crawlable project list. The CRT tiles are painted into a
           <canvas> texture and clicked via a 3D raycast plane, so screen readers,
           keyboard users, and crawlers see none of the actual work. This
@@ -740,96 +846,6 @@ export function Macintosh() {
         )}
       </div>
 
-      {/* On-CRT controls overlay: DESKTOP ONLY. A real DOM layer
-          positioned over the CRT screen so the canvas-drawn affordances
-          are actually clickable. The CRT paints the visual "VIEW LIVE →"
-          button + the "‹ BACK" hint; these transparent DOM elements sit on
-          top at the matching spots so a pointer user clicks a genuine
-          <a>/<button> after the camera dollies into the screen.
-
-          NOT rendered on the narrow/touch path: there's no dolly-into-CRT
-          on mobile, so invisible hotspots can't reliably track the painted
-          labels; the mobile accordion above carries the live/source links. */}
-      {selected && !staticLanded && screenRect && screenRect.vis > 0.4 && (() => {
-        // Map the painted controls' canvas fractions onto the screen's
-        // live on-screen rect so the real clickable hotspots sit EXACTLY
-        // over their faces (the zoom is now dead-on/square, so this is
-        // reliable). Fractions mirror CRT_LAYOUT + the painter in
-        // MacintoshScene: title-bar height 0.135·h, content inset
-        // 0.06·w, close box ~0.42·barH square top-left, live button
-        // 0.085·h tall pinned bottom-left of the panel.
-        const { x, y, w, h } = screenRect;
-        const pad = 0.06 * w;
-        const barH = 0.135 * h;
-        // "← BACK" button rect (mirrors CRT_LAYOUT.backWFrac / backHFrac in the
-        // painter) so the clickable hotspot + its CSS hover glow cover the whole
-        // painted button.
-        const backW = 0.16 * w;
-        const backH = 0.56 * barH;
-        const btnH = 0.085 * h;
-        // BULGE COMPENSATION: the CRT shader barrel-distorts its sample
-        // space (k=0.12), so painted content near the edges appears
-        // pulled ~1-2% toward the screen centre relative to this flat
-        // rect. Nudge each hotspot the same direction so it stays
-        // centred on its painted face: close box (top-left) shifts
-        // right+down, link button (bottom-left) shifts right+up.
-        const bx = 0.007 * w;
-        const by = 0.010 * h;
-        const closeStyle: React.CSSProperties = {
-          left: x + pad + bx,
-          top: y + (barH - backH) / 2 + by,
-          width: backW,
-          height: Math.max(backH, 30),
-        };
-        const linkStyle: React.CSSProperties = {
-          left: x + pad + bx,
-          top: y + h - pad - btnH - by,
-          height: Math.max(btnH, 34),
-          // Match the painted CTA width exactly: the painter reports the live
-          // button's width as a fraction of the screen face (linkWFrac), since it
-          // varies by label. A fixed fraction overshot it by ~120px (the empty
-          // box right of "VIEW DEV POST" the owner flagged); +6px forgiveness.
-          width:
-            (screenRect.linkWFrac && screenRect.linkWFrac > 0
-              ? screenRect.linkWFrac
-              : 0.26) *
-              w +
-            6,
-        };
-        return (
-          <div className="mac-crt-controls" aria-hidden="true">
-            <button
-              ref={backBtnRef}
-              type="button"
-              className="mac-crt-close"
-              style={closeStyle}
-              onClick={closeProject}
-              onPointerEnter={() => setHoveredControl("back")}
-              onPointerLeave={() => setHoveredControl(null)}
-              aria-label="Close project"
-            />
-            {(selected.liveHref || selected.repoHref) && (
-              <a
-                className="mac-crt-link"
-                style={linkStyle}
-                href={(selected.liveHref || selected.repoHref)!}
-                target="_blank"
-                rel="noreferrer"
-                onPointerEnter={() => setHoveredControl("link")}
-                onPointerLeave={() => setHoveredControl(null)}
-                onClick={() =>
-                  track("project_link", {
-                    project: selected.title,
-                    type: selected.liveHref ? "live" : "repo",
-                  })
-                }
-              >
-                {selected.liveHref ? liveLinkLabel(selected.liveHref) : "Source"}
-              </a>
-            )}
-          </div>
-        );
-      })()}
     </section>
   );
 }
