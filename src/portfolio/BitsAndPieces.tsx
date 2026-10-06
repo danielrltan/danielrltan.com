@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { softReleasePin } from "./softRelease";
 import "./sections.css";
 import "./bits-and-pieces.css";
 import { ScrambleText } from "./ScrambleText";
@@ -9,21 +8,31 @@ import { useReveal } from "./useReveal";
 import { ease, matches, MQ, reducedMotion } from "../motion";
 import { useMedia } from "../useMedia";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
-import { HonoursPodium } from "./honours/HonoursPodium";
+import { HonoursPodium, type PodiumBuild } from "./honours/HonoursPodium";
+import { useIdleGate } from "./honours/useIdleGate";
 import { refreshScrollOnLoaderLift, requestScrollRefresh } from "./scrollRefresh";
+import { oneShot, seamBus, seg, smooth, softHold, useSeam } from "../seams";
 
 gsap.registerPlugin(ScrollTrigger);
 
 /**
- * Bits and Pieces: full-bleed accomplishments spread. Stats band
- * (count-up numbers), a ghosted category marquee that slides with scroll,
- * and a uniform card grid led by a hero row of the three marquee wins
- * (same width as the rest, but taller with a bigger pulled-out metric).
+ * Bits and Pieces (Honours, "The trophy wall").
  *
- * Header, stats and every card use the shared `[data-reveal]` primitive
- * (useReveal + sections.css): a batch-staggered rise, latched once. The
- * count-up starts on the stats' reveal and writes textContent directly, so
- * the section never re-renders after mount.
+ * Desktop (> MQ.narrow): the 3D podium + tower. It is SCROLL-BUILT (seam
+ * play -> honours, owner brief 2026-10-06 "one workstation, one signal, never
+ * stopping"): from the section top at 85% of the viewport to flush, the podium
+ * extrudes, the cups pop and the slabs drop as a pure function of scroll, the
+ * three stats count up in step, and the honour card appears when the wall is
+ * complete. Then a short soft dwell (--seam-bp-hold, 0.3vh) holds on the
+ * finished wall: the section is 130svh with an inner sticky `.bp-hold`
+ * (src/seams/stack.css), eased in and out by softHold. Scrolling up un-builds.
+ *
+ * Narrow (the stacked ledger / grid): the tiles reveal once in a cascade out
+ * from the centre tile; the stats count up once (time-based) on their reveal.
+ *
+ * Header and stats use the shared `[data-reveal]` primitive (useReveal +
+ * sections.css): a batch-staggered rise, latched once. Counts write
+ * textContent directly, so the section never re-renders after mount.
  */
 
 /** Count-up duration (ms): exempt "character" timing (spec §1.3). */
@@ -33,15 +42,20 @@ const COUNT_UP_MS = 1100;
  * full pass through the viewport (spec W5.6: 0.10, was 0.36). Tune here.
  */
 const GHOST_TRAVEL = 0.1;
-/**
- * Podium dwell pin length as a fraction of the viewport height. Pure hold
- * (no scrub, nothing reads its progress), like Contact's keypad pin. Owner,
- * 2026-10-05: people scrolled straight past the trophy wall. The entrance
- * (~2 s, time-based) starts when a third of the stage is on screen, ~0.67 vh
- * before this pin, so 0.67 + 0.8 vh of in-frame travel plays it out at
- * ~700 px/s on a 900px-tall window.
+/*
+ * Podium build and dwell. Owner, 2026-10-05: people scrolled straight past the
+ * trophy wall, so it got a 0.8vh dwell pin to let a ~2 s time-based entrance
+ * play in view. The seam overhaul (2026-10-06) builds the wall FROM the scroll
+ * instead: the build spans the section top 85% -> 0 (0.85vh), so whoever
+ * reaches the wall has watched it go up, at any speed, and only a 0.3vh soft
+ * dwell (--seam-bp-hold, a CSS token; no JS duplicates it) is left to rest on
+ * the finished wall. 0.85 + 0.3 vh in frame vs the old 0.67 + 0.8.
  */
-const PIN_VH = 0.8;
+/** Count-up span within the build: the stats count over p 0.2 -> 0.95. */
+const COUNT_FROM_P = 0.2;
+const COUNT_TO_P = 0.95;
+/** Idle-mount cap for the podium (ms); see useIdleGate. */
+const PODIUM_IDLE_MS = 1200;
 
 type Category =
   | "Launch"
@@ -239,7 +253,8 @@ function BpTile({ entry }: { entry: Entry }) {
 
 /**
  * Count-up digits. Rendered once at 0 (final value under reduced motion);
- * runCountUps() animates the text node when the stats reveal. The animating
+ * narrow: runCountUps() animates the text node when the stats reveal;
+ * desktop: the play -> honours seam writes it from the build's progress. The animating
  * digits are aria-hidden: a live count-up would spam the SR with intermediate
  * numbers. The static final value is exposed via aria-label on the stat.
  */
@@ -287,42 +302,114 @@ function runCountUps(root: Element): () => void {
   return () => cancelAnimationFrame(raf);
 }
 
+/** Write every [data-count-to] under `root` at fraction t of its final value. */
+function writeCounts(root: Element | null, t: number): void {
+  if (!root) return;
+  for (const el of root.querySelectorAll<HTMLElement>("[data-count-to]")) {
+    const to = Number(el.dataset.countTo) || 0;
+    const fmt = FORMATS[el.dataset.countFormat as CountFormat] ?? FORMATS.int;
+    const text = fmt(Math.round(to * t));
+    if (el.textContent !== text) el.textContent = text;
+  }
+}
+
+/**
+ * Narrow tiles: rank each tile by its distance from the centre tile (the one
+ * nearest the middle of the grid's box), in layout px so it holds for the
+ * one-column ledger on phones and the three-up grid at 769-900 alike. Written
+ * as --reveal-order (bits-and-pieces.css turns it into the reveal delay).
+ */
+function rankTilesFromCentre(tiles: HTMLElement[]): void {
+  const c = tiles.map((t) => ({ t, x: t.offsetLeft + t.offsetWidth / 2, y: t.offsetTop + t.offsetHeight / 2 }));
+  if (!c.length) return;
+  const xs = c.map((k) => k.x);
+  const ys = c.map((k) => k.y);
+  const mx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const my = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const centre = c.reduce((a, b) => (Math.hypot(b.x - mx, b.y - my) < Math.hypot(a.x - mx, a.y - my) ? b : a));
+  c.map((k, i) => ({ k, i, d: Math.hypot(k.x - centre.x, k.y - centre.y) }))
+    .sort((a, b) => a.d - b.d || a.i - b.i)
+    .forEach(({ k }, rank) => k.t.style.setProperty("--reveal-order", String(rank)));
+}
+
 export function BitsAndPieces() {
   const sectionRef = useRef<HTMLElement>(null);
+  const holdRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLUListElement>(null);
   // Desktop: the 3D podium + tower (owner pick from the trophy lab). Narrow
   // (<=900, or a phone on its side): the card grid, whose text stays readable
   // where the 3D labels would be a few px tall.
   const narrow = useMedia(MQ.narrow);
-  const podiumActive = useSectionCanvasMount(sectionRef);
+  const narrowRef = useRef(narrow);
+  narrowRef.current = narrow;
+  // The WebGL context only exists near the section (useSectionCanvasMount),
+  // and is stood up in an idle period, not inside the loader lift or a scroll
+  // frame; the scroll build applies its stored progress whenever it lands.
+  const podiumActive = useIdleGate(useSectionCanvasMount(sectionRef), PODIUM_IDLE_MS);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const stopCountRef = useRef<() => void>(() => {});
+  // The scroll build's state, shared with the podium (HonoursPodium).
+  const [build] = useState<PodiumBuild>(() => ({ p: 0, scene: null }));
 
-  // Shared reveal primitive over the whole section (header, stats, tiles).
-  // The count-up starts on the stats' own reveal.
+  // Shared reveal primitive over the header and stats. Narrow only: the
+  // stats' reveal starts the one-shot count-up (desktop counts from scroll,
+  // below). The tiles are left out: they cascade from the centre (below).
   const onReveal = useCallback((el: Element) => {
-    if (el.classList.contains("bp-stats")) {
+    if (narrowRef.current && el.classList.contains("bp-stats")) {
       stopCountRef.current();
       stopCountRef.current = runCountUps(el);
     }
   }, []);
   // Podium layout: the stats sit 34px off the bottom of a 100svh stage, below
   // the default -15% reveal line, so reveal against the whole viewport there.
-  useReveal(sectionRef, { onReveal, rootMargin: narrow ? undefined : "0px" });
+  useReveal(sectionRef, {
+    onReveal,
+    rootMargin: narrow ? undefined : "0px",
+    selector: "[data-reveal]:not(.bp-tile)",
+  });
   useEffect(() => () => stopCountRef.current(), []);
 
-  // Ghost marquee: slides the giant category strip sideways with the
-  // section's pass through the viewport. Driven by ScrollTrigger (the site's
-  // single scroll clock, already Lenis-smoothed: no scrub, no second
-  // smoother) through a gsap.quickSetter; no window scroll listener, no
-  // per-frame layout reads. The strip width is cached on every
-  // ScrollTrigger refresh. Rounded to device pixels, not to a coarse grid
-  // (the old 12px quantisation juddered in Lenis's deceleration tail).
-  // Skipped (strip stays at rest) under reduced motion, on coarse pointers,
-  // and on compact screens, where the strip is trimmed/hidden in CSS.
+  // SEAM play -> honours (spec §5.5, Honours side): the podium builds with
+  // the section's arrival, top 85% -> flush. render(p) is pure: the build
+  // progress, the debug bus, and the stats at round(final * smooth(seg(p))).
+  // The card latch (p >= 0.98 on, < 0.90 off) lives in the scene. Narrow has
+  // no podium: the no-op fallback keeps the gate-off path from writing final
+  // stats ahead of the narrow one-shot count-up. Reduced motion: final(), the
+  // finished wall and the final stats.
+  const setBuild = (p: number) => {
+    build.p = p;
+    build.scene?.setProgress(p);
+    seamBus.podiumP = p;
+    writeCounts(sectionRef.current, smooth(seg(p, COUNT_FROM_P, COUNT_TO_P)));
+  };
+  useSeam(
+    narrow
+      ? null
+      : {
+          id: "play-honours",
+          trigger: () => sectionRef.current,
+          start: "top 85%",
+          end: "top top",
+          render: (p) => setBuild(p),
+          final: () => setBuild(1),
+          fallback: () => () => {},
+        },
+    [narrow],
+  );
+
+  // Ghost marquee (narrow only: the podium layout hides the strip): slides
+  // the giant category strip sideways with the section's pass through the
+  // viewport. Driven by ScrollTrigger (the site's single scroll clock, already
+  // Lenis-smoothed: no scrub, no second smoother) through a gsap.quickSetter;
+  // no window scroll listener, no per-frame layout reads. The strip width is
+  // cached on every ScrollTrigger refresh. Rounded to device pixels, not to a
+  // coarse grid (the old 12px quantisation juddered in Lenis's deceleration
+  // tail). Skipped (strip stays at rest) under reduced motion, on coarse
+  // pointers, and on compact screens, where the strip is trimmed/hidden in CSS.
   useEffect(() => {
     const el = sectionRef.current;
     const strip = marqueeRef.current;
-    if (!el || !strip) return;
+    if (!narrow || !el || !strip) return;
     const coarsePointer =
       window.matchMedia?.("(hover: none), (pointer: coarse)").matches ?? false;
     // Compact = a phone, upright or on its side (shared query; CSS trims the
@@ -355,48 +442,163 @@ export function BitsAndPieces() {
       st.kill();
       gsap.set(strip, { clearProps: "transform" });
     };
-  }, []);
+  }, [narrow]);
 
-  // Podium layout only: a dwell pin so the entrance plays in view instead
-  // of being scrolled past. Narrow keeps the stacked card grid, unpinned
-  // (mirrors About/Work/Keypad: no pinned stages on phones).
+  // Podium layout only: the soft dwell on the finished wall. The section is
+  // 100svh + --seam-bp-hold and `.bp-hold` sticks inside it (stack.css, keyed
+  // on this section's data-seam-stack flag); softHold eases the engage and the
+  // release (C1, no snap) and keeps the 'bp-pin' id as a NON-pinning hold
+  // trigger for the registry jump. Narrow keeps the stacked grid in plain
+  // flow (no holds on phones).
   useEffect(() => {
     const el = sectionRef.current;
-    if (!el) return;
+    const stage = holdRef.current;
     if (narrow) {
-      // A desktop -> narrow flip kills the pin; refresh so the pins below
-      // (Recents, Contact) drop this section's old spacer from their start.
+      // A desktop -> narrow flip drops the hold (the section shrinks back to
+      // its content); refresh so the sections below re-measure.
       if (!document.documentElement.classList.contains("loading-active")) {
         requestScrollRefresh();
       }
       return;
     }
-    const st = ScrollTrigger.create({
-      id: "bp-pin",
-      trigger: el,
-      start: "top top",
-      end: () => "+=" + Math.round(window.innerHeight * PIN_VH),
-      invalidateOnRefresh: true,
-      pin: true,
-      pinSpacing: true,
-    });
-    // Soft release: the section eases into scroll speed instead of snapping
-    // off the pin (softRelease.ts).
-    const stopSoftRelease = softReleasePin(st);
+    if (!el || !stage) return;
+    const hold = softHold({ id: "bp-pin", section: el, stage });
     const stopLoaderWatch = refreshScrollOnLoaderLift();
     return () => {
       stopLoaderWatch();
-      stopSoftRelease();
-      st.kill();
+      hold.kill();
     };
   }, [narrow]);
+
+  // Narrow tiles: ONE reveal for the whole grid, cascading out from the
+  // centre tile by distance rank (spec §5.5 phone variant), latched once like
+  // every reveal on the site. Time-based and threshold-armed (oneShot), never
+  // a scroll-linked write. A mount or a cut jump below the line lands revealed
+  // with no animation. Reduced motion: revealed at mount (the root is never
+  // armed, so they render in place anyway).
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!narrow || !grid) return;
+    const tiles = () => Array.from(grid.querySelectorAll<HTMLElement>(".bp-tile"));
+    const reveal = (animate: boolean) => {
+      const all = tiles();
+      rankTilesFromCentre(all);
+      if (animate) {
+        all.forEach((t) => t.classList.add("is-revealed"));
+        return;
+      }
+      all.forEach((t) => {
+        t.style.transition = "none";
+        t.classList.add("is-revealed");
+      });
+      void grid.offsetHeight; // commit the end state before the transition returns
+      all.forEach((t) => (t.style.transition = ""));
+    };
+    if (reducedMotion.value) {
+      reveal(false);
+      return;
+    }
+    return oneShot({
+      el: grid,
+      line: 0.75,
+      play: (dir) => {
+        if (dir === 1) reveal(true);
+      },
+      snap: (dir) => {
+        if (dir === 1) reveal(false);
+      },
+    });
+  }, [narrow]);
+
+  const layout = (
+    <div className="bp-layout">
+      <header className="bp-head" data-reveal="">
+        {narrow ? (
+          <>
+            <span className="section-marker bp-marker">05</span>
+          </>
+        ) : (
+          // Podium layout: just the 05 (owner removed the orange dash
+          // after it, and the "05 / 07 · Honours" text before that).
+          <div className="bp-idx">
+            <span className="bp-idx-n">05</span>
+          </div>
+        )}
+        <h2 className="bp-title">
+          <ScrambleText text="The trophy wall" />
+        </h2>
+        {narrow && <p className="bp-blurb">Awards and leadership.</p>}
+      </header>
+
+      {/* Summary metrics as a definition list: the animated digits
+          are aria-hidden (see CountUp), so each stat carries a static
+          aria-label with the final value for assistive tech. */}
+      <dl className="bp-stats" data-reveal="">
+        <div
+          className="bp-stat"
+          aria-label={`${formatMoney(TOTAL_GRANTS_USD)} in awards and funding`}
+        >
+          <dd className="bp-stat-num">
+            <CountUp to={TOTAL_GRANTS_USD} format="money" />
+          </dd>
+          <dt className="bp-stat-label">in awards &amp; funding</dt>
+        </div>
+        <div className="bp-stat-rule" aria-hidden />
+        <div
+          className="bp-stat"
+          aria-label={`${TOTAL_WINS} competition placements`}
+        >
+          <dd className="bp-stat-num">
+            <CountUp to={TOTAL_WINS} />
+          </dd>
+          <dt className="bp-stat-label">competition placements</dt>
+        </div>
+        <div className="bp-stat-rule" aria-hidden />
+        <div
+          className="bp-stat"
+          aria-label={`${TOTAL_LEADERSHIP} leadership roles`}
+        >
+          <dd className="bp-stat-num">
+            <CountUp to={TOTAL_LEADERSHIP} />
+          </dd>
+          <dt className="bp-stat-label">leadership roles</dt>
+        </div>
+      </dl>
+
+      {narrow ? (
+        <ul ref={gridRef} className="bp-grid" aria-label="Awards, grants, scholarships and leadership roles">
+          {ENTRIES.map((e, i) => (
+            <BpTile key={i} entry={e} />
+          ))}
+        </ul>
+      ) : (
+        <>
+          <HonoursPodium entries={ENTRIES} active={podiumActive} build={build} />
+          {/* The whole list, as text, for screen readers and crawlers (the
+              podium's labels live in canvas textures). */}
+          <ul className="sr-only" aria-label="Awards, grants, scholarships and leadership roles">
+            {ENTRIES.map((e, i) => (
+              <li key={i}>
+                {[e.category, e.title, e.metric, e.context, e.blurb].filter(Boolean).join(". ")}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <section
       ref={sectionRef}
       className={`portfolio-section portfolio-bp${narrow ? "" : " is-podium"}`}
-      // A menu/footer jump lands at the pin START, so the entrance plays on
-      // arrival (from below, a bare element jump would land at pin END).
+      // Seam layout contract flag (src/seams/stack.css): this section's hold
+      // internals are in place. stack.css applies it on desktop with motion
+      // only, so narrow and reduced motion stay plain flow.
+      data-seam-stack=""
+      // A menu/footer jump lands at the hold START, where the build has just
+      // completed (p = 1): the reader arrives on the finished wall with its
+      // card, from above or below.
       data-jump-progress={narrow ? undefined : "0"}
     >
       <div className="bp-marquee" aria-hidden>
@@ -410,81 +612,15 @@ export function BitsAndPieces() {
         </div>
       </div>
 
-      <div className="bp-layout">
-        <header className="bp-head" data-reveal="">
-          {narrow ? (
-            <>
-              <span className="section-marker bp-marker">05</span>
-            </>
-          ) : (
-            // Podium layout: just the 05 (owner removed the orange dash
-            // after it, and the "05 / 07 · Honours" text before that).
-            <div className="bp-idx">
-              <span className="bp-idx-n">05</span>
-            </div>
-          )}
-          <h2 className="bp-title">
-            <ScrambleText text="The trophy wall" />
-          </h2>
-          {narrow && <p className="bp-blurb">Awards and leadership.</p>}
-        </header>
-
-        {/* Summary metrics as a definition list: the animated digits
-            are aria-hidden (see CountUp), so each stat carries a static
-            aria-label with the final value for assistive tech. */}
-        <dl className="bp-stats" data-reveal="">
-          <div
-            className="bp-stat"
-            aria-label={`${formatMoney(TOTAL_GRANTS_USD)} in awards and funding`}
-          >
-            <dd className="bp-stat-num">
-              <CountUp to={TOTAL_GRANTS_USD} format="money" />
-            </dd>
-            <dt className="bp-stat-label">in awards &amp; funding</dt>
-          </div>
-          <div className="bp-stat-rule" aria-hidden />
-          <div
-            className="bp-stat"
-            aria-label={`${TOTAL_WINS} competition placements`}
-          >
-            <dd className="bp-stat-num">
-              <CountUp to={TOTAL_WINS} />
-            </dd>
-            <dt className="bp-stat-label">competition placements</dt>
-          </div>
-          <div className="bp-stat-rule" aria-hidden />
-          <div
-            className="bp-stat"
-            aria-label={`${TOTAL_LEADERSHIP} leadership roles`}
-          >
-            <dd className="bp-stat-num">
-              <CountUp to={TOTAL_LEADERSHIP} />
-            </dd>
-            <dt className="bp-stat-label">leadership roles</dt>
-          </div>
-        </dl>
-
-        {narrow ? (
-          <ul className="bp-grid" aria-label="Awards, grants, scholarships and leadership roles">
-            {ENTRIES.map((e, i) => (
-              <BpTile key={i} entry={e} />
-            ))}
-          </ul>
-        ) : (
-          <>
-            <HonoursPodium entries={ENTRIES} active={podiumActive} />
-            {/* The whole list, as text, for screen readers and crawlers (the
-                podium's labels live in canvas textures). */}
-            <ul className="sr-only" aria-label="Awards, grants, scholarships and leadership roles">
-              {ENTRIES.map((e, i) => (
-                <li key={i}>
-                  {[e.category, e.title, e.metric, e.context, e.blurb].filter(Boolean).join(". ")}
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </div>
+      {narrow ? (
+        layout
+      ) : (
+        // The sticky stage of the dwell (stack.css); everything the podium
+        // layout shows (head, canvas, stats, card) rides in it.
+        <div ref={holdRef} className="bp-hold">
+          {layout}
+        </div>
+      )}
     </section>
   );
 }

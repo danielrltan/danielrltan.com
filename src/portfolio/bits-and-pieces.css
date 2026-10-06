@@ -420,9 +420,8 @@
     padding: 8vh 6vw;
   }
 
-  /* Tiles render IN PLACE on phones: the [data-reveal] primitive is parked
-     static at <=768 (sections.css) and useReveal reveals everything at mount,
-     so there is no blank-until-revealed risk in hidden/headless tabs. */
+  /* Tiles: one cascade for the whole sheet, out from the centre row (see the
+     .bp-grid reveal rule below the phone blocks). */
 
   /* #23 PERF: trim the ghosted marquee (dropped entirely <480px below). */
   .bp-marquee {
@@ -641,6 +640,16 @@
   }
 }
 
+/* Narrow tiles (the ledger on phones, the three-up grid at 769-900): ONE
+   reveal for the whole grid when it crosses 75% of the viewport, cascading
+   out from the centre tile (seam play -> honours, phone variant; owner brief
+   2026-10-06). BitsAndPieces writes each tile's distance rank from the centre
+   tile as --reveal-order; it replaces the primitive's per-batch stagger here
+   (uncapped, so the outermost tiles land last; 12 tiles x 35ms = 385ms). */
+.portfolio-bp .bp-grid .bp-tile.is-revealed {
+  transition-delay: calc(var(--reveal-order, 0) * 35ms);
+}
+
 /* prefers-reduced-motion: cards appear in place (the [data-reveal]
    primitive's own reduced-motion block) and the marquee JS is skipped in the
    component. */
@@ -659,12 +668,30 @@
    values below are copied from the lab page (t07-podium-tower.html). The
    stage box is always laid out, so mounting the canvas never changes the
    section's height.
+   The stage now rides in `.bp-hold` (seam play -> honours, 2026-10-06): with
+   motion on desktop, src/seams/stack.css makes the section 100svh +
+   --seam-bp-hold and `.bp-hold` a 100svh sticky inside it, a short soft dwell
+   on the finished wall. The two rules below are its plain-flow defaults
+   (reduced motion: one 100svh stage, no dwell), written at a LOWER
+   specificity than stack.css's ((0,1,0) / (0,2,0) via :where) so the hold
+   wins wherever it applies, whatever the CSS load order.
    ====================================================================== */
 .portfolio-section.portfolio-bp.is-podium {
-  height: 100vh;
-  height: 100svh;
+  /* Block, not the shared flex centring: the hold wrapper must span the full
+     width (every child of it is absolute) and start flush with the section
+     top, where softHold's engage edge is measured. */
+  display: block;
   min-height: 0;
   padding: 0;
+}
+.portfolio-bp:where(.is-podium) {
+  height: 100vh;
+  height: 100svh;
+}
+.portfolio-bp:where(.is-podium) .bp-hold {
+  position: relative;
+  height: 100vh;
+  height: 100svh;
 }
 .portfolio-bp.is-podium .bp-marquee {
   display: none;

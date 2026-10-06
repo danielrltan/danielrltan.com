@@ -15,8 +15,13 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
  *     a podium block lifts and its cup spins faster, a slab pulls out toward
  *     you. The section shows the picked entry's card (onFocus).
  *
- * Entrance plays when start() is called (the section scrolls into view), not
- * on load. The loop only runs while the canvas is on screen and the tab is
+ * The build is SCROLL-BUILT (seam play -> honours, owner brief 2026-10-06:
+ * "one workstation, one signal, never stopping"): setProgress(p) maps the
+ * section's arrival onto the same entrance timeline (t = p * READY_MS), so the
+ * podium extrudes, the cups pop and the slabs drop as you scroll, and scrolling
+ * up un-builds it. The curves are the approved time-based ones, unchanged; only
+ * the clock changed. setProgress(null) restores the old time-based entrance
+ * (start()). The loop only runs while the canvas is on screen and the tab is
  * visible. Reduced motion: everything rests in place, no spin or parallax.
  * No black anywhere in the scene (owner): ink type is slate, shadows grey.
  */
@@ -32,13 +37,19 @@ export interface PodiumEntry {
 export interface PodiumSceneOptions {
   reduced: boolean;
   /** Called with the entry index to show (hovered, else selected), once the
-   *  entrance has finished, and again whenever it changes. */
-  onFocus: (index: number) => void;
+   *  entrance has finished, and again whenever it changes; null when a scroll
+   *  build un-readies (the card hides while the wall is being taken apart). */
+  onFocus: (index: number | null) => void;
 }
 
 export interface PodiumScene {
-  /** Play the entrance (idempotent). */
+  /** Play the time-based entrance (idempotent). */
   start(): void;
+  /**
+   * Scroll-built mode: p in [0, 1] is the build's progress (t = p * READY_MS).
+   * Wakes the loop on every call. null returns to the time-based entrance.
+   */
+  setProgress(p: number | null): void;
   dispose(): void;
 }
 
@@ -46,8 +57,19 @@ const ORANGE = 0xff4f00;
 const SLATE = "#4a4f58";
 const DEEP = "#c23d00";
 const MUTED = "#8a8f98";
-/** Entrance length before the card shows (ms). */
+/** Entrance length before the card shows (ms). In scroll-built mode p = 1
+ *  maps here: every curve below has finished by then (the last slab lands at
+ *  560 + 8 * 105 + 420 ms and its settle dip ends 220 ms later, 2040 ms). */
 const READY_MS = 2050;
+/** Scroll-built card latch with hysteresis: the card (and the arrow keys)
+ *  turn on once the wall is complete and only turn off again well into the
+ *  un-build, so a reader resting near the top edge never flickers it. */
+const READY_ON_P = 0.98;
+const READY_OFF_P = 0.9;
+/** Shadow-map refresh cadence for a settled wall: the only thing still moving
+ *  is the slow cup spin (0.35 rad/s), whose small shadow can't show a 0.03 rad
+ *  step, so the 2048px shadow pass runs about every 5th frame instead of each. */
+const SHADOW_SPIN_STEP = 0.03;
 /** The scene sits in this part of the canvas (fractions); the card owns the
  *  left. Same box as the approved lab draft "07" (the canvas fills the whole
  *  100svh section, header top-left, stats bottom-left). */
@@ -421,6 +443,8 @@ export function createPodiumScene(
   // Arrow keys only while the canvas has focus (never page-wide).
   const order = [...podiumOrder.filter(Boolean).map((f) => f!.i), ...rest.map((r) => r.i)].sort((a, b) => a - b);
   const onKey = (e: KeyboardEvent) => {
+    // Arrow keys step the card only once the wall is complete (card shown).
+    if (!ready) return;
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
     e.preventDefault();
     const k = order.indexOf(sel);
@@ -446,12 +470,16 @@ export function createPodiumScene(
   let visible = false;
   let started = false;
   let disposed = false;
+  /** Scroll-built progress (null = time-based entrance). */
+  let prog: number | null = null;
+  /** Cup spin at the last shadow-map pass, while the shadow map is on demand. */
+  let shadowSpin = -1;
   const offset = new THREE.Vector3();
 
   function frame(now: number) {
     raf = 0;
     if (disposed) return;
-    const t = reduced ? 1e6 : born < 0 ? 0 : now - born;
+    const t = reduced ? 1e6 : prog != null ? prog * READY_MS : born < 0 ? 0 : now - born;
     const dt = Math.min(0.05, (now - last) / 1000 || 0.016);
     last = now;
     const f = focusI();
@@ -475,9 +503,26 @@ export function createPodiumScene(
         it.group.visible = started && t >= it.start;
       }
     }
-    if (started && !ready && t > READY_MS) {
+    // Time-based mode only: scroll-built mode latches in setProgress (with
+    // hysteresis), so it never depends on the loop being awake.
+    if (prog == null && started && !ready && t > READY_MS) {
       ready = true;
       emitFocus();
+    }
+    // Shadows: once the wall is built and nothing is lifting or pulling out,
+    // the shadow map is drawn on demand (see SHADOW_SPIN_STEP) instead of on
+    // every frame. Reduced motion parks the loop when settled anyway.
+    const settledWall =
+      prog === 1 && !items.some((it) => Math.abs((ready && it.i === f ? 1 : 0) - it.pull) > 1e-3);
+    if (settledWall) {
+      const spin = items.find((it) => it.cup)?.cup!.rotation.y ?? 0;
+      if (renderer.shadowMap.autoUpdate || Math.abs(spin - shadowSpin) >= SHADOW_SPIN_STEP) {
+        renderer.shadowMap.needsUpdate = true;
+        shadowSpin = spin;
+      }
+      renderer.shadowMap.autoUpdate = false;
+    } else {
+      renderer.shadowMap.autoUpdate = true;
     }
     if (!reduced) {
       offset.set(parallax.x * 0.9, -parallax.y * 0.5, 0).add(baseCam);
@@ -487,13 +532,20 @@ export function createPodiumScene(
     renderer.render(scene, camera);
     // Reduced motion: once settled, draw on demand only.
     // Before start() there is nothing to animate (one empty frame was drawn).
+    // Scroll-built at p = 0 there is nothing on the stand: that one frame is
+    // the last until the next setProgress.
     const keepGoing =
       started &&
+      prog !== 0 &&
       visible &&
       !document.hidden &&
       (!reduced || items.some((it) => Math.abs((ready && it.i === f ? 1 : 0) - it.pull) > 1e-3));
-    if (keepGoing) raf = requestAnimationFrame(frame);
-    else running = false;
+    // (A one-off draw from setProgress that finds the loop should run takes
+    // it over, so wake() never starts a second chain.)
+    if (keepGoing) {
+      running = true;
+      raf = requestAnimationFrame(frame);
+    } else running = false;
   }
   function wake() {
     if (running || disposed || !visible || document.hidden) return;
@@ -527,6 +579,36 @@ export function createPodiumScene(
         emitFocus();
       }
       wake();
+    },
+    setProgress(p) {
+      if (disposed) return;
+      if (p == null) {
+        // Back to the time-based entrance (start() plays it). A wall that was
+        // already scroll-built stays built, as if its entrance had played.
+        prog = null;
+        if (started && born < 0) born = performance.now() - READY_MS;
+        wake();
+        return;
+      }
+      prog = Math.max(0, Math.min(1, p));
+      started = true;
+      // Card latch with hysteresis, here and not in frame(): a cut jump that
+      // lands on the finished wall must show the card even before the
+      // visibility observer has woken the loop.
+      if (!ready && prog >= READY_ON_P) {
+        ready = true;
+        emitFocus();
+      } else if (ready && prog < READY_OFF_P) {
+        ready = false;
+        hoverI = -1;
+        setCursor(false);
+        lastFocus = -2;
+        onFocus(null);
+      }
+      wake();
+      // The loop is IO-gated: off screen (or parked at p = 0) still draw the
+      // new pose once, so the canvas is never stale when it scrolls in.
+      if (!running && !raf) raf = requestAnimationFrame(frame);
     },
     dispose() {
       disposed = true;
