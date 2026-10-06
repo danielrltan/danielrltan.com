@@ -97,6 +97,26 @@
 html[data-hero-park] .portfolio-about {
   overflow: visible;
 }
+/* THE HOLD (seam overhaul 2026-10-06). .about-hold wraps the stage and is the
+   section's only flex child. Full width, so the stage centres inside it
+   exactly as it used to centre in the section (margin: 0 auto). Its height is
+   the stage's off the desk layout, so align-items: center places it where the
+   stage sat (narrow, tablets, reduced motion: unchanged). On the desk layout
+   stack.css makes it a 100svh sticky inside the 200svh section; it must start
+   at the section's top edge and stick for the full 1.0vh, so the section drops
+   the sitewide 140px padding there (sticky is confined to its parent's
+   CONTENT box: the padding would also unstick it early) and stops centring.
+   Same gate and flag as stack.css, so reverting About deactivates both. */
+.about-hold {
+  width: 100%;
+}
+@media (width > 900px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
+  .portfolio-about[data-seam-stack] {
+    padding: 0;
+    align-items: flex-start;
+  }
+}
+
 /* Fade path (≤900 / reduced motion: no park, no iris) keeps the hero LAYER a
    pass-through (a full-viewport hit box would fight touch scrolling), so
    About itself stops taking pointers while the hero still covers it

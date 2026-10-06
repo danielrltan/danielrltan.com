@@ -397,6 +397,30 @@ function translateY(el: Element): number {
   return parts.length > 1 ? parseFloat(parts[1]!) || 0 : 0;
 }
 
+/** The room bob's offset (px) from its REST pose: the first keyframe of
+ *  about.css about-room-bob, where it sits paused under the covering hero
+ *  from first paint, so a fresh load measures the room there. The bob pauses
+ *  at any phase once About is off screen or covered, so a re-measure while
+ *  scrolled away (a resize at 3.5vh) would otherwise move the seed by up to
+ *  the bob's 14px swing. */
+function bobDy(frame: Element | null): number {
+  if (!frame) return 0;
+  const m42 = (t: string | null | undefined) => {
+    if (!t || t === "none") return 0;
+    try {
+      return new DOMMatrixReadOnly(t).m42;
+    } catch {
+      return 0;
+    }
+  };
+  const anim = frame
+    .getAnimations?.()
+    .find((a) => (a as CSSAnimation).animationName === "about-room-bob");
+  const first = (anim?.effect as KeyframeEffect | null | undefined)?.getKeyframes?.()[0];
+  const rest = typeof first?.transform === "string" ? m42(first.transform) : 0;
+  return m42(getComputedStyle(frame).transform) - rest;
+}
+
 // ---------------------------------------------------------------------------
 // Controller
 // ---------------------------------------------------------------------------
@@ -491,7 +515,9 @@ export function installHeroWipe(): void {
     const card = roomEl?.closest<HTMLElement>(".card");
     const cardT = card ? getComputedStyle(card).transform : "none";
     const lift = cardT && cardT !== "none" ? new DOMMatrixReadOnly(cardT).m42 : 0;
-    const roomTop = room ? room.top - lift + parkDy : 0;
+    // ...and the bob, back to its rest pose (bobDy).
+    const bob = bobDy(roomEl?.closest(".render-frame") ?? null);
+    const roomTop = room ? room.top - lift - bob + parkDy : 0;
     const roomBottom = room ? roomTop + room.height : 0;
     const roomOk = !!room && room.width > 0 && room.height > 0 && roomBottom > 0 && roomTop < vh;
     // Aim at the room's centre; if that is off screen when parked (a short
