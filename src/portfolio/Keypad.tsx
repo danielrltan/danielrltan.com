@@ -3,7 +3,7 @@ import { refreshScrollOnLoaderLift, requestScrollRefresh } from "./scrollRefresh
 import { softHold } from "../seams";
 import { SOCIALS } from "../socials";
 import { isTuneMode } from "../tuneMode";
-import { ensureLenis } from "../scroll";
+import { ensureLenis, getLenis } from "../scroll";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 // Lazy: keypad 3D scene (last section before the footer) loads on approach,
 // idle-prefetched in App.tsx so the chunk is cached before scroll-in.
@@ -119,6 +119,10 @@ const FAST_LATE_VH = 0.08;
 const FAST_APPROACH_PX_S = 950;
 const FAST_TOTAL_S = 0.4;
 const DROP_TOTAL_S = 0.8; // mirrors KeypadScene's DROP_TOTAL_S
+/** Seam 8: a drop that arms with the footer sheet's top above this line (vh,
+ *  where the scroll is headed) lands silently, at rest, instead of playing
+ *  its fall and thud behind the paper. */
+const SILENT_LAND_VH = 0.6;
 /** The glow releases earlier, on approach (section top within 1.1vh). */
 const GLOW_APPROACH_MARGIN = "0px 0px 10% 0px";
 /** A full-screen overlay that hides the page: the section menu (while open
@@ -241,11 +245,45 @@ export const Keypad = memo(function Keypad() {
     // after a menu or covered jump the timeline holds at t = 0 until the
     // overlay has cleared (rAF poll, capped at COVER_WAIT_MAX_MS).
     let coverRaf = 0;
+    let watchRaf = 0;
     const arm = (waitedMs: number) => {
       const d = dropRef.current;
       if (d.armed) return;
       d.armed = true;
       d.coverWaitMs = waitedMs;
+      // Seam 8: the footer sheet already covers the stage's middle (an End
+      // key, a scrollbar drag or a fling straight to the page end): the
+      // whole fall, thud and dial kick would play behind the paper. Land
+      // silently instead, so the keypad above the perforation is at rest.
+      // Judged where the scroll is HEADED (Lenis's target on wheel input),
+      // and with a little lead (0.6vh): an arrival that arms with the sheet
+      // already that high is still travelling, and the fall's contact comes
+      // ~0.2s later at the fast rate, by when the paper is over the middle.
+      const foot = document.querySelector(".portfolio-footer");
+      if (foot) {
+        const lenis = getLenis();
+        const ahead = lenis ? Math.max(0, lenis.targetScroll - window.scrollY) : 0;
+        if (foot.getBoundingClientRect().top - ahead < SILENT_LAND_VH * window.innerHeight) {
+          d.t = 60;
+          d.contactFired = true;
+        } else {
+          // A fast arrival whose end is unknown here (a native End-key or
+          // scrollbar scroll has no Lenis target): watch the fall, and if the
+          // paper reaches the stage's middle before the contact beat, spend
+          // the beat silently (no thud, no dial kick behind the paper). The
+          // fall itself is left alone: no visible snap.
+          const watch = () => {
+            watchRaf = 0;
+            if (d.contactFired || d.t >= DROP_TOTAL_S) return;
+            if (foot.getBoundingClientRect().top < 0.5 * window.innerHeight) {
+              d.contactFired = true;
+              return;
+            }
+            watchRaf = requestAnimationFrame(watch);
+          };
+          watchRaf = requestAnimationFrame(watch);
+        }
+      }
       // Wake the scene's demand loop if it is already mounted and idle.
       window.dispatchEvent(new Event("keypad-drop-armed"));
     };
@@ -264,7 +302,12 @@ export const Keypad = memo(function Keypad() {
           const v = glowAt && dt > 0.05 ? (glowAt.top - top) / dt : null;
           d.approachPxS = v == null ? null : Math.round(v);
           const late = top < FAST_LATE_VH * window.innerHeight;
-          if (late || (v != null && v > FAST_APPROACH_PX_S))
+          // No usable approach sample (the glow line and the trigger line
+          // were seen in the same observer batch, or the glow never fired):
+          // the page crossed the whole approach band within ~50ms, which is
+          // a fast arrival, not a slow one.
+          const unsampled = v == null;
+          if (late || unsampled || v > FAST_APPROACH_PX_S)
             d.rate = DROP_TOTAL_S / FAST_TOTAL_S;
           return arm(0);
         }
@@ -289,6 +332,7 @@ export const Keypad = memo(function Keypad() {
       glowIO.disconnect();
       dropIO.disconnect();
       cancelAnimationFrame(coverRaf);
+      cancelAnimationFrame(watchRaf);
     };
   }, []);
 
