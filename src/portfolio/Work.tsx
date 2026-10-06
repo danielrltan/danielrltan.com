@@ -5,73 +5,51 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { softReleasePin } from "./softRelease";
-import { refreshScrollOnLoaderLift, requestScrollRefresh } from "./scrollRefresh";
+import { requestScrollRefresh } from "./scrollRefresh";
 import "./sections.css";
 import "./work-timeline.css";
 import { ScrambleText } from "./ScrambleText";
-import { getLenis, scrollToY } from "../scroll";
+import { getLenis } from "../scroll";
 import {
+  DUR,
+  EASE_CSS,
   MQ,
-  SCROLL,
+  ease,
   matches,
-  presetDuration,
   reducedMotion as reducedMotionPref,
+  toMs,
 } from "../motion";
 import { useMedia } from "../useMedia";
 import { useReveal } from "./useReveal";
 import { track } from "../analytics";
+import { mountSeam, oneShot, SEAM, SEAM_MQ } from "../seams";
 
-gsap.registerPlugin(ScrollTrigger);
-
-// ── Tunables (motion spec W3) ───────────────────────────────────────────────
-/** Desktop pin length per role, in viewport heights (3 roles = 1.86vh). */
-const PIN_VH_PER_ROW = 0.62;
+// ── Tunables (seam overhaul W3, .scratch/seams/SPEC.md §5.3) ────────────────
 /**
- * Band hysteresis, in pin progress. Band k opens only once progress is this
- * far past its boundary, so resting near a boundary never flickers rows.
+ * Owner gate G2 (default on): every role starts open on desktop and each header
+ * toggles its own row. The accordion no longer rolls with the scroll (the old
+ * 1.86vh "work-pin" opened one role per band); the spine does, 1:1 with the
+ * wheel. false = the fallback: single-open by click, the current role open at
+ * load, still unpinned.
  */
-const BAND_HYSTERESIS = 0.04;
-/** Pin progress a menu/footer jump lands on: the centre of row 0's band. */
-const JUMP_PROGRESS = 0.17;
-/** Click-jump guard: slack past the glide duration before it force-clears. */
-const JUMP_GUARD_SLACK_S = 0.25;
+const WORK_ALL_OPEN = true;
 /**
- * Click-jump takeover (owner-tunable). The glide is locked against the wheel;
- * only a DELIBERATE scroll takes over. Wheel input this soon after the click is
- * always the click's own tail (trackpad inertia, the end of a flick).
+ * Spine seam range on .portfolio-work (in flow): it starts where the Projects
+ * relay pixel docks on node 0 (SEAM.relayDockAt, the W2 + W3 contract: Work's
+ * top at 28% of the viewport) and is full once Work's bottom reaches 60%.
  */
-const JUMP_GRACE_MS = 150;
-/** After the grace, a wheel delta smaller than this (px) is inertia, not a takeover. */
-const JUMP_TAKEOVER_MIN_DELTA = 8;
+const SPINE_START = `top ${SEAM.relayDockAt * 100}%`;
+const SPINE_END = "bottom 60%";
 /**
- * A same-direction wheel event this soon after the previous one, and no larger
- * than it, continues a decaying inertia run (macOS momentum), not a takeover.
- * Momentum events arrive every ~16 ms, but a busy main thread (the morph and
- * the glide run together) delivers them 40-130 ms apart, so the window is
- * generous: a new deliberate swipe is caught by its GROWING deltas, or by the
- * pause before it, or by a change of direction.
+ * Touch / phone one-shot (spec §5.3, rule §0.8: no scroll-linked writes on
+ * touch). When the header's top crosses ONESHOT_LINE, node 0 drops in from
+ * -DROP_PX (DROP_MS, --ease-out), then the spine draws 0 -> 1 over DRAW_MS on
+ * --ease-in-out, lighting each node as the tip reaches it. 860ms in all.
  */
-const INERTIA_RUN_GAP_MS = 150;
-/**
- * Lenis 1.3 keeps reset() and the isLocked setter private in its typings, but
- * both are stable runtime API (reset() is what its own start()/stop() and
- * lock:true tweens use). Narrow access for the click-jump lock only.
- */
-type LenisLockControl = { isLocked: boolean; reset(): void };
-const lockControl = (l: object | null) => l as unknown as LenisLockControl | null;
-/** Keys that scroll the page natively; pressing one during a glide takes over. */
-const SCROLL_KEYS = new Set([
-  "ArrowUp",
-  "ArrowDown",
-  "PageUp",
-  "PageDown",
-  "Home",
-  "End",
-  " ",
-]);
+const ONESHOT_LINE = 0.7;
+const DROP_PX = 40;
+const DROP_MS = 320;
+const DRAW_MS = toMs(DUR.slow);
 
 interface Stint {
   when: string;
@@ -145,33 +123,21 @@ const STINTS: Stint[] = [
 
 const N = STINTS.length;
 
-/** Plain band for pin progress p (no hysteresis). */
-const plainBand = (p: number) => Math.min(N - 1, Math.max(0, Math.floor(p * N)));
-
-/**
- * Band index with hysteresis, starting from the last open band. Moving DOWN to
- * band k needs p > k/N + H; moving UP to band k needs p < (k+1)/N - H. Loops, so
- * a fast scroll or a cut that crosses several bands lands in one step.
- */
-function bandWithHysteresis(p: number, last: number): number {
-  let k = Math.min(N - 1, Math.max(0, last));
-  while (k < N - 1 && p > (k + 1) / N + BAND_HYSTERESIS) k++;
-  while (k > 0 && p < k / N - BAND_HYSTERESIS) k--;
-  return k;
-}
-
-/** Spine geometry, all in px relative to the .work-acc list's top edge. */
+/** Spine geometry, in px relative to the .work-acc list's top edge. */
 interface SpineGeo {
-  /** Centre of each role's node dot (the dot sits at 50% of .work-acc-node). */
+  /** Centre of each role's node dot. */
   nodes: number[];
-  spineTop: number;
-  spineLen: number;
+  /** Node fractions along the accent fill: node i lights once the fill passes f[i]. f[0] = 0. */
+  f: number[];
 }
 
 /**
- * Read the spine geometry. Only ever called from the ResizeObserver callback,
- * which runs after layout and before paint, so every read here is free (no
- * forced layout) and matches the frame about to be painted.
+ * Read the spine geometry: offsetTop math, so the rows' entrance transform
+ * never skews it. Called only from the spine seam's measure() (onRefreshInit,
+ * the one place it reads layout) and when a phone one-shot plays. It also
+ * anchors the accent fill on node 0's centre (--work-fill-top): the Projects
+ * relay pixel lands on node 0 and the spine draws downward FROM it, so fill 0
+ * is node 0 and every f[i] is the fill fraction at which the tip reaches node i.
  */
 function measureSpine(list: HTMLElement): SpineGeo {
   const nodes: number[] = [];
@@ -179,39 +145,64 @@ function measureSpine(list: HTMLElement): SpineGeo {
     const node = li.querySelector<HTMLElement>(".work-acc-node");
     if (!node) continue;
     // li and .work-acc-node are both position:relative, so each offsetTop is
-    // relative to its parent (the list, then the li).
+    // relative to its parent (the list, then the li); the dot sits at 50%.
     nodes.push(li.offsetTop + node.offsetTop + node.offsetHeight / 2);
   }
-  const after = getComputedStyle(list, "::after");
-  const top = parseFloat(after.top) || 0;
-  const bottom = parseFloat(after.bottom) || 0;
-  return {
-    nodes,
-    spineTop: top,
-    spineLen: Math.max(1, list.offsetHeight - top - bottom),
-  };
+  const top = nodes[0] ?? 0;
+  list.style.setProperty("--work-fill-top", `${top.toFixed(1)}px`);
+  const bottom = parseFloat(getComputedStyle(list, "::after").bottom) || 0;
+  const len = Math.max(1, list.offsetHeight - top - bottom);
+  const f = nodes.map((y, i) => (i === 0 ? 0 : Math.min(1, Math.max(0, (y - top) / len))));
+  return { nodes, f };
+}
+
+/** A node is lit (and past) once the fill has passed it; a full spine lights them all. */
+const litAt = (fill: number, f: number) => fill >= 1 || fill > f;
+
+/**
+ * Rows open at load for the current layout: desktop all open (gate G2), phones
+ * (MQ.compact) all collapsed (the open Broadridge panel alone was ~1236px tall
+ * at 360px wide, so three short tappable rows read better), and the 769-900
+ * band (or G2 off) the current role only.
+ */
+function initialOpen(): boolean[] {
+  if (!matches(MQ.narrow) && WORK_ALL_OPEN) return STINTS.map(() => true);
+  if (matches(MQ.compact)) return STINTS.map(() => false);
+  const first = Math.max(0, STINTS.findIndex((s) => s.current));
+  return STINTS.map((_, i) => i === first);
 }
 
 /**
- * Work: "The Ledger", a pinned, scroll-driven accordion timeline (desktop).
+ * Work: "The Ledger", an accordion timeline in natural page flow (no pin).
  *
  * Every role is a node on a left spine and is always visible as a header
- * (dot-matrix year + sector + company + dates); the open role drops its detail
- * (role, pull metric, bullets). It is a single-open accordion.
+ * (dot-matrix year + sector + company + dates); an open role drops its detail
+ * (role, pull metric, bullets).
  *
- * Desktop (>900px, motion allowed): the section pins for PIN_VH_PER_ROW
- * viewports per role (id "work-pin"). Pin progress picks the open role (with
- * BAND_HYSTERESIS so resting on a boundary never flickers) and drives the
- * accent spine fill, which is tied to the node dots' real geometry. Clicking a
- * role opens it at once and glides the scroll to the centre of its band; the
- * scroll never re-picks a role mid-glide (jumpingRef).
+ * Seam overhaul (owner brief 2026-10-06: "one workstation, one signal, never
+ * stopping"). The 1.86vh "work-pin" that rolled one role open per scroll band,
+ * its click glide with the Lenis wheel lock, and the 100vh frame-fit CSS are
+ * gone. Work scrolls 1:1 and the SPINE carries the motion instead:
+ * - Projects -> Work (seam 3): the Mac's CRT powers off into one orange pixel
+ *   that flies on #seam-layer (W2, macRelay.ts) and lands on node 0
+ *   ([data-seam-target="work-node-0"]) when Work's top reaches
+ *   SEAM.relayDockAt. In that same scroll position node 0 lights and the
+ *   accent spine starts drawing down from it ("work-spine": --work-fill = p,
+ *   node i lit iff p passes it, each metric re-decodes as its node lights on
+ *   the way down). Pure f(p): it rewinds on scroll-up and lands right after a
+ *   cut jump. Desktop with a fine pointer only (SEAM_MQ.fine).
+ * - Touch, phones and the 769-900 band: a one-shot instead (node 0 drops in,
+ *   then the spine draws in 860ms), armed by the header crossing 70% and
+ *   reset on scrolling back above.
+ * - Reduced motion: every panel open, the spine full, every node lit.
  *
- * Narrow (MQ.narrow: <=900px or a phone on its side) and reduced motion: no
- * pin. Narrow is a tap-to-expand stack that keeps the tapped header under the
- * finger (all rows collapsed at first on phones); reduced motion opens every
- * panel for a static, readable résumé.
+ * Rows: desktop starts all open and each header toggles its own row (G2,
+ * WORK_ALL_OPEN). Narrow (MQ.narrow: <=900px or a phone on its side) is a
+ * single-open tap-to-expand stack that keeps the tapped header under the
+ * finger. Any toggle re-measures every trigger after the morph (the page below
+ * moves), which also re-reads the spine geometry.
  *
- * Motion (work-timeline.css): rows rise in once on entry (.is-entered), panels
+ * Motion (work-timeline.css): rows fade in once on entry (.is-entered), panels
  * morph on --t-morph / --ease-in-out with a faster fade-out on close, and
  * bullets stagger in after the panel is half open and fade out on close.
  */
@@ -221,7 +212,8 @@ export function Work() {
   const itemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const headRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  // Live prefers-reduced-motion: an OS toggle tears the pin down / rebuilds it.
+  // Live prefers-reduced-motion: an OS toggle swaps the spine seam for its
+  // static end state (mountSeam) and opens every panel.
   const reducedMotion = useSyncExternalStore(
     reducedMotionPref.subscribe,
     () => reducedMotionPref.value,
@@ -229,22 +221,31 @@ export function Work() {
   );
   const [entered, setEntered] = useState(reducedMotion);
 
-  // Narrow (MQ.narrow: <=900px, or a phone on its side): no pin, tap-to-expand
-  // in place. Live, so a rotation / resize across the cut-over builds or tears
-  // down the pin (the pin effect depends on it).
+  // Narrow (MQ.narrow: <=900px, or a phone on its side): single-open
+  // tap-to-expand in place. Live, so a rotation / resize across the cut-over
+  // re-seeds the open rows for the new layout.
   const isMobile = useMedia(MQ.narrow);
+  /** Desktop multi-open toggles (gate G2). */
+  const multi = WORK_ALL_OPEN && !isMobile && !reducedMotion;
 
-  // Single-open accordion. Desktop: the current role opens first so the pinned
-  // frame never reads as a wall of collapsed rows. Phones (MQ.compact) start
-  // all collapsed: the open Broadridge panel alone was ~1236px tall at 360px
-  // wide, so three short tappable rows read better. null = all collapsed.
-  const firstOpen = Math.max(
-    0,
-    STINTS.findIndex((s) => s.current),
-  );
-  const [openIndex, setOpenIndex] = useState<number | null>(() =>
-    matches(MQ.compact) ? null : firstOpen,
-  );
+  const [open, setOpen] = useState<boolean[]>(initialOpen);
+  const layoutRef = useRef(isMobile);
+
+  // Re-measure every trigger once a row's morph has settled: the rows below
+  // and every later section moved. One coalesced refresh per burst of taps.
+  const morphTimerRef = useRef(0);
+  const refreshAfterMorph = () => {
+    window.clearTimeout(morphTimerRef.current);
+    morphTimerRef.current = window.setTimeout(requestScrollRefresh, toMs(DUR.morph) + 40);
+  };
+  useEffect(() => () => window.clearTimeout(morphTimerRef.current), []);
+
+  useEffect(() => {
+    if (layoutRef.current === isMobile) return;
+    layoutRef.current = isMobile;
+    setOpen(initialOpen());
+    refreshAfterMorph();
+  }, [isMobile]);
 
   // Narrow: the header and each row rise in once as they enter (shared
   // [data-reveal] primitive, 400ms / 12px on stacked layouts). Desktop keeps
@@ -272,192 +273,185 @@ export function Work() {
     return () => io.disconnect();
   }, [reducedMotion]);
 
-  // ── Desktop pinned timeline ───────────────────────────────────────────────
-  const stRef = useRef<ScrollTrigger | null>(null);
-  /** The pin's open band (hysteresis state). */
-  const lastIdxRef = useRef(firstOpen);
-  /** True while a click-jump glides; onUpdate then leaves the open row alone. */
-  const jumpingRef = useRef(false);
-  const clearJumpRef = useRef<((resync: boolean) => void) | null>(null);
-  const progressRef = useRef(0);
-  const geoRef = useRef<SpineGeo | null>(null);
-  const fillRef = useRef(-1);
-
-  useEffect(() => {
-    if (isMobile || reducedMotion) return;
-    const el = sectionRef.current;
-    const list = listRef.current;
-    if (!el || !list) return;
-
-    // Spine fill: the tip sits on the node dot of the plain band at the band's
-    // start and reaches the next node (or the spine's end) at the band's end.
-    // Scroll-linked, so there is no CSS transition on it. Uses the plain band
-    // rather than the hysteresis band so the tip is continuous in scroll even
-    // mid-jump.
-    // DELIBERATE SPEC DEVIATION (W3.11 says "measure after transitionend"):
-    // the geometry is live (ResizeObserver below), so while the accordion
-    // morphs the tip rides the node dots as they move, instead of jumping to
-    // the new layout at transitionend. The tip can therefore ease back a little
-    // during a 420 ms morph while the scroll holds still or moves forward.
-    // Written on the list (.work-acc), whose ::after reads it, so each write
-    // restyles only the accordion subtree.
-    const renderFill = () => {
-      const g = geoRef.current;
-      if (!g || g.nodes.length === 0) return;
-      const p = progressRef.current;
-      const b = Math.min(plainBand(p), g.nodes.length - 1);
-      const local = Math.min(1, Math.max(0, p * N - b));
-      const from = g.nodes[b];
-      const to = b + 1 < g.nodes.length ? g.nodes[b + 1] : g.spineTop + g.spineLen;
-      const tip = from + local * (to - from);
-      const fill = Math.min(1, Math.max(0, (tip - g.spineTop) / g.spineLen));
-      if (Math.abs(fill - fillRef.current) < 1e-4) return;
-      fillRef.current = fill;
-      list.style.setProperty("--work-fill", fill.toFixed(4));
-    };
-
-    const applyProgress = (p: number) => {
-      progressRef.current = p;
-      renderFill();
-      if (jumpingRef.current) return;
-      const k = bandWithHysteresis(p, lastIdxRef.current);
-      if (k !== lastIdxRef.current) {
-        lastIdxRef.current = k;
-        setOpenIndex(k);
-      }
-    };
-
-    const st = ScrollTrigger.create({
-      id: "work-pin",
-      trigger: el,
-      start: "top top",
-      end: () => "+=" + Math.round(N * window.innerHeight * PIN_VH_PER_ROW),
-      pin: true,
-      pinSpacing: true,
-      invalidateOnRefresh: true,
-      onUpdate: (self) => applyProgress(self.progress),
-      onRefresh: (self) => applyProgress(self.progress),
+  // ── Spine: lit nodes ──────────────────────────────────────────────────────
+  // Lit state is written by the spine seam / one-shot as classes on each row
+  // (.is-lit and .is-past; the Projects relay's joint check reads node 0's
+  // row). It lives in a ref, never React state (no re-render per scroll
+  // frame), and the row's JSX className reads the same ref, so a re-render (a
+  // toggle, a decode) can never wipe a lit row.
+  const litRef = useRef<boolean[]>(STINTS.map(() => false));
+  const paintLit = () => {
+    itemRefs.current.forEach((li, i) => {
+      if (!li) return;
+      const on = !!litRef.current[i];
+      li.classList.toggle("is-lit", on);
+      li.classList.toggle("is-past", on);
     });
-    // Soft release: the section eases into scroll speed instead of snapping
-    // off the pin (softRelease.ts).
-    const stopSoftRelease = softReleasePin(st);
-    stRef.current = st;
-    applyProgress(st.progress);
-
-    // Geometry for the fill. The observer fires on every frame of an accordion
-    // morph (the panels resize) and on real resizes / font swaps, always after
-    // layout; the final delivery is the settled layout. onUpdate never reads
-    // layout.
-    const ro = new ResizeObserver(() => {
-      geoRef.current = measureSpine(list);
-      fillRef.current = -1;
-      renderFill();
-    });
-    ro.observe(list);
-    list.querySelectorAll(".work-acc-panel").forEach((p) => ro.observe(p));
-
-    const stopLoaderWatch = refreshScrollOnLoaderLift();
-    return () => {
-      stopLoaderWatch();
-      ro.disconnect();
-      clearJumpRef.current?.(false);
-      stopSoftRelease();
-      st.kill();
-      stRef.current = null;
-      geoRef.current = null;
-      fillRef.current = -1;
-      list.style.removeProperty("--work-fill");
-      // A live reduced-motion toggle removes the pin spacer (1.86vh of page):
-      // re-measure every downstream trigger. Rebuilding refreshes through
-      // refreshScrollOnLoaderLift(); both are coalesced into one rAF refresh.
-      requestScrollRefresh();
-    };
-  }, [isMobile, reducedMotion]);
-
-  // Click-jump (desktop pin): open the row NOW, then glide to its band centre.
-  // jumpingRef keeps onUpdate from re-picking rows the glide passes through.
-  //
-  // The glide is LOCKED against the wheel (Lenis lock:true). Unlocked, the
-  // first wheel event of a trackpad inertia tail replaced the glide with a
-  // few-px user scroll, and the resync then reverted the clicked row to the
-  // scroll band's row ~150 ms later (an open-then-revert double morph). Now:
-  //   - wheel within JUMP_GRACE_MS of the click is always ignored (the tail);
-  //   - after that, tiny deltas and decaying same-direction runs are inertia;
-  //   - anything else, touchstart, or a scroll key is a deliberate TAKEOVER:
-  //     the glide is cancelled (lenis.reset()) and the user scrolls from here.
-  // It clears on arrival or supersede (the promise), on takeover, or after the
-  // glide duration + slack; the hysteresis state is then seeded to the clicked
-  // row and re-synced to where we are.
-  const startJump = (i: number, st: ScrollTrigger) => {
-    clearJumpRef.current?.(false);
-    const lenis = getLenis();
-    const lock = lockControl(lenis);
-    const y = st.start + ((i + 0.5) / N) * (st.end - st.start);
-    const from = lenis?.animatedScroll ?? window.scrollY;
-    const dur = presetDuration(y - from, window.innerHeight || 1, SCROLL.glide);
-    const t0 = performance.now();
-    let lastWheelAt = -Infinity;
-    let lastDelta = 0;
-    let cleared = false;
-    // takeover=true: the user's input already owns the scroll (the glide was
-    // reset). Otherwise (arrival, supersede, timeout, teardown) release our
-    // wheel lock: a superseding tween without lock leaves isLocked set.
-    const clear = (resync: boolean, takeover = false) => {
-      if (cleared) return;
-      cleared = true;
-      window.clearTimeout(timer);
-      offVirtual();
-      window.removeEventListener("touchstart", onTouch);
-      window.removeEventListener("keydown", onKey);
-      if (clearJumpRef.current === clear) clearJumpRef.current = null;
-      if (!takeover && lock?.isLocked) lock.isLocked = false;
-      jumpingRef.current = false;
-      lastIdxRef.current = i;
-      if (!resync || stRef.current !== st) return;
-      const k = bandWithHysteresis(st.progress, i);
-      if (k !== i) {
-        lastIdxRef.current = k;
-        setOpenIndex(k);
-      }
-    };
-    const settle = () => clear(true);
-    const takeOver = () => {
-      // reset() unlocks and stops the glide; inside the virtual-scroll handler
-      // Lenis then processes this same event, so the first delta scrolls.
-      lock?.reset();
-      clear(true, true);
-    };
-    // Lenis emits virtual-scroll BEFORE its lock check, for wheel and touch.
-    const onVirtual = ({ deltaY, event }: { deltaY: number; event: Event }) => {
-      if (event.type !== "wheel" || (event as WheelEvent).ctrlKey || deltaY === 0) return;
-      const now = performance.now();
-      const mag = Math.abs(deltaY);
-      const decaying =
-        now - lastWheelAt < INERTIA_RUN_GAP_MS &&
-        Math.sign(deltaY) === Math.sign(lastDelta) &&
-        mag <= Math.abs(lastDelta);
-      lastWheelAt = now;
-      lastDelta = deltaY;
-      if (now - t0 < JUMP_GRACE_MS || mag < JUMP_TAKEOVER_MIN_DELTA || decaying) return;
-      takeOver();
-    };
-    const onTouch = () => takeOver();
-    const onKey = (e: KeyboardEvent) => {
-      if (!SCROLL_KEYS.has(e.key)) return;
-      // Space on a button / field activates it rather than scrolling.
-      const t = e.target as HTMLElement | null;
-      if (e.key === " " && t?.closest("button, input, textarea, select, [contenteditable]")) return;
-      takeOver();
-    };
-    const offVirtual = lenis ? lenis.on("virtual-scroll", onVirtual) : () => {};
-    const timer = window.setTimeout(settle, (dur + JUMP_GUARD_SLACK_S) * 1000);
-    window.addEventListener("touchstart", onTouch, { passive: true });
-    window.addEventListener("keydown", onKey);
-    clearJumpRef.current = clear;
-    jumpingRef.current = true;
-    lastIdxRef.current = i;
-    void scrollToY(y, { preset: "glide", lock: true, onComplete: settle }).then(settle);
   };
+  const setLit = (on: (i: number) => boolean) => {
+    let changed = false;
+    for (let i = 0; i < N; i++) {
+      const v = on(i);
+      if (litRef.current[i] !== v) {
+        litRef.current[i] = v;
+        changed = true;
+      }
+    }
+    if (changed) paintLit();
+  };
+
+  // Metric decode keys: bumping one remounts that row's ScrambleText, which
+  // decodes once it is on screen. Driven by the spine seam's `cross` one-shots
+  // (down only, silent on cut jumps), so a metric re-decodes as its node
+  // lights, the signal arriving.
+  const [decodes, setDecodes] = useState<number[]>(() => STINTS.map(() => 0));
+
+  // ── The spine seam ("work-spine") ─────────────────────────────────────────
+  useEffect(() => {
+    const section = sectionRef.current;
+    const list = listRef.current;
+    if (!section || !list) return;
+    let geo: SpineGeo | null = null;
+    const setFill = (v: number | null) => {
+      if (v == null) list.style.removeProperty("--work-fill");
+      else list.style.setProperty("--work-fill", v.toFixed(4));
+    };
+    const lightTo = (fill: number) => setLit((i) => !!geo && litAt(fill, geo.f[i] ?? 1));
+
+    // Down-only decode per node. mountSeam keeps these objects, so measure()
+    // moves each `at` onto its node's measured fraction in place.
+    const cross = STINTS.map((_, i) => ({
+      at: i === 0 ? 1e-6 : i / N,
+      down: () => setDecodes((d) => d.map((k, j) => (j === i ? k + 1 : k))),
+    }));
+
+    // Touch / phone / 769-900: the one-shot drop + draw (time-based, so it
+    // never trails native threaded scroll).
+    const fallback = () => {
+      const head = section.querySelector(".work-ledger-head");
+      if (!head) return () => {};
+      const dot0 = list.querySelector<HTMLElement>('[data-seam-target="work-node-0"]');
+      // Mode classes go on the list: React owns the section's className and
+      // rewrites it on .is-entered, which would drop them.
+      list.classList.add("is-spine-oneshot");
+      let fill = 0;
+      let raf = 0;
+      let timer = 0;
+      let drop: Animation | null = null;
+      const stop = () => {
+        cancelAnimationFrame(raf);
+        window.clearTimeout(timer);
+        raf = 0;
+        timer = 0;
+        drop?.cancel();
+        drop = null;
+      };
+      // Time-based tween of the fill (one writer, no CSS transition on it).
+      const draw = (to: 0 | 1, done?: () => void) => {
+        const from = fill;
+        const dur = DRAW_MS * Math.abs(to - from);
+        const t0 = performance.now();
+        const tick = (now: number) => {
+          const k = dur > 0 ? Math.min(1, (now - t0) / dur) : 1;
+          fill = from + (to - from) * ease.inOut(k);
+          setFill(fill);
+          lightTo(fill);
+          if (k < 1) raf = requestAnimationFrame(tick);
+          else {
+            raf = 0;
+            done?.();
+          }
+        };
+        raf = requestAnimationFrame(tick);
+      };
+      const play = (dir: 1 | -1): Animation | void => {
+        stop();
+        geo = measureSpine(list);
+        if (dir === 1) {
+          list.classList.add("is-spine-drawn");
+          // Mid-rewind: node 0 is still in place, just draw back down.
+          if (fill > 0) return draw(1);
+          drop =
+            dot0?.animate(
+              [
+                { translate: `0 ${-DROP_PX}px`, opacity: 0 },
+                { translate: "0 0", opacity: 1 },
+              ],
+              { duration: DROP_MS, easing: EASE_CSS.out },
+            ) ?? null;
+          timer = window.setTimeout(() => draw(1), DROP_MS);
+          return drop ?? undefined;
+        }
+        // Rewind: the spine retracts into node 0, then node 0 lifts away.
+        draw(0, () => {
+          drop =
+            dot0?.animate(
+              [
+                { translate: "0 0", opacity: 1 },
+                { translate: `0 ${-DROP_PX}px`, opacity: 0 },
+              ],
+              { duration: DROP_MS, easing: EASE_CSS.in, fill: "forwards" },
+            ) ?? null;
+          if (!drop) list.classList.remove("is-spine-drawn");
+          else
+            drop.onfinish = () => {
+              list.classList.remove("is-spine-drawn");
+              drop?.cancel();
+              drop = null;
+            };
+        });
+      };
+      // Cut jumps and a mount below the line land on the end state, unanimated.
+      const snap = (dir: 1 | -1) => {
+        stop();
+        geo = measureSpine(list);
+        fill = dir === 1 ? 1 : 0;
+        list.classList.toggle("is-spine-drawn", dir === 1);
+        setFill(fill);
+        lightTo(fill);
+      };
+      const undo = oneShot({ el: head, line: ONESHOT_LINE, edge: "top", play, snap });
+      return () => {
+        undo();
+        stop();
+        list.classList.remove("is-spine-oneshot", "is-spine-drawn");
+      };
+    };
+
+    return mountSeam({
+      id: "work-spine",
+      trigger: () => section,
+      start: SPINE_START,
+      end: SPINE_END,
+      when: SEAM_MQ.fine,
+      measure: () => {
+        geo = measureSpine(list);
+        geo.f.forEach((f, i) => {
+          if (cross[i]) cross[i].at = i === 0 ? 1e-6 : Math.max(1e-6, f);
+        });
+      },
+      render: (p) => {
+        setFill(p);
+        lightTo(p);
+      },
+      cross,
+      final: () => {
+        geo = null;
+        list.style.removeProperty("--work-fill-top");
+        setFill(1);
+        setLit(() => true);
+      },
+      reset: () => {
+        list.style.removeProperty("--work-fill-top");
+        setFill(null);
+        setLit(() => false);
+      },
+      fallback,
+    });
+    // Mounted once: the seam re-gates itself on MQ / reduced-motion flips,
+    // and row toggles reach it through the refresh (measure), never a remount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Mobile tap anchoring ──────────────────────────────────────────────────
   // Opening a row collapses the one above it, which would throw the tapped
@@ -476,7 +470,7 @@ export function Work() {
   useLayoutEffect(() => {
     const a = anchorRef.current;
     anchorRef.current = null;
-    if (!a || a.i !== openIndex) return;
+    if (!a || !open[a.i]) return;
     const head = headRefs.current[a.i];
     if (!head) return;
     // A previous panel BELOW the tapped row can't move its header: let it
@@ -490,31 +484,33 @@ export function Work() {
       else window.scrollBy(0, d);
     }
     if (prevItem) requestAnimationFrame(() => prevItem.classList.remove("no-anim"));
-  }, [openIndex]);
+  }, [open]);
 
   const handleActivate = (i: number) => {
-    if (isMobile || reducedMotion) {
-      if (i === openIndex) return;
-      const head = headRefs.current[i];
-      if (isMobile && !reducedMotion && head) {
-        anchorRef.current = { i, prev: openIndex, top: head.getBoundingClientRect().top };
-      }
-      setOpenIndex(i);
+    // Reduced motion: every panel is open and static.
+    if (reducedMotion) return;
+    if (multi) {
+      setOpen((o) => o.map((v, k) => (k === i ? !v : v)));
+      refreshAfterMorph();
       return;
     }
-    const st = stRef.current;
-    setOpenIndex(i);
-    if (st) startJump(i, st);
+    if (open[i]) return;
+    const head = headRefs.current[i];
+    if (isMobile && head) {
+      const prev = open.findIndex(Boolean);
+      anchorRef.current = { i, prev: prev < 0 ? null : prev, top: head.getBoundingClientRect().top };
+    }
+    setOpen(STINTS.map((_, k) => k === i));
+    refreshAfterMorph();
   };
 
-  const isOpen = (i: number) => reducedMotion || i === openIndex;
+  const isOpen = (i: number) => reducedMotion || !!open[i];
 
   return (
     <section
       ref={sectionRef}
       aria-label="Work experience timeline"
-      data-jump-progress={JUMP_PROGRESS}
-      className={`portfolio-section portfolio-work${entered ? " is-entered" : ""}${reducedMotion ? " is-reduced-motion" : ""}`}
+      className={`portfolio-section portfolio-work${entered ? " is-entered" : ""}${multi ? " is-multi" : ""}${reducedMotion ? " is-reduced-motion" : ""}`}
     >
       <div className="work-ledger">
         <header className="work-ledger-head" data-reveal={isMobile ? "" : undefined}>
@@ -558,7 +554,9 @@ export function Work() {
                   itemRefs.current[i] = node;
                 }}
                 style={{ ["--row-i" as string]: i }}
-                className={`work-acc-item${open ? " is-open" : ""}${s.current ? " is-current" : ""}${openIndex != null && i < openIndex ? " is-past" : ""}`}
+                // Lit state comes from the spine (litRef), so a re-render
+                // writes the same classes the seam last painted.
+                className={`work-acc-item${open ? " is-open" : ""}${s.current ? " is-current" : ""}${litRef.current[i] ? " is-lit is-past" : ""}`}
               >
                 <button
                   ref={(node) => {
@@ -577,6 +575,12 @@ export function Work() {
                   }}
                 >
                   <span className="work-acc-node" aria-hidden>
+                    {/* The node dot: a real element so the Projects relay
+                        (W2) can measure where its pixel lands. */}
+                    <span
+                      className="work-acc-dot"
+                      data-seam-target={i === 0 ? "work-node-0" : undefined}
+                    />
                     <span className="work-acc-year">{s.year}</span>
                   </span>
                   <span className="work-acc-headline">
@@ -628,7 +632,15 @@ export function Work() {
                       {s.pull.metric && (
                         <div className="work-acc-pull">
                           <div className="work-acc-pull-metric">
-                            {s.pull.metric}
+                            {/* Plain until the spine first lights this node
+                                (desktop), then decodes on each lit-going-down
+                                crossing; phones and reduced motion keep the
+                                plain text. */}
+                            <ScrambleText
+                              key={decodes[i]}
+                              text={s.pull.metric}
+                              play={decodes[i] > 0}
+                            />
                           </div>
                           {s.pull.caption && (
                             <p className="work-acc-pull-caption">

@@ -1,44 +1,47 @@
-/* Work: "The Ledger" — PINNED SCROLL-DRIVEN ACCORDION TIMELINE
+/* Work: "The Ledger" — ACCORDION TIMELINE IN NATURAL FLOW
    -------------------------------------------------------------
    Every role is a node on a left spine and is always visible as a header
-   (dot-matrix year + sector + company + dates). The section pins (desktop,
-   id "work-pin", 0.62vh per role); the active node drops open to reveal its
-   detail while the rest stay collapsed, so you see the whole timeline and the
-   scroll rolls through it. Click a header to open it and glide to its band.
+   (dot-matrix year + sector + company + dates); an open role drops its detail.
+   Seam overhaul (owner 2026-10-06, spec .scratch/seams/SPEC.md §5.3): no pin
+   and no 100vh frame. The section scrolls 1:1 at its natural height, every
+   role starts open on desktop (gate G2, Work.tsx WORK_ALL_OPEN) and each header
+   toggles its own row; phones start collapsed, single-open. The Projects relay
+   pixel lands on node 0 and the accent spine draws down from it with the
+   scroll ("work-spine"), lighting each node it passes (.is-lit).
 
    Motion (tokens from src/index.css):
-     entrance   rows rise --reveal-lift over --reveal-dur, staggered by
-                --stagger (cap --stagger-max); spine draws scaleY 0->1 on
+     entrance   rows fade in over --reveal-dur, staggered by --stagger (cap
+                --stagger-max); the hairline spine draws scaleY 0->1 on
                 --t-slow. Hook: .portfolio-work.is-entered (one-shot IO).
      morph      grid-template-rows on --t-morph / --ease-in-out both ways;
                 opening fades in on --t-base (80ms late), closing fades out
                 on --exit-dur / --exit-ease so it clears before the height.
      bullets    stagger in from 180ms (panel half open); fade out on close.
-     fill       --work-fill is written per scroll frame by Work.tsx, so it
-                has NO transition (one smoother per signal: Lenis).
+     fill       --work-fill is written per scroll frame by the spine seam
+                (or per frame of the phone one-shot's tween), so it has NO
+                transition (one smoother per signal: Lenis).
+     nodes      .is-lit (a class toggle) fills the dot on --t-base.
 
    Layout:
-     .portfolio-work     → pinned 100vh frame
+     .portfolio-work     → in-flow section, natural height
        .work-ledger      → max-width frame: header row + accordion
-         .work-ledger-head → "03 / WORK" tag + giant EXPERIENCE wordmark
+         .work-ledger-head → "03" tag + giant EXPERIENCE wordmark
          .work-resume      → résumé CTA, right of the wordmark
          .work-acc         → the accordion (left spine + nodes)
-           .work-acc-item  → one role
-             .work-acc-head  → button: node/year + company + dates + chevron
+           .work-acc-item  → one role (.is-open, .is-lit)
+             .work-acc-head  → button: node dot/year + company + dates + chevron
              .work-acc-panel → grid-rows 0fr↔1fr drop-open detail
                .work-acc-panel-inner → clipped grid item (no vertical padding)
                  .work-acc-panel-body → content + bottom padding
-   Mobile + reduced-motion: no pin; a static tap-to-expand stack.
+   Mobile: a single-open tap-to-expand stack. Reduced motion: every panel
+   open, the spine full, every node lit.
 */
 
 .portfolio-work {
   position: relative;
-  /* A full-viewport editorial frame. Desktop pins it, and GSAP locks the
-     pinned height at refresh, so the content (header + every row + the
-     tallest open panel) must fit 100vh: see the max-height blocks below.
-     Mobile and reduced motion flow at content height. overflow visible so an
-     expanded lower row is never clipped. */
-  min-height: 100vh;
+  /* Natural height in normal flow (seam overhaul: the pin and its 100vh
+     frame are gone, so nothing caps the type or the open panels any more).
+     overflow visible so an expanded lower row is never clipped. */
   height: auto;
   overflow: visible;
   display: block;
@@ -55,13 +58,12 @@
 
 .work-ledger {
   position: relative;
-  min-height: 100vh;
   height: auto;
   width: 100%;
   max-width: 1280px;
   margin: 0 auto;
-  /* Roomier vertical padding now that the section is natural-height, not crammed
-     into a pinned 100vh frame — it reads as a calm editorial page. */
+  /* Roomy vertical padding: the section is natural-height, so it reads as a
+     calm editorial page. */
   padding: clamp(40px, 7vh, 96px) clamp(28px, 6vw, 96px) clamp(48px, 8vh, 96px);
   box-sizing: border-box;
   display: flex;
@@ -113,13 +115,10 @@
   line-height: 1;
 }
 /* Specificity MUST beat the shared `.portfolio-section h2` (0,1,1) or it forces
-   --fs-h1 (~187px) and the title starves the pinned frame. (.portfolio-section
-   footgun.) */
+   --fs-h1 (~187px). (.portfolio-section footgun.) */
 .portfolio-work .work-ledger-title {
   font-family: var(--font-dot);
   font-weight: 700;
-  /* Giant, but sized so the wordmark + the 3-row accordion + the open panel all
-     fit the pinned 100vh frame without clipping the last node. */
   font-size: clamp(44px, 7.5vw, 116px);
   line-height: 0.9;
   letter-spacing: 0.01em;
@@ -129,129 +128,6 @@
   min-width: 0;
   overflow-wrap: break-word;
 }
-/* Desktop frame: the bottom padding only counts once the content outgrows the
-   100vh minimum, so trimming it is visually free and keeps 1920×1080 inside
-   the pinned frame with room to spare (it fit by 1px at 8vh). */
-/* Desktop blocks carry min-height 501: a phone on its side (≤500 tall) gets
-   the stacked narrow layout (MQ.narrow) instead. */
-@media (min-width: 901px) and (min-height: 501px) {
-  .work-ledger {
-    padding-bottom: clamp(32px, 5vh, 72px);
-  }
-}
-/* Frame fit (desktop ≤1100 tall: 1440×900, 1536×864, and the common
-   1920×~970 / 1512×982 browser viewports): the pinned frame is locked to its
-   refresh height, so header + three rows + the tallest open panel (row 0)
-   must fit 100vh or the last row sits below the fold for the whole pin (it
-   measured 1015px at 900). Tightens the frame padding, and caps the wordmark,
-   company and metric by the viewport HEIGHT too (min(vw, vh)) so wide-short
-   windows fit; the rows keep their roomy padding (owner request), and
-   collapsed rows no longer carry a 20px residual. The spec's 920px bound was
-   raised to 1100 because 920-1000px-tall viewports overflowed by 25-36px
-   (OWNER REVIEW). The wordmark keeps the base 116px cap and is limited by
-   10.5vh alone, so tall screens barely change (1920×1080: 113px, was 116)
-   while 900-tall ones come down (1440×900: 94.5px).
-   The ≤800 block below tightens further and wins where both match. */
-@media (max-height: 1100px) and (min-width: 901px) and (min-height: 501px) {
-  .work-ledger {
-    gap: clamp(12px, 2vh, 24px);
-    padding-top: clamp(24px, 3.4vh, 40px);
-    padding-bottom: clamp(20px, 3vh, 36px);
-  }
-  .work-ledger-head {
-    padding-bottom: clamp(10px, 1.4vh, 18px);
-  }
-  .portfolio-work .work-ledger-title {
-    font-size: clamp(40px, min(7.5vw, 10.5vh), 116px);
-  }
-  .portfolio-work .work-acc-company {
-    font-size: clamp(26px, min(3.4vw, 5.6vh), 50px);
-  }
-  .portfolio-work .work-acc-pull-metric {
-    font-size: clamp(28px, min(3.4vw, 5.6vh), 52px);
-  }
-}
-/* Short desktop (≈768): the dot-matrix title renders ~2x its font-size, so on a
-   short pinned frame everything has to come down a tier or the last open node
-   clips. Trims the title, company, metric, gaps + paddings together. The type
-   caps scale with the HEIGHT too (min(vw, vh)) so a wide-but-short window
-   (1440×720) still fits the frame. Row/company rules carry .portfolio-work:
-   the base rules come later in this file, so at equal specificity these
-   overrides were silently dead. */
-@media (max-height: 800px) and (min-width: 901px) and (min-height: 501px) {
-  .work-ledger {
-    gap: clamp(6px, 1vh, 12px);
-    padding-top: clamp(16px, 2.4vh, 28px);
-    padding-bottom: clamp(12px, 2vh, 22px);
-  }
-  .work-ledger-head {
-    padding-bottom: clamp(8px, 1.1vh, 13px);
-  }
-  .portfolio-work .work-ledger-title {
-    font-size: clamp(34px, min(4.5vw, 7.6vh), 64px);
-    margin-top: 0;
-  }
-  .work-ledger-head-text {
-    gap: var(--hdr-num-gap-mobile);
-  }
-  .portfolio-work .work-acc-company {
-    font-size: clamp(22px, min(3.4vw, 5.6vh), 50px);
-  }
-  .portfolio-work .work-acc-pull-metric {
-    font-size: clamp(26px, min(3.4vw, 5.6vh), 52px);
-  }
-  .portfolio-work .work-acc-panel-body {
-    gap: clamp(8px, 1.2vh, 14px);
-    padding-bottom: clamp(10px, 1.6vh, 18px);
-  }
-  .portfolio-work .work-acc-bullets {
-    gap: clamp(4px, 0.6vh, 8px);
-  }
-}
-/* HUD clearance. The pinned frame holds the header at the top of the viewport
-   for the whole pin, and the fixed HUD brand tile sits over the top-left corner
-   at x 22-122, y 20-74 (RoomHUD TOP_STRIP_TOP 20 + TOP_STRIP_CHIP_H 54). The
-   header's left edge is max(0, (100vw - 1280px) / 2) + clamp(28px, 6vw, 96px).
-   That edge only clears the tile from about 1382px wide, so below that width
-   the "03" tag, the "03 / 07 · WORK" eyebrow and the top of the wordmark sat
-   under the tile (1280x720: header at y17). In that width band the frame's top
-   padding is raised to 84px (tile bottom 74 + 10px gap). On wider screens the
-   tile sits in the side margin and costs no height. Placed after the height
-   blocks so it wins at equal specificity. */
-@media (min-width: 901px) and (max-width: 1380px) and (min-height: 501px) {
-  .work-ledger {
-    padding-top: max(84px, clamp(40px, 7vh, 96px));
-  }
-}
-/* Wider screens: the logo tile sits in the side margin, but the frame's
-   24-40px top padding left the "03" tag crowding the window's top edge
-   (owner 2026-10-05: congested section numbers). 56px is as much as the
-   pinned frame can spare: the last row still fits at 1440x720 and 1536x864. */
-@media (min-width: 1381px) and (min-height: 501px) {
-  .work-ledger {
-    padding-top: 56px;
-  }
-}
-/* Short frames in that band also get back the ~65px the clearance adds, so the
-   last row stays above the fold for the whole pin (1280x720: last row at 661
-   of 720 before the clearance). The wordmark shrinks a step and the header's
-   internal gaps tighten. The rows and the open panel stay as they were. */
-@media (min-width: 901px) and (max-width: 1380px) and (min-height: 501px) and (max-height: 800px) {
-  .work-ledger {
-    padding-bottom: clamp(6px, 1vh, 12px);
-  }
-  .work-ledger-head {
-    padding-bottom: clamp(6px, 0.9vh, 10px);
-  }
-  .work-ledger-head-text {
-    gap: var(--hdr-num-gap-mobile);
-  }
-  .portfolio-work .work-ledger-title {
-    font-size: clamp(34px, min(4.5vw, 6.2vh), 64px);
-    margin-top: 0;
-  }
-}
-
 /* ----- Résumé CTA (top-right of the frame) --------------------- */
 
 .portfolio-work .work-resume {
@@ -352,17 +228,18 @@
   transform: translateX(-50%) scaleY(1);
   transition: transform var(--t-slow) var(--ease-out);
 }
-/* The spine FILL: an accent line whose tip rides the node dots with the pin
-   progress (--work-fill 0..1 of this element's height, written per scroll
-   frame by the desktop pin in Work.tsx from measured node geometry), so the
-   timeline visibly "completes" as you traverse it. Scroll-linked, so NO
-   transition on transform. Mobile / reduced motion = --work-fill unset =
-   scaleY(0). Hidden until the entrance so it never precedes the spine. */
+/* The spine FILL: the signal arriving. An accent line drawn down from node 0
+   (--work-fill-top, node 0's centre, measured by Work.tsx) as --work-fill goes
+   0..1: the "work-spine" seam writes it 1:1 with the scroll from the moment
+   the Projects relay pixel lands on node 0, and the phone one-shot tweens it
+   once. Written per frame, so NO transition on transform. Reduced motion
+   writes 1 (full spine). Hidden until the entrance so it never precedes the
+   hairline. */
 .work-acc::after {
   content: "";
   position: absolute;
   left: var(--spine-x);
-  top: clamp(22px, 3vh, 34px);
+  top: var(--work-fill-top, clamp(22px, 3vh, 34px));
   bottom: clamp(22px, 3vh, 34px);
   width: 2px;
   transform: translateX(-50%) scaleY(var(--work-fill, 0));
@@ -380,16 +257,17 @@
   position: relative;
   border-top: 1px solid var(--ink-hairline);
 }
-/* Entrance: rows rise in once, staggered (--row-i is set per row in
+/* Entrance: rows fade in once, staggered (--row-i is set per row in
    Work.tsx). Hidden state only BEFORE .is-entered so a JS failure or reduced
-   motion (entered from mount) never leaves rows invisible. */
+   motion (entered from mount) never leaves rows invisible. Opacity only (no
+   --reveal-lift rise): the Projects relay measures node 0's rect at refresh,
+   before the entrance, and flies its pixel onto it, so the row must already
+   sit where it will land. */
 .portfolio-work:not(.is-entered) .work-acc-item {
   opacity: 0;
-  transform: translateY(var(--reveal-lift));
 }
 .portfolio-work.is-entered .work-acc-item {
-  transition: opacity var(--reveal-dur) var(--reveal-ease),
-    transform var(--reveal-dur) var(--reveal-ease);
+  transition: opacity var(--reveal-dur) var(--reveal-ease);
   transition-delay: calc(min(var(--row-i, 0), var(--stagger-max)) * var(--stagger));
 }
 /* The header already carries a bottom rule; the first row's top border doubled
@@ -445,14 +323,15 @@
 .work-acc-head:active {
   transform: scale(0.994);
 }
-/* Already-open row: it IS the active view, not a fresh click target. Make its
-   header INERT to the pointer so it stops showing the hover band AND the custom
-   cursor's "clickable" spark once open (user — note the site hides the OS cursor
-   with `cursor:none` + a custom cursor, so `cursor:default` alone does nothing;
-   pointer-events is the real lever). Keyboard focus is unaffected and Enter is a
-   no-op on the open row anyway; you switch by clicking another row. The open
-   row's accent year/company + the expanded panel already mark it as active. */
-.work-acc-item.is-open .work-acc-head {
+/* Single-open (phones, the 769-900 band, or gate G2 off): the open row IS the
+   active view, not a fresh click target. Make its header INERT to the pointer
+   so it stops showing the hover band AND the custom cursor's "clickable" spark
+   once open (user — note the site hides the OS cursor with `cursor:none` + a
+   custom cursor, so `cursor:default` alone does nothing; pointer-events is the
+   real lever). Keyboard focus is unaffected and Enter is a no-op on the open
+   row anyway. Desktop multi-open (.is-multi) keeps every header live: clicking
+   an open row collapses it. */
+.portfolio-work:not(.is-multi) .work-acc-item.is-open .work-acc-head {
   pointer-events: none;
 }
 .work-acc-head:focus-visible {
@@ -468,8 +347,9 @@
   padding-left: 26px; /* clears the spine + dot */
   min-height: 1.2em;
 }
-.work-acc-node::before {
-  content: "";
+/* The node dot is a real element (.work-acc-dot, not a pseudo) so the Projects
+   relay can measure node 0 ([data-seam-target="work-node-0"]). */
+.work-acc-dot {
   position: absolute;
   left: var(--spine-x);
   top: 50%;
@@ -481,11 +361,18 @@
   transition: box-shadow var(--t-base) var(--ease-out),
     background var(--t-base) var(--ease-out);
 }
-/* Reached nodes (active + past) fill accent — the spine "completes" downward. */
-.work-acc-item.is-open .work-acc-node::before,
-.work-acc-item.is-past .work-acc-node::before {
+/* Reached nodes fill accent as the spine's tip passes them (.is-lit, written
+   by the spine seam / phone one-shot, a class toggle): the timeline
+   "completes" downward. Every row is open on desktop, so open no longer
+   lights a node. */
+.work-acc-item.is-lit .work-acc-dot {
   background: var(--accent);
   box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 4px var(--bg-page);
+}
+/* Phone one-shot: node 0 waits off its spot until the header crosses the arm
+   line, then drops in (WAAPI from -40px in Work.tsx). */
+.work-acc.is-spine-oneshot:not(.is-spine-drawn) > .work-acc-item:first-child .work-acc-dot {
+  opacity: 0;
 }
 .work-acc-year {
   font-family: var(--font-dot);
@@ -497,7 +384,8 @@
   font-variant-numeric: tabular-nums;
   transition: color var(--t-base) var(--ease-out);
 }
-.work-acc-item.is-open .work-acc-year {
+/* The year goes accent once its row is open AND the spine has reached it. */
+.work-acc-item.is-open.is-lit .work-acc-year {
   color: var(--accent);
 }
 
@@ -747,8 +635,8 @@
    72-90px gutter + a 34px number column).
    =============================================================== */
 @media (max-width: 900px), (orientation: landscape) and (max-height: 500px) {
-  /* Flow at content height on phones — the desktop 100vh frame left dead space
-     below the last accordion row once the section is no longer pinned. */
+  /* Flow at content height on phones (no 100vh minimum anywhere now, kept as
+     a guard for the narrow layout). */
   .portfolio-work,
   .work-ledger {
     min-height: auto;
@@ -923,7 +811,7 @@
   .work-acc-panel,
   .work-acc-panel-body,
   .work-acc-chevron,
-  .work-acc-node::before,
+  .work-acc-dot,
   .work-acc-year,
   .work-acc-company,
   .work-acc-bullet,
