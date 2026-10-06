@@ -11,7 +11,7 @@ import { useSectionCanvasMount } from "../useSectionCanvasMount";
 import { HonoursPodium, type PodiumBuild } from "./honours/HonoursPodium";
 import { useIdleGate } from "./honours/useIdleGate";
 import { refreshScrollOnLoaderLift, requestScrollRefresh } from "./scrollRefresh";
-import { oneShot, seamBus, seg, smooth, softHold, useSeam } from "../seams";
+import { oneShot, seamBus, smooth, softHold, useSeam } from "../seams";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -22,7 +22,8 @@ gsap.registerPlugin(ScrollTrigger);
  * play -> honours, owner brief 2026-10-06 "one workstation, one signal, never
  * stopping"): from the section top at 85% of the viewport to flush, the podium
  * extrudes, the cups pop and the slabs drop as a pure function of scroll, the
- * three stats count up in step, and the honour card appears when the wall is
+ * three stats count up while they are on screen (from their entry at the
+ * viewport bottom to mid-dwell), and the honour card appears when the wall is
  * complete. Then a short soft dwell (--seam-bp-hold, 0.5vh) holds on the
  * finished wall: the section is 150svh with an inner sticky `.bp-hold`
  * (src/seams/stack.css), eased in and out by softHold. Scrolling up un-builds.
@@ -53,9 +54,6 @@ const GHOST_TRAVEL = 0.1;
  * the first cut; its short soft edges played as a stop-and-go hiccup at a
  * normal wheel, so it took the spec's gate G7 fallback.)
  */
-/** Count-up span within the build: the stats count over p 0.2 -> 0.95. */
-const COUNT_FROM_P = 0.2;
-const COUNT_TO_P = 0.95;
 /** Idle-mount cap for the podium (ms); see useIdleGate. */
 const PODIUM_IDLE_MS = 1200;
 
@@ -382,7 +380,6 @@ export function BitsAndPieces() {
     build.p = p;
     build.scene?.setProgress(p);
     seamBus.podiumP = p;
-    writeCounts(sectionRef.current, smooth(seg(p, COUNT_FROM_P, COUNT_TO_P)));
   };
   useSeam(
     narrow
@@ -394,6 +391,43 @@ export function BitsAndPieces() {
           end: "top top",
           render: (p) => setBuild(p),
           final: () => setBuild(1),
+          fallback: () => () => {},
+        },
+    [narrow],
+  );
+
+  // The stats count while the reader can SEE them. They sit at the bottom of
+  // the 100svh stage, below the fold for most of the build, so a count tied
+  // to the build p (0.2 -> 0.95) had all but finished before they surfaced:
+  // the reader saw only the last ~3%. This range runs from the stats' top
+  // crossing the viewport bottom to the middle of the dwell. Still a pure
+  // function of scroll (reverses, lands right after a cut jump). Offsets are
+  // read inside .bp-hold (stats vs hold), so the sticky's own position and
+  // softHold's translate cancel out.
+  useSeam(
+    narrow
+      ? null
+      : {
+          id: "play-honours-count",
+          trigger: () => sectionRef.current,
+          start: () => {
+            const el = sectionRef.current;
+            const hold = holdRef.current;
+            const stats = el?.querySelector(".bp-stats");
+            if (!el || !hold || !stats) return 0;
+            const secTop = el.getBoundingClientRect().top + window.scrollY;
+            const off = stats.getBoundingClientRect().top - hold.getBoundingClientRect().top;
+            return secTop + off - window.innerHeight;
+          },
+          end: (st) => {
+            const el = sectionRef.current;
+            if (!el) return st.start + 1;
+            const secTop = el.getBoundingClientRect().top + window.scrollY;
+            const holdLen = Math.max(0, el.offsetHeight - window.innerHeight);
+            return Math.max(st.start + 1, secTop + 0.5 * holdLen);
+          },
+          render: (p) => writeCounts(sectionRef.current, smooth(p)),
+          final: () => writeCounts(sectionRef.current, 1),
           fallback: () => () => {},
         },
     [narrow],
