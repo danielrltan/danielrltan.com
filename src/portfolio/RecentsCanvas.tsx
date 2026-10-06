@@ -198,6 +198,7 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
 
     // ---------- images: decode before first draw ----------
     const ready: boolean[] = new Array(N).fill(false);
+    let decodeRaf = 0;
     const imgs = photos.map((p, i) => {
       const im = new Image();
       im.decoding = "async";
@@ -206,7 +207,11 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
         .then(() => {
           ready[i] = true;
           dirty = true;
-          wake();
+          // Coalesced: one parked draw per frame however many decode at once.
+          if (!decodeRaf) decodeRaf = requestAnimationFrame(() => {
+            decodeRaf = 0;
+            wake();
+          });
         })
         .catch(() => {});
       return im;
@@ -541,9 +546,15 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
     // Only cut jumps and the visibility edge hit this; normal scrolling draws in
     // the loop.
     function drawParked() {
-      if (progressRef.current === lastProgress && irisRef.current === lastIris) return;
+      // Also redraw a parked plane when it is dirty (photos finished
+      // decoding): the plane mounts ~3vh ahead, so this draws (and uploads)
+      // the photos it opens on while it is still off screen. Before, the
+      // first photo draws waited for the iris's first frame at the Honours
+      // release, a one-off 40-50ms frame right where the page was moving.
+      if (!dirty && progressRef.current === lastProgress && irisRef.current === lastIris) return;
       lastProgress = progressRef.current;
       lastIris = irisRef.current;
+      dirty = false;
       draw();
     }
     function wake() {
@@ -765,6 +776,7 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
 
     return () => {
       cancelAnimationFrame(raf);
+      cancelAnimationFrame(decodeRaf);
       running = false;
       io.disconnect();
       offRm();
