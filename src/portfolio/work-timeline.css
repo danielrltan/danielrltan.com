@@ -382,6 +382,14 @@
   transition: box-shadow var(--t-base) var(--ease-out),
     background var(--t-base) var(--ease-out);
 }
+/* Scroll mode (Work.tsx 'work-spine', desktop fine pointer): a metric is not
+   there until its node lights; then its decode is its first reading (the
+   cross one-shot remounts its ScrambleText). A latched class toggle: an
+   unlit row hides it again on scroll-up, and a cut jump lands lit and plain.
+   Opacity, not visibility: screen readers still get the metric. */
+.work-acc.is-spine-scroll > .work-acc-item:not(.is-lit) .work-acc-pull-metric {
+  opacity: 0;
+}
 /* Reached nodes fill accent as the spine's tip passes them (.is-lit, written
    by the spine seam / phone one-shot, a class toggle): the timeline
    "completes" downward. Every row is open on desktop, so open no longer

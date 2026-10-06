@@ -456,17 +456,24 @@ export function Work() {
         });
       },
       render: (p) => {
+        // Scroll mode: each metric stays unprinted until its node lights
+        // (work-timeline.css), so its decode is the first time it reads.
+        // Before, it sat readable, then scrambled into noise as the node
+        // lit: already-read copy boiling.
+        list.classList.add("is-spine-scroll");
         setFill(p);
         lightTo(p);
       },
       cross,
       final: () => {
+        list.classList.remove("is-spine-scroll");
         geo = null;
         list.style.removeProperty("--work-fill-top");
         setFill(1);
         setLit(() => true);
       },
       reset: () => {
+        list.classList.remove("is-spine-scroll");
         list.style.removeProperty("--work-fill-top");
         setFill(null);
         setLit(() => false);
