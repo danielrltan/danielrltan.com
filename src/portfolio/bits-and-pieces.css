@@ -798,6 +798,32 @@
   display: block;
   outline: none;
 }
+/* Scroll-built wall (seam play -> honours): the slabs drop in from 7.5 units
+   above the tower, and while the stage is still rising its top edge sits
+   mid-viewport, so a falling slab was sliced off by that invisible line. The
+   canvas bleeds upward over the bottom of Play instead (transparent; the
+   podium scene extends its projection by the same amount, so the framing in
+   the stage is unchanged) and the slabs fall in from above the fold. Desktop
+   with motion only, where the build is scroll-driven; 36svh clears the top
+   slab's drop start. While building it lets pointers through to Play
+   (.is-building, toggled by the scene). */
+@media (width > 900px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
+  .portfolio-bp[data-seam-stack].is-podium .bp-podium-canvas {
+    --bp-podium-bleed: 36svh;
+    top: calc(-1 * var(--bp-podium-bleed));
+    height: calc(100% + var(--bp-podium-bleed));
+  }
+  /* The focus ring stays on the stage box (the bleed is mostly off screen). */
+  .portfolio-bp[data-seam-stack].is-podium .bp-podium-canvas:focus-visible {
+    box-shadow: none;
+  }
+  .portfolio-bp[data-seam-stack].is-podium .bp-podium-stage:has(.bp-podium-canvas:focus-visible) {
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+}
+.bp-podium-canvas.is-building {
+  pointer-events: none;
+}
 .bp-podium-canvas:focus-visible {
   box-shadow: inset 0 0 0 2px var(--accent);
 }

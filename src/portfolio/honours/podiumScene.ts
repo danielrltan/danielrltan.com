@@ -339,10 +339,17 @@ export function createPodiumScene(
   const baseCam = new THREE.Vector3();
   let W = 1;
   let H = 1;
+  /** Bleed (px): how far the canvas reaches ABOVE the stage (CSS
+   *  --bp-podium-bleed, scroll-built desktop only; 0 elsewhere). Read back from
+   *  layout so the CSS token is the only place the length lives. */
+  let E = 0;
   function layout() {
     W = Math.max(1, host.clientWidth);
     H = Math.max(1, host.clientHeight);
-    renderer.setSize(W, H, false);
+    E = Math.max(0, canvas.clientHeight - H);
+    renderer.setSize(W, H + E, false);
+    // The scene is framed in the stage box (W x H) exactly as before; the bleed
+    // only extends the same projection upward (view offset below).
     camera.aspect = W / H;
     const b = FREE_BOX;
     const fw = b.x1 - b.x0;
@@ -374,7 +381,7 @@ export function createPodiumScene(
     const cyN = (ndc.y0 + ndc.y1) / 2;
     const dx = ((b.x0 + b.x1) / 2 - 0.5) * W - (cxN * W) / 2;
     const dy = ((b.y0 + b.y1) / 2 - 0.5) * H + (cyN * H) / 2;
-    camera.setViewOffset(W, H, -dx, -dy, W, H);
+    camera.setViewOffset(W, H, -dx, -dy - E, W, H + E);
     camera.updateProjectionMatrix();
     baseCam.copy(camera.position);
     if (!running) renderer.render(scene, camera);
@@ -416,7 +423,8 @@ export function createPodiumScene(
     }
   }
   const onMove = (e: PointerEvent) => {
-    const r = canvas.getBoundingClientRect();
+    // Parallax is relative to the stage, not the (taller) bled canvas.
+    const r = host.getBoundingClientRect();
     parallax.set(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1);
     if (e.pointerType !== "mouse") return;
     const i = pick(e.clientX, e.clientY);
@@ -560,6 +568,7 @@ export function createPodiumScene(
   io.observe(host);
   const ro = new ResizeObserver(() => layout());
   ro.observe(host);
+  ro.observe(canvas); // the bleed (a CSS token) can change without the stage
   const onVis = () => wake();
   document.addEventListener("visibilitychange", onVis);
   // Reduced motion wakes on input too (the loop parks when settled).
@@ -586,6 +595,7 @@ export function createPodiumScene(
         // Back to the time-based entrance (start() plays it). A wall that was
         // already scroll-built stays built, as if its entrance had played.
         prog = null;
+        canvas.classList.remove("is-building");
         if (started && born < 0) born = performance.now() - READY_MS;
         wake();
         return;
@@ -605,6 +615,10 @@ export function createPodiumScene(
         lastFocus = -2;
         onFocus(null);
       }
+      // While the wall is being built the canvas's bleed band hangs over the
+      // bottom of Play: let pointers through to it (nothing here is pickable
+      // before the card is on anyway).
+      canvas.classList.toggle("is-building", prog < READY_ON_P);
       wake();
       // The loop is IO-gated: off screen (or parked at p = 0) still draw the
       // new pose once, so the canvas is never stale when it scrolls in.
