@@ -70,6 +70,25 @@
   flex-direction: column;
   gap: clamp(22px, 4vh, 44px);
 }
+/* HUD clearance (kept through the unpin). A menu jump lands Work's top at the
+   viewport top, so the header sits at y = padding-top under the fixed HUD
+   brand tile (x 22-122, y 20-74: RoomHUD TOP_STRIP_TOP 20 + TOP_STRIP_CHIP_H
+   54). The header's left edge, max(0, (100vw - 1280px) / 2) + clamp(28px, 6vw,
+   96px), only clears the tile from about 1382px wide, so below that the top
+   padding is at least 84px (tile bottom + 10px; 1280x800 had "03" at y56
+   under the tile). Wider screens keep at least 56px so the "03" tag never
+   crowds the window's top edge (owner 2026-10-05: congested section numbers).
+   Width only: there is no pinned frame height to fit any more. */
+@media (min-width: 901px) and (max-width: 1380px) and (min-height: 501px) {
+  .work-ledger {
+    padding-top: max(84px, clamp(40px, 7vh, 96px));
+  }
+}
+@media (min-width: 1381px) and (min-height: 501px) {
+  .work-ledger {
+    padding-top: max(56px, clamp(40px, 7vh, 96px));
+  }
+}
 
 /* ----- Header: tiny "03" tag + GIANT EXPERIENCE wordmark -------- */
 
@@ -211,12 +230,14 @@
   width: 100%;
 }
 /* The spine: a hairline from the first node to the last. It draws top→down
-   once on entrance (scaleY 0→1, --t-slow). */
+   once on entrance (scaleY 0→1, --t-slow). It starts at node 0's centre, the
+   same origin as the accent fill (--work-fill-top), so node 0 reads as where
+   the signal enters; no grey stub pokes up above it. */
 .work-acc::before {
   content: "";
   position: absolute;
   left: var(--spine-x);
-  top: clamp(22px, 3vh, 34px);
+  top: var(--work-fill-top, clamp(22px, 3vh, 34px));
   bottom: clamp(22px, 3vh, 34px);
   width: 2px;
   transform: translateX(-50%) scaleY(0);

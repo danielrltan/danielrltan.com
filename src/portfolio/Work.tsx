@@ -8,6 +8,7 @@ import {
 import { requestScrollRefresh } from "./scrollRefresh";
 import "./sections.css";
 import "./work-timeline.css";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ScrambleText } from "./ScrambleText";
 import { getLenis } from "../scroll";
 import {
@@ -134,7 +135,8 @@ interface SpineGeo {
 /**
  * Read the spine geometry: offsetTop math, so the rows' entrance transform
  * never skews it. Called only from the spine seam's measure() (onRefreshInit,
- * the one place it reads layout) and when a phone one-shot plays. It also
+ * the one place it reads layout) and, on the one-shot path, at mount, on each
+ * refresh and when the one-shot plays. It also
  * anchors the accent fill on node 0's centre (--work-fill-top): the Projects
  * relay pixel lands on node 0 and the spine draws downward FROM it, so fill 0
  * is node 0 and every f[i] is the fill fraction at which the tip reaches node i.
@@ -334,6 +336,15 @@ export function Work() {
       // Mode classes go on the list: React owns the section's className and
       // rewrites it on .is-entered, which would drop them.
       list.classList.add("is-spine-oneshot");
+      // Anchor the hairline and the fill on node 0 now and on every refresh
+      // (fonts, a row tap), not only when the one-shot plays: the hairline's
+      // top follows --work-fill-top, so a late first measure would hop it
+      // down onto node 0 the moment the drop starts.
+      const anchor = () => {
+        geo = measureSpine(list);
+      };
+      anchor();
+      ScrollTrigger.addEventListener("refreshInit", anchor);
       let fill = 0;
       let raf = 0;
       let timer = 0;
@@ -412,9 +423,11 @@ export function Work() {
       };
       const undo = oneShot({ el: head, line: ONESHOT_LINE, edge: "top", play, snap });
       return () => {
+        ScrollTrigger.removeEventListener("refreshInit", anchor);
         undo();
         stop();
         list.classList.remove("is-spine-oneshot", "is-spine-drawn");
+        list.style.removeProperty("--work-fill-top");
       };
     };
 
