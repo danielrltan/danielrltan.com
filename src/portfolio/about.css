@@ -220,7 +220,32 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
   fill: var(--accent, #ff4f00);
   overflow: visible;
 }
+/* DRAW-IN (owner 2026-10-06): the callout waits for the bento, then the
+   label lands and the arrow draws itself from the label down to the room,
+   one pixel segment at a time (About.tsx ROOM_ARROW_SEGS, --i in draw order:
+   shaft tail to tip, then both barbs outward). .is-drawn latches when the
+   bento builds (desktop) or the room rises in (narrow); --draw-wait lets
+   those cells finish first. */
+.about-room-callout {
+  --draw-wait: 720ms;
+  --draw-step: 34ms;
+}
+.about-room-callout-text {
+  opacity: 0;
+  transition: opacity 160ms steps(3, jump-end) var(--draw-wait);
+}
+.about-room-callout-arrow path {
+  opacity: 0;
+}
+.about-room-callout.is-drawn .about-room-callout-text {
+  opacity: 1;
+}
+.about-room-callout.is-drawn .about-room-callout-arrow path {
+  opacity: 1;
+  transition: opacity 0s linear calc(var(--draw-wait) + 140ms + var(--i, 0) * var(--draw-step));
+}
 @media (max-width: 900px) {
+  .about-room-callout { --draw-wait: 420ms; }
   .about-room-callout-text { left: 66.6%; font-size: clamp(15px, 2.6vw, 20px); }
   /* Room sits centred under the banner here: a shorter run that clears the label. */
   .about-room-callout-arrow { right: 33.88%; width: 13.92%; }
@@ -1414,8 +1439,14 @@ html[data-hero-covering] .render-frame {
   .render-frame {
     animation: none !important;
   }
+  .about-room-callout-text,
+  .about-room-callout-arrow path {
+    transition: none !important;
+  }
   .about-banner,
   .about-banner.is-revealed,
+  .about-room-callout-text,
+  .about-room-callout-arrow path,
   .card,
   .card.is-revealed {
     opacity: 1 !important;

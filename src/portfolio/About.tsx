@@ -51,37 +51,53 @@ gsap.registerPlugin(ScrollTrigger);
  * itself still works (structural, not decorative).
  */
 
-/** Pin length in viewports (spec §3: 1.25vh). */
 /**
  * "My room in real life!" callout: a hand-drawn arrow, rasterised onto a
  * pixel grid so it speaks the same Offbit pixel language as the wordmarks.
  * Built once at module load: a long, shallow quadratic curve that leaves the
  * label heading left and sags slightly to a tip just above the room's
  * top-right wall, stamped 3 cells thick, plus two barbs swept back from the
- * tip along the curve's final direction. One
- * <path> of unit squares, drawn crispEdges, so it stays sharp at any size.
+ * tip along the curve's final direction. Unit squares, drawn crispEdges, so
+ * it stays sharp at any size.
+ *
+ * The cells are split into ordered SEGMENTS (each cell belongs to the first
+ * segment that stamps it): the shaft from tail to tip, then both barbs
+ * together from the tip outward. about.css shows them one after another, so
+ * the arrow draws itself in after the bento has built (.is-drawn).
  */
-const ROOM_ARROW_D = (() => {
-  const cells = new Set<string>();
+const ROOM_ARROW_SEGS = (() => {
+  const seen = new Set<string>();
+  const segs: string[][] = [];
   const T = 3; // stroke thickness in cells
-  const dot = (x: number, y: number) => {
-    for (let i = 0; i < T; i++) for (let j = 0; j < T; j++) cells.add(`${Math.round(x) + i},${Math.round(y) + j}`);
+  const dot = (seg: number, x: number, y: number) => {
+    for (let i = 0; i < T; i++) for (let j = 0; j < T; j++) {
+      const c = `${Math.round(x) + i},${Math.round(y) + j}`;
+      if (seen.has(c)) continue;
+      seen.add(c);
+      (segs[seg] ??= []).push(c);
+    }
   };
+  const SHAFT = 14, HEAD = 4; // segment counts
   const [x0, y0, cx, cy, x1, y1] = [56, 6, 34, 6, 2, 15]; // start, control, tip
   for (let i = 0; i <= 640; i++) {
     const t = i / 640, u = 1 - t;
-    dot(u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1);
+    dot(Math.min(SHAFT - 1, Math.floor(t * SHAFT)), u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1);
   }
   // Arrowhead: two straight barbs swept back from the tip, ±40° off the
   // curve's final direction.
   const len = Math.hypot(cx - x1, cy - y1), bx = (cx - x1) / len, by = (cy - y1) / len;
-  for (const a of [0.7, -0.7]) {
-    const ax = bx * Math.cos(a) - by * Math.sin(a), ay = bx * Math.sin(a) + by * Math.cos(a);
-    for (let i = 0; i <= 13; i++) dot(x1 + ax * i, y1 + ay * i);
+  for (let i = 0; i <= 13; i++) {
+    for (const a of [0.7, -0.7]) {
+      const ax = bx * Math.cos(a) - by * Math.sin(a), ay = bx * Math.sin(a) + by * Math.cos(a);
+      dot(SHAFT + Math.min(HEAD - 1, Math.floor((i / 14) * HEAD)), x1 + ax * i, y1 + ay * i);
+    }
   }
-  return [...cells].map((c) => { const [x, y] = c.split(","); return `M${x} ${y}h1v1h-1z`; }).join("");
+  return segs
+    .filter(Boolean)
+    .map((cells) => cells.map((c) => { const [x, y] = c.split(","); return `M${x} ${y}h1v1h-1z`; }).join(""));
 })();
 
+/** Pin length in viewports (spec §3: 1.25vh). */
 const PIN_VH = 1.25;
 
 /** The rest of the bento, revealed together after the arrival trio. */
@@ -97,6 +113,12 @@ function reveal(el: Element | null | undefined, order: number) {
   if (!el || el.classList.contains("is-revealed")) return;
   (el as HTMLElement).style.setProperty("--reveal-order", String(order));
   el.classList.add("is-revealed");
+}
+
+/** Draw the room callout's arrow in (latched; about.css times it to start
+ *  once the cells revealed alongside it have built). */
+function drawCallout(root: Element) {
+  root.querySelector(".about-room-callout")?.classList.add("is-drawn");
 }
 
 /** Cells the narrow layout reveals on enter (incl. the room cell on tablets;
@@ -173,7 +195,18 @@ export function About() {
     const el = sectionRef.current;
     if (!el || !reducedMotion) return;
     el.querySelectorAll(".about-banner, .card").forEach((c) => reveal(c, 0));
-  }, [mobile, reducedMotion]);
+    drawCallout(el);
+  }, [mobile, reducedMotion, roomless]);
+
+  /* Room callout: desktop draws it with the bento (revealRest below). Narrow
+     has no bento build, so it draws on the hero's cue (the fade onto the
+     room). Also catches a callout that mounts late (a resize that gains the
+     room) after its trigger already passed. */
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || roomless || !cue) return;
+    if (mobile || el.querySelector(".card.c-portrait.is-revealed")) drawCallout(el);
+  }, [mobile, roomless, cue]);
 
   /* Room bob runs only while the section is on screen (about.css pauses it
      otherwise). */
@@ -214,6 +247,7 @@ export function About() {
       if (done) return;
       done = true;
       el.querySelectorAll(BENTO_REST).forEach((c) => reveal(c, 0));
+      drawCallout(el);
     };
     const apply = () => revealRest();
     if (heroHandoff.cue) revealRest();
@@ -288,7 +322,9 @@ export function About() {
             <div className="about-room-callout">
               <span className="about-room-callout-text">my room in real life!</span>
               <svg className="about-room-callout-arrow" viewBox="0 0 62 24" shapeRendering="crispEdges">
-                <path d={ROOM_ARROW_D} />
+                {ROOM_ARROW_SEGS.map((d, i) => (
+                  <path key={i} d={d} style={{ "--i": i } as React.CSSProperties} />
+                ))}
               </svg>
             </div>
           )}
