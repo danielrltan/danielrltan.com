@@ -386,6 +386,7 @@ function SpillObject({
     // Report world position + radius so the mercury aura can hug this object.
     g.getWorldPosition(posEntry.pos);
     posEntry.r = scaleRef.current;
+    posEntry.mesh = m;
 
     // SPIN-OUT smear: the stretch (motion blur) follows the actual speed and
     // fades to nothing as the icon eases into its slot. `sgrp` carries it so the
@@ -717,8 +718,9 @@ export function NavSpillMenu({ open, activeIdx, onClose, onJump }: Props) {
   const pointer = useRef({ x: 0, y: 0 });
   // Cursor in screen UV (0..1, y-down) for the rice pool that follows it.
   const cursor = useRef<CursorState>({ x: 0.5, y: 0.5, active: false });
-  // World position + radius of each object, written per-frame by the spill
-  // objects and read by the aura to hug the hovered one.
+  // World position + radius (+ mesh, for the silhouette wrap) of each object,
+  // written per-frame by the spill objects and read by the aura to hug the
+  // hovered one.
   const positionsRef = useRef<AuraTarget[]>(
     SECTION_REGISTRY.map(() => ({
       pos: new THREE.Vector3(9999, 9999, 9999),

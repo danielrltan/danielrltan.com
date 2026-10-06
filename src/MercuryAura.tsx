@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import {
@@ -15,11 +15,13 @@ import {
  *  1) A mercury TRAIL follows the cursor (lagging metaball rope, like the
  *     keypad RiceBlob) that lights up the faint orange background rice and
  *     draws a thin membrane outline. No filled glow disc.
- *  2) A VENOM HUG: when the cursor is over a 3D object, an extra metaball
- *     grows at that object's projected screen position (sized to the object)
- *     and SMOOTH-UNIONS into the trail, so the liquid reaches out from the
- *     cursor and engulfs/wraps the shape like a symbiote — then releases when
- *     you move away.
+ *  2) A VENOM HUG: when the cursor is over a 3D object, the liquid wraps that
+ *     object's ACTUAL SILHOUETTE (not a circle around it). The hovered mesh is
+ *     drawn flat into a small offscreen mask, gaussian-blurred, and the blurred
+ *     field is thresholded into a soft-edged SDF a margin outside the outline.
+ *     It SMOOTH-UNIONS into the trail, so the liquid reaches out from the
+ *     cursor and shrink-wraps the shape like a symbiote, filling its small
+ *     gaps (trophy handles, the camera lens) — then releases when you move away.
  *
  * Honest effect: real screen-space dot grid + real SDF (polynomial smin), no
  * gradient overlays. sRGB-encoded. Fixed-rate lerps (never bound to a
@@ -36,6 +38,14 @@ const GRID_COUNT = 96; // rice density
 const DOT_RADIUS = 0.14; // grain size within a cell
 const POOL_RADIUS = 0.07; // head ball radius (screen-height units)
 const TRAIL_N = 10; // metaballs in the liquid trail
+// Silhouette mask for the hug: rendered at 1/MASK_DOWN of the drawing buffer,
+// then blurred. HUG_SIGMA (screen-height units) sets how far outside the
+// outline the liquid sits and how rounded its corners are; HUG_T is the
+// blurred-mask level the membrane follows (lower = looser wrap).
+const MASK_DOWN = 6;
+const HUG_SIGMA = 0.026;
+const HUG_T = 0.2;
+const BLUR_TAPS = 8; // per side, per pass (17-tap separable gaussian)
 
 const VERTEX = /* glsl */ `
   varying vec2 vUv;
@@ -58,9 +68,9 @@ const FRAGMENT = /* glsl */ `
   uniform float uGrid;
   uniform float uDot;
   uniform float uPoolR;
-  uniform vec2 uHugCenter;  // hovered object centre, 0..1 y-down
-  uniform float uHugRadius; // object radius, screen-height units
-  uniform float uHugStrength; // 0..1 hug presence
+  uniform sampler2D uHugMap; // blurred silhouette field of the hugged object(s)
+  uniform float uHugOn;       // 0/1: any object currently (un)wrapping
+  uniform float uHugScale;    // field -> screen-height distance
 
   float hash21(vec2 p) {
     p = fract(p * vec2(443.897, 441.423));
@@ -100,21 +110,19 @@ const FRAGMENT = /* glsl */ `
       sd = sunion(sd, length(d) - r, k);
     }
 
-    // VENOM HUG: a metaball at the hovered object that the liquid engulfs.
-    // A wider smin makes the trail reach out and wrap it as it grows. The
-    // radius scales with the hug strength all the way to ZERO: on release the
-    // fading ball slides onto the cursor (see the JS lerp), and a radius floor
-    // here left a big ball sitting on the cursor that then vanished at the
-    // cut-off — the pool visibly popped from large to small. Easing the
-    // strength keeps the grow-in punchy while the release shrinks smoothly
-    // into the trail head.
-    if (uHugStrength > 0.001) {
-      float hs = smoothstep(0.0, 1.0, uHugStrength);
-      vec2 dh = (uv - uHugCenter) * uAspect;
-      vec2 hdir = normalize(dh + vec2(1e-4));
-      float hwob = (noise2(hdir * 2.0 + vec2(uTime * 0.5, 7.0)) - 0.5) * 0.03;
-      float rh = (uHugRadius + hwob) * hs;
-      sd = sunion(sd, length(dh) - rh, mix(0.03, 0.11, hs));
+    // VENOM HUG: the liquid shrink-wraps the hovered object's silhouette.
+    // uHugMap holds max(weight_i * mask_i) blurred, so each object's contour
+    // GROWS out of its core as its weight rises and sinks back into it on
+    // release; two neighbours crossfade (and briefly merge) when you slide
+    // from one to the next. The field's level set at HUG_T sits a margin
+    // outside the outline; scaled by the blur width it reads as a distance,
+    // so it smooth-unions with the trail like any other metaball. A little
+    // slow noise keeps the membrane liquid instead of a traced outline.
+    if (uHugOn > 0.5) {
+      float field = texture2D(uHugMap, vUv).r;
+      float hwob = (noise2(g * 7.0 + vec2(uTime * 0.5, 7.0)) - 0.5) * 0.012;
+      float sh = (${HUG_T.toFixed(3)} - field) * uHugScale + hwob;
+      sd = sunion(sd, sh, 0.05);
     }
 
     float inside = smoothstep(0.006, -0.006, sd);          // 1 inside the pool
@@ -158,6 +166,8 @@ export interface CursorState {
 export interface AuraTarget {
   pos: THREE.Vector3;
   r: number;
+  /** The object's visible mesh, drawn flat into the hug silhouette mask. */
+  mesh?: THREE.Mesh | null;
 }
 
 interface Props {
@@ -173,12 +183,103 @@ interface Props {
 const PLANE_Z = -3;
 const _c = new THREE.Vector3();
 const _up = new THREE.Vector3();
+const _clear = new THREE.Color();
+const _buf = new THREE.Vector2();
+
+// Fullscreen-pass plumbing for the hug mask blur.
+const BLUR_FRAG = /* glsl */ `
+  precision highp float;
+  varying vec2 vUv;
+  uniform sampler2D uSrc;
+  uniform vec2 uStep;   // one texel along the blur axis
+  uniform float uSigma; // in texels
+  void main() {
+    float acc = 0.0;
+    float wsum = 0.0;
+    for (int i = -${BLUR_TAPS}; i <= ${BLUR_TAPS}; i++) {
+      float fi = float(i);
+      float w = exp(-fi * fi / (2.0 * uSigma * uSigma));
+      acc += texture2D(uSrc, vUv + uStep * fi).r * w;
+      wsum += w;
+    }
+    gl_FragColor = vec4(acc / wsum, 0.0, 0.0, 1.0);
+  }
+`;
+
+/** Max-blended flat silhouette: each hugged object writes its hug weight. */
+function makeMaskMaterial(): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    side: THREE.DoubleSide,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.MaxEquation,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneFactor,
+    toneMapped: false,
+  });
+}
+
+interface HugRig {
+  maskScene: THREE.Scene;
+  proxies: THREE.Mesh[];
+  rtA: THREE.WebGLRenderTarget;
+  rtB: THREE.WebGLRenderTarget;
+  blurScene: THREE.Scene;
+  blurCam: THREE.OrthographicCamera;
+  blurMat: THREE.ShaderMaterial;
+  weights: number[];
+}
+
+function makeHugRig(): HugRig {
+  const rtOpts = {
+    type: THREE.HalfFloatType,
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    depthBuffer: false,
+  } as const;
+  const blurMat = new THREE.ShaderMaterial({
+    vertexShader: VERTEX,
+    fragmentShader: BLUR_FRAG,
+    uniforms: {
+      uSrc: { value: null },
+      uStep: { value: new THREE.Vector2() },
+      uSigma: { value: 4 },
+    },
+    depthTest: false,
+    depthWrite: false,
+  });
+  const blurScene = new THREE.Scene();
+  blurScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blurMat));
+  return {
+    maskScene: new THREE.Scene(),
+    proxies: [],
+    rtA: new THREE.WebGLRenderTarget(4, 4, rtOpts),
+    rtB: new THREE.WebGLRenderTarget(4, 4, rtOpts),
+    blurScene,
+    blurCam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
+    blurMat,
+    weights: [],
+  };
+}
 
 export function MercuryAura({ cursorRef, positionsRef, reduced }: Props) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const meshRef = useRef<THREE.Mesh>(null);
-  const { size, camera } = useThree();
+  const { size, camera, gl } = useThree();
   const startMs = useMemo(() => performance.now(), []);
+  const rig = useMemo(makeHugRig, []);
+  useEffect(
+    () => () => {
+      rig.rtA.dispose();
+      rig.rtB.dispose();
+      rig.blurMat.dispose();
+      for (const p of rig.proxies) (p.material as THREE.Material).dispose();
+    },
+    [rig],
+  );
 
   const uniforms = useMemo(
     () => ({
@@ -194,11 +295,11 @@ export function MercuryAura({ cursorRef, positionsRef, reduced }: Props) {
       uGrid: { value: GRID_COUNT },
       uDot: { value: DOT_RADIUS },
       uPoolR: { value: POOL_RADIUS },
-      uHugCenter: { value: new THREE.Vector2(0.5, 0.5) },
-      uHugRadius: { value: 0.12 },
-      uHugStrength: { value: 0 },
+      uHugMap: { value: rig.rtA.texture },
+      uHugOn: { value: 0 },
+      uHugScale: { value: HUG_SIGMA * 3.6 }, // ~sigma / gaussian slope at HUG_T
     }),
-    [],
+    [rig],
   );
 
   useFrame((_, dt) => {
@@ -235,63 +336,102 @@ export function MercuryAura({ cursorRef, positionsRef, reduced }: Props) {
 
     // VENOM HUG: find which object the CURSOR is over by screen-space proximity,
     // recomputed EVERY FRAME — so it can never get "stuck" the way the R3F
-    // pointer-out events did when objects spun/dragged under the cursor. Lerp
-    // the hug metaball onto the nearest object the cursor is inside; release
-    // when the cursor isn't over any object.
+    // pointer-out events did when objects spun/dragged under the cursor. Same
+    // 1.3x disc as SpillField's arming test, so the wrap and the enlarge agree.
     const ax = aspect.x;
     const ay = aspect.y;
     let best = -1;
     let bestDist = 1e9;
-    let bx = 0;
-    let by = 0;
-    let brad = 0.12;
     const arr = positionsRef.current;
+    if (tgt.active) {
+      for (let i = 0; i < arr.length; i++) {
+        const e = arr[i];
+        if (!e || e.r < 0.0001) continue;
+        _c.copy(e.pos).project(camera);
+        const cx = _c.x * 0.5 + 0.5;
+        const cy = (1 - _c.y) * 0.5; // y-down
+        _up.copy(e.pos);
+        _up.y += e.r;
+        _up.project(camera);
+        const rad = Math.abs((1 - _up.y) * 0.5 - cy);
+        const dist = Math.hypot((cx - tgt.x) * ax, (cy - tgt.y) * ay);
+        if (dist < rad * 1.3 && dist < bestDist) {
+          best = i;
+          bestDist = dist;
+        }
+      }
+    }
+
+    // Per-object hug weights: the hovered one grows in, the rest release
+    // (release faster than grow so the liquid lets go the moment you leave).
+    const w = rig.weights;
+    let any = false;
     for (let i = 0; i < arr.length; i++) {
-      const e = arr[i];
-      if (!e || e.r < 0.0001) continue;
-      _c.copy(e.pos).project(camera);
-      const cx = _c.x * 0.5 + 0.5;
-      const cy = (1 - _c.y) * 0.5; // y-down
-      _up.copy(e.pos);
-      _up.y += e.r;
-      _up.project(camera);
-      const rad = Math.abs((1 - _up.y) * 0.5 - cy);
-      const dist = Math.hypot((cx - tgt.x) * ax, (cy - tgt.y) * ay);
-      if (dist < rad * 1.1 && dist < bestDist) {
-        best = i;
-        bestDist = dist;
-        bx = cx;
-        by = cy;
-        brad = rad;
-      }
+      const want = i === best ? 1 : 0;
+      const cur = w[i] ?? 0;
+      const k = 1 - Math.exp(-dtc * (want > cur ? 12 : 18));
+      let next = cur + (want - cur) * k;
+      if (next < 0.002 && want === 0) next = 0;
+      w[i] = next;
+      if (next > 0) any = true;
     }
-    const hugTarget = best >= 0 && tgt.active ? 1 : 0;
-    const curHug = mat.uniforms.uHugStrength.value as number;
-    const hugCenter = mat.uniforms.uHugCenter.value as THREE.Vector2;
-    if (best >= 0) {
-      const radT = brad * 1.12;
-      if (curHug < 0.02) {
-        hugCenter.set(bx, by);
-        mat.uniforms.uHugRadius.value = radT;
-      } else {
-        const kc = 1 - Math.exp(-dtc * 14);
-        hugCenter.x += (bx - hugCenter.x) * kc;
-        hugCenter.y += (by - hugCenter.y) * kc;
-        mat.uniforms.uHugRadius.value +=
-          (radT - (mat.uniforms.uHugRadius.value as number)) * kc;
-      }
-    } else {
-      // Releasing (cursor left every object): let the fading hug follow the
-      // cursor instead of clinging to the object you just left, so it visibly
-      // lets go the instant you move off rather than sitting stuck on the shape.
-      const kr = 1 - Math.exp(-dtc * 10);
-      hugCenter.x += (tgt.x - hugCenter.x) * kr;
-      hugCenter.y += (tgt.y - hugCenter.y) * kr;
+    mat.uniforms.uHugOn.value = any ? 1 : 0;
+    if (!any) return;
+
+    // SILHOUETTE MASK: flat proxies of the hugged meshes (sharing their
+    // geometry + world matrix) max-blend their eased weight into a small
+    // target, so the field below is max_i(weight_i * mask_i).
+    const buf = gl.getDrawingBufferSize(_buf);
+    const mw = Math.max(8, Math.round(buf.x / MASK_DOWN));
+    const mh = Math.max(8, Math.round(buf.y / MASK_DOWN));
+    if (rig.rtA.width !== mw || rig.rtA.height !== mh) {
+      rig.rtA.setSize(mw, mh);
+      rig.rtB.setSize(mw, mh);
     }
-    // Release ~2.5× faster than before (7 -> 18) so the hug snaps off the moment
-    // the cursor leaves, instead of lingering for ~0.4s.
-    const hk = 1 - Math.exp(-dtc * (hugTarget > 0 ? 12 : 18));
-    mat.uniforms.uHugStrength.value += (hugTarget - curHug) * hk;
+    for (let i = 0; i < arr.length; i++) {
+      let proxy = rig.proxies[i];
+      if (!proxy) {
+        proxy = new THREE.Mesh(undefined, makeMaskMaterial());
+        proxy.matrixAutoUpdate = false;
+        proxy.frustumCulled = false;
+        rig.proxies[i] = proxy;
+        rig.maskScene.add(proxy);
+      }
+      const src = arr[i]?.mesh;
+      const wi = w[i] ?? 0;
+      proxy.visible = !!src && wi > 0;
+      if (!src || wi <= 0) continue;
+      src.updateWorldMatrix(true, false);
+      proxy.geometry = src.geometry;
+      proxy.matrix.copy(src.matrixWorld);
+      proxy.matrixWorld.copy(src.matrixWorld);
+      const ew = wi * wi * (3 - 2 * wi); // smoothstep: punchy grow, soft tail
+      (proxy.material as THREE.MeshBasicMaterial).color.setScalar(ew);
+    }
+
+    const prevTarget = gl.getRenderTarget();
+    const prevAlpha = gl.getClearAlpha();
+    gl.getClearColor(_clear);
+    gl.setClearColor(0x000000, 0);
+    rig.maskScene.matrixWorldAutoUpdate = false;
+    gl.setRenderTarget(rig.rtA);
+    gl.clear(true, false, false);
+    gl.render(rig.maskScene, camera);
+    // Separable gaussian, A -> B (x) -> A (y). The taps always span +-2.5
+    // sigma; `spread` stretches their spacing to reach HUG_SIGMA in texels.
+    const sigmaTaps = BLUR_TAPS / 2.5;
+    rig.blurMat.uniforms.uSigma!.value = sigmaTaps;
+    const spread = Math.max(1, (HUG_SIGMA * mh) / sigmaTaps);
+    rig.blurMat.uniforms.uSrc!.value = rig.rtA.texture;
+    (rig.blurMat.uniforms.uStep!.value as THREE.Vector2).set(spread / mw, 0);
+    gl.setRenderTarget(rig.rtB);
+    gl.render(rig.blurScene, rig.blurCam);
+    rig.blurMat.uniforms.uSrc!.value = rig.rtB.texture;
+    (rig.blurMat.uniforms.uStep!.value as THREE.Vector2).set(0, spread / mh);
+    gl.setRenderTarget(rig.rtA);
+    gl.render(rig.blurScene, rig.blurCam);
+    gl.setRenderTarget(prevTarget);
+    gl.setClearColor(_clear, prevAlpha);
   });
 
   return (
