@@ -8,8 +8,8 @@ import { registerHold, unregisterHold } from "./holds";
 gsap.registerPlugin(ScrollTrigger);
 
 /**
- * SOFT HOLD (spec §4.2; replaces softRelease, which stays as a compatibility
- * wrapper until its last caller migrates).
+ * SOFT HOLD (spec §4.2; replaces src/portfolio/softRelease.ts, deleted once
+ * its last caller had migrated).
  *
  * Owner, 2026-10-05: "make releases from pins lighter and more smooth; right
  * now it feels like it snaps off from scroll". The seam overhaul replaces the
