@@ -315,7 +315,9 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
     // crosshair is on screen, then grows (q^1.3: slow out of the crosshair,
     // faster to the corners) to clear the farthest cell exactly as the stage
     // sticks (iris 1 = section top at the viewport top).
-    const irisOpen = () => reduced || irisRef.current >= 1;
+    // Read live: switching to reduced motion mid-page opens the iris at once
+    // (the rest of the plane keeps its mount-time mode until it remounts).
+    const irisOpen = () => reducedMotion.value || irisRef.current >= 1;
     let irisR = 0;
     const rim = () => SEAM.irisRimCells * cell;
     function setIris() {
@@ -529,8 +531,27 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
       if (keepGoing) raf = requestAnimationFrame(tick);
       else running = false;
     }
+    // Off screen the loop is parked, so the bitmap keeps the last frame it drew
+    // (e.g. wide open, leaving past the hold). A cut jump (menu, End/Home,
+    // scrollbar drag, scroll restoration) can bring it back mid-seam, and the
+    // IntersectionObserver only reports that after the first visible frame has
+    // painted: 2-3 frames of photos where the iris should be closed. So a
+    // progress or iris change while parked redraws once, synchronously (the
+    // callers are ScrollTrigger callbacks, which run before that frame paints).
+    // Only cut jumps and the visibility edge hit this; normal scrolling draws in
+    // the loop.
+    function drawParked() {
+      if (progressRef.current === lastProgress && irisRef.current === lastIris) return;
+      lastProgress = progressRef.current;
+      lastIris = irisRef.current;
+      draw();
+    }
     function wake() {
-      if (running || !visible || document.hidden) return;
+      if (running) return;
+      if (!visible || document.hidden) {
+        drawParked();
+        return;
+      }
       running = true;
       last = performance.now();
       raf = requestAnimationFrame(tick);
@@ -556,7 +577,15 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
     ro.observe(wrap);
     const onVis = () => wake();
     document.addEventListener("visibilitychange", onVis);
+    const offRm = reducedMotion.subscribe(() => {
+      lastIris = -1;
+      dirty = true;
+      wake();
+    });
     layout();
+    // Seed the bitmap now (parked until the observer reports), so the first
+    // visible frame is already the right iris, not a blank or stale canvas.
+    drawParked();
     if (document.fonts?.ready) document.fonts.ready.then(() => { dirty = true; wake(); });
 
     // ---------- input ----------
@@ -731,6 +760,7 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
       cancelAnimationFrame(raf);
       running = false;
       io.disconnect();
+      offRm();
       ro.disconnect();
       document.removeEventListener("visibilitychange", onVis);
       wrap.removeEventListener("pointerdown", onDown);
