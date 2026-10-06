@@ -38,8 +38,10 @@ import { MAC_BEATS } from "../macintosh/macBeats";
 
 const ORANGE = "#ff4f00";
 // Corner radius (px) of the routed trace, and the clearance the down-lane
-// keeps from the right end of Work's title.
-const CORNER_PX = 48;
+// keeps from the right end of Work's title. A wide radius spreads the turn
+// from the down leg into the cross leg over ~100px of scroll (48px turned it
+// inside ~30px: the pixel read as darting).
+const CORNER_PX = 140;
 const LANE_CLEAR_PX = 24;
 // Speed profile: ease in and out over the first / last 20% with a constant
 // cruise between (peak speed 1.25x the mean; an inOutCubic peaks at 1.5x).
@@ -54,11 +56,8 @@ const cruise = (t: number) => {
 };
 
 type Pt = { x: number; y: number };
-/**
- * A polyline with rounded corners, sampled to a dense point list with
- * cumulative lengths, so a fraction of its length maps to a point. Pure.
- */
-function tracePoint(pts: Pt[], f: number): Pt {
+/** A polyline with rounded corners, sampled to a dense point list. Pure. */
+function denseTrace(pts: Pt[]): Pt[] {
   const dense: Pt[] = [pts[0]!];
   for (let i = 1; i < pts.length - 1; i++) {
     const p0 = pts[i - 1]!;
@@ -73,20 +72,64 @@ function tracePoint(pts: Pt[], f: number): Pt {
     }
     const a = { x: c.x + ((p0.x - c.x) / l0) * r, y: c.y + ((p0.y - c.y) / l0) * r };
     const b = { x: c.x + ((p1.x - c.x) / l1) * r, y: c.y + ((p1.y - c.y) / l1) * r };
-    for (let k = 0; k <= 8; k++) {
-      const t = k / 8;
+    for (let k = 0; k <= 16; k++) {
+      const t = k / 16;
       const u = 1 - t;
       dense.push({ x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y });
     }
   }
   dense.push(pts[pts.length - 1]!);
-  let total = 0;
-  const cum = [0];
-  for (let i = 1; i < dense.length; i++) {
-    total += Math.hypot(dense[i]!.x - dense[i - 1]!.x, dense[i]!.y - dense[i - 1]!.y);
-    cum.push(total);
+  return dense;
+}
+
+/**
+ * The trace is a fixed shape in WORK's frame, but the reader sees it on a
+ * page that scrolls up 1:1 under it. A pixel running it at a constant pace in
+ * Work's frame therefore crawled down the down-leg (its motion minus the
+ * scroll) and then darted left and up along the cross-leg (its motion plus
+ * the scroll): a 2.5-3x velocity snap at the corner. So the pace is set per
+ * segment for a constant ON-SCREEN speed c (px per px of scroll): with unit
+ * direction d in Work's frame, the screen velocity is u*d - (0, 1), and
+ * |u*d - (0, 1)| = c gives u = d.y + sqrt(d.y^2 - 1 + c^2). c is solved so
+ * the whole trace fits the scroll budget; the cruise() ease still shapes the
+ * start (glued to the CRT dot) and the landing (moving with node 0). Pure.
+ */
+function screenPaced(dense: Pt[], budget: number) {
+  const n = dense.length - 1;
+  const len: number[] = [];
+  const dy: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const l = Math.hypot(dense[i + 1]!.x - dense[i]!.x, dense[i + 1]!.y - dense[i]!.y);
+    len.push(l);
+    dy.push(l > 0 ? (dense[i + 1]!.y - dense[i]!.y) / l : 0);
   }
-  const want = clamp01(f) * total;
+  const tau = (c: number, i: number) => len[i]! / (dy[i]! + Math.sqrt(dy[i]! * dy[i]! - 1 + c * c));
+  const total = (c: number) => {
+    let t = 0;
+    for (let i = 0; i < n; i++) t += tau(c, i);
+    return t;
+  };
+  // total(c) falls as c grows; c >= 1 (the page itself moves the pixel 1:1).
+  let lo = 1;
+  let hi = 1;
+  if (total(1) > budget) {
+    hi = 2;
+    while (total(hi) > budget && hi < 64) hi *= 2;
+    for (let k = 0; k < 40; k++) {
+      const mid = (lo + hi) / 2;
+      if (total(mid) > budget) lo = mid;
+      else hi = mid;
+    }
+  }
+  const c = hi;
+  const cum = [0];
+  for (let i = 0; i < n; i++) cum.push(cum[i]! + tau(c, i));
+  return { cum, c };
+}
+
+/** The point at fraction f of the screen-paced trace. Pure. */
+function pacedPoint(dense: Pt[], cum: number[], f: number): Pt {
+  const want = clamp01(f) * cum[cum.length - 1]!;
   for (let i = 1; i < dense.length; i++) {
     if (cum[i]! >= want) {
       const seg0 = cum[i]! - cum[i - 1]!;
@@ -127,6 +170,9 @@ export function mountMacRelay(opts: {
   let laneMinX = -Infinity;
   let gapY = 0;
   let ctxRef: SeamCtx | null = null;
+  let pathKey = "";
+  let pathDense: Pt[] = [];
+  let pathCum: number[] = [0];
 
   const work = () => document.querySelector<HTMLElement>(".portfolio-work");
 
@@ -147,10 +193,17 @@ export function mountMacRelay(opts: {
     const T = { x: n0.x, y: n0.y };
     const lane = Math.max(S.x, laneMinX);
     const w = cruise(seg(p, a, 1));
-    const q = tracePoint(
-      [S, { x: lane, y: gapY }, { x: T.x, y: gapY }, T],
-      w,
-    );
+    // The route is fixed in Work's frame once the stage has released; cache
+    // its pacing on the corner points (rounded to 0.5px), so a frame does
+    // not re-solve it.
+    const key = `${Math.round(S.x * 2)},${Math.round(S.y * 2)},${Math.round(lane * 2)},${Math.round(gapY * 2)},${Math.round(T.x * 2)},${Math.round(T.y * 2)},${Math.round(ctx.len)}`;
+    if (key !== pathKey) {
+      pathKey = key;
+      pathDense = denseTrace([S, { x: lane, y: gapY }, { x: T.x, y: gapY }, T]);
+      // Scroll px over the run, at cruise()'s mean pace.
+      pathCum = screenPaced(pathDense, Math.max(1, (1 - a) * ctx.len)).cum;
+    }
+    const q = pacedPoint(pathDense, pathCum, w);
     const x = q.x;
     const y = q.y + wt;
     const size = w < 0.92 ? SEAM.relayPx : lerp(SEAM.relayPx, n0.size, seg(w, 0.92, 1));
