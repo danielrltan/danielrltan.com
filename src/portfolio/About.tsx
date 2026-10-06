@@ -30,14 +30,14 @@ gsap.registerPlugin(ScrollTrigger);
  * separately (heroHandoff.cue: iris about a third open / hero fade start) so it
  * plays where it can be seen.
  *
- * DESKTOP pin (1.25vh, viewport-relative) progress beats, the rest of the
- * boot-up (BEATS below):
- *   0.08 portrait   0.16 "Currently"   0.24 "Exploring"
- *   0.34 "Studying" 0.42 "Reach"       0.50 "Location"
- *   0.50 -> 1.0 hold (the finished dashboard)
- * Reveals are imperative class toggles (zero React renders per scroll frame)
- * and LATCH: coming back up from the Mac shows the finished dashboard, never
- * a blank sheet. Cells crossed in one update stagger by --reveal-order.
+ * DESKTOP: the rest of the bento (portrait, Currently, Exploring, Studying,
+ * Reach, Location) builds ALL AT ONCE, no stagger (owner 2026-10-06: the
+ * one-by-one boot across the pin "looks cluttered"). It fires on the hero's
+ * cue (the iris about a third open), so the panels build where they can be
+ * seen; the pin (1.25vh, viewport-relative) also reveals them on any update or
+ * refresh as a fallback (a load or jump past the hero). Reveals are imperative
+ * class toggles (zero React renders per scroll frame) and LATCH: coming back
+ * up from the Mac shows the finished dashboard, never a blank sheet.
  *
  * NARROW (MQ.narrow: ≤900px, or a phone on its side) SKIPS the pin entirely
  * (mirrors Work): a pinned, internally-scrolling stage was a nested
@@ -84,15 +84,10 @@ const ROOM_ARROW_D = (() => {
 
 const PIN_VH = 1.25;
 
-/** The boot-up beats (pin progress), in reveal order. */
-const BEATS: ReadonlyArray<readonly [key: string, at: number]> = [
-  ["portrait", 0.08],
-  ["now", 0.16],
-  ["explore", 0.24],
-  ["study", 0.34],
-  ["reach", 0.42],
-  ["loc", 0.5],
-];
+/** The rest of the bento, revealed together after the arrival trio. */
+const BENTO_REST = ["portrait", "now", "explore", "study", "reach", "loc"]
+  .map((key) => `.card.c-${key}`)
+  .join(", ");
 
 /** Arrival trio selectors, in reveal (stagger) order. */
 const ARRIVAL = [".about-banner", ".card.c-name", ".card.c-render"];
@@ -212,18 +207,19 @@ export function About() {
       return;
     }
 
-    // Boot-up cells in beat order; `stage` = how many beats are revealed.
-    const cells = BEATS.map(([key]) => el.querySelector(`.card.c-${key}`));
-    let stage = 0;
-    const apply = (progress: number) => {
-      let next = stage;
-      // +1e-3: a jump to data-jump-progress 0.5 lands on the last beat
-      // exactly; float error must not leave "Location" unrevealed.
-      while (next < BEATS.length && progress + 1e-3 >= BEATS[next]![1]) next++;
-      if (next <= stage) return; // latched: never un-reveal
-      for (let i = stage; i < next; i++) reveal(cells[i], i - stage);
-      stage = next;
+    // The rest of the bento builds in one go (order 0 = no cascade). Latched:
+    // reveal() skips cells that are already revealed.
+    let done = false;
+    const revealRest = () => {
+      if (done) return;
+      done = true;
+      el.querySelectorAll(BENTO_REST).forEach((c) => reveal(c, 0));
     };
+    const apply = () => revealRest();
+    if (heroHandoff.cue) revealRest();
+    const unsubCue = heroHandoff.subscribe(() => {
+      if (heroHandoff.cue) revealRest();
+    });
 
     const st = ScrollTrigger.create({
       id: "about-pin",
@@ -239,8 +235,12 @@ export function About() {
       // scrolls, and the stage is parked under the hero right up to this
       // pin's start (about.css), so an EARLY pin would shift the parked stage
       // for a few frames.
-      onUpdate: (self) => apply(self.progress),
-      onRefresh: (self) => apply(self.progress),
+      onUpdate: apply,
+      onRefresh: (self) => {
+        // A refresh at rest above the pin (progress 0, the hero still on
+        // screen) must not build the panels out of sight; the cue does that.
+        if (self.progress > 0) apply();
+      },
     });
     // Soft release: the section eases into scroll speed instead of snapping
     // off the pin (softRelease.ts).
@@ -253,6 +253,7 @@ export function About() {
     // pins keep stale positions until some other refresh happens to fire.
     const stopLoaderWatch = refreshScrollOnLoaderLift();
     return () => {
+      unsubCue();
       stopLoaderWatch();
       stopSoftRelease();
       st.kill();
