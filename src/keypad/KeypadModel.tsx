@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { track } from "../analytics";
 import { SOCIALS } from "../socials";
+import { knobAnchor } from "./KnobSparks";
 // keypad.glb is imported as a Vite asset so the build gives it a content-
 // hashed URL under /assets/ (cached immutably; a new model gets a new URL).
 // From public/ it was /keypad.glb with a 24 h cache, so browsers kept showing
@@ -323,6 +324,10 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   const dialScaleRef = useRef(1);
   const dialBaseScaleRef = useRef<THREE.Vector3 | null>(null);
   const dialBaseYRef = useRef<number | null>(null);
+  // Dial hit volume: its frame rides the device (tilt, float, wobble), so
+  // projecting it each frame gives KnobSparks the knob's live screen anchor.
+  const dialHitRef = useRef<THREE.Mesh>(null);
+  const anchorVecs = useMemo(() => ({ c: new THREE.Vector3(), e: new THREE.Vector3() }), []);
 
   // Expose imperative API for parent-driven dial kicks (e.g. spin
   // automatically when the drop-in animation completes).
@@ -404,6 +409,27 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       const s = dialScaleRef.current;
       dial.scale.set(base.x * s, base.y * s, base.z * s);
       dial.position.y = dialBaseYRef.current + (s - 1) * DIAL_LIFT;
+    }
+
+    // KnobSparks anchor: the dial's top-face centre and radius in canvas px.
+    // The hit volume is 1.6x the dial's height and 1.12x its radius (see
+    // dialHitSize), centred on it; the hover/press growth is folded into r.
+    const hit = dialHitRef.current;
+    if (hit && dialHitSize) {
+      const top = dialHitSize.h / 3.2;
+      const rLocal = dialHitSize.r / 1.12;
+      const { c, e } = anchorVecs;
+      c.set(0, top, 0);
+      hit.localToWorld(c).project(camera);
+      let r = 0;
+      for (const [dx, dz] of [[rLocal, 0], [0, rLocal]]) {
+        e.set(dx, top, dz);
+        hit.localToWorld(e).project(camera);
+        r = Math.max(r, Math.hypot(((e.x - c.x) / 2) * size.width, ((e.y - c.y) / 2) * size.height));
+      }
+      knobAnchor.x = ((c.x + 1) / 2) * size.width;
+      knobAnchor.y = ((1 - c.y) / 2) * size.height;
+      knobAnchor.r = r * dialScaleRef.current;
     }
   });
 
@@ -493,6 +519,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
         })}
         {dial && dialHitPos && dialHitSize && (
           <mesh
+            ref={dialHitRef}
             position={[dialHitPos.x, dialHitPos.y, dialHitPos.z]}
             onPointerOver={handleDialEnter}
             onPointerOut={handleDialLeave}

@@ -79,6 +79,14 @@
   height: 100% !important;
 }
 
+/* Knob-press sparks (KnobSparks): a 2D canvas over the keypad canvas, same
+   box, never takes the pointer. */
+.keypad-canvas-wrapper > .knob-sparks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .keypad-placeholder {
   width: 100%;
   height: 100%;

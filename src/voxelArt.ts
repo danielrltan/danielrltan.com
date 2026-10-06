@@ -218,3 +218,25 @@ export function sparkBurst(radius: number, len: number): Cells {
   }
   return out;
 }
+
+/**
+ * One knob spark (KnobSparks): a bar from `r0` to `r0 + len` voxels out along
+ * angle `a` (screen radians, y down), `w0` voxels wide at the inner end and
+ * `w1` at the tip. Coverage-rasterised like the SVG glyphs above (4×4 samples,
+ * keep ≥ 7/16), so a thin diagonal steps cleanly instead of breaking up.
+ */
+export function sparkBar(a: number, r0: number, len: number, w0: number, w1 = w0): Cells {
+  const ca = Math.cos(a), sa = Math.sin(a);
+  const P = (d: number, o: number): Pt => [ca * d - sa * o, sa * d + ca * o];
+  const poly = [P(r0, -w0 / 2), P(r0 + len, -w1 / 2), P(r0 + len, w1 / 2), P(r0, w0 / 2)];
+  const xs = poly.map((p) => p[0]), ys = poly.map((p) => p[1]);
+  const out: Cells = [];
+  for (let gy = Math.floor(Math.min(...ys)) - 1; gy <= Math.ceil(Math.max(...ys)); gy++)
+    for (let gx = Math.floor(Math.min(...xs)) - 1; gx <= Math.ceil(Math.max(...xs)); gx++) {
+      let hit = 0;
+      for (let sy = 0; sy < 4; sy++)
+        for (let sx = 0; sx < 4; sx++) if (inPoly(gx + (sx + 0.5) / 4, gy + (sy + 0.5) / 4, poly)) hit++;
+      if (hit >= 7) out.push([gx, gy]);
+    }
+  return out;
+}

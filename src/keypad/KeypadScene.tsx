@@ -10,6 +10,7 @@ import {
   stampPulse,
   type PulseChannel,
 } from "./RipplePost";
+import { KnobSparks } from "./KnobSparks";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useIsMobile } from "../useIsMobile";
 import { isLowTier } from "../capabilityTier";
@@ -520,6 +521,7 @@ export function KeypadScene({ dropRef, glowOpacityRef }: KeypadSceneProps) {
           pulsesRef={pulsesRef}
         />
       </Canvas>
+      <KnobSparks />
       {TUNE_MODE && (
         <TuneHud tuneStateRef={tuneStateRef} transformMode={transformMode} />
       )}
