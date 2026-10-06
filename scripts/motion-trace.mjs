@@ -2,7 +2,7 @@
 //
 // Frame-timing harness for the scroll choreography. Drives a REAL wheel scroll
 // (page.mouse.wheel, small steps, human-ish pacing, deterministic pauses) from
-// the top of the page to the bottom, so Lenis smoothing, GSAP scrub, pins,
+// the top of the page to the bottom, so Lenis smoothing, GSAP scrub, sticky holds, seams,
 // snaps and the hero->About settle are all exercised exactly as a visitor
 // triggers them, and records per-frame timing bucketed by section.
 //
@@ -97,7 +97,7 @@ function mulberry32(a) {
 function initScript(sections) {
   const mt = (window.__mt = {
     sections,
-    ranges: [], // [{name, top}] sorted by top; refreshed by ResizeObserver
+    ranges: [], // [{name, top, bottom}] section doc ranges, sorted by top; refreshed by ResizeObserver
     y: 0,
     attrEvents: [],
     wheels: [], // [t]
@@ -185,13 +185,23 @@ function initScript(sections) {
     { passive: true, capture: true },
   );
 
+  // Section doc ranges from the registry selectors. Since the seam overhaul
+  // (2026-10-06) every section root is in flow and carries its own hold
+  // (sticky stage inside a tall root, src/seams/stack.css), so the root's doc
+  // top/bottom IS the section's range; there are no pin-spacers to measure.
+  // Two roots overlap where a sheet rises over its neighbour (Projects over
+  // About, the footer over the keypad): secAt() picks the last range whose top
+  // the viewport centre has passed, i.e. the sheet on top, which is the one on
+  // screen. Builds from before the overhaul (pin-spacers, e.g. the baseline
+  // dist) are NOT bucketed the same way any more; compare them by their own
+  // motion-before.json, taken with the old harness.
   mt.computeRanges = () => {
     const out = [];
     for (const [name, sel] of sections) {
       const el = document.querySelector(sel);
       if (!el) continue;
-      const box = el.closest(".pin-spacer") || el;
-      out.push({ name, top: name === "Hero" ? 0 : box.getBoundingClientRect().top + window.scrollY });
+      const r = el.getBoundingClientRect();
+      out.push({ name, top: name === "Hero" ? 0 : r.top + window.scrollY, bottom: r.bottom + window.scrollY });
     }
     out.sort((a, b) => a.top - b.top);
     mt.ranges = out;
@@ -601,7 +611,7 @@ async function oneRun(browser, runIdx) {
       .map((e) => ({ tMs: Math.round(e.t - raw.t0), y: Math.round(e.y), attr: e.attr, v: e.v })),
     loafType: raw.loafType,
     scrollHeight: raw.scrollHeight,
-    ranges: raw.ranges.map((r) => ({ name: r.name, top: Math.round(r.top) })),
+    ranges: raw.ranges.map((r) => ({ name: r.name, top: Math.round(r.top), bottom: Math.round(r.bottom) })),
     pageErrors: errors,
     ...a,
   };
