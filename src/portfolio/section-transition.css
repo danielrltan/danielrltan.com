@@ -1,6 +1,12 @@
-/* Bridge between BitsAndPieces and Keypad: single-row marquee.
-   Pure CSS animation. z-index 0 so the pinned Keypad floats above
-   when its pin engages. */
+/* The band between Recents and Contact: a single-row marquee, and seam 7's
+   CHANNEL DRUM (SectionTransition.tsx; spec .scratch/seams/SPEC.md §5.7).
+   The band is a 3-face prism: white -> orange (the same copy, inverted) ->
+   white, rolling in two detented clicks with scroll on desktop, a 2D
+   squash-flip one-shot on touch, and one flat white face under reduced motion.
+   The crawl is a pure CSS animation and stays steps(640) on every face.
+   Stacking: base z 0 here; with its seam flag the band root is z 4 and
+   overflow visible (src/seams/stack.css) so the turning drum overlaps the
+   Recents stage above and the keypad top below instead of being clipped. */
 
 .section-transition {
   position: relative;
@@ -9,17 +15,90 @@
      240px → 200px. Text scales the same factor below. */
   height: 29vh;
   min-height: 200px;
-  display: flex;
-  align-items: center;
   overflow: hidden;
   /* Banner stands out a tad (user direction): a clean WHITE band that gently
      pops against the #eef0f3 page + keypad — WITHOUT the old hard hairline
      borders that read as a barrier. The keypad viewport below stays seamless
      (its own --bg-page backdrop fills the screen); this white band is the one
-     deliberate lift above it, just as the deep footer is the one below. */
+     deliberate lift above it, just as the deep footer is the one below.
+     Each face carries this same ground; the root keeps it for the flat band. */
   background: var(--bg-surface, #ffffff);
   z-index: 0;
 }
+
+/* The prism and its faces. Every face fills the band rect; at rest only
+   face 0 (today's band) shows, and the copies are hidden until a drum mode
+   (the root's data-drum, set by the seam) shows them. */
+.st-drum {
+  position: absolute;
+  inset: 0;
+}
+.st-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  background: var(--bg-surface, #ffffff);
+}
+.st-face + .st-face {
+  opacity: 0;
+}
+/* Face 1: International Orange ground, the same copy in white (the orange
+   bullets go white too). Flat fills only: no shadow on the inverted copy. */
+.st-face--hot {
+  background: var(--accent, #ff4f00);
+}
+.st-face--hot .st-text,
+.st-face--hot .st-bullet {
+  color: var(--bg-surface, #ffffff);
+  text-shadow: none;
+}
+
+/* Any drum mode: the root's own white would show as a flat card behind the
+   turning (receding, so smaller) or squashed drum; the page ground shows
+   through instead and each face carries its own white. */
+.section-transition[data-drum] {
+  background: transparent;
+}
+
+/* "3d" (desktop, fine pointer): the faces sit on a square prism whose axis
+   is half a band height BEHIND the page (transform-origin z = -h/2, --st-h
+   written by the seam's measure). Face 0 needs no transform and the drum at
+   rest is the identity, so the resting band is exactly the flat band. The
+   drum's rotateX(+psi) rolls the front face up and away (continuing the
+   scroll direction), so each next face waits one STEP of -90deg around the
+   prism: face 1 underneath, face 2 at the back. The fourth side is empty
+   and never turns to the front (psi stays in [0, 180]). */
+.section-transition[data-drum="3d"] {
+  perspective: 1600px;
+}
+.section-transition[data-drum="3d"] .st-drum,
+.section-transition[data-drum="3d"] .st-face {
+  transform-origin: 50% 50% calc(var(--st-h, 261px) * -0.5);
+}
+.section-transition[data-drum="3d"] .st-drum {
+  transform-style: preserve-3d;
+}
+.section-transition[data-drum="3d"] .st-face {
+  opacity: 1;
+  backface-visibility: hidden;
+}
+/* The crawling track is its own compositor layer: hide its back side too, so
+   a turned-away face's copy can never paint through the face in front. */
+.section-transition[data-drum="3d"] .st-marquee,
+.section-transition[data-drum="3d"] .st-track {
+  backface-visibility: hidden;
+}
+.section-transition[data-drum="3d"] .st-face--1 {
+  transform: rotateX(-90deg);
+}
+.section-transition[data-drum="3d"] .st-face--2 {
+  transform: rotateX(-180deg);
+}
+
+/* "flip" (touch / phone): no 3D at all (iOS flattens preserve-3d); the faces
+   stay stacked flat and the seam's WAAPI squash-flip swaps face 1 in by
+   opacity at the squash's zero points. Copies stay hidden at rest (above). */
 
 .st-marquee {
   position: relative;
