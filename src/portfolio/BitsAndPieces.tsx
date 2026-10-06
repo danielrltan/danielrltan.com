@@ -23,8 +23,8 @@ gsap.registerPlugin(ScrollTrigger);
  * stopping"): from the section top at 85% of the viewport to flush, the podium
  * extrudes, the cups pop and the slabs drop as a pure function of scroll, the
  * three stats count up in step, and the honour card appears when the wall is
- * complete. Then a short soft dwell (--seam-bp-hold, 0.3vh) holds on the
- * finished wall: the section is 130svh with an inner sticky `.bp-hold`
+ * complete. Then a short soft dwell (--seam-bp-hold, 0.5vh) holds on the
+ * finished wall: the section is 150svh with an inner sticky `.bp-hold`
  * (src/seams/stack.css), eased in and out by softHold. Scrolling up un-builds.
  *
  * Narrow (the stacked ledger / grid): the tiles reveal once in a cascade out
@@ -47,9 +47,11 @@ const GHOST_TRAVEL = 0.1;
  * trophy wall, so it got a 0.8vh dwell pin to let a ~2 s time-based entrance
  * play in view. The seam overhaul (2026-10-06) builds the wall FROM the scroll
  * instead: the build spans the section top 85% -> 0 (0.85vh), so whoever
- * reaches the wall has watched it go up, at any speed, and only a 0.3vh soft
+ * reaches the wall has watched it go up, at any speed, and only a 0.5vh soft
  * dwell (--seam-bp-hold, a CSS token; no JS duplicates it) is left to rest on
- * the finished wall. 0.85 + 0.3 vh in frame vs the old 0.67 + 0.8.
+ * the finished wall. 0.85 + 0.5 vh in frame vs the old 0.67 + 0.8. (0.3vh was
+ * the first cut; its short soft edges played as a stop-and-go hiccup at a
+ * normal wheel, so it took the spec's gate G7 fallback.)
  */
 /** Count-up span within the build: the stats count over p 0.2 -> 0.95. */
 const COUNT_FROM_P = 0.2;

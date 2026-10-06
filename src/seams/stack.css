@@ -40,7 +40,8 @@
   --seam-line: 2px;
   --seam-about-cover: 100svh;  /* About stays still under the rising Projects sheet for this long */
   --seam-mac-hold: 180svh;     /* gate G1 (fallback 220svh: the extra goes to the landed dwell) */
-  --seam-bp-hold: 30svh;       /* gate G7 (fallback 50svh) */
+  --seam-bp-hold: 50svh;       /* gate G7 fallback taken (was 30svh: at ~1000px/s its 108px soft edges braked
+                                  the wall like a speed bump; 50svh gives 180px edges around a still core) */
   --seam-photos-hold: 80svh;
   --footer-h: 0px;             /* written by Footer.tsx (W8) via ResizeObserver; 0 = no overlap (a valid interim) */
 }
