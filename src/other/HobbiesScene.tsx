@@ -6,7 +6,15 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { isLowTier } from "../capabilityTier";
 import { track } from "../analytics";
-import { HOBBIES, type Hobby } from "./hobbies";
+import {
+  HOBBIES,
+  type Hobby,
+  hobbiesMotion,
+  arrivalOf,
+  liftOf,
+  refreshHobbiesMirror,
+  setHobbiesWake,
+} from "./hobbies";
 import { markSectionCanvasCreated } from "../useSectionCanvasMount";
 import { MQ, reducedMotion } from "../motion";
 import { useMedia } from "../useMedia";
@@ -20,8 +28,10 @@ const SEEN_HOBBIES = new Set<string>();
  *
  * All ten interest objects float together as one dense cluster suspended in
  * open space and fill the frame edge-to-edge with low padding (the reference
- * the user supplied). There is no scroll-driven scrub and no one-at-a-time
- * focus: every object is vivid the whole time.
+ * the user supplied). There is no one-at-a-time focus: every object is vivid
+ * the whole time. The only scroll link is at the section's seams (2026-10-06
+ * seam overhaul): the props rise into place as Play arrives (zero-g arrival),
+ * applied as render-time offsets from the shared store in ./hobbies.ts.
  *
  * MOTION — gentle zero-g drift (NOT a vertical bob):
  *   Each object is a soft body that drifts slowly around its home slot
@@ -808,6 +818,26 @@ function SceneInner({
     [mobile],
   );
 
+  // ZERO-G ARRIVAL wave order (seam work-play, spec §5.4): each prop's rank is
+  // its home x across the arrangement, 0 = leftmost, 1 = rightmost, so the
+  // props rise left to right. Published to the motion store so the debug
+  // mirror (window.__hobbies.maxYOffset) is exact for this arrangement.
+  const ranks = useMemo(() => {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    for (const b of bodies) {
+      minX = Math.min(minX, b.home.x);
+      maxX = Math.max(maxX, b.home.x);
+    }
+    const span = maxX - minX;
+    return bodies.map((b) => (span > 0 ? (b.home.x - minX) / span : 0));
+  }, [bodies]);
+  useEffect(() => {
+    hobbiesMotion.ranks = ranks;
+    refreshHobbiesMirror();
+    invalidate();
+  }, [ranks, invalidate]);
+
   useFrame((state, dtRaw) => {
     if (visibleRef.current === false || liveRef.current === false) return;
     // Reduced motion: NO self-invalidation. The demand loop then renders only
@@ -841,14 +871,33 @@ function SceneInner({
     const visHalfH = dist * HALF_VFOV_TAN;
     const visHalfW = visHalfH * aspect;
 
+    // Seam offsets (spec §5.4): the rise depth follows the frame, so the props
+    // start just as far below the fold at any viewport size.
+    const motion = hobbiesMotion;
+    const D = motion.depthK * visHalfH;
+    if (Math.abs(D - motion.D) > 1e-6) {
+      motion.D = D;
+      refreshHobbiesMirror();
+    }
+    const arrival = motion.arrival;
+    // While a seam is moving the props, their drawn positions are not their
+    // body positions, so the collision solver and the frame clamp (which only
+    // know body state) stand down until the props are home again.
+    const seamActive = arrival < 1;
+
     const hoveredIdx = hoveredIndexRef.current;
 
     if (rm) {
-      // Static still-life: park each body at its home, no drift / collisions.
+      // Static still-life: park each body at its home, no drift / collisions,
+      // and no seam offsets (reduced motion is arrival 1: the props at home).
       for (let i = 0; i < bodies.length; i++) {
         const b = bodies[i]!;
         b.pos.copy(b.home);
-        posRefs.current[i]?.position.copy(b.pos);
+        const g = posRefs.current[i];
+        if (g) {
+          g.position.copy(b.pos);
+          g.rotation.set(0, 0, 0);
+        }
       }
       return;
     }
@@ -885,7 +934,7 @@ function SceneInner({
     // expensive per-frame work here and the slow drift alone reads fine on a
     // small screen (the EDGE_MARGIN + spread home slots already keep visible
     // gaps). Desktop keeps the full bump-apart sim. frameloop stays 'demand'.
-    if (!isTouch) {
+    if (!isTouch && !seamActive) {
       for (let i = 0; i < bodies.length; i++) {
         const a = bodies[i]!;
         for (let j = i + 1; j < bodies.length; j++) {
@@ -929,18 +978,41 @@ function SceneInner({
     // the band MUST be computed around lookY — a symmetric-about-origin clamp would
     // be wrong. Each limit is then unioned with the body's tuned home so the clamp
     // never pulls a body inward of its tuned slot, only stops outward drift.
+    if (!seamActive) {
+      for (let i = 0; i < bodies.length; i++) {
+        const b = bodies[i]!;
+        // Same clamp whether or not this body is focused, so hovering never snaps it.
+        const er = b.radius;
+        const sideLim = Math.max(visHalfW - er - EDGE_MARGIN, Math.abs(b.home.x));
+        const topLim = Math.max(lookY + visHalfH - er - EDGE_MARGIN, b.home.y);
+        const botLim = Math.min(lookY - visHalfH + er + EDGE_MARGIN, b.home.y);
+        if (b.pos.x > sideLim) { b.pos.x = sideLim; if (b.vel.x > 0) b.vel.x *= -0.3; }
+        else if (b.pos.x < -sideLim) { b.pos.x = -sideLim; if (b.vel.x < 0) b.vel.x *= -0.3; }
+        if (b.pos.y > topLim) { b.pos.y = topLim; if (b.vel.y > 0) b.vel.y *= -0.3; }
+        else if (b.pos.y < botLim) { b.pos.y = botLim; if (b.vel.y < 0) b.vel.y *= -0.3; }
+      }
+    }
+
+    // ---- Draw: body position + the seams' RENDER-TIME offsets ----
+    // ZERO-G ARRIVAL (owner brief 2026-10-06: something on screen moves 1:1
+    // with the wheel at every seam; Play's old 500px sticky stop is gone). As
+    // the section comes up under Work, the props rise from below the fold in a
+    // left-to-right wave, faster than the page, each with a lazy roll that
+    // straightens, and settle with a tiny overshoot exactly as the section
+    // lands. The offset is a pure function of `arrival`, written to the OUTER
+    // position group only (never into body state), so scrolling back up sinks
+    // them along the same curve and a cut jump lands on the same frame; the
+    // drift sim underneath never knows (a sim-replayed lift is
+    // non-deterministic after a jump, spec §8.16).
     for (let i = 0; i < bodies.length; i++) {
       const b = bodies[i]!;
-      // Same clamp whether or not this body is focused, so hovering never snaps it.
-      const er = b.radius;
-      const sideLim = Math.max(visHalfW - er - EDGE_MARGIN, Math.abs(b.home.x));
-      const topLim = Math.max(lookY + visHalfH - er - EDGE_MARGIN, b.home.y);
-      const botLim = Math.min(lookY - visHalfH + er + EDGE_MARGIN, b.home.y);
-      if (b.pos.x > sideLim) { b.pos.x = sideLim; if (b.vel.x > 0) b.vel.x *= -0.3; }
-      else if (b.pos.x < -sideLim) { b.pos.x = -sideLim; if (b.vel.x < 0) b.vel.x *= -0.3; }
-      if (b.pos.y > topLim) { b.pos.y = topLim; if (b.vel.y > 0) b.vel.y *= -0.3; }
-      else if (b.pos.y < botLim) { b.pos.y = botLim; if (b.vel.y < 0) b.vel.y *= -0.3; }
-      posRefs.current[i]?.position.copy(b.pos);
+      const g = posRefs.current[i];
+      if (!g) continue;
+      const rank = ranks[i] ?? 0;
+      const lift = seamActive ? D * liftOf(rank, arrival) : 0;
+      const roll = seamActive ? 0.25 * (1 - arrivalOf(rank, arrival)) : 0;
+      g.position.set(b.pos.x, b.pos.y - lift, b.pos.z);
+      g.rotation.set(0, 0, roll);
     }
   });
 
@@ -1043,6 +1115,9 @@ export const HobbiesScene = memo(function HobbiesScene({
     return () => unsubs.forEach((u) => u());
   }, []);
 
+  // Drop the seam wake with the canvas (the section unmounts it off-screen).
+  useEffect(() => () => setHobbiesWake(null), []);
+
   // Wake the demand loop on the live rising edge.
   const canvasInvalidateRef = useRef<(() => void) | null>(null);
   useEffect(() => {
@@ -1119,6 +1194,9 @@ export const HobbiesScene = memo(function HobbiesScene({
         onCreated={({ gl, invalidate }) => {
           markSectionCanvasCreated(gl.domElement);
           canvasInvalidateRef.current = invalidate;
+          // The Play seams (Other.tsx) move the props by scroll: each change
+          // of the seam store wakes this demand loop.
+          setHobbiesWake(invalidate);
         }}
         onPointerMissed={handleMissed}
       >

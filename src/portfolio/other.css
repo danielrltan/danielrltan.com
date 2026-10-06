@@ -1,10 +1,11 @@
 /* ======================================================================
    Other: "Off the clock" (section 04, "Play") — BOLD INTEREST CLUSTER
    ----------------------------------------------------------------------
-   A single bold screen held briefly by a CSS sticky stop (no GSAP pin, no
-   scroll-jack). The 3D HobbiesScene fills the viewport full-bleed and floats
-   all ten interest objects together as one dense, overlapping cluster
-   suspended in open space. The editorial corner header (tiny "04" tag +
+   A single bold screen that scrolls through at page speed (no pin, no sticky
+   stop since the 2026-10-06 seam overhaul: its boundaries are carried by the
+   props rising in and parting, Other.tsx). The 3D HobbiesScene fills the
+   viewport full-bleed and floats all ten interest objects together as one
+   dense, overlapping cluster suspended in open space. The editorial corner header (tiny "04" tag +
    giant wordmark) floats on top; hovering an object surfaces its label as an
    in-canvas tag. The header arrives with a one-shot, time-based reveal
    (Other.tsx adds .is-in once; nothing here is scroll-written).
@@ -16,7 +17,7 @@
 .portfolio-other {
   position: relative;
   /* svh with vh fallback: bare 100vh changes every time the iOS URL bar
-     collapses, shifting the sticky-hold geometry. svh is constant under
+     collapses, shifting every section below. svh is constant under
      browser-chrome changes. */
   height: 100vh;
   height: 100svh;
@@ -118,7 +119,7 @@
 /* ======================================================================
    DESKTOP (exactly the complement of the compact phone query: >=769px wide
    AND >=501px tall; a phone on its side, <=500px tall, takes the compact
-   path below). One block for the desktop canvas slack + the scroll stop.
+   path below): the desktop canvas slack.
 
    CANVAS SLACK: the section (and so the full-bleed canvas, inset:0) runs
    100px TALLER than the viewport. The bottom-row objects (car, keyboard) sat
@@ -130,29 +131,22 @@
    with HobbiesScene's DESK_EXTRA_BOTTOM_PX (which it only applies off the
    compact query, matching this block). Phones keep the 100svh box.
 
-   SCROLL STOP: a CSS sticky hold, NOT a GSAP pin. The wrapper is taller than
-   the section by --other-stop; the section sticks to the viewport top while
-   the wrapper's extra height scrolls through, then releases. Native sticky
-   is resolved by the compositor in lockstep with the (Lenis-smoothed) native
-   scroll — the section glides to the top and stays, with no JS-timed
-   position:fixed swap to snap in. Ancestors use overflow-x: clip (not hidden)
-   precisely so sticky/fixed chrome keeps working — see index.css. Phones: no
-   wrapper height, no sticky — the portrait cluster free-scrolls.
+   NO SCROLL STOP (seam overhaul 2026-10-06, spec §5.4). The 500px sticky
+   hold (--other-stop) is gone at every width and under reduced motion (where
+   it used to apply unguarded): the owner's brief keeps only three short holds
+   on the page, and Play's arrival is now the props rising in with the scroll.
+   The wrapper takes no height of its own, so it is exactly the section
+   (100svh + 100px slack here, 100svh on phones) and stays a plain in-flow box:
+   it is the registry selector and the seams' trigger, which must never be
+   sticky (spec §0.5).
    ====================================================================== */
 .other-pin-wrap {
-  --other-stop: 500px; /* scroll distance the section holds; the dwell (halved from 1000) */
   position: relative;
 }
 @media (min-width: 769px) and (min-height: 501px) {
   .portfolio-other {
     height: calc(100vh + 100px);
     height: calc(100svh + 100px);
-    position: sticky;
-    top: 0;
-  }
-  .other-pin-wrap {
-    height: calc(100vh + 100px + var(--other-stop));
-    height: calc(100svh + 100px + var(--other-stop));
   }
 }
 /* Short-viewport guard (desktop only): on short screens the GIANT wordmark

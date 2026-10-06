@@ -1,13 +1,13 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { softRelease } from "./softRelease";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
-import { reducedMotion } from "../motion";
+import { ease, reducedMotion } from "../motion";
+import { mountSeam, oneShot, SEAM_MQ } from "../seams";
 import "./sections.css";
 import "./other.css";
 import { ScrambleText } from "./ScrambleText";
-import { HOBBIES } from "../other/hobbies";
+import { HOBBIES, hobbiesChanged, hobbiesMotion } from "../other/hobbies";
 // Lazy: 3D hobbies scene loads on scroll-approach (idle-prefetched in App.tsx)
 // rather than shipping in the first-paint bundle.
 const HobbiesScene = lazy(() =>
@@ -25,11 +25,25 @@ gsap.registerPlugin(ScrollTrigger);
  * single bold screen — the 3D HobbiesScene fills the viewport full-bleed and
  * floats all ten interest objects together as one dense, overlapping cluster
  * suspended in open space (the reference the user supplied). There is no pin, no
- * scroll-jack, no per-hobby focus, and no dot strip; the objects are the whole
+ * scroll stop, no per-hobby focus, and no dot strip; the objects are the whole
  * show. Hovering (or tapping) an object surfaces its label via a tooltip.
  *
+ * SEAMS (2026-10-06 seam overhaul, owner brief "one workstation, one signal,
+ * never stopping": something moves 1:1 with the wheel at every section
+ * boundary, and only three short holds remain on the page). Play's 500px
+ * sticky stop is gone; the section scrolls through at page speed and its two
+ * boundaries are carried by the props instead:
+ * - work → play, ZERO-G ARRIVAL: the ten props rise from below the fold in a
+ *   left-to-right wave as the section comes up, and settle with a tiny
+ *   overshoot exactly as its top reaches 5% of the viewport.
+ * - play → honours, DOORS: as the trophy wall rises, the props part sideways
+ *   like elevator doors to make room for it.
+ * Both are pure functions of scroll (seams/seam.ts) feeding render-time
+ * offsets in the scene through ../other/hobbies.ts; touch gets a short
+ * time-based rise instead (scroll-linked writes lag threaded touch scroll).
+ *
  * The header arrives with a one-shot, time-based reveal (eyebrow, then title
- * with its pixel decode) once the section is well into view, and a `live`
+ * with its pixel decode) as soon as the section shows, and a `live`
  * gate wakes the heavy 3D render loop only while the section is on screen.
  * The accessible + crawlable interests list (sr-only) remains the source of
  * truth for screen readers,
@@ -37,12 +51,28 @@ gsap.registerPlugin(ScrollTrigger);
  * decorative <canvas>.
  */
 
-// Play header reveal line: the wrapper's top crossing 65% of the viewport
-// (about a third of the section is on screen, the title is well in view).
-const HEADER_REVEAL_START = "top 65%";
+// Play header reveal line: the wrapper's top crossing 95% of the viewport. It
+// was 65% while the section held still for a beat; with no hold the decode has
+// to start as soon as the section shows, so it is playing while the props rise
+// (spec §5.4).
+const HEADER_REVEAL_START = "top 95%";
+
+// Zero-g arrival range (seam work-play): the wrapper's top from the viewport
+// bottom to 5% from the top. The props are home exactly as the section lands.
+const ARRIVAL_START = "top bottom";
+const ARRIVAL_END = "top 5%";
+// Rise depth (x the visible half-height): the scroll-linked desktop rise starts
+// the props 1.3 half-frames down; the touch one-shot is a shorter 0.9 lift.
+const ARRIVAL_DEPTH_SCROLL = 1.3;
+const ARRIVAL_DEPTH_TOUCH = 0.9;
+// Touch / phone one-shot: rise 700ms on an out-cubic when the wrapper top
+// crosses 70% of the viewport; crossing back sinks them in 400ms.
+const ARRIVAL_LINE = 0.7;
+const ARRIVAL_RISE_MS = 700;
+const ARRIVAL_SINK_MS = 400;
 
 // Longest the deferred canvas mount waits for an idle period. The mount band
-// is ~3.5 viewports ahead, so even the cap lands it long before arrival.
+// is ~2.5 viewports ahead, so even the cap lands it long before arrival.
 const IDLE_MOUNT_TIMEOUT_MS = 1200;
 
 /**
@@ -82,16 +112,23 @@ export function Other() {
   // Unlike Mac/Keypad, there's no UI laid OVER it to fight, so it's kept on mobile.
   const sceneMounted = useSectionCanvasMount(sectionRef, {
     disableOnMobile: false,
-    // Mount the cluster canvas well ahead (3.5 vs the 1.75 default) so the lazy
+    // Mount the cluster canvas well ahead (2.5 vs the 1.75 default) so the lazy
     // chunk + the ~2.3MB of GLBs — now also eagerly idle-warmed in App.tsx — are
     // resolved before arrival; on a quick scroll-in the section was
     // blanking/popping placeholder meshes while it loaded (user-flagged).
-    // unmountVh:5 keeps the release band above the wider mount band.
-    mountVh: 3.5,
-    unmountVh: 5,
+    // unmountVh 3 (was 5; spec §5.4): the page is ~40% shorter after the seam
+    // overhaul, so a 5-viewport band kept this context alive beside the
+    // Honours and Recents ones. The release band MUST stay wider than the
+    // mount band: with mount > unmount, a reader parked between the two bands
+    // gets the canvas mounted, then released, and the mount observer never
+    // fires again on the way in (blank section). Hence mount 3.5 -> 2.5.
+    // (Capable desktops mount eagerly and never release; this band only
+    // applies to phones, touch tablets and low-tier GPUs.)
+    mountVh: 2.5,
+    unmountVh: 3,
   });
   // ...but don't stand the canvas up from inside a scroll frame. The gate
-  // flips while the reader is still in About (~3.5 viewports out) and the
+  // flips while the reader is still in Work (~2.5 viewports out) and the
   // mount (WebGL context + scene build + first draw) is one long task; start
   // it in the next idle period instead (capped, so a busy page still mounts
   // well before arrival).
@@ -99,7 +136,7 @@ export function Other() {
   // Editorial corner header. `.is-in` (one-shot, latched) starts its CSS
   // reveal; `inView` opens the title's ScrambleText gate in the same pass.
   const headerRef = useRef<HTMLElement>(null);
-  // Sticky-hold wrapper around the section (see other.css .other-pin-wrap).
+  // In-flow wrapper around the section (see other.css .other-pin-wrap).
   const wrapRef = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
   // Gates the heavy 3D render loop: true only while the section is on screen
@@ -107,9 +144,9 @@ export function Other() {
   const [live, setLive] = useState(false);
 
   useEffect(() => {
-    // Triggers measure the WRAPPER, not the sticky section: the wrapper's
-    // top/bottom are fixed in the document (the section's rect moves while it
-    // is stuck), and its bottom marks the end of the hold.
+    // Triggers measure the WRAPPER (the registry selector and an in-flow
+    // element, spec §0.5). It is exactly the section's height now that the
+    // hold is gone.
     const el = wrapRef.current;
     if (!el) return;
 
@@ -118,14 +155,12 @@ export function Other() {
       setInView(true);
     };
 
-    // SCROLL STOP: the hold is pure CSS — `.other-pin-wrap` is taller than the
-    // section by --other-stop and the section is `position: sticky; top: 0`
-    // inside it (other.css, desktop only). A GSAP pin was tried first (same
-    // recipe as Keypad) but it swaps the section to position:fixed on a JS
-    // frame, which under Lenis' smoothed scroll could land a frame late and
-    // read as a SNAP into the hold. Sticky is resolved by the compositor with
-    // the native scroll, so the section glides to the top and simply stays —
-    // no engagement frame, nothing to snap.
+    // NO SCROLL STOP (seam overhaul 2026-10-06). Play used to hold for 500px
+    // on a CSS sticky stop with a soft release: ~300px of scroll where
+    // nothing on screen answered the wheel. The owner's brief for the seams is
+    // that something moves 1:1 at every boundary and only three short holds
+    // remain (Projects, Honours, Recents), so the section now scrolls through
+    // at page speed and the zero-g arrival below is its entrance.
 
     // Header entrance: ONE time-based reveal, latched (once). end:"max" keeps
     // it active from the reveal line to the page end, so a load or cut jump
@@ -158,34 +193,94 @@ export function Other() {
     // paint. Same pattern as the other sections.
     const stopLoaderWatch = refreshScrollOnLoaderLift();
 
-    // Soft release of the sticky section at the end of the hold
-    // (softRelease.ts). The hold runs while the wrapper's top is above the
-    // viewport top by up to (wrapper - section) px; on phones there is no
-    // sticky, the lengths match, and the release zone is empty.
-    const section = sectionRef.current;
-    const holdStart = () => el.getBoundingClientRect().top + window.scrollY;
-    const stopSoftRelease = section
-      ? softRelease({
-          trigger: el,
-          start: holdStart,
-          end: () => holdStart() + Math.max(0, el.offsetHeight - section.offsetHeight),
-          target: section,
-        })
-      : () => {};
+    // ZERO-G ARRIVAL (seam work-play, spec §5.4). Desktop with a fine pointer:
+    // arrival = scroll progress of the wrapper's top from the viewport bottom
+    // to 5% from the top, so the props rise WITH the wheel and are home
+    // exactly as the section lands; scrolling up sinks them on the same curve.
+    // Everything else (touch, the 769-900 band, phones): a short time-based
+    // rise when the wrapper top crosses 70%, reversed on leave-back, since a
+    // scroll-linked write lags threaded touch scroll by a frame (rule §0.8).
+    // Reduced motion: arrival 1, the existing static still life.
+    const setArrival = (a: number) => {
+      if (a === hobbiesMotion.arrival) return;
+      hobbiesMotion.arrival = a;
+      hobbiesChanged();
+    };
+    const stopArrival = mountSeam({
+      id: "work-play",
+      trigger: () => wrapRef.current,
+      start: ARRIVAL_START,
+      end: ARRIVAL_END,
+      when: SEAM_MQ.fine,
+      measure: () => {
+        hobbiesMotion.depthK = ARRIVAL_DEPTH_SCROLL;
+      },
+      render: (p) => setArrival(p),
+      final: () => setArrival(1),
+      reset: () => setArrival(1),
+      fallback: () => {
+        hobbiesMotion.depthK = ARRIVAL_DEPTH_TOUCH;
+        // Above the line at mount: start below the fold (oneShot only snaps
+        // the forward side; a mount below the line snaps to 1 through `snap`).
+        setArrival(0);
+        let raf = 0;
+        const stop = () => {
+          if (raf) cancelAnimationFrame(raf);
+          raf = 0;
+        };
+        // rAF tween from wherever the props are now (a reversal mid-rise
+        // turns around without a jump). Returned as an Animation-shaped
+        // handle so oneShot can finish() it on a cut jump.
+        const tween = (to: number, ms: number, curve: (t: number) => number) => {
+          stop();
+          const from = hobbiesMotion.arrival;
+          const t0 = performance.now();
+          const step = (now: number) => {
+            const t = Math.min(1, (now - t0) / ms);
+            setArrival(from + (to - from) * curve(t));
+            raf = t < 1 ? requestAnimationFrame(step) : 0;
+          };
+          raf = requestAnimationFrame(step);
+          return {
+            finish: () => {
+              stop();
+              setArrival(to);
+            },
+            cancel: stop,
+          } as unknown as Animation;
+        };
+        const undo = oneShot({
+          el,
+          line: ARRIVAL_LINE,
+          play: (dir) =>
+            dir === 1
+              ? tween(1, ARRIVAL_RISE_MS, ease.outCubic)
+              : tween(0, ARRIVAL_SINK_MS, ease.inOut),
+          snap: (dir) => {
+            stop();
+            setArrival(dir === 1 ? 1 : 0);
+          },
+        });
+        return () => {
+          undo();
+          stop();
+          hobbiesMotion.depthK = ARRIVAL_DEPTH_SCROLL;
+        };
+      },
+    });
 
     return () => {
       stopLoaderWatch();
-      stopSoftRelease();
+      stopArrival();
       entrance?.kill();
       presence.kill();
     };
   }, []);
 
   return (
-    // Sticky-hold wrapper: taller than the section by --other-stop on desktop;
-    // the section sticks to the viewport top while the wrapper scrolls through
-    // (the scroll stop). Also the jump/active-section target for "Play" in
-    // sectionRegistry, so a jump lands on the START of the hold.
+    // In-flow wrapper, exactly the section's height (no hold). It is the
+    // registry selector for "Play" (sectionRegistry) and the seams' trigger,
+    // so the class name stays.
     <div ref={wrapRef} className="other-pin-wrap">
     <section
       ref={sectionRef}
