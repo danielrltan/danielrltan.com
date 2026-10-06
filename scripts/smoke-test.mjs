@@ -231,6 +231,35 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
   }
   for (const s of SECTIONS.slice(1)) check(seen.has(s), `dial reached: ${s}`);
 
+  // 3a. Seam layout (overhaul 2026-10-06, src/seams/stack.css): no section
+  //     pins any more; holds are sticky stages inside tall in-flow roots.
+  //     Checked after the sweep so every lazy section has mounted.
+  if (!mobile) {
+    const spacers = await page.evaluate(() => document.querySelectorAll(".pin-spacer").length);
+    check(spacers === 0, `no GSAP pin-spacers on the page (${spacers})`);
+    // About sits still under the rising Projects sheet: its stage's screen
+    // top is the same at About's doc top (1.0vh) and half a screen later.
+    const aboutTop = await page.evaluate(() => {
+      const el = document.querySelector(".portfolio-about");
+      return el ? Math.round(el.getBoundingClientRect().top + window.scrollY) : null;
+    });
+    const aboutAt = async (y) => {
+      await page.evaluate((yy) => window.scrollTo(0, yy), y);
+      await settleScroll(page);
+      await waitFrames(page, 2);
+      return page.evaluate(() => ({
+        y: Math.round(window.scrollY),
+        top: document.querySelector(".portfolio-about .about-stage")?.getBoundingClientRect().top ?? null,
+      }));
+    };
+    const a0 = aboutTop == null ? null : await aboutAt(aboutTop);
+    const a1 = aboutTop == null ? null : await aboutAt(aboutTop + Math.round(vh * 0.5));
+    check(
+      !!a0 && !!a1 && a0.top != null && a1.top != null && a1.y - a0.y >= vh * 0.4 && Math.abs(a1.top - a0.top) <= 1,
+      `About holds still under the Projects sheet (${a0 && a1 ? `y ${a0.y} -> ${a1.y}: top ${a0.top?.toFixed(1)} -> ${a1.top?.toFixed(1)}` : "no About"})`,
+    );
+  }
+
   // The heavy scenes mount on approach and RELEASE their WebGL context once
   // scrolled away, so each one is checked while its section is in view.
   // Desktop lands on Projects the way the menu does (jumpToSection -> the
@@ -311,7 +340,9 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
     // Desktop: the 3D podium replaces the tile grid. It mounts, plays its
     // entrance once on screen, then shows the headliner's card; ←/→ on the
     // focused canvas steps the card; all 12 entries stay in the SR list.
-    await scrollToSelector(page, ".bp-podium");
+    // The podium builds from the scroll (seam 5) and is complete at the
+    // section's doc top (p = 1), so land there, not on the podium element.
+    await scrollToSelector(page, ".portfolio-bp");
     const podium = await waitFor(page, () => !!document.querySelector(".bp-podium-canvas"), { timeout: 10_000 });
     check(podium, "Honours podium canvas mounted");
     const carded = await waitFor(
@@ -394,18 +425,85 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
     await settleScroll(page);
     const y1 = await page.evaluate(() => window.scrollY);
     check(y1 > y0 + 100, `page scrolls over the Recents plane (+${Math.round(y1 - y0)}px)`);
+
+    // The hold's release leaves no strip: softHold's release bump is fully
+    // spent 0.15vh past the hold (no translate left on the stage, which then
+    // rides the section 1:1: its top at -0.15vh), unlike the old softRelease's
+    // permanent L/2 page-tone strip. The photos hold applies at every width.
+    const hold = await page.evaluate(() => {
+      const st = window.__scroll?.ScrollTrigger?.getById("photos-pin");
+      return st ? st.end - st.start : null;
+    });
+    const relY = Math.round(top + (hold ?? vh * 0.8) + vh * 0.15);
+    await scrollTo(page, relY);
+    await settleScroll(page);
+    const clean = await waitFor(page, () => {
+      const s = document.querySelector(".portfolio-photos .photos-stage");
+      if (!s) return false;
+      const t = s.style.translate;
+      // Flush with the section's bottom edge = no strip below the stage.
+      const sec = s.closest(".portfolio-photos").getBoundingClientRect();
+      return (t === "" || t === "none" || t === "0px") && Math.abs(s.getBoundingClientRect().bottom - sec.bottom) <= 2;
+    }, { timeout: 4000 });
+    const rel = await page.evaluate(() => {
+      const s = document.querySelector(".portfolio-photos .photos-stage");
+      if (!s) return null;
+      const sec = s.closest(".portfolio-photos").getBoundingClientRect();
+      return { t: s.style.translate, top: Math.round(s.getBoundingClientRect().top), gap: Math.round(sec.bottom - s.getBoundingClientRect().bottom), y: Math.round(window.scrollY) };
+    });
+    check(
+      clean && rel && rel.y >= relY - 2,
+      `Recents release leaves no strip (hold ${hold == null ? "?" : Math.round(hold)}px, y ${rel?.y}/${relY}, stage top ${rel?.top}, gap ${rel?.gap}px, translate '${rel?.t ?? ""}')`,
+    );
   }
 
-  // 4. Work accordion: expanding a collapsed role toggles aria-expanded.
+  // 4. Work accordion. Desktop (owner gate G2, seam overhaul 2026-10-06):
+  //    every role starts open and each header toggles its own row, so the
+  //    check is all open, then one row collapses and re-expands on click (the
+  //    re-expand is what fires work_expand). Phones keep the single-open stack:
+  //    expanding a collapsed role toggles aria-expanded.
   await scrollToSelector(page, ".portfolio-work");
-  const workToggle = await page.evaluate(() => {
-    const btns = [...document.querySelectorAll(".portfolio-work button[aria-expanded]")];
-    const collapsed = btns.find((b) => b.getAttribute("aria-expanded") === "false");
-    if (!collapsed) return { found: false };
-    collapsed.click();
-    return { found: true, id: collapsed.getAttribute("aria-controls") };
-  });
-  check(workToggle.found, "work accordion has a collapsed role");
+  const workToggle = mobile
+    ? await page.evaluate(() => {
+        const btns = [...document.querySelectorAll(".portfolio-work button[aria-expanded]")];
+        const collapsed = btns.find((b) => b.getAttribute("aria-expanded") === "false");
+        if (!collapsed) return { found: false };
+        collapsed.click();
+        return { found: true, id: collapsed.getAttribute("aria-controls") };
+      })
+    : { found: false };
+  if (!mobile) {
+    const roles = await page.evaluate(() => {
+      const btns = [...document.querySelectorAll(".portfolio-work button[aria-expanded]")];
+      return {
+        n: btns.length,
+        open: btns.filter((b) => b.getAttribute("aria-expanded") === "true").length,
+        multi: !!document.querySelector(".portfolio-work.is-multi"),
+        id: btns[0]?.getAttribute("aria-controls") || null,
+      };
+    });
+    check(roles.n > 0 && roles.open === roles.n && roles.multi, `work roles all open on desktop (${roles.open}/${roles.n}${roles.multi ? "" : ", not multi"})`);
+    let cycled = false;
+    let expandsBefore = 0;
+    let expandsAfter = 0;
+    if (roles.id) {
+      const sel = `.portfolio-work [aria-controls="${roles.id}"]`;
+      const state = (want) => new Function(`return document.querySelector(${JSON.stringify(sel)})?.getAttribute("aria-expanded") === ${JSON.stringify(want)};`);
+      await page.evaluate((s) => document.querySelector(s)?.click(), sel);
+      const collapsed = await waitFor(page, state("false"), { timeout: 3000 });
+      if (collapsed) {
+        // The header's onClick reads `open` from the last render, so the
+        // second click goes in only after the collapse has committed.
+        await waitFrames(page, 2);
+        expandsBefore = await page.evaluate(() => (window.__events || []).filter((e) => e[0] === "work_expand").length);
+        await page.evaluate((s) => document.querySelector(s)?.click(), sel);
+        cycled = await waitFor(page, state("true"), { timeout: 3000 });
+        expandsAfter = await page.evaluate(() => (window.__events || []).filter((e) => e[0] === "work_expand").length);
+      }
+    }
+    check(cycled && expandsAfter > expandsBefore, `work role collapses then re-expands on click (work_expand ${expandsBefore} -> ${expandsAfter})`);
+  }
+  if (mobile) check(workToggle.found, "work accordion has a collapsed role");
   if (workToggle.found) {
     const isOpen = await waitFor(
       page,
@@ -529,6 +627,50 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
     check(atTop, "jump-to-top returns to y=0");
   } else {
     check(false, "jump-to-top control present");
+  }
+
+  // 7b. Page ends and the seam overlay. #seam-layer (desktop, fine pointer,
+  //     motion OK only) is the page's single fixed cross-section overlay; it
+  //     must be hidden at rest at both ends, after every seam has had its
+  //     turn (the sweep, the menu cut, jump-to-top). At the page end the
+  //     keypad stays stuck under the footer sheet (wide screens) and every
+  //     footer row has printed (all widths).
+  {
+    await settleScroll(page);
+    const layerState = () => page.evaluate(() => {
+      const el = document.getElementById("seam-layer");
+      return el ? { vis: getComputedStyle(el).visibility, kids: el.childElementCount } : null;
+    });
+    const atTop = await layerState();
+    await scrollTo(page, await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight));
+    await settleScroll(page);
+    await waitFrames(page, 2);
+    await sleep(600); // the rows' steps(9) wipes settle
+    const atEnd = await layerState();
+    const idle = (s) => s && s.vis === "hidden" && s.kids === 0;
+    check(
+      mobile ? (!atTop || idle(atTop)) && (!atEnd || idle(atEnd)) : idle(atTop) && idle(atEnd),
+      `seam overlay idle at rest (top ${JSON.stringify(atTop)}, end ${JSON.stringify(atEnd)})`,
+    );
+    const end = await page.evaluate(() => {
+      const hold = document.querySelector(".keypad-section .keypad-hold")?.getBoundingClientRect();
+      const foot = document.querySelector(".portfolio-footer")?.getBoundingClientRect();
+      const rows = [...document.querySelectorAll(".portfolio-footer [data-print-row]")];
+      return {
+        y: Math.round(window.scrollY),
+        holdTop: hold ? Math.round(hold.top) : null,
+        footTop: foot ? Math.round(foot.top) : null,
+        rows: rows.length,
+        printed: rows.filter((r) => r.classList.contains("is-printed")).length,
+      };
+    });
+    if (!mobile) {
+      check(
+        end.holdTop != null && Math.abs(end.holdTop) <= 1 && end.footTop != null && end.footTop > 0,
+        `keypad stays in view under the footer (y ${end.y}: keypad top ${end.holdTop}, footer top ${end.footTop})`,
+      );
+    }
+    check(end.rows > 0 && end.printed === end.rows, `footer rows printed at page end (${end.printed}/${end.rows})`);
   }
 
   // 8. Assets: every image and the resume + photo manifest resolve.
