@@ -1425,12 +1425,11 @@ function useScreenTexture(
   // the real geometry is published by MacBody.
   screenAspect: number,
   // True during the float beats (before CRT boot): paint the spinning
-  // ASCII sphere screensaver instead of the boot/desktop UI. `floatSpin`
-  // is a ~30Hz counter that ticks while floatActive so this hook re-runs
-  // and the sphere animates (its value is otherwise unused — the spin time
-  // is read from the clock at paint).
+  // ASCII sphere screensaver instead of the boot/desktop UI. The sphere's
+  // per-frame animation is NOT driven from here: Scene's frame loop repaints
+  // it straight into this same canvas (paintFloatSphere), change-only, so the
+  // spin never re-renders React. This hook only paints it when it (re)renders.
   floatActive: boolean,
-  floatSpin: number,
   // Block-cursor blink phase (toggled ~1.9Hz in the Scene tick). Threaded into
   // the boot/desktop/detail painters so the terminal caret pulses on otherwise
   // static screens; the repaint cost is one extra texture upload per flip.
@@ -1515,14 +1514,15 @@ function useScreenTexture(
   if (selected && detailReveal > 0.04) {
     drawProjectDetail(ctx, w, h, selected, detailReveal, cursorOn, hovered);
   } else if (floatActive) {
-    drawAsciiSphere(ctx, w, h, performance.now() / 1000);
+    drawAsciiSphere(ctx, w, h, performance.now() / 1000, true);
   } else {
     drawScreen(ctx, w, h, projects, bootProgress, hoverIndex, cursorOn);
   }
+  // Any other painter invalidates the sphere's change-only signature, so the
+  // frame loop's next sphere paint always lands.
+  if (!floatActive || (selected && detailReveal > 0.04)) sphereSig.delete(ctx);
   // `imageVersion` is referenced so a late thumbnail decode forces a repaint.
   void imageVersion;
-  // `floatSpin` is referenced so the ~30Hz float tick re-runs this paint.
-  void floatSpin;
   texture.needsUpdate = true;
   return texture;
 }
@@ -1930,7 +1930,14 @@ function wrapText(
  * normal · light, z-buffered per character cell — so each facet catches
  * a distinct, changing brightness as it tumbles (a smooth sphere's
  * normal is rotationally symmetric, so its lighting never changed and
- * the spin was invisible). Repainted ~30Hz off `floatSpin`; `t` is
+ * the spin was invisible). Repainted from Scene's frame loop (uncapped,
+ * owner 2026-10-05 "uncap the fps") but CHANGE-ONLY: the char/colour grid
+ * is compared with the last one painted into this context and the canvas
+ * (plus its GPU re-upload) is touched only when a cell actually changed.
+ * Seam overhaul 2026-10-06: since f7b1947 the spin bumped a React state
+ * every frame, re-rendering the whole Scene and re-uploading the CRT
+ * texture; the orbit now pre-rolls under the rising Projects sheet while
+ * the hero tears down, so that churn landed on the busiest frames. `t` is
  * sampled from the clock at paint time so the spin is smooth regardless
  * of tick jitter. The CRT overlay shader (scanlines/roll/vignette) rides
  * on top, so it reads as a live tube running a demo.
@@ -1954,15 +1961,18 @@ const ICO_FACES: [number, number, number][] = [
   [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
   [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
 ];
+// Last painted grid per context: cell code = 0 (empty) or
+// (ramp index + 1) << 16 | green << 8 | blue. Deleted by any other painter.
+const sphereSig = new WeakMap<CanvasRenderingContext2D, Int32Array>();
+/** Paint the screensaver at time t; returns false (and touches nothing) when
+ *  the grid is identical to the last one painted, unless `force`. */
 function drawAsciiSphere(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
   t: number,
-) {
-  ctx.fillStyle = CRT_BASE;
-  ctx.fillRect(0, 0, w, h);
-
+  force = false,
+): boolean {
   // Character cell metrics (VT323 is narrow — advance ≈ 0.46em).
   const fontPx = Math.max(20, Math.round(h * 0.05));
   const cellW = fontPx * 0.46;
@@ -2063,26 +2073,50 @@ function drawAsciiSphere(
     }
   }
 
+  // Quantise to what actually reaches the canvas (glyph + rgb), then bail if
+  // nothing changed since the last paint into this context.
+  const last = ASCII_SPHERE_RAMP.length - 1;
+  const code = new Int32Array(N);
+  for (let i = 0; i < N; i++) {
+    const L = lum[i]!;
+    if (L < -1) continue;
+    const g = Math.pow(Math.min(1, L), 0.8);
+    const k = Math.min(last, Math.round(g * last));
+    // Orange phosphor ramp: base = --accent International Orange #ff4f00
+    // rgb(255,79,0) (was the off-brand terracotta #e87040 rgb(232,112,64))
+    // brightening to a warm near-white at the hot end of the ramp.
+    const gg = Math.round(79 + (240 - 79) * g);
+    const bb = Math.round(0 + (220 - 0) * g);
+    code[i] = ((k + 1) << 16) | (gg << 8) | bb;
+  }
+  const prev = sphereSig.get(ctx);
+  if (!force && prev && prev.length === N) {
+    let same = true;
+    for (let i = 0; i < N; i++) {
+      if (prev[i] !== code[i]) {
+        same = false;
+        break;
+      }
+    }
+    if (same) return false;
+  }
+  sphereSig.set(ctx, code);
+
+  ctx.fillStyle = CRT_BASE;
+  ctx.fillRect(0, 0, w, h);
   ctx.font = `${fontPx}px ${PIXEL_FONT}`;
   ctx.textBaseline = "top";
   ctx.textAlign = "left";
-  const last = ASCII_SPHERE_RAMP.length - 1;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const L = lum[r * cols + c]!;
-      if (L < -1) continue;
-      const g = Math.pow(Math.min(1, L), 0.8);
-      const ch = ASCII_SPHERE_RAMP[Math.min(last, Math.round(g * last))]!;
-      // Orange phosphor ramp: base = --accent International Orange #ff4f00
-      // rgb(255,79,0) (was the off-brand terracotta #e87040 rgb(232,112,64))
-      // brightening to a warm near-white at the hot end of the ramp.
-      const rr = 255;
-      const gg = Math.round(79 + (240 - 79) * g);
-      const bb = Math.round(0 + (220 - 0) * g);
-      ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
+      const v = code[r * cols + c]!;
+      if (!v) continue;
+      const ch = ASCII_SPHERE_RAMP[(v >> 16) - 1]!;
+      ctx.fillStyle = `rgb(255,${(v >> 8) & 255},${v & 255})`;
       ctx.fillText(ch, c * cellW, r * cellH);
     }
   }
+  return true;
 }
 
 // Directory-listing geometry shared by drawScreen (paint) and
@@ -2378,6 +2412,21 @@ function ScreenInteractionPlane({
   );
 }
 
+/** window.__mac, read by the seam acceptance probes (every build; tiny). */
+interface MacDebug {
+  c: number;
+  beat: string;
+  canOpen: boolean;
+  frames: number;
+  commits: number;
+  powerOff: number;
+  dot: number;
+}
+function macDebug(): MacDebug {
+  const w = window as unknown as { __mac?: MacDebug };
+  return (w.__mac ??= { c: 0, beat: "", canOpen: false, frames: 0, commits: 0, powerOff: 0, dot: 1 });
+}
+
 /* ─────────────────────────────────────────────────────────────────
  * Scene root: owns refs for orbit angle + dissolve + spin so the
  * orbit and the Mac choreography can be driven in lockstep from a
@@ -2484,17 +2533,20 @@ function Scene({
   // UI maps 1:1 onto the screen plane (no horizontal squish). Starts at
   // the prior fixed 780/550 until the real value arrives.
   const [screenAspect, setScreenAspect] = useState(780 / 550);
-  // Float-beat screensaver gate + animation tick (see useScreenTexture).
+  // Float-beat screensaver gate (see useScreenTexture). The spin itself is
+  // painted from the frame loop below, change-only, with no React state.
   const [floatActive, setFloatActive] = useState(false);
-  const [floatSpin, setFloatSpin] = useState(0);
   // Block-cursor blink phase (terminal caret). Toggled ~1.9Hz in the tick
   // block; one extra texture upload per flip on otherwise-static screens.
   const [cursorOn, setCursorOn] = useState(true);
   const lastTickRef = useRef(0);
-  // Separate, slower throttle for the float-beat screensaver (ASCII sphere): a
-  // CanvasTexture rebuild + GPU re-upload + React reconcile at 30Hz was wasted
-  // cost for a slow idle drift; ~13Hz looks identical and halves the churn.
-  const lastFloatSpinRef = useRef(0);
+  // Debug mirror for the seam acceptance probes (window.__mac): `frames`
+  // counts frames that passed the visibility gate, `commits` counts Scene
+  // React commits (the float spin used to add one per frame).
+  const macDbg = useMemo(() => macDebug(), []);
+  useEffect(() => {
+    macDbg.commits++;
+  });
   // Normalized cursor position (-1..1 each axis; top = -1) for the float
   // parallax. Ref, not state, so the per-frame read never re-renders.
   const pointerRef = useRef({ x: 0, y: 0 });
@@ -2521,7 +2573,6 @@ function Scene({
     imageVersion,
     screenAspect,
     floatActive,
-    floatSpin,
     cursorOn,
     selected ? hoveredControl ?? null : null,
   );
@@ -2561,6 +2612,7 @@ function Scene({
     // the user is on other sections.
     if (visibleRef.current === false) return;
     invalidate();
+    macDbg.frames++;
     // On narrow viewports the section isn't pinned, so the scroll-driven
     // pinProgressRef never advances. Drive the choreography from a fixed
     // landed value (1) so the Mac sits descended, square-on, booted, and
@@ -2694,20 +2746,29 @@ function Scene({
     if (now - lastTickRef.current >= 0) {
       lastTickRef.current = now;
       setBootProgress((prev) => (Math.abs(prev - newBoot) > 0.02 ? newBoot : prev));
-      // Terminal caret blink (~1.9Hz): flips cursorOn so the boot/desktop/detail
-      // painters pulse their block cursor on otherwise-static screens. Only ticks
-      // while the scene is on-screen (this whole loop early-returns off-screen).
-      const blink = Math.floor(now / 530) % 2 === 0;
-      setCursorOn((prev) => (prev === blink ? prev : blink));
       // Float-beat screensaver gate: on before the CRT boot, while no
-      // project is open and not on the narrow/landed path. Tick floatSpin
-      // so useScreenTexture re-runs and the ASCII sphere animates.
+      // project is open and not on the narrow/landed path.
       const fa = !narrow && !selected && p < THRESHOLDS.bootStart;
       setFloatActive((prev) => (prev === fa ? prev : fa));
-      // Screensaver: every frame (was ~13Hz; uncapped with the mirror block).
-      if (fa && now - lastFloatSpinRef.current >= 0) {
-        lastFloatSpinRef.current = now;
-        setFloatSpin((s) => (s + 1) % 1000000);
+      // Terminal caret blink (~1.9Hz): flips cursorOn so the boot/desktop/detail
+      // painters pulse their block cursor on otherwise-static screens. Only ticks
+      // while the scene is on-screen (this whole loop early-returns off-screen),
+      // and never during the float (the screensaver has no caret, so a flip
+      // there would only cost a Scene re-render).
+      if (!fa) {
+        const blink = Math.floor(now / 530) % 2 === 0;
+        setCursorOn((prev) => (prev === blink ? prev : blink));
+      }
+      // Screensaver: every frame (uncapped, owner 2026-10-05), painted straight
+      // into the CRT canvas and re-uploaded only when a cell changed. Waits for
+      // the render that flips floatActive on (that render paints the first
+      // frame and owns the canvas until then).
+      if (fa && floatActive) {
+        const cv = screenTexture.image as HTMLCanvasElement;
+        const sctx = cv.getContext("2d");
+        if (sctx && drawAsciiSphere(sctx, cv.width, cv.height, now / 1000)) {
+          screenTexture.needsUpdate = true;
+        }
       }
       const dz = detailZoomRef.current;
       // Snap to exactly 0 once closed (texture falls back to the tile grid)
