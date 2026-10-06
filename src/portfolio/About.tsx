@@ -11,6 +11,7 @@ import { mountSeam } from "../seams/seam";
 import { useMedia } from "../useMedia";
 import { heroHandoff } from "../hero/heroState";
 import { useReveal } from "./useReveal";
+import { scrollToY } from "../scroll";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -365,6 +366,27 @@ export function About() {
       reset: () => setCovered(false),
     });
   }, []);
+
+  /* Keyboard focus under the curtain (desk only: nothing covers About
+     elsewhere). About's links stay where they are while the Projects sheet
+     slides over them, so Tab could land on one the sheet hides (an obscured
+     focus ring, WCAG 2.4.11). Retract the sheet instead: scroll back to
+     About's top, where the sheet sits just below the viewport. Not `inert`:
+     the visible top half must stay usable with a mouse. */
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || mobile) return;
+    const onFocus = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null;
+      const mac = document.querySelector(".portfolio-mac");
+      if (!t || !mac || typeof t.getBoundingClientRect !== "function") return;
+      const sheetTop = mac.getBoundingClientRect().top;
+      if (sheetTop >= window.innerHeight || t.getBoundingClientRect().bottom <= sheetTop) return;
+      void scrollToY(el.getBoundingClientRect().top + window.scrollY, { preset: "nudge" });
+    };
+    el.addEventListener("focusin", onFocus);
+    return () => el.removeEventListener("focusin", onFocus);
+  }, [mobile]);
 
   /* The arrow swivel (gate G3): the sheet's rise turns the room callout's
      arrow on its tail, from the room to the arriving Mac. Fine pointers on
