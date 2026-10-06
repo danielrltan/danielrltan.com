@@ -228,7 +228,7 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
    those cells finish first. */
 .about-room-callout {
   --draw-wait: 500ms;
-  --draw-step: 13.6ms;
+  --draw-step: 9.7ms;
 }
 .about-room-callout-text {
   opacity: 0;
