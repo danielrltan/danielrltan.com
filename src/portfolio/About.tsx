@@ -134,9 +134,47 @@ function reveal(el: Element | null | undefined, order: number) {
 }
 
 /** Draw the room callout's arrow in (latched; about.css times it to start
- *  once the cells revealed alongside it have built). */
+ *  once the cells revealed alongside it have built). Stamps the latch time
+ *  and announces it (DRAWN_EVENT), so the arrow swivel can wait for the
+ *  owner's draw to finish before it turns the arrow. */
+const DRAWN_EVENT = "about-callout-drawn";
 function drawCallout(root: Element) {
-  root.querySelector(".about-room-callout")?.classList.add("is-drawn");
+  const c = root.querySelector<HTMLElement>(".about-room-callout");
+  if (!c || c.classList.contains("is-drawn")) return;
+  c.dataset.drawnAt = String(performance.now());
+  c.classList.add("is-drawn");
+  c.dispatchEvent(new Event(DRAWN_EVENT));
+}
+
+/** Every painted cell of the arrow, as [x, y] viewBox units (top-left). */
+const ROOM_ARROW_CELLS = ROOM_ARROW_SEGS.flatMap((d) =>
+  [...d.matchAll(/M(\d+) (\d+)/g)].map((m) => [Number(m[1]), Number(m[2])] as const),
+);
+/** The arrow's tail (about.css transform-origin), viewBox units. */
+const ARROW_TAIL = [57.5, 7.5] as const;
+/** Lowest painted point of the arrow turned by `deg` on its tail, viewBox
+ *  units below the viewBox top (cell corners, so the pixels' real extent). */
+function arrowBottomAt(deg: number) {
+  const a = (deg * Math.PI) / 180, s = Math.sin(a), c = Math.cos(a);
+  let max = 0;
+  for (const [x, y] of ROOM_ARROW_CELLS) {
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      const ry = ARROW_TAIL[1] + (x + dx - ARROW_TAIL[0]) * s + (y + dy - ARROW_TAIL[1]) * c;
+      if (ry > max) max = ry;
+    }
+  }
+  return max;
+}
+/** About.css draw-in length: --draw-wait + 140ms + (last --i) x --draw-step. */
+function drawDurationMs(callout: Element, steps: number) {
+  const cs = getComputedStyle(callout);
+  const ms = (v: string) => {
+    const t = v.trim();
+    const n = parseFloat(t);
+    if (!Number.isFinite(n)) return 0;
+    return /ms$/.test(t) ? n : /s$/.test(t) ? n * 1000 : n;
+  };
+  return ms(cs.getPropertyValue("--draw-wait")) + 140 + Math.max(0, steps - 1) * ms(cs.getPropertyValue("--draw-step"));
 }
 
 /** Cells the narrow layout reveals on enter (incl. the room cell on tablets;
@@ -333,21 +371,57 @@ export function About() {
      the desk layout only (a scroll-linked rotate on touch lags threaded
      scroll); writes the individual `rotate` property only (about.css puts
      transform-origin on the tail). Ends when the sheet edge is 0.1vh below
-     the arrow, so the head is aimed before the sheet reaches it. */
+     the arrow's TURNED head, so the head is aimed before the sheet reaches
+     it.
+
+     The owner's draw comes first (775d518 / 07efda5: the arrow draws itself
+     from the label onto the room, time-based after the bento builds). At any
+     brisk scroll the curtain starts before that draw has finished, so the
+     turn is gated on it: k = 0 until .is-drawn + the full draw time has
+     elapsed, and the arrow draws pointing at the room. If the draw finishes
+     with the sheet already partway up, k eases 0 -> 1 in a one-shot 300ms
+     catch-up to the scroll's angle; from then on it is the pure f(p) turn
+     again (reverses exactly). The ONE documented exception to pure f(p) in
+     this seam. */
   useEffect(() => {
     const el = sectionRef.current;
     const arrow = el?.querySelector<SVGSVGElement>(".about-room-callout-arrow");
+    const callout = el?.querySelector<HTMLElement>(".about-room-callout");
     const stage = el?.querySelector<HTMLElement>(".about-stage");
     const banner = el?.querySelector<HTMLElement>(".about-banner");
-    if (!ARROW_SWIVEL || !el || !arrow || !stage || !banner) return;
-    // The arrow's parked bottom, px below the hold's top. Layout offsets only
+    if (!ARROW_SWIVEL || !el || !arrow || !callout || !stage || !banner) return;
+    // The arrow's TURNED bottom, px below the hold's top. Layout offsets only
     // (offsetTop ignores the park translate, the iris pull-back scale and the
     // banner's reveal lift), so it reads the same at any scroll position.
     let line = 0;
+    let lastP = 0;
+    const gate = { k: 0 };
+    let tween: gsap.core.Tween | null = null;
+    let timer = 0;
     const write = (deg: number) => {
       arrow.style.rotate = deg ? `${deg.toFixed(2)}deg` : "";
     };
-    return mountSeam({
+    const render = () => write(ARROW_TURN_DEG * ease.inOutCubic(lastP) * gate.k);
+    const open = () => {
+      if (gate.k === 1 || tween) return;
+      if (lastP <= 0 || reducedMotionPref.value) {
+        gate.k = 1;
+        render();
+        return;
+      }
+      tween = gsap.to(gate, { k: 1, duration: 0.3, ease: "power2.inOut", onUpdate: render, onComplete: () => { tween = null; } });
+    };
+    const arm = () => {
+      if (!callout.classList.contains("is-drawn")) return;
+      const at = Number(callout.dataset.drawnAt) || 0;
+      const left = at + drawDurationMs(callout, ROOM_ARROW_SEGS.length) - performance.now();
+      window.clearTimeout(timer);
+      if (left <= 0) open();
+      else timer = window.setTimeout(open, left + 16);
+    };
+    arm();
+    callout.addEventListener(DRAWN_EVENT, arm);
+    const stop = mountSeam({
       id: "about-arrow",
       when: SEAM_MQ.fine,
       trigger: () => document.querySelector(".portfolio-mac"),
@@ -361,13 +435,31 @@ export function About() {
       },
       measure: () => {
         const cs = getComputedStyle(arrow);
-        const h = parseFloat(cs.height) || arrow.getBoundingClientRect().height;
-        line = stage.offsetTop + banner.offsetTop + (parseFloat(cs.top) || 0) + h;
+        const w = parseFloat(cs.width) || arrow.getBoundingClientRect().width;
+        // viewBox 62 wide; the head swings DOWN as it turns, so the bottom
+        // that the sheet must not reach is the turned one.
+        const bottom = (w / 62) * Math.max(24, arrowBottomAt(ARROW_TURN_DEG));
+        line = stage.offsetTop + banner.offsetTop + (parseFloat(cs.top) || 0) + bottom;
       },
-      render: (p) => write(ARROW_TURN_DEG * ease.inOutCubic(p)),
-      final: () => write(0),
-      reset: () => write(0),
+      render: (p) => {
+        lastP = p;
+        if (!tween) render();
+      },
+      final: () => {
+        lastP = 0;
+        write(0);
+      },
+      reset: () => {
+        lastP = 0;
+        write(0);
+      },
     });
+    return () => {
+      stop();
+      callout.removeEventListener(DRAWN_EVENT, arm);
+      window.clearTimeout(timer);
+      tween?.kill();
+    };
   }, [roomless]);
 
   return (
