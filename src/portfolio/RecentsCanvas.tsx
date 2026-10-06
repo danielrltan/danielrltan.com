@@ -731,10 +731,17 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
         wake();
       } else if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
+        // "The photo under the crosshair" (the plane's aria-label): measured
+        // from the crosshair (the iris seed), and never a photo still under
+        // the iris cover (the pointer path guards this in hitAt; the keyboard
+        // must too, or Enter opens a photo the reader cannot see yet).
         let best: Hit | null = null;
         let bestD = Infinity;
         for (const r of rectsRef.current) {
-          const d = Math.hypot(r.x + r.w / 2 - W / 2, r.y + r.h / 2 - H / 2);
+          const cx = r.x + r.w / 2;
+          const cy = r.y + r.h / 2;
+          if (coveredAt(cx, cy)) continue;
+          const d = Math.hypot(cx - seedX, cy - seedY);
           if (d < bestD) {
             bestD = d;
             best = r;
