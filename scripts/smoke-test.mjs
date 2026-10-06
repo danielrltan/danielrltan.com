@@ -658,7 +658,7 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
       const rows = [...document.querySelectorAll(".portfolio-footer [data-print-row]")];
       return {
         y: Math.round(window.scrollY),
-        holdTop: hold ? Math.round(hold.top) : null,
+        holdTop: hold ? hold.top : null,
         footTop: foot ? Math.round(foot.top) : null,
         rows: rows.length,
         printed: rows.filter((r) => r.classList.contains("is-printed")).length,
@@ -667,7 +667,7 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
     if (!mobile) {
       check(
         end.holdTop != null && Math.abs(end.holdTop) <= 1 && end.footTop != null && end.footTop > 0,
-        `keypad stays in view under the footer (y ${end.y}: keypad top ${end.holdTop}, footer top ${end.footTop})`,
+        `keypad stays in view under the footer (y ${end.y}: keypad top ${end.holdTop?.toFixed(1)}, footer top ${end.footTop})`,
       );
     }
     check(end.rows > 0 && end.printed === end.rows, `footer rows printed at page end (${end.printed}/${end.rows})`);
