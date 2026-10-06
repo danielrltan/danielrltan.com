@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { lockScroll, unlockScroll } from "../scroll";
-import { reducedMotion } from "../motion";
+import { MQ, SEAM, matches, reducedMotion } from "../motion";
+import { bayer4, cellMask, seg } from "../seams";
 import { RECENTS_TAGS } from "./recentsTags";
 
 /**
@@ -23,9 +24,21 @@ import { RECENTS_TAGS } from "./recentsTags";
  *   - Click / tap a photo, or Enter on the crosshair, opens the focus view
  *     (scroll locked while open; Esc, arrows, prev / next).
  *
+ * THE IRIS (seam 6, Honours -> Recents; spec §5.6, 2026-10-06). As the
+ * section rises, a 1-bit pixel porthole opens from the orange crosshair,
+ * drawn into this canvas over the photos: photos inside, a 2-cell white
+ * Bayer-dithered rim on the edge, page tone outside. It is the hero's pixel
+ * iris echoed, and it replaces the old time-based "frames pop in from the
+ * centre" entrance, which mostly played before the plane was on screen. It
+ * is a pure function of the entrance progress (irisRef): cells sit on the
+ * canvas grid (never the panning plane), and each cell goes cover -> white
+ * -> photo exactly once per direction, so it never boils, reverses exactly
+ * on scroll-up and lands right after a jump. No layer, clip-path or overlap.
+ *
  * PERF: the loop runs only while the plane is on screen and the tab is
- * visible. Under reduced motion there is no drift, warp, tilt or entrance,
- * and it draws only when something changes. Each image is decode()d before
+ * visible. Under reduced motion there is no drift, warp, tilt or iris,
+ * and it draws only when something changes. The iris is one ~90x57 ImageData
+ * plus one scaled drawImage per frame, and only while it is not fully open. Each image is decode()d before
  * its first draw, so no frame pays a synchronous decode mid-scroll. The
  * vignette and header plate are CSS layers, not per-frame gradient fills.
  */
@@ -87,7 +100,6 @@ interface Hit {
   key: string;
 }
 
-const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 function makeRng(seed: number) {
@@ -95,9 +107,47 @@ function makeRng(seed: number) {
   return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
 }
 
-export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef, wakeRef }: Props) {
+type RGB = [number, number, number];
+const BG_FALLBACK: RGB = [238, 240, 243]; // --bg-page #eef0f3
+
+/** Any CSS colour -> RGB, through a 1x1 canvas's fillStyle normaliser. */
+function toRGB(css: string, fallback: RGB): RGB {
+  const c = document.createElement("canvas").getContext("2d");
+  if (!c) return fallback;
+  c.fillStyle = "#000";
+  c.fillStyle = css;
+  const v = String(c.fillStyle);
+  const hex = /^#([0-9a-f]{6})$/i.exec(v);
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(v);
+  return m ? [+m[1], +m[2], +m[3]] : fallback;
+}
+
+/** Debug mirror for the acceptance probes / smoke (every build, like window.__seams). */
+interface RecentsDebug {
+  iris: number;
+  coveredCells: number;
+  whiteCells: number;
+  totalCells: number;
+  cell: number;
+  seedX: number;
+  seedY: number;
+  camY: number;
+}
+declare global {
+  interface Window {
+    __recents?: RecentsDebug;
+  }
+}
+
+export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef, irisRef, wakeRef }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // The orange crosshair: the iris opens from its centre.
+  const crossRef = useRef<HTMLDivElement>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   // Focus view: index of the open photo (null = closed) + where it opened from.
   const [open, setOpen] = useState<number | null>(null);
@@ -176,6 +226,17 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
     let ghost = "#d8dade";
     let accent = "#ff4f00";
     let chipFont = '600 11px "Geist", system-ui, sans-serif';
+    // Iris geometry, cached at layout: cell size (SEAM.irisCell, 12px on
+    // phones), the canvas cell grid, the seed (crosshair centre, canvas px),
+    // the cover colour (the page tone as RGB) and the reach that clears the
+    // farthest cell.
+    let cell: number = SEAM.irisCell;
+    let gridCols = 0;
+    let gridRows = 0;
+    let seedX = 0;
+    let seedY = 0;
+    let bgRGB: RGB = BG_FALLBACK;
+    let rFar = 0;
 
     function layout() {
       const r = wrap!.getBoundingClientRect();
@@ -192,6 +253,23 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
       ghost = cs.getPropertyValue("--bg-deep").trim() || ghost;
       accent = cs.getPropertyValue("--accent").trim() || accent;
       chipFont = `600 11px ${cs.getPropertyValue("--font-mono").trim() || "system-ui, sans-serif"}`;
+      bgRGB = toRGB(bg, BG_FALLBACK);
+      cell = matches(MQ.compact) ? SEAM.irisCellPhone : SEAM.irisCell;
+      gridCols = Math.ceil(W / cell);
+      gridRows = Math.ceil(H / cell);
+      // Seed: the crosshair's centre relative to the canvas. Both sit in the
+      // same stage, so softHold's translate moves them together.
+      const xr = crossRef.current?.getBoundingClientRect();
+      seedX = xr && xr.width ? xr.left + xr.width / 2 - r.left : W / 2;
+      seedY = xr && xr.height ? xr.top + xr.height / 2 - r.top : H / 2;
+      // Farthest corner of the CELL GRID (its last row / column overhang the
+      // canvas), so the last cell centre is past the rim at iris 1.
+      rFar = Math.max(
+        Math.hypot(seedX, seedY),
+        Math.hypot(gridCols * cell - seedX, seedY),
+        Math.hypot(seedX, gridRows * cell - seedY),
+        Math.hypot(gridCols * cell - seedX, gridRows * cell - seedY),
+      );
       const rnd = makeRng(SEED);
       cols = Array.from({ length: COLS }, (_, c) => {
         const items: Item[] = [];
@@ -215,7 +293,9 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
     let py = 0;
     let vx = 0;
     let vy = 0;
-    let zoom = reduced ? 1 : 0.94;
+    // Starts at rest (1): the old 0.94 -> 1 settle was part of the time-based
+    // entrance the iris replaces.
+    let zoom = 1;
     let zoomT = 1;
     let warp = 0;
     let warpT = 0;
@@ -223,14 +303,53 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
     let lastWarpVar = -1;
     let dragging = false;
     let idleSince = performance.now();
-    let born = -1; // entrance starts the first time the plane is visible
     let hoverKey = "";
     let ownsCursor = false;
     let dirty = true;
     let lastProgress = progressRef.current;
+    let lastIris = -1;
+
+    // ---------- iris ----------
+    // Reduced motion: no iris (always open). Otherwise q = seg(iris, 0.5, 1):
+    // R stays 0 until the stage top reaches mid-viewport, i.e. until the
+    // crosshair is on screen, then grows (q^1.3: slow out of the crosshair,
+    // faster to the corners) to clear the farthest cell exactly as the stage
+    // sticks (iris 1 = section top at the viewport top).
+    const irisOpen = () => reduced || irisRef.current >= 1;
+    let irisR = 0;
+    const rim = () => SEAM.irisRimCells * cell;
+    function setIris() {
+      const q = seg(irisRef.current, 0.5, 1);
+      irisR = (rFar + rim()) * Math.pow(q, 1.3);
+    }
+    /** Cell state: 0 = photo, 1 = page-tone cover, 2 = white rim (ordered dither). */
+    function irisState(i: number, j: number): 0 | 1 | 2 {
+      const rw = rim();
+      const t = (irisR - Math.hypot((i + 0.5) * cell - seedX, (j + 0.5) * cell - seedY)) / rw;
+      if (t >= 1) return 0;
+      if (t <= 0) return 1;
+      return bayer4(i & 3, j & 3) / 16 < t ? 2 : 1;
+    }
+    /** Is canvas point (x, y) under the iris cover? (No hover / click through it.) */
+    function coveredAt(x: number, y: number) {
+      if (irisOpen()) return false;
+      setIris();
+      return irisState(Math.floor(x / cell), Math.floor(y / cell)) !== 0;
+    }
+    const debug: RecentsDebug = {
+      iris: 1,
+      coveredCells: 0,
+      whiteCells: 0,
+      totalCells: 0,
+      cell,
+      seedX: 0,
+      seedY: 0,
+      camY: 0,
+    };
+    window.__recents = debug;
 
     // ---------- drawing ----------
-    function draw(now: number) {
+    function draw() {
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx!.globalAlpha = 1;
       ctx!.fillStyle = bg;
@@ -238,9 +357,8 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
       const cx = W / 2;
       const cy = H / 2;
       const R2 = cx * cx + cy * cy;
-      const maxD = Math.sqrt(R2);
       const rects: Hit[] = [];
-      const draws: Array<Hit & { mx: number; my: number; rot: number; a: number; r2: number }> = [];
+      const draws: Array<Hit & { mx: number; my: number; rot: number; r2: number }> = [];
       const pitch = colW + gap;
       // Scroll pan: centred at mid-span, travel measured from the span.
       const travel = panPxRef.current > 0 ? panPxRef.current : H * SCROLL_TRAVEL_VH;
@@ -266,16 +384,9 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
             const dy = y0 + it.h / 2 - cy;
             const r2 = (dx * dx + dy * dy) / R2;
             const f = 1 - warp * 0.3 * r2;
-            let s = zoom * (1 - warp * 0.34 * r2);
-            let a = 1;
-            if (!reduced) {
-              // Entrance: frames pop in outward from the centre.
-              const t = born < 0 ? 0 : (now - born - 80 - (Math.hypot(dx, dy) / maxD) * 650) / 560;
-              const e = t <= 0 ? 0 : t >= 1 ? 1 : easeOut(t);
-              s *= 0.4 + 0.6 * e;
-              a = e;
-            }
-            if (a <= 0.001) continue;
+            // (The time-based "frames pop in from the centre" entrance lived
+            // here; the scroll-driven pixel iris below replaces it.)
+            const s = zoom * (1 - warp * 0.34 * r2);
             const mx = cx + dx * f * zoom;
             const my = cy + dy * f * zoom;
             const w = colW * s;
@@ -286,7 +397,7 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
             const key = `${cg}:${k}:${it.i}`;
             // Frames lean into a fling, a little more toward the edges.
             const rot = tilt * (0.6 + 0.8 * Math.min(1, r2 * 2)) * (dx < 0 ? 1 : 0.85);
-            draws.push({ x, y, w, h, i: it.i, key, mx, my, rot, a, r2 });
+            draws.push({ x, y, w, h, i: it.i, key, mx, my, rot, r2 });
           }
         }
       }
@@ -299,7 +410,6 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
       draws.sort((p, q) => q.r2 - p.r2);
       for (const d of draws) {
         rects.push({ x: d.x, y: d.y, w: d.w, h: d.h, i: d.i, key: d.key });
-        ctx!.globalAlpha = d.a;
         ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx!.translate(d.mx, d.my);
         if (d.rot) ctx!.rotate(d.rot);
@@ -329,6 +439,35 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
         ctx!.fillText(label, hr.x + 7, hr.y + hr.h + 12.5);
         (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = "0px";
       }
+      // The iris, last, so nothing (keyline, chip) shows through its cover.
+      let covered = 0;
+      let white = 0;
+      const irisDone = irisOpen();
+      if (!irisDone) {
+        setIris();
+        cellMask(ctx!, {
+          w: gridCols * cell,
+          h: gridRows * cell,
+          cell,
+          color: bgRGB,
+          state: (i, j) => {
+            const st = irisState(i, j);
+            if (st) {
+              covered++;
+              if (st === 2) white++;
+            }
+            return st;
+          },
+        });
+      }
+      debug.iris = irisDone ? 1 : irisRef.current;
+      debug.coveredCells = covered;
+      debug.whiteCells = white;
+      debug.totalCells = gridCols * gridRows;
+      debug.cell = cell;
+      debug.seedX = seedX;
+      debug.seedY = seedY;
+      debug.camY = camY;
       const wv = Math.round(warp * 100) / 100;
       if (wv !== lastWarpVar) {
         lastWarpVar = wv;
@@ -378,8 +517,12 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
         lastProgress = progressRef.current;
         dirty = true;
       }
+      if (irisRef.current !== lastIris) {
+        lastIris = irisRef.current;
+        dirty = true;
+      }
       if (!reduced || dirty) {
-        draw(now);
+        draw();
         dirty = false;
       }
       const keepGoing = visible && !document.hidden && (!reduced || !settledRM() || dirty);
@@ -399,7 +542,6 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
       (entries) => {
         for (const e of entries) {
           visible = e.isIntersecting;
-          if (visible && born < 0) born = performance.now();
           dirty = true;
           wake();
         }
@@ -421,6 +563,8 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
     let down: { x: number; y: number; px: number; py: number; moved: number; touch: boolean } | null = null;
 
     function hitAt(x: number, y: number): Hit | null {
+      // Photos under the iris cover are not there yet: no hover, no open.
+      if (coveredAt(x, y)) return null;
       const rects = rectsRef.current;
       for (let k = rects.length - 1; k >= 0; k--) {
         const r = rects[k];
@@ -600,8 +744,9 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
       if (ownsCursor) document.body.style.cursor = "";
       if (wakeRef.current === wake) wakeRef.current = null;
       wakeLoopRef.current = () => {};
+      if (window.__recents === debug) delete window.__recents;
     };
-  }, [photos, progressRef, panPxRef, wakeRef, openFocus]);
+  }, [photos, progressRef, panPxRef, irisRef, wakeRef, openFocus]);
 
   // ---------- focus view ----------
   const N = photos.length;
@@ -671,7 +816,7 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
         <canvas ref={canvasRef} aria-hidden />
       </div>
       <div className="recents-vignette" aria-hidden />
-      <div className="recents-cross" aria-hidden />
+      <div ref={crossRef} className="recents-cross" aria-hidden />
       {typeof document !== "undefined" &&
         createPortal(
           <div
