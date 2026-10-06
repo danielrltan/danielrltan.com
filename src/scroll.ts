@@ -653,6 +653,8 @@ interface BeatLoc {
   f: number;
   /** fraction within the whole section (fallback when the pin came or went) */
   s: number;
+  /** the section's pin (hold) length when located: 0 = it had none */
+  srcPin: number;
 }
 
 const RESTORE_WINDOW_MS = 2000;
@@ -693,9 +695,9 @@ function locateBeat(y: number, g: Geom, max: number): BeatLoc | null {
   if (i < 0) return null;
   const sp = span(g, i, max);
   const s = (y - sp.top) / Math.max(1, sp.next - sp.top);
-  if (sp.pin > 0 && y <= sp.pinEnd) return { i, seg: "pin", f: (y - sp.top) / sp.pin, s };
+  if (sp.pin > 0 && y <= sp.pinEnd) return { i, seg: "pin", f: (y - sp.top) / sp.pin, s, srcPin: sp.pin };
   const rest = sp.next - sp.pinEnd;
-  return { i, seg: "rest", f: rest > 0 ? (y - sp.pinEnd) / rest : 0, s };
+  return { i, seg: "rest", f: rest > 0 ? (y - sp.pinEnd) / rest : 0, s, srcPin: sp.pin };
 }
 
 function resolveBeat(loc: BeatLoc, g: Geom, max: number): number | null {
@@ -704,6 +706,12 @@ function resolveBeat(loc: BeatLoc, g: Geom, max: number): number | null {
   if (loc.seg === "pin") {
     return sp.pin > 0 ? sp.top + loc.f * sp.pin : sp.top + loc.s * (sp.next - sp.top);
   }
+  // The hold CAME back (e.g. 1440 -> 860 -> 1440, or an iPad rotated to
+  // portrait and back): below the breakpoint the whole section was "rest",
+  // so f is a whole-section fraction. Mapping it onto the rest AFTER the
+  // restored hold threw the reader past every hold (onto the Mac's
+  // power-off); use the whole-section fraction, mirroring the pin branch.
+  if (loc.srcPin === 0 && sp.pin > 0) return sp.top + loc.s * (sp.next - sp.top);
   return sp.pinEnd + loc.f * (sp.next - sp.pinEnd);
 }
 
