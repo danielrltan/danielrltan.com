@@ -224,11 +224,11 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
    label lands and the arrow draws itself from the label down to the room,
    one pixel segment at a time (About.tsx ROOM_ARROW_SEGS, --i in draw order:
    shaft tail to tip, then both barbs outward). .is-drawn latches when the
-   bento builds (desktop) or the room rises in (narrow); --draw-wait lets
+   bento builds (desktop) or on the hero cue (narrow); --draw-wait lets
    those cells finish first. */
 .about-room-callout {
-  --draw-wait: 720ms;
-  --draw-step: 34ms;
+  --draw-wait: 500ms;
+  --draw-step: 13.6ms;
 }
 .about-room-callout-text {
   opacity: 0;
