@@ -25,7 +25,7 @@ export const knobAnchor = { x: 0, y: 0, r: 0 };
 // viewport) and scale with the live projected radius.
 const REF_R = 58;
 const VOXEL_SCALE = 1.6; // 3 px voxels at the reference size
-const R0 = 70; // inner end of each wedge, from the knob centre
+const R0 = 84; // inner end of each wedge, from the knob centre (~26 px clear of the rim)
 const WEDGES = [
   { a: 45, len: 36 }, // stagger order: upper right, right, lower right
   { a: 0, len: 42 },
