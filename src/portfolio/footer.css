@@ -82,6 +82,19 @@
   clip-path: inset(-16px);
   transition: none;
 }
+/* The wipe runs over the row's box, so a short label or link list in a
+   ~350px column would be fully printed in the first 2-3 of the 9 steps and
+   read as a pop. Desktop: the label and link rows hug their text, so the
+   whole wipe crosses the words. (Not on phones, where the links are
+   full-width touch rows; not the signature, whose canvas sizes to its
+   wrapper; not the colophon list or the bottom line, whose rules span the
+   column.) */
+@media (min-width: 769px) and (min-height: 501px) {
+  .footer-col-label[data-print-row],
+  .footer-nav[data-print-row] {
+    width: fit-content;
+  }
+}
 /* A cut jump lands printed: Footer.tsx sets .print-snap for the landing
    render so the rows do not wipe in after the cover lifts. */
 .print-snap [data-print-row] {
