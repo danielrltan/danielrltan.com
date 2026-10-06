@@ -155,7 +155,10 @@ export function mountMacRelay(opts: {
     const y = q.y + wt;
     const size = w < 0.92 ? SEAM.relayPx : lerp(SEAM.relayPx, n0.size, seg(w, 0.92, 1));
     dot.style.transform = `translate3d(${(x - size / 2).toFixed(2)}px, ${(y - size / 2).toFixed(2)}px, 0) scale(${(size / SEAM.relayPx).toFixed(4)})`;
-    dot.style.opacity = clamp01(seg(p, 0, a)).toFixed(3);
+    // Opaque by half-way through the cross-fade: two identical squares
+    // cross-faded linearly dip to ~75% coverage mid-way (a visible blink);
+    // the pixel is on top, so it can be fully in while the dot fades below.
+    dot.style.opacity = clamp01(seg(p, 0, a / 2)).toFixed(3);
   };
 
   return mountSeam({
