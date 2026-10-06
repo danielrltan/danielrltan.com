@@ -116,7 +116,11 @@ function maskBuf(cols: number, rows: number): MaskBuf | null {
   const canvas = document.createElement("canvas");
   canvas.width = cols;
   canvas.height = rows;
-  const ctx = canvas.getContext("2d");
+  // CPU-backed scratch: putImageData into a GPU-backed canvas paid a one-off
+  // ~40ms upload/context set-up on the first visible iris frame (the Recents
+  // iris, right at the Honours hold release: a visible hitch). In memory it is
+  // a plain copy; the one scaled drawImage per frame uploads a tiny texture.
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
   const img = ctx.createImageData(cols, rows);
   b = { img, u32: new Uint32Array(img.data.buffer), canvas, ctx };
