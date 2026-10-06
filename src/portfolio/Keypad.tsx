@@ -1,8 +1,6 @@
 import { lazy, memo, Suspense, useEffect, useRef } from "react";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { softReleasePin } from "./softRelease";
-import { refreshScrollOnLoaderLift } from "./scrollRefresh";
+import { refreshScrollOnLoaderLift, requestScrollRefresh } from "./scrollRefresh";
+import { softHold } from "../seams";
 import { SOCIALS } from "../socials";
 import { isTuneMode } from "../tuneMode";
 import { ensureLenis } from "../scroll";
@@ -16,8 +14,6 @@ import { useIsMobile } from "../useIsMobile";
 import { useReveal } from "./useReveal";
 import { track } from "../analytics";
 import "./keypad.css";
-
-gsap.registerPlugin(ScrollTrigger);
 
 /**
  * Keypad section: bottom-of-page Contact surface. Pure 3D: the
@@ -42,10 +38,22 @@ gsap.registerPlugin(ScrollTrigger);
  *     advances by frame dt. Time-based on purpose: the owner found a
  *     scroll-bound drop "overwhelming" (it arrived exactly as fast as they
  *     scrolled) and an after-the-fact drop "empty". A late or fast arrival
- *     (FAST_* below) plays the same timeline compressed to 460 ms so the
- *     landing still happens inside the pin.
- *   - PIN: one GSAP pin (id "keypad-pin", start "top top", end +PIN_VH of the
- *     viewport) is a pure dwell beat before the footer. No scrub, no onUpdate.
+ *     (FAST_* below) plays the same timeline compressed to 400 ms so the
+ *     landing still happens before the footer covers the keypad.
+ *   - HOLD + RECEIPT FEED (seam 8, contact -> footer; seam overhaul
+ *     2026-10-06, owner brief "section boundaries should never stop the
+ *     page"): the GSAP pin is gone. The section is 100svh + the footer's
+ *     height (--footer-h, written by Footer.tsx) and `.keypad-hold` sticks
+ *     inside it (src/seams/stack.css, keyed on this section's
+ *     data-seam-stack flag); the footer sheet carries a negative top margin
+ *     of its own height and feeds up OVER the stuck keypad 1:1, like paper
+ *     out of the device, printing its rows as they clear (Footer.tsx). So
+ *     there is no dwell and no release: the keypad stays stuck to the end of
+ *     the page, its top still showing above the sheet at max scroll. softHold
+ *     softens the ENGAGE edge only (C1, no brake) and keeps the "keypad-pin"
+ *     id as a NON-pinning hold trigger, so a menu / footer jump still lands
+ *     at the stick point. Phones (compact) and reduced motion: plain flow,
+ *     no sticky, no overlap.
  *
  * The drop state lives in `dropRef` HERE, not in the scene, so it outlives
  * the canvas: on approach-gated devices (low tier, tablets) the scene
@@ -53,8 +61,9 @@ gsap.registerPlugin(ScrollTrigger);
  * replaying the drop. One drop per page load.
  *
  * Lenis x ScrollTrigger sync lives in src/scroll.ts (module-scope
- * singleton). This section still calls ensureLenis() before its pin is
- * registered, so Lenis creation timing is unchanged.
+ * singleton). This section's effect is the site's only boot-time
+ * ensureLenis() call, so it lives in its own effect (it used to ride the pin
+ * effect, which is gone): removing it would kill smoothing site-wide.
  *
  * Accessibility / SEO: the visual surface is 3D-only, but the section
  * also renders a visually-hidden but DOM-real h2 + <ul> of <a> tags
@@ -67,9 +76,6 @@ gsap.registerPlugin(ScrollTrigger);
 
 const TUNE_MODE = isTuneMode("keypad");
 
-/** Pin length as a fraction of the viewport height. Pure dwell: the drop
- *  (armed 0.2 vh before it) makes contact inside it up to ~1500 px/s. */
-const PIN_VH = 0.6;
 /** The drop arms ONCE when the section top crosses this fraction of the
  *  viewport height, then plays its fixed time-based timeline (never
  *  scroll-bound). Applied as an IO bottom inset; the callback lands about a
@@ -82,29 +88,42 @@ const PIN_VH = 0.6;
  *  (~0.1-0.83 vh), so 0.2 is the LATEST line at which someone who stops
  *  scrolling right on it still sees the whole landing (bottom at ~1.03 vh, a
  *  sliver of the base at most) and the EARLIEST that keeps the empty stage
- *  long enough to set up the surprise. It sits 0.2 vh before the "top top"
- *  pin, so anyone scrolling through gets the contact inside the pin: at
- *  1500 px/s contact lands ~0.5 vh into the 0.6 vh pin. Before the line the
+ *  long enough to set up the surprise. It sits 0.2 vh before the stick
+ *  ("top top"), so anyone scrolling through gets the landing while the
+ *  keypad is still mostly uncovered (see FAST_* for the run). Before the line the
  *  stage is the rice backdrop with its glow already up (GLOW_APPROACH_MARGIN),
  *  so it never reads as a dead section. */
 const DROP_TRIGGER_VH = 0.2;
 /** Late / fast arrival: compress the 800 ms timeline to FAST_TOTAL_S when the
  *  trigger is seen with the section top already above FAST_LATE_VH (a late IO
  *  delivery at speed, or a jump that lands past the line), or the approach
- *  (glow line -> trigger line) ran faster than FAST_APPROACH_PX_S. Trigger to
- *  pin release is 0.2 + 0.6 = 0.8 vh (720 px at 900 tall): the full 800 ms
- *  settles inside it up to ~900 px/s (its 560 ms pull up to ~1290 px/s), the
- *  compressed 460 ms up to ~1560 px/s.
- *  Never applied behind an overlay (menu / covered jumps). */
+ *  (glow line -> trigger line) ran faster than FAST_APPROACH_PX_S.
+ *  Never applied behind an overlay (menu / covered jumps).
+ *
+ *  The run (seam 8): the landing must play before the rising footer sheet
+ *  covers the keypad's centre. The drop arms with the section top at 0.2 vh;
+ *  the keypad sticks at "top top" and the footer top (at section top + 1 vh)
+ *  then rises 1:1, reaching mid-screen 0.5 vh later. Arm -> centre covered =
+ *  0.2 + 0.5 = 0.7 vh = 630 px at 900 tall (it was 0.8 vh to the old pin's
+ *  release). At a constant approach speed v the time available is 630 / v:
+ *  - the full 800 ms settles inside it up to 630 / 0.8 = ~790 px/s, and its
+ *    560 ms pull (the visible fall) up to 630 / 0.56 = ~1125 px/s;
+ *  - so FAST_APPROACH_PX_S = 950 compresses before the pull would run past
+ *    the centre line, with the same ~15% margin the old 1100-vs-1290 had;
+ *  - the compressed FAST_TOTAL_S = 0.40 s settles inside 630 px up to
+ *    630 / 0.40 = ~1575 px/s (the 1500 px/s design speed, with margin);
+ *  - FAST_LATE_VH = 0.08: a trigger seen that late leaves 0.08 + 0.5 =
+ *    0.58 vh = 522 px, which the compressed 400 ms covers up to ~1300 px/s
+ *    (a late IO delivery is itself the sign of a fast scroll). */
 const FAST_LATE_VH = 0.08;
-const FAST_APPROACH_PX_S = 1100;
-const FAST_TOTAL_S = 0.46;
+const FAST_APPROACH_PX_S = 950;
+const FAST_TOTAL_S = 0.4;
 const DROP_TOTAL_S = 0.8; // mirrors KeypadScene's DROP_TOTAL_S
 /** The glow releases earlier, on approach (section top within 1.1vh). */
 const GLOW_APPROACH_MARGIN = "0px 0px 10% 0px";
 /** A full-screen overlay that hides the page: the section menu (while open
  *  or still fading out) and the scroll-cover of a covered cut jump. A menu
- *  jump to Contact lands at pin start while the menu scrim is still up, so
+ *  jump to Contact lands at the stick point while the menu scrim is still up, so
  *  the drop waits behind this gate and plays once the page is visible. */
 const MENU_ROOT_SELECTOR = ".navx-spill-root";
 const SCROLL_COVER_SELECTOR = ".scroll-cover";
@@ -160,10 +179,10 @@ export interface KeypadDropState {
  */
 export const Keypad = memo(function Keypad() {
   const sectionRef = useRef<HTMLElement>(null);
-  // MOBILE: the GSAP pin below is skipped on phones. The keypad <Canvas>
-  // fills the whole section and inherits the global
+  // MOBILE: no hold on phones (the pin it replaced was skipped there too).
+  // The keypad <Canvas> fills the whole section and inherits the global
   // `canvas { touch-action: none }`: on a phone a finger drag that starts on
-  // the keypad couldn't pan-scroll the page, trapping the user on a pinned
+  // the keypad couldn't pan-scroll the page, trapping the user on a stuck
   // full-viewport canvas. The canvas never mounts on mobile
   // (useSectionCanvasMount), so the section is a normal-flow band carrying
   // the contact chips below.
@@ -283,42 +302,48 @@ export const Keypad = memo(function Keypad() {
     setTimeout(scroll, 50);
   }, []);
 
-  // The dwell pin. Pure hold: nothing reads its progress. The drop is armed
-  // by the observer above and runs on its own clock during the approach.
+  // Lenis. Its own effect, on every breakpoint: this is the site's only
+  // boot-time ensureLenis() (it used to sit in the pin effect, which also
+  // ran it on phones so the other sections' triggers keep their
+  // ScrollTrigger.update feed). Same slot in the effect order as before, so
+  // the Lenis creation timing is unchanged.
   useEffect(() => {
     if (TUNE_MODE) return;
     ensureLenis();
+  }, []);
+
+  // The hold (seam 8): `.keypad-hold` sticks inside the section (stack.css,
+  // gate `wide`) while the footer sheet rides up over it. softHold eases the
+  // engage edge only: the keypad never releases (the page ends while it is
+  // stuck). Nothing reads its progress; the drop is armed by the observer
+  // above and runs on its own clock during the approach. Phones: no hold at
+  // all. On a phone the section is content-sized and taller than the
+  // collapsed hold, so a hold trigger there would register a phantom "pin"
+  // (section minus hold height) for the jump math and write translates on a
+  // wrapper that never sticks. Reduced motion needs no gate here: stack.css
+  // drops the sticky and the overlap, the hold is 100% of the section (zero
+  // length) and softHold writes nothing.
+  const holdRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (TUNE_MODE || isMobile) {
+      // A desktop -> phone flip drops the hold (the section shrinks back to
+      // its content): re-measure the triggers.
+      if (!document.documentElement.classList.contains("loading-active")) requestScrollRefresh();
+      return;
+    }
     const el = sectionRef.current;
-    if (!el) return;
-    // Skip the pin on mobile: see the isMobile comment above. Lenis is still
-    // ensured so the other sections' pins keep their ScrollTrigger.update feed.
-    if (isMobile) return;
-
-    const pinST = ScrollTrigger.create({
-      id: "keypad-pin",
-      trigger: el,
-      start: "top top",
-      end: () => "+=" + Math.round(window.innerHeight * PIN_VH),
-      invalidateOnRefresh: true,
-      pin: true,
-      pinSpacing: true,
-    });
-    // Soft release: the section eases into scroll speed instead of snapping
-    // off the pin (softRelease.ts).
-    const stopSoftRelease = softReleasePin(pinST);
-
+    const stage = holdRef.current;
+    if (!el || !stage) return;
+    const hold = softHold({ id: "keypad-pin", section: el, stage, release: false });
     // Refresh once after the layout settles (loading-active removed): the
     // page's height shifts as fonts load + lazy sections mount, and a stale
-    // start would engage the pin at the wrong scroll position.
+    // start would engage the hold edge at the wrong scroll position.
     const stopLoaderWatch = refreshScrollOnLoaderLift();
-
     return () => {
       stopLoaderWatch();
-      stopSoftRelease();
-      pinST.kill();
+      hold.kill();
     };
-    // Re-run when the breakpoint flips (rotate / resize across 768px)
-    // so the pin is created/torn down to match the new layout.
+    // Re-run when the breakpoint flips (rotate / resize across 768px).
   }, [isMobile]);
 
 
@@ -326,10 +351,15 @@ export const Keypad = memo(function Keypad() {
     <section
       ref={sectionRef}
       className="portfolio-section keypad-section"
-      // jumpToSection() lands a menu/footer jump at the pin START; the drop
-      // (armed at DROP_TRIGGER_VH, held until any overlay clears) plays in
-      // view on arrival.
+      // jumpToSection() lands a menu/footer jump at the hold START (the stick
+      // point, through the "keypad-pin" hold trigger); the drop (armed at
+      // DROP_TRIGGER_VH, held until any overlay clears) plays in view on
+      // arrival.
       data-jump-progress="0"
+      // Seam 8 flag: activates this section's half of src/seams/stack.css
+      // (100svh + --footer-h tall, .keypad-hold sticky; the footer overlap
+      // also needs the footer's own flag).
+      data-seam-stack=""
     >
       {/* Hidden semantic content for AT / keyboard / SEO. Driven from the
           shared SOCIALS list so it can't drift from the visible chips. On
@@ -347,14 +377,20 @@ export const Keypad = memo(function Keypad() {
         </ul>
       </div>
 
-      <div className="keypad-stage">
-        {mounted ? (
-          <Suspense fallback={<div className="keypad-placeholder" />}>
-            <KeypadScene dropRef={dropRef} glowOpacityRef={glowOpacityRef} />
-          </Suspense>
-        ) : (
-          <div className="keypad-placeholder" />
-        )}
+      {/* The sticky inner wrapper (seam 8). The section stays in flow as the
+          trigger / registry / jump target; only this wrapper sticks, and
+          softHold writes its `translate`. KeypadScene reads the canvas rect
+          live, so it is correct while stuck. */}
+      <div className="keypad-hold" ref={holdRef}>
+        <div className="keypad-stage">
+          {mounted ? (
+            <Suspense fallback={<div className="keypad-placeholder" />}>
+              <KeypadScene dropRef={dropRef} glowOpacityRef={glowOpacityRef} />
+            </Suspense>
+          ) : (
+            <div className="keypad-placeholder" />
+          )}
+        </div>
       </div>
 
       {/* MOBILE Contact surface. The 3D keypad caps are invisible hit-boxes with
