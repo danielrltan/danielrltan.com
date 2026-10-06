@@ -25,23 +25,27 @@ export const knobAnchor = { x: 0, y: 0, r: 0 };
 // viewport) and scale with the live projected radius.
 const REF_R = 58;
 const VOXEL_SCALE = 1.6; // 3 px voxels at the reference size
-const R0 = 77; // inner end of each wedge, from the knob centre (~19 px clear of the rim)
-// Degrees counter-clockwise from screen-right; the fan is turned 15° CCW
-// off the plain right-hand set (45 / 0 / -45).
-const FAN_TURN = 15;
+// Placement + shape as the owner set them in the Knob Spark Tuner
+// (2026-10-06). All in SCREEN px / degrees: sparkBar undoes the voxel tilt,
+// so every wedge lands exactly R0 out at its own angle.
+const R0 = 77; // inner end of each wedge, from the knob centre
+const FAN_TURN = 19; // middle wedge, degrees counter-clockwise from screen-right
+const SPREAD = 43; // degrees between neighbouring wedges
+const LEN_MID = 62;
+const LEN_SIDE = 46;
 const WEDGES = [
-  { a: 45, len: 36 }, // stagger order: top, middle, bottom
-  { a: 0, len: 42 },
-  { a: -45, len: 36 },
-].map((w) => ({ ...w, a: (-(w.a + FAN_TURN) * Math.PI) / 180 }));
-const W0 = 9; // px at the knob end
-const W1 = 39; // px at the tip
+  { a: FAN_TURN + SPREAD, len: LEN_SIDE }, // stagger order: top, middle, bottom
+  { a: FAN_TURN, len: LEN_MID },
+  { a: FAN_TURN - SPREAD, len: LEN_SIDE },
+].map((w) => ({ ...w, a: (-w.a * Math.PI) / 180 }));
+const W0 = 24; // px at the knob end
+const W1 = 42; // px at the tip
 const STAGGER_S = 0.07;
-const HOLD_S = 0.6;
+const HOLD_S = 0.5;
 const STIFF = 420; // out: springy pop (zeta 0.28)
 const ZETA_OUT = 0.28;
 const RETRACT = { k: 380, zeta: 1 }; // in: critically damped (no flash-back)
-const POSE = { rx: 0.3, ry: -0.4, depth: 0.6 };
+const POSE = { rx: 0.3, ry: -0.4, depth: 1.5 };
 const LIFT = 5;
 const FACE = "#ff4f00";
 const WALLS = ["#e04800", "#c23d00", "#a83300", "#8f2a00"];
@@ -103,24 +107,23 @@ export function KnobSparks() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, cv.width, cv.height);
       const k = knobAnchor.r > 0 ? knobAnchor.r / REF_R : 1;
-      const S = VOXEL * VOXEL_SCALE * k; // px per voxel
+      const pose: Pose = { ...POSE, scale: VOXEL_SCALE * k };
+      const amt = Math.max(...bars.map((b) => b.s.x));
+      const lift = LIFT * k * Math.min(1.3, amt);
       const cells: [number, number][] = [];
-      let amt = 0;
       bars.forEach((b, i) => {
         const x = b.s.x;
         if (x < 0.03) return;
-        amt = Math.max(amt, x);
         const w = WEDGES[i];
-        cells.push(...sparkBar(w.a, (R0 * k) / S, Math.max(1, ((w.len * k) / S) * x), (W0 * k) / S, (W1 * k) / S));
+        cells.push(...sparkBar(w.a, R0 * k, Math.max(VOXEL, w.len * k * x), W0 * k, W1 * k, pose, lift));
       });
       if (cells.length) {
-        const pose: Pose = { ...POSE, scale: VOXEL_SCALE * k };
         ctx.globalAlpha = Math.min(1, amt * 1.6);
         drawVoxels(ctx, cells, knobAnchor.x, knobAnchor.y, pose, dpr, {
           face: FACE,
           walls: WALLS,
           shadow: false,
-          lift: LIFT * k * Math.min(1.3, amt),
+          lift,
         });
         ctx.globalAlpha = 1;
       }

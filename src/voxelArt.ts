@@ -219,16 +219,9 @@ export function sparkBurst(radius: number, len: number): Cells {
   return out;
 }
 
-/**
- * One knob spark (KnobSparks): a bar from `r0` to `r0 + len` voxels out along
- * angle `a` (screen radians, y down), `w0` voxels wide at the inner end and
- * `w1` at the tip. Coverage-rasterised like the SVG glyphs above (4×4 samples,
- * keep ≥ 7/16), so a thin diagonal steps cleanly instead of breaking up.
- */
-export function sparkBar(a: number, r0: number, len: number, w0: number, w1 = w0): Cells {
-  const ca = Math.cos(a), sa = Math.sin(a);
-  const P = (d: number, o: number): Pt => [ca * d - sa * o, sa * d + ca * o];
-  const poly = [P(r0, -w0 / 2), P(r0 + len, -w1 / 2), P(r0 + len, w1 / 2), P(r0, w0 / 2)];
+/** Cells covered by a polygon given in cell units (4x4 samples, keep >= 7/16,
+ *  the same rule as the SVG glyphs above). */
+function rasterPoly(poly: Pt[]): Cells {
   const xs = poly.map((p) => p[0]), ys = poly.map((p) => p[1]);
   const out: Cells = [];
   for (let gy = Math.floor(Math.min(...ys)) - 1; gy <= Math.ceil(Math.max(...ys)); gy++)
@@ -239,4 +232,35 @@ export function sparkBar(a: number, r0: number, len: number, w0: number, w1 = w0
       if (hit >= 7) out.push([gx, gy]);
     }
   return out;
+}
+
+/**
+ * One knob spark (KnobSparks), laid out in SCREEN px: a wedge from `r0` to
+ * `r0 + len` px out from the hotspot along screen angle `a` (radians, y down),
+ * `w0` px wide at the inner end and `w1` at the tip, as it will appear once
+ * drawVoxels applies `pose` (face layer at `lift`). The pose's tilt squashes
+ * and shears the cell grid, so a fan laid out in cell space lands uneven on
+ * screen (owner, 2026-10-06: the bottom spark sat ~9 px closer and turned);
+ * mapping the wedge's corners back through the inverse of that face-layer
+ * map puts every spark at exactly its distance and angle.
+ */
+export function sparkBar(a: number, r0: number, len: number, w0: number, w1: number, pose: Pose, lift = 0): Cells {
+  const cxr = Math.cos(pose.rx), sxr = Math.sin(pose.rx), cyr = Math.cos(pose.ry), syr = Math.sin(pose.ry);
+  const U = VOXEL * pose.scale;
+  const P = (x: number, y: number, z: number): Pt => {
+    const x1 = x * cyr + z * syr;
+    const z1 = -x * syr + z * cyr;
+    const y2 = y * cxr - z1 * sxr;
+    const z2 = y * sxr + z1 * cxr;
+    const k = F / (F - z2);
+    return [x1 * k, y2 * k];
+  };
+  // Face-layer map, cell units -> screen px (the same affine drawVoxels uses).
+  const o = P(0, 0, lift), ex = P(U, 0, lift), ey = P(0, U, lift);
+  const m00 = ex[0] - o[0], m10 = ex[1] - o[1], m01 = ey[0] - o[0], m11 = ey[1] - o[1];
+  const det = m00 * m11 - m01 * m10;
+  const toCell = ([x, y]: Pt): Pt => [(m11 * (x - o[0]) - m01 * (y - o[1])) / det, (-m10 * (x - o[0]) + m00 * (y - o[1])) / det];
+  const ca = Math.cos(a), sa = Math.sin(a);
+  const S = (d: number, w: number): Pt => [ca * d - sa * w, sa * d + ca * w];
+  return rasterPoly([S(r0, -w0 / 2), S(r0 + len, -w1 / 2), S(r0 + len, w1 / 2), S(r0, w0 / 2)].map(toCell));
 }
