@@ -22,8 +22,9 @@
  *     into the porthole.
  *   - About is PARKED under the hero for the whole first viewport (translated
  *     so it sits still at the viewport top, a porthole onto a still room, not
- *     a page sliding past) and hands off to its GSAP pin at 1.0vh with a zero
- *     offset. The parking is a CSS scroll-driven animation (about.css,
+ *     a page sliding past) and hands off to its sticky .about-hold at 1.0vh
+ *     with a zero offset (desk; src/seams/stack.css), where it simply stays
+ *     still while the Projects sheet rises over it. The parking is a CSS scroll-driven animation (about.css,
  *     @supports animation-timeline) that also holds at rest, so About's first
  *     paint happens under the opaque hero; engines without scroll timelines
  *     get the same parking from a paused WAAPI animation scrubbed here.
@@ -33,7 +34,7 @@
  * animations: they run in lock-step with the scroll with no per-frame JS.
  * Elsewhere (Firefox, older Safari, or ?nost=1 to test it) the SAME animations
  * are paused and scrubbed from Lenis's scroll callback (the shared Lenis rAF),
- * reading window.scrollY, which is exactly what ScrollTrigger's pin sees.
+ * reading window.scrollY, which is exactly what ScrollTrigger sees.
  *
  * The hero-side animations only EXIST while 0 < scrollY < 1.1vh: at the very
  * top the hero is pristine (no mask, no promoted layers, resting raster
@@ -51,7 +52,7 @@
  * rate cap: a ~3000 px/s wheel flick runs the whole dive in ~280 ms, under
  * O1's 350 ms floor (1 / HERO.diveMinSec). Waived for the compositor iris,
  * not implemented: a rate-capped iris lags the scroll, so it would still be
- * open when About pins at 1.0vh and the position-keyed hide would then cut
+ * open when About's hold engages at 1.0vh and the position-keyed hide would then cut
  * it (the one invariant the iris exists to keep), and switching to the
  * manual path mid-flick means cancelling and rebuilding every animation on
  * the busiest frames of the gesture. Main lost the climax entirely at that
@@ -60,10 +61,10 @@
  * Roomless layouts (MQ.roomless: <=600 wide, or a phone on its side at any
  * width; About's facts-first column, where there is no room render to open
  * onto) and prefers-reduced-motion get no iris. Tablets (601-900, iPad mini
- * portrait included) do: their stacked, unpinned About shows the room as its
+ * portrait included) do: their stacked, unheld About shows the room as its
  * first cell, and the park translate leaves About exactly at its flow
  * position at 1.0vh, so the porthole works there too (no pull-back: that is
- * tuned for the pinned bento, NOT MQ.narrow). Without the iris About is not
+ * tuned for the one-viewport bento, NOT MQ.narrow). Without the iris About is not
  * parked, and the hero clears at spec §5 O2/O3 timing
  * (hide at HERO.handoffVh 0.78, return below HERO.showVh 0.74). Narrow fades
  * over DUR.handoff; reduced motion snaps in the same scroll callback (F3,
@@ -151,7 +152,7 @@ const CUE_P_MIN = 1 / 3;
 const CUE_P_MAX = 0.85;
 /** Hero composition push-in at the end of the wipe. */
 const HERO_PUSH = 1.12;
-/** About's pull-back start scale (pinned bento, >900px only). */
+/** About's pull-back start scale (one-viewport bento, >900px only). */
 const ABOUT_PULL = 1.06;
 const PUSH_EASE = "cubic-bezier(0.5, 0, 0.8, 0.9)";
 const PULL_EASE = "cubic-bezier(0.2, 0.6, 0.35, 1)";
@@ -173,8 +174,8 @@ const SCRUB_SHIFT = 0.45;
 const SCRUB_CUE_P = 0.35;
 
 /** Hero-side animations exist only in (BUILD_MIN_PX, TEARDOWN_VH * vh). Torn
- *  down a beat after About pins (1.1vh, not 1.0) so the teardown never lands in
- *  the same frame as the pin engage + HUD mount. */
+ *  down a beat after About's hold engages (1.1vh, not 1.0) so the teardown
+ *  never lands in the same frame as the hold engage + HUD mount. */
 const BUILD_MIN_PX = 0.5;
 const TEARDOWN_VH = 1.1;
 
@@ -405,11 +406,11 @@ type Driven = { anim: Animation; start: number; end: number };
 export function installHeroWipe(): void {
   if (typeof window === "undefined") return;
   const root = document.documentElement;
-  // Iris wherever About shows the room render (NOT MQ.roomless: the pinned
+  // Iris wherever About shows the room render (NOT MQ.roomless: the held
   // bento above 900, the stacked tablet column at 601-900). about.css's park
   // @media and its room-render rules are the complement ((width > 600px) and
   // (height > 500px): a sideways phone is roomless and never parked); keep
-  // them in sync. The pull-back is pinned-bento only (NOT MQ.narrow).
+  // them in sync. The pull-back is one-viewport-bento only (NOT MQ.narrow).
   const roomlessQ = window.matchMedia(MQ.roomless);
   const narrowQ = window.matchMedia(MQ.narrow);
   // Scrubbed-fade layouts (a subset of the fade path; see header).
@@ -459,19 +460,27 @@ export function installHeroWipe(): void {
     const T = Math.min(a.top, b ? b.top : a.top);
     const R = Math.max(a.right, b ? b.right : a.right);
     const B = Math.max(a.bottom, b ? b.bottom : a.bottom);
-    // Everything is measured where it sits PARKED (the section top at the
+    // Everything is measured where it sits PARKED (the hold's top at the
     // viewport top, the stage's park translate at 0), which is exactly where
     // the iris opens onto it. That holds from any scroll position (a reload
     // mid-page, a resize while scrolled), not just at rest: an element inside
     // the stage maps to its parked spot by `parkDy`.
-    const section = q<HTMLElement>(".portfolio-about");
+    // Relative to the .about-hold, NOT the section: on the desk layout the
+    // hold is sticky (src/seams/stack.css), so past 1.0vh it is stuck at the
+    // viewport top, then scrolled away under the Projects sheet, while the
+    // section's own rect keeps moving. Everything measured here lives inside
+    // the hold and moves rigidly with it (visibility: hidden under the sheet
+    // keeps its boxes), so `el - hold` is the parked offset at any scrollY.
+    // Off the desk layout the hold is static and coincides with the section.
     const stage = q<HTMLElement>(".portfolio-about .about-stage");
+    const hold =
+      q<HTMLElement>(".portfolio-about .about-hold") ?? q<HTMLElement>(".portfolio-about");
     const st = stage?.getBoundingClientRect();
-    const sec = section?.getBoundingClientRect();
-    // parked top = untranslated offset within the section (st.top - parkTy -
-    // sec.top), so parked - current = -parkTy - sec.top.
+    const box = hold?.getBoundingClientRect();
+    // parked top = untranslated offset within the hold (st.top - parkTy -
+    // box.top), so parked - current = -parkTy - box.top.
     const parkTy = stage ? translateY(stage) : 0;
-    const parkDy = st && sec ? -parkTy - sec.top : 0;
+    const parkDy = st && box ? -parkTy - box.top : 0;
     const stageLeft = st ? st.left : 0;
     const stageTop = st ? st.top + parkDy : 0;
     // Seed on the room render's centre. Its card can still be mid reveal
@@ -690,7 +699,7 @@ export function installHeroWipe(): void {
         make(driven, rim, [{ clipPath: g.rimFrom, easing: g.cellEasing }, { clipPath: g.rimTo }], s, e, sd) &&
         make(driven, rim, RIM_OPACITY, s, e, sd);
     }
-    // Pull-back only on the pinned, one-viewport bento (NOT MQ.narrow): the
+    // Pull-back only on the held, one-viewport bento (NOT MQ.narrow): the
     // stacked tablet column runs the iris without it.
     if (ok && stage && !narrowQ.matches) {
       stage.style.transformOrigin = `${f1(g.sx - g.stageLeft)}px ${f1(g.sy - g.stageTop)}px`;
@@ -711,14 +720,15 @@ export function installHeroWipe(): void {
   // About parking fallback (no CSS scroll timelines): paused translate
   // animations on the stage and its warm pool, scrubbed like the iris. They
   // exist from rest (so About is parked, painted, under the settled hero)
-  // until About's pin takes over at 1.0vh.
+  // until About's sticky hold takes over at 1.0vh. The pool is the HOLD's
+  // ::after (about.css), so it stays put with the stage past 1.0vh.
   const buildPark = () => {
     const stage = q<HTMLElement>(".portfolio-about .about-stage");
-    const section = q<HTMLElement>(".portfolio-about");
-    if (!stage || !section) return;
+    const hold = q<HTMLElement>(".portfolio-about .about-hold");
+    if (!stage || !hold) return;
     const kf = [{ translate: `0 ${-vh}px` }, { translate: "0 0" }];
     make(parkDriven, stage, kf, 0, vh, false);
-    make(parkDriven, section, kf, 0, vh, false, "::after");
+    make(parkDriven, hold, kf, 0, vh, false, "::after");
   };
 
   const scrub = (list: Driven[], y: number) => {
@@ -847,9 +857,9 @@ export function installHeroWipe(): void {
         irisHidden = false; // snapFade cleared the layer's visibility
       }
       // About parked (and allowed to paint above its section box) until its
-      // pin takes over at 1.0vh. The translate is 0 from 1.0vh on; the flag
+      // hold takes over at 1.0vh. The translate is 0 from 1.0vh on; the flag
       // (overflow) and the fallback animations are released with the iris at
-      // TEARDOWN_VH, so none of it lands in the pin-engage + HUD-mount frame.
+      // TEARDOWN_VH, so none of it lands in the hold-engage + HUD-mount frame.
       const parkRange = ratio < TEARDOWN_VH;
       setPark(parkRange ? (cssPark ? "" : "manual") : null);
       if (!cssPark) {
@@ -970,7 +980,7 @@ export function installHeroWipe(): void {
   if (window.scrollY > 0) heroHandoff.set("armed");
 
   // Manual scrubs ride Lenis's scroll callback (the shared Lenis rAF, same
-  // frame ScrollTrigger updates the pins). Lenis is created after this installs
+  // frame ScrollTrigger updates its triggers). Lenis is created after this installs
   // (Keypad's ensureLenis), so attach lazily; the window scroll listener covers
   // the gap and scroll-driven engines' state edges (update() dedupes per y).
   let lenisAttached = false;
@@ -1003,8 +1013,8 @@ export function installHeroWipe(): void {
   };
 
   // Re-measure once layout has really settled: ScrollTrigger's refresh runs
-  // after a resize / rotation has re-laid out the pins (the 120ms resize
-  // measure can still see the old pin width), and after late content shifts
+  // after a resize / rotation has re-laid out the page (the 120ms resize
+  // measure can still see the old layout), and after late content shifts
   // About. Only rebuilds when the seed actually moved.
   const remeasure = () => {
     const next = measure();

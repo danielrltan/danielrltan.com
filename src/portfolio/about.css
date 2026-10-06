@@ -1,7 +1,9 @@
 /* ======================================================================
    About — BENTO DASHBOARD
    ----------------------------------------------------------------------
-   An opaque light-grey bento grid that "boots up" as the GSAP pin scrubs.
+   An opaque light-grey bento grid that builds on the hero's cue, then holds
+   still (sticky .about-hold, src/seams/stack.css) while the Projects sheet
+   rises over it.
    The isometric room render is the feature centerpiece; two info cards sit
    BEHIND it (occluded by the room silhouette, peeking through its
    transparent PNG margins).
@@ -43,10 +45,11 @@
 /* HERO → ABOUT PARKING. For the whole first viewport (scrollY 0 → 1vh) the
    stage and its warm pool are counter-translated so they sit STILL at the
    viewport top, under the opaque hero: the hero's pixel iris opens a porthole
-   onto a still room (not a page sliding past), and About's pin takes over at
-   1.0vh with a zero offset. It holds at REST too, so the stage is painted (and
-   the room render decoded) under the settled hero, never on the iris's first
-   frames.
+   onto a still room (not a page sliding past), and About's sticky hold takes
+   over at 1.0vh with a zero offset (no velocity step: the room just stays
+   still, then the Projects sheet covers it). It holds at REST too, so the
+   stage is painted (and the room render decoded) under the settled hero,
+   never on the iris's first frames.
    - Scroll-driven CSS where supported (no JS, compositor). The fill mode is
      `none`, so past 1vh nothing is left animating or promoted.
    - Otherwise src/hero/heroWipe.ts scrubs the same translate from Lenis
@@ -55,17 +58,18 @@
      (MQ.roomless: ≤600, or a phone on its side, About's facts-first column
      with no room; and reduced motion): there the hero fades instead and
      About is not parked. Tablets (601-900) park too: their About is stacked
-     and unpinned, but at 1.0vh the translate is 0 and the section's flow top
+     and not held, but at 1.0vh the translate is 0 and the section's flow top
      is exactly at the viewport top, so the hand-off to normal scrolling is
      seamless. (height > 500px) drops a phone on its side: a screen wider
      than 600px and at most 500px tall is always landscape, so this is the
      same line as MQ.roomless's short-landscape half.
    Keep the range in sync with the hero spacer (100vh, Hero.tsx) and About's
-   pin start. */
+   doc top. The warm pool lives on the sticky .about-hold (not the section):
+   a section pseudo-element would slide off at 1.0vh while the stage stays. */
 @supports (animation-timeline: scroll()) and (animation-range: 0px 100vh) {
   @media (width > 600px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
     html:not([data-hero-park="manual"]) .portfolio-about .about-stage,
-    html:not([data-hero-park="manual"]) .portfolio-about::after {
+    html:not([data-hero-park="manual"]) .portfolio-about .about-hold::after {
       animation: about-park linear none;
       animation-timeline: scroll(root block);
       animation-range: 0px 100vh;
@@ -86,9 +90,10 @@
    too when only x is clipped (overflow-x: clip + overflow-y: visible), which
    left the part of the porthole above the section's top unclickable.
    Sideways spill (the 1.06 pull-back) is already clipped by body's
-   overflow-x: clip (index.css). Back to hidden a beat after the pin engages
-   (the translate is already 0 at 1.0vh, so the 1.0-1.1vh overlap is
-   invisible; it keeps the overflow flip out of the pin-engage frame). */
+   overflow-x: clip (index.css). Back to hidden (clip on the desk layout,
+   stack.css) a beat after the hold engages (the translate is already 0 at
+   1.0vh, so the 1.0-1.1vh overlap is invisible; it keeps the overflow flip
+   out of the hold-engage frame). */
 html[data-hero-park] .portfolio-about {
   overflow: visible;
 }
@@ -108,8 +113,11 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
    dark vignette was removed alongside the dot-grid: it darkened the section
    edges (incl. the bottom seam), which broke the seamless hand-off to the
    flat Macintosh section. The pool fades to transparent well before the edge,
-   so the section now meets its neighbour as an unbroken flat field. */
-.portfolio-about::after {
+   so the section now meets its neighbour as an unbroken flat field.
+   On the sticky hold so it stays put with the stage; with no position of its
+   own the hold is static off the desk layout, and the pool resolves to the
+   section box there, as before. */
+.portfolio-about .about-hold::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1418,8 +1426,8 @@ html[data-hero-covering] .render-frame {
 }
 
 /* ======================================================================
-   prefers-reduced-motion: the pin still scrolls (structural) but no cell
-   may slide/fade. About.tsx force-reveals every cell; here we neutralise
+   prefers-reduced-motion: plain 100vh flow (no hold) and no cell may
+   slide/fade. About.tsx force-reveals every cell; here we neutralise
    the transitions so the dashboard is instantaneous + fully readable.
    ====================================================================== */
 @media (prefers-reduced-motion: reduce) {

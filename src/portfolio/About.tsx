@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { softReleasePin } from "./softRelease";
 import { requestScrollRefresh, refreshScrollOnLoaderLift } from "./scrollRefresh";
 import "./sections.css";
 import "./about.css";
@@ -15,7 +14,7 @@ import { useReveal } from "./useReveal";
 gsap.registerPlugin(ScrollTrigger);
 
 /**
- * About: GSAP-pinned BENTO DASHBOARD reveal.
+ * About: the BENTO DASHBOARD, held still under the Projects sheet.
  *
  * The section is an opaque light-grey bento grid that "boots up" panel by
  * panel. The isometric room render (/render.webp) is the feature centerpiece;
@@ -34,21 +33,27 @@ gsap.registerPlugin(ScrollTrigger);
  * Reach, Location) builds ALL AT ONCE, no stagger (owner 2026-10-06: the
  * one-by-one boot across the pin "looks cluttered"). It fires on the hero's
  * cue (the iris about a third open), so the panels build where they can be
- * seen; the pin (1.25vh, viewport-relative) also reveals them on any update or
- * refresh as a fallback (a load or jump past the hero). Reveals are imperative
+ * seen; the non-pinning `about-rest` trigger also reveals them as a fallback
+ * (a load, refresh or jump past the hero). Reveals are imperative
  * class toggles (zero React renders per scroll frame) and LATCH: coming back
  * up from the Mac shows the finished dashboard, never a blank sheet.
  *
- * NARROW (MQ.narrow: ≤900px, or a phone on its side) SKIPS the pin entirely
- * (mirrors Work): a pinned, internally-scrolling stage was a nested
+ * SEAM (owner brief 2026-10-06: section boundaries never stop the page). About
+ * no longer pins. On the desk layout the section is 200svh with a sticky inner
+ * .about-hold (src/seams/stack.css, keyed on this section's data-seam-stack),
+ * so the parked room simply stays still from the hero hand-off on, and the
+ * Projects sheet rises 1:1 over it (the Mac side lives in Macintosh.tsx).
+ *
+ * NARROW (MQ.narrow: ≤900px, or a phone on its side) has no hold and no
+ * curtain (mirrors Work): a pinned, internally-scrolling stage was a nested
  * scroll-trap inside the page pin. The bento collapses to a compact column
  * that flows + scrolls with the page; each cell rises in once as it enters
  * (useReveal, 400ms / 12px), and the room render is neither rendered nor
  * decoded (about.css hides it there anyway).
  *
  * prefers-reduced-motion: every cell is force-revealed (no transforms), so
- * the dashboard is fully readable without the choreography. The scroll-pin
- * itself still works (structural, not decorative).
+ * the dashboard is fully readable without the choreography. No hold either:
+ * the section is plain 100vh flow (stack.css gates the hold on motion).
  */
 
 /**
@@ -96,9 +101,6 @@ const ROOM_ARROW_SEGS = (() => {
     .filter(Boolean)
     .map((cells) => cells.map((c) => { const [x, y] = c.split(","); return `M${x} ${y}h1v1h-1z`; }).join(""));
 })();
-
-/** Pin length in viewports (spec §3: 1.25vh). */
-const PIN_VH = 1.25;
 
 /** The rest of the bento, revealed together after the arrival trio. */
 const BENTO_REST = ["portrait", "now", "explore", "study", "reach", "loc"]
@@ -224,15 +226,13 @@ export function About() {
     const el = sectionRef.current;
     if (!el) return;
 
-    // NARROW: skip the GSAP pin entirely (mirrors Work). The pinned bento on
-    // a phone created a nested scroll-trap — a full-height internally-
-    // scrolling stage captured inside the page pin (rubber-band). On narrow
-    // the bento is a plain stacked column that scrolls with the page; the
-    // cells rise in on enter (useReveal above).
+    // NARROW: no hold at all (stack.css gates the sticky .about-hold to the
+    // desk layout). A pinned or held bento on a phone was a nested
+    // scroll-trap; on narrow the bento is a plain stacked column that scrolls
+    // with the page, and the cells rise in on enter (useReveal above).
     if (mobile) {
-      // A breakpoint flip from desktop→mobile kills the old pin; refresh so
-      // every pin BELOW (Work, Other, Keypad) recomputes its start now that
-      // this section no longer contributes a pin spacer.
+      // A breakpoint flip changes this section's height (200svh held on desk,
+      // auto when stacked): refresh so every trigger BELOW recomputes its start.
       const html = document.documentElement;
       if (!html.classList.contains("loading-active")) {
         requestScrollRefresh();
@@ -249,59 +249,53 @@ export function About() {
       el.querySelectorAll(BENTO_REST).forEach((c) => reveal(c, 0));
       drawCallout(el);
     };
-    const apply = () => revealRest();
     if (heroHandoff.cue) revealRest();
     const unsubCue = heroHandoff.subscribe(() => {
       if (heroHandoff.cue) revealRest();
     });
 
+    // Fallback for a visitor who lands at or past About's top without the
+    // cue (a load, refresh or jump past the hero). This used to ride the
+    // about-pin's update/refresh; About no longer pins (seam overhaul,
+    // 2026-10-06: it holds still in its sticky .about-hold while the Projects
+    // sheet rises over it), so a NON-pinning trigger from About's top to the
+    // page end does the same job. Never on about-arrive's onEnter (top 92%):
+    // that would build the panels under the opaque hero, out of sight.
     const st = ScrollTrigger.create({
-      id: "about-pin",
+      id: "about-rest",
       trigger: el,
       start: "top top",
-      // Viewport-relative (spec §3), recomputed on every refresh.
-      end: () => "+=" + Math.round(window.innerHeight * PIN_VH),
-      invalidateOnRefresh: true,
-      pin: true,
-      pinSpacing: true,
-      // No numeric scrub (it was inert: no animation is attached) and no
-      // anticipatePin: Lenis drives ScrollTrigger.update in the same frame it
-      // scrolls, and the stage is parked under the hero right up to this
-      // pin's start (about.css), so an EARLY pin would shift the parked stage
-      // for a few frames.
-      onUpdate: apply,
+      end: "max",
+      onUpdate: revealRest,
       onRefresh: (self) => {
-        // A refresh at rest above the pin (progress 0, the hero still on
-        // screen) must not build the panels out of sight; the cue does that.
-        if (self.progress > 0) apply();
+        // A refresh at rest above it (progress 0, the hero still on screen)
+        // must not build the panels out of sight; the cue does that.
+        if (self.progress > 0) revealRest();
       },
     });
-    // Soft release: the section eases into scroll speed instead of snapping
-    // off the pin (softRelease.ts).
-    const stopSoftRelease = softReleasePin(st);
-    // Refresh after THIS pin is (re)created — not only after the loading
-    // scrim clears. When the breakpoint flips mid-session (rotation), the
-    // pin is killed and recreated with a different duration, which changes
-    // this section's spacer height and therefore the START position of
-    // every pin below it (Work, Other, Keypad). Without a refresh those
-    // pins keep stale positions until some other refresh happens to fire.
+    // Desk <-> narrow flips change this section's height: refresh once the
+    // loader is gone so every trigger below re-reads its start.
     const stopLoaderWatch = refreshScrollOnLoaderLift();
     return () => {
       unsubCue();
       stopLoaderWatch();
-      stopSoftRelease();
       st.kill();
     };
-    // Re-create (or skip) the pin when the breakpoint flips so the layout
-    // matches (mirrors the Work/Keypad pattern).
   }, [mobile]);
 
   return (
     <section
       ref={sectionRef}
       className="portfolio-section portfolio-about"
-      data-jump-progress="0.5"
+      /* Seam layout flag (src/seams/stack.css): on the desk layout the
+         section is 200svh and .about-hold sticks, so About sits still under
+         the rising Projects sheet. Static: only this file sets it. */
+      data-seam-stack=""
     >
+      {/* The sticky inner wrapper (stack.css). The section root stays in
+          flow: it is the registry selector, the jump target and every
+          trigger's element; nothing ever measures the stuck hold. */}
+      <div className="about-hold">
       <div className="about-stage">
         {/* TOP CHROME: wayfinding crumb + status. The big "ABOUT" wordmark
             is aria-hidden chrome; the real <h2> below carries the heading
@@ -568,6 +562,7 @@ export function About() {
           </dl>
 
         </div>
+      </div>
       </div>
     </section>
   );
