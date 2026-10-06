@@ -617,8 +617,10 @@ export function createPodiumScene(
       }
       // While the wall is being built the canvas's bleed band hangs over the
       // bottom of Play: let pointers through to it (nothing here is pickable
-      // before the card is on anyway).
-      canvas.classList.toggle("is-building", prog < READY_ON_P);
+      // before the card is on anyway). Keyed on the card latch, not on
+      // READY_ON_P: in the 0.90-0.98 hysteresis band coming back up the card
+      // is still showing, so the podium must stay pickable with it.
+      canvas.classList.toggle("is-building", !ready);
       wake();
       // The loop is IO-gated: off screen (or parked at p = 0) still draw the
       // new pose once, so the canvas is never stale when it scrolls in.
