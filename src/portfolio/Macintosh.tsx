@@ -3,6 +3,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import { softHold } from "../seams";
+import { mountMacRelay } from "./macRelay";
 import { isTuneMode } from "../tuneMode";
 import "./sections.css";
 import "./macintosh.css";
@@ -307,6 +308,9 @@ export function Macintosh() {
     // pin). C1 engage as the sheet finishes covering About, C1 release as
     // the powered-off Mac leaves.
     const hold = softHold({ id: "mac-pin", section: el, stage: sticky });
+    // Seam 3: the powered-off CRT's last dot becomes a pixel on #seam-layer
+    // that lands on Work's first node (desktop, fine pointer; ./macRelay.ts).
+    const stopRelay = mountMacRelay({ hold, sticky });
 
     // "Projects" header fade across the landing so it has cleared before the
     // CRT zoom fills the frame. Written to a CSS var (no transition on it):
@@ -433,6 +437,7 @@ export function Macintosh() {
       stopLoaderWatch();
       stageST.kill();
       st.kill();
+      stopRelay();
       hold.kill();
       cine.live = true;
       // Crossing into the static-landed path must not strand a mid-fade

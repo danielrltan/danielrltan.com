@@ -7,7 +7,8 @@ import { useMacNarrow } from "./useMacNarrow";
 import macSpec from "./macSpec.json";
 import { clamp01 } from "../math";
 import { isTuneMode } from "../tuneMode";
-import { DECAY, damp, ease, isCoarsePointer } from "../motion";
+import { DECAY, SEAM, damp, ease, isCoarsePointer } from "../motion";
+import { seamBus } from "../seams/bus";
 import { onScrollJump } from "../scroll";
 import { markSectionCanvasCreated } from "../useSectionCanvasMount";
 import { MAC_BEATS, macBeat, macLandedC, type MacCine } from "./macBeats";
@@ -851,10 +852,19 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
       // slice-tear / chroma-split / noise burst below.
       uGlitch: { value: 0 },
       // Retro CRT POWER-OFF 0..1: the section-exit "going to sleep" collapse,
-      // bound to scroll by the Scene (MAC_BEATS.powerOff*). 0->0.5 collapses
-      // the picture to a hot horizontal line, 0.5->0.86 pinches that line to a
-      // centre dot, 0.86->1 fades it out.
+      // bound to scroll by the Scene (MAC_BEATS.powerOff*). 0->0.45 collapses
+      // the picture to a hot horizontal line, 0.45->0.75 pinches that line to
+      // a centre dot that cools to the signal orange (#ff4f00), which then
+      // holds: the dot is formed BEFORE the relay hand-off starts (seam 3).
       uPowerOff: { value: 0 },
+      // The dot's half-size in face UV, so it lands at the relay pixel's
+      // on-screen size (SEAM.relayPx) whatever the dolly framing; the Scene
+      // writes it from the projected screen rect. 0.006 until measured.
+      uDotUv: { value: new THREE.Vector2(0.006, 0.006) },
+      // Shader-dot alpha 1 -> 0 across the hand-off (MAC_BEATS.dotFadeLead):
+      // it fades out exactly under the DOM relay pixel fading in on
+      // #seam-layer (src/portfolio/macRelay.ts), so the signal is one dot.
+      uDot: { value: 1 },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -871,6 +881,8 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
       uniform float uTime;
       uniform float uGlitch;
       uniform float uPowerOff;
+      uniform vec2 uDotUv;
+      uniform float uDot;
       varying vec2 vUv;
       ${CRT_GLASS_GLSL}
       // The painter's tube ground (CRT_BASE #0a0806) in linear: treated as
@@ -915,10 +927,10 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
         // the phosphor outside the window; the flash + fade land at the end.
         float poWin = 1.0;
         if (uPowerOff > 0.0001) {
-          float poV = smoothstep(0.0, 0.5, uPowerOff);
-          float poH = smoothstep(0.5, 0.86, uPowerOff);
-          float bH = mix(0.5, 0.006, poV);
-          float bW = mix(0.5, 0.006, poH);
+          float poV = smoothstep(0.0, 0.45, uPowerOff);
+          float poH = smoothstep(0.45, 0.75, uPowerOff);
+          float bH = mix(0.5, uDotUv.y, poV);
+          float bW = mix(0.5, uDotUv.x, poH);
           vec2 c2 = vUv - 0.5;
           poWin = step(abs(c2.y), bH) * step(abs(c2.x), bW);
           uv = 0.5 + vec2(c2.x * (0.5 / bW), c2.y * (0.5 / bH));
@@ -983,10 +995,13 @@ function makeCrtScreenMaterial(map: THREE.Texture): THREE.ShaderMaterial {
         // Phosphor saturation: the hottest cores run toward white.
         float over = max(lit.r - 0.85, 0.0);
         lit.gb += over * vec2(0.40, 0.22);
-        // POWER-OFF: the collapsing line/dot glows HOT as the beam pinches,
-        // then the dot fades out to black (the classic CRT sleep).
-        lit *= 1.0 + 3.5 * smoothstep(0.0, 0.5, uPowerOff) * (1.0 - smoothstep(0.86, 1.0, uPowerOff));
-        lit *= bezel * poWin * (1.0 - smoothstep(0.86, 1.0, uPowerOff));
+        // POWER-OFF: the collapsing line glows HOT as the beam pinches, then
+        // the dot settles to one flat signal-orange square (#ff4f00 in linear)
+        // that the relay pixel takes over 1:1 (seam 3), instead of fading to
+        // black here: the signal never stops, it changes carrier.
+        lit *= 1.0 + 3.5 * smoothstep(0.0, 0.45, uPowerOff);
+        lit = mix(lit, vec3(1.0, 0.078, 0.0), smoothstep(0.45, 0.75, uPowerOff));
+        lit *= bezel * poWin * uDot;
 
         // The glass sits over the phosphor; added after the bezel / power-off
         // masks so the reflection never blacks out or flares with the dot.
@@ -2614,6 +2629,12 @@ function Scene({
             (p - (end - MAC_BEATS.powerOffLead)) /
               (MAC_BEATS.powerOffLead - MAC_BEATS.powerOffTail),
           );
+    // The formed dot hands over to the relay pixel across the last
+    // dotFadeLead of the hold: 1 - seg(c, end - 0.06, end).
+    const dotAlpha =
+      narrow || selected
+        ? 1
+        : 1 - clamp01((p - (end - MAC_BEATS.dotFadeLead)) / MAC_BEATS.dotFadeLead);
 
     // ── MAC DESCENT ───────────────────────────────────────────────
     const descentT = clamp01(
@@ -2739,6 +2760,49 @@ function Scene({
         );
       }
 
+      // ── PUBLISH THE LANDED CRT CENTRE (seam 3 relay source) ──────
+      // From the landed pose on the camera and Mac are static (the dolly,
+      // descent and settle all end before bootEnd), so the screen centre is a
+      // fixed point of the sticky stage: publish it, in px relative to
+      // .mac-sticky (the canvas fills the stage at its top-left), for the
+      // relay pixel (src/portfolio/macRelay.ts) to start exactly on the
+      // shader dot. Also size the dot to the relay pixel. Change-only; skipped
+      // while a project detail zooms the camera.
+      if (
+        !narrow &&
+        info &&
+        p >= THRESHOLDS.bootEnd - CAN_OPEN_EPS &&
+        detailZoomRef.current < 0.001
+      ) {
+        const ov = info.overlay;
+        ov.updateWorldMatrix(true, false);
+        const hW = (info.faceH * info.aspect) / 2;
+        const hH = info.faceH / 2;
+        _corner.set(0, 0, 0).applyMatrix4(ov.matrixWorld).project(camera);
+        const cx = (_corner.x * 0.5 + 0.5) * size.width;
+        const cy = (-_corner.y * 0.5 + 0.5) * size.height;
+        _corner.set(hW, 0, 0).applyMatrix4(ov.matrixWorld).project(camera);
+        const fw = 2 * Math.abs((_corner.x * 0.5 + 0.5) * size.width - cx);
+        _corner.set(0, hH, 0).applyMatrix4(ov.matrixWorld).project(camera);
+        const fh = 2 * Math.abs((-_corner.y * 0.5 + 0.5) * size.height - cy);
+        const prev = seamBus.crtLocal;
+        if (
+          !prev ||
+          Math.abs(prev.x - cx) > 0.5 ||
+          Math.abs(prev.y - cy) > 0.5 ||
+          Math.abs(prev.w - fw) > 0.5
+        ) {
+          seamBus.crtLocal = { x: cx, y: cy, w: fw };
+          const m = overlayMatRef.current;
+          if (m && fw > 1 && fh > 1) {
+            (m.uniforms.uDotUv!.value as THREE.Vector2).set(
+              SEAM.relayPx / (2 * fw),
+              SEAM.relayPx / (2 * fh),
+            );
+          }
+        }
+      }
+
       // ── PROJECT THE SCREEN RECT FOR THE DOM CONTROL OVERLAY ──────
       // Project the overlay plane's 4 corners to on-screen CSS pixels so
       // the real clickable close + live controls can sit exactly over
@@ -2797,6 +2861,7 @@ function Scene({
     macDbg.beat = macBeat(p, end);
     macDbg.canOpen = canOpen;
     macDbg.powerOff = powerOff;
+    macDbg.dot = dotAlpha;
     const detailTarget = selected && canOpen ? 1 : 0;
     detailZoomRef.current +=
       (detailTarget - detailZoomRef.current) * (1 - Math.exp(-dt * DETAIL_RATE));
@@ -2933,6 +2998,9 @@ function Scene({
         Math.abs((mat.uniforms.uPowerOff!.value as number) - powerOff) > 0.001
       ) {
         mat.uniforms.uPowerOff!.value = powerOff;
+      }
+      if (Math.abs((mat.uniforms.uDot!.value as number) - dotAlpha) > 0.001) {
+        mat.uniforms.uDot!.value = dotAlpha;
       }
       // CRT clock: drives the scanline drift / refresh roll / flicker.
       // Ticks only while this scene's frameloop runs (i.e. while the
