@@ -16,6 +16,14 @@ import { matches, MQ, reducedMotion } from "../motion";
  * stroke replays from t=0 over ~1.6s. No fade afterwards: the
  * signature stays painted as a sign-off element.
  *
+ * Driven mode (`replayRef`, seam 8 receipt feed): the footer decides when
+ * the stroke replays (its row printing, Footer.tsx), so the canvas's own IO
+ * stays off. The finished signature is painted static as soon as the gesture
+ * loads, so a row printed silently (a cut jump, a reload below it) never
+ * shows a blank canvas; calling `replayRef.current()` clears it in the same
+ * task and replays from t=0. Every call replays (scrolling back up un-prints
+ * the row; printing it again signs again).
+ *
  * Accessibility: the canvas is aria-hidden (purely decorative). Under
  * prefers-reduced-motion the replay is skipped entirely and the final
  * static signature is painted in a single pass; no animation.
@@ -32,6 +40,9 @@ interface Props {
   brushRadius?: number;
   /** Replay speed multiplier (>1 = faster). */
   speed?: number;
+  /** Driven mode: the owner calls `replayRef.current()` to replay the stroke;
+   *  the in-view IO trigger is off and the signature rests painted. */
+  replayRef?: { current: (() => void) | null };
 }
 
 const STAMP_ALPHA = 0.55;
@@ -48,6 +59,7 @@ export function FooterSignature({
   color = "255, 79, 0",
   brushRadius = 6,
   speed = 2.4,
+  replayRef,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -240,7 +252,21 @@ export function FooterSignature({
       hasPlayed = true;
     };
 
-    // Trigger the animated replay when the wrap scrolls into view.
+    // Driven mode: rest painted, replay on the owner's call. The clear is
+    // synchronous so the full signature never shows for a frame before the
+    // stroke starts again.
+    if (replayRef) {
+      replayRef.current = () => {
+        if (cancelled || prefersReduced) return;
+        ctx.clearRect(0, 0, w, h);
+        hasPlayed = false;
+        void ensureRendered(true);
+      };
+      void ensureRendered(false);
+    }
+
+    // Trigger the animated replay when the wrap scrolls into view (not in
+    // driven mode: the owner replays it).
     const obs = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
@@ -253,7 +279,7 @@ export function FooterSignature({
       },
       { threshold: 0.25 },
     );
-    obs.observe(wrap);
+    if (!replayRef) obs.observe(wrap);
 
     // Resize must REPAINT, not just clear. setupCanvas() resizes + clears
     // the buffer; if the signature was already drawn, re-render its final
@@ -279,13 +305,14 @@ export function FooterSignature({
 
     return () => {
       cancelled = true;
+      if (replayRef) replayRef.current = null;
       obs.disconnect();
       window.removeEventListener("resize", onResize);
       window.removeEventListener("orientationchange", onResize);
       ro?.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [effHeight, color, brushRadius, speed]);
+  }, [effHeight, color, brushRadius, speed, replayRef]);
 
   return (
     <div
