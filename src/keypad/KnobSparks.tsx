@@ -25,12 +25,15 @@ export const knobAnchor = { x: 0, y: 0, r: 0 };
 // viewport) and scale with the live projected radius.
 const REF_R = 58;
 const VOXEL_SCALE = 1.6; // 3 px voxels at the reference size
-const R0 = 84; // inner end of each wedge, from the knob centre (~26 px clear of the rim)
+const R0 = 77; // inner end of each wedge, from the knob centre (~19 px clear of the rim)
+// Degrees counter-clockwise from screen-right; the fan is turned 15° CCW
+// off the plain right-hand set (45 / 0 / -45).
+const FAN_TURN = 15;
 const WEDGES = [
-  { a: 45, len: 36 }, // stagger order: upper right, right, lower right
+  { a: 45, len: 36 }, // stagger order: top, middle, bottom
   { a: 0, len: 42 },
   { a: -45, len: 36 },
-].map((w) => ({ ...w, a: (-w.a * Math.PI) / 180 }));
+].map((w) => ({ ...w, a: (-(w.a + FAN_TURN) * Math.PI) / 180 }));
 const W0 = 9; // px at the knob end
 const W1 = 39; // px at the tip
 const STAGGER_S = 0.07;
