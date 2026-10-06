@@ -206,6 +206,10 @@ export function Macintosh() {
   // the project. Used by BOTH the sr-only buttons and (via the prop)
   // the 3D tile raycast.
   const openProject = (p: MacProject) => {
+    // Seam 3: from the power-off on, the CRT belongs to the relay (it powers
+    // off by scroll and its last dot flies to Work). A detail opened there
+    // would re-light the screen under the flying pixel: refuse it.
+    if (!staticLanded && pastPowerOff()) return;
     track("project_open", { project: p.title });
     openerFocusRef.current = document.activeElement as HTMLElement | null;
     setSelected(p);
@@ -241,6 +245,19 @@ export function Macintosh() {
       prev.focus({ preventScroll: true });
     }
   };
+
+  // Seam 3 (projects -> work): the scroll-bound power-off and the relay
+  // pixel always play from the tile grid. Scrolling into the power-off with
+  // a detail open closes it (focus back to its opener, ESC listener gone),
+  // so no lit detail sits under the pixel and nothing outlives the section.
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const closeRef = useRef(closeProject);
+  closeRef.current = closeProject;
+  function pastPowerOff() {
+    const { c, end } = cineRef.current;
+    return c >= end - MAC_BEATS.powerOffLead;
+  }
 
   // ESC closes the open project (camera pulls back to the tile grid).
   // Also move focus onto the on-CRT BACK button when a project opens so
@@ -345,6 +362,7 @@ export function Macintosh() {
       const c = Math.min(end, Math.max(0, (self.progress * len) / vh));
       cine.c = c;
       cine.end = end;
+      if (selectedRef.current && pastPowerOff()) closeRef.current();
       const live = self.progress < 1;
       if (live !== cine.live) {
         cine.live = live;
