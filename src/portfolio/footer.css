@@ -78,20 +78,27 @@
 [data-print-row].is-printed {
   clip-path: inset(-16px);
 }
+/* Footer links are print rows themselves: keep their hover colour and nudge
+   transitions alongside the wipe (.footer-link's own transition list would
+   otherwise replace the clip-path one). */
+.footer-link[data-print-row] {
+  transition: clip-path var(--t-med) steps(9, end),
+    color var(--hover-dur) var(--hover-ease),
+    transform var(--hover-dur) var(--hover-ease);
+}
 [data-print-row]:focus-within {
   clip-path: inset(-16px);
   transition: none;
 }
 /* The wipe runs over the row's box, so a short label or link list in a
    ~350px column would be fully printed in the first 2-3 of the 9 steps and
-   read as a pop. Desktop: the label and link rows hug their text, so the
-   whole wipe crosses the words. (Not on phones, where the links are
+   read as a pop. Desktop: the label rows hug their text (the links are
+   max-content already), so the whole wipe crosses the words. (Not on phones, where the links are
    full-width touch rows; not the signature, whose canvas sizes to its
    wrapper; not the colophon list or the bottom line, whose rules span the
    column.) */
 @media (min-width: 769px) and (min-height: 501px) {
-  .footer-col-label[data-print-row],
-  .footer-nav[data-print-row] {
+  .footer-col-label[data-print-row] {
     width: fit-content;
   }
 }

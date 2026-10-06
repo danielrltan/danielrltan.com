@@ -22,18 +22,20 @@ import "./footer.css";
  *   first write it is 0px, a valid interim with no overlap.
  * - The edge: a static row of 8px pixel perforation teeth replaces the 1px
  *   hairline (footer.css; owner gate G6, fallback the hairline).
- * - The print: each [data-print-row] block stays clipped until it has fully
+ * - The print: each [data-print-row] line stays clipped until it has fully
  *   cleared the bottom of the screen (+24px), then prints with a
  *   left-to-right steps(9) wipe at the About boot timing (a CSS transition
  *   on a class toggle, never a per-frame write). Thresholds are a pure
  *   function of the sheet's progress, p_i = min((b_i + 24) / F, 0.98), so
  *   scrolling back up un-prints in reverse and a cut jump lands printed.
- *   The blocks are the marker, the three column labels (one band), each
- *   column's body (links / colophon list), the signature and the bottom
- *   line, so the sheet prints in horizontal bands top to bottom as it feeds.
- *   (Whole columns were tried first: side by side they share a bottom, so
- *   the sheet stayed blank under the 07 until 84% of the feed and then
- *   printed everything at once.)
+ *   The rows are LINES, so the print head is the screen's bottom edge: the
+ *   marker, the three column labels, every link, every colophon line, the
+ *   signature and the bottom line. (Whole columns were tried first: side by
+ *   side they share a bottom, so the sheet stayed blank under the 07 until
+ *   84% of the feed. Then whole column bodies: a 240px link list, 436px on
+ *   a phone, left blank paper on screen until its last line cleared, and
+ *   un-printed while nearly all of it was still in view. This goes past the
+ *   spec's "4-6 row groups" on purpose.)
  *   The print IS the footer's entrance (it replaced the old one-shot
  *   fade-rise of the links, which would have double-animated every row).
  *   Going down only: the "07" marker decodes as its row prints and the
@@ -225,7 +227,7 @@ export function Footer() {
             <h3 className="footer-col-label" id="footer-elsewhere-label" data-print-row="label">
               Elsewhere
             </h3>
-            <nav className="footer-nav" aria-labelledby="footer-elsewhere-label" data-print-row="elsewhere">
+            <nav className="footer-nav" aria-labelledby="footer-elsewhere-label">
               {ELSEWHERE.map((l) => {
                 const isMail = l.href.startsWith("mailto:");
                 return (
@@ -238,6 +240,7 @@ export function Footer() {
                     rel={isMail ? undefined : "noreferrer noopener"}
                     aria-label={l.aria}
                     className="footer-link"
+                    data-print-row="link"
                     onClick={() => {
                       if (isMail) track("contact_email", { context: "footer" });
                       else if (l.href.endsWith(".pdf"))
@@ -269,12 +272,13 @@ export function Footer() {
             <h3 className="footer-col-label" id="footer-index-label" data-print-row="label">
               Index
             </h3>
-            <nav className="footer-nav" aria-labelledby="footer-index-label" data-print-row="index">
+            <nav className="footer-nav" aria-labelledby="footer-index-label">
               {JUMP_LINKS.map((l) => (
                 <button
                   key={l.label}
                   type="button"
                   className="footer-link"
+                  data-print-row="link"
                   aria-label={`Jump to ${l.label}`}
                   onClick={() => {
                     track("nav_jump", { section: l.label, source: "footer" });
@@ -294,8 +298,8 @@ export function Footer() {
             <h3 className="footer-col-label" data-print-row="label">
               Colophon
             </h3>
-            <dl className="footer-meta" data-print-row="colophon">
-              <div>
+            <dl className="footer-meta">
+              <div data-print-row="colophon">
                 <dt className="footer-meta-key">Stack</dt>
                 {/* Commas, not a middle-dot chain: the · is rationed to
                     one per line sitewide (separator chains read as AI
@@ -304,7 +308,7 @@ export function Footer() {
                   React, TypeScript, Three.js, R3F
                 </dd>
               </div>
-              <div>
+              <div data-print-row="colophon">
                 <dt className="footer-meta-key">Type</dt>
                 <dd className="footer-meta-val">
                   Offbit · Geist
@@ -312,15 +316,15 @@ export function Footer() {
               </div>
               {/* A nicety for those who know: the accent is International
                   Orange — the Golden Gate / aerospace red-orange (FF4F00). */}
-              <div>
+              <div data-print-row="colophon">
                 <dt className="footer-meta-key">Accent</dt>
                 <dd className="footer-meta-val">International Orange · FF4F00</dd>
               </div>
-              <div>
+              <div data-print-row="colophon">
                 <dt className="footer-meta-key">Build</dt>
                 <dd className="footer-meta-val">v0.1 · {year}</dd>
               </div>
-              <div>
+              <div data-print-row="colophon">
                 <dt className="footer-meta-key">Location</dt>
                 <dd className="footer-meta-val">Toronto / London, ON</dd>
               </div>
