@@ -40,14 +40,25 @@ interface Photo {
 interface Props {
   /** Section scroll progress 0..1 (Photos.tsx writes it per trigger update). */
   progressRef: React.MutableRefObject<number>;
+  /**
+   * Vertical plane travel (px) over the whole progress span: Photos.tsx
+   * measures it as PAN_RATE (0.4) x the span on refresh, so a px of page
+   * scroll pans the plane ~0.4px whatever the hold length. 0 = not measured.
+   */
+  panPxRef: React.MutableRefObject<number>;
+  /** Honours -> Recents pixel iris, 0..1 (Photos.tsx entrance progress). */
+  irisRef: React.MutableRefObject<number>;
   /** Filled with a "progress changed" callback that Photos.tsx calls. */
   wakeRef: React.MutableRefObject<(() => void) | null>;
 }
 
 const COLS = 6;
 const SEED = 7;
-/** Scroll pan: the whole hold span moves the plane this many viewport heights. */
-const SCROLL_TRAVEL_VH = 1.4;
+/**
+ * Scroll pan fallback before Photos.tsx has measured its span: 0.4 x the
+ * 2.3vh span (1vh entrance + the 0.8vh hold + the 0.5vh tail), in viewports.
+ */
+const SCROLL_TRAVEL_VH = 0.92;
 /** Ambient drift once idle (px/ms), eased in after IDLE_MS. */
 const IDLE_V = { x: -0.018, y: -0.011 };
 const IDLE_MS = 2400;
@@ -84,7 +95,7 @@ function makeRng(seed: number) {
   return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
 }
 
-export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, wakeRef }: Props) {
+export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef, wakeRef }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -231,8 +242,10 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, wakeRef 
       const rects: Hit[] = [];
       const draws: Array<Hit & { mx: number; my: number; rot: number; a: number; r2: number }> = [];
       const pitch = colW + gap;
-      const scrollY = (0.5 - progressRef.current) * H * SCROLL_TRAVEL_VH;
-      const yCam = py + scrollY;
+      // Scroll pan: centred at mid-span, travel measured from the span.
+      const travel = panPxRef.current > 0 ? panPxRef.current : H * SCROLL_TRAVEL_VH;
+      const camY = (progressRef.current - 0.5) * travel;
+      const yCam = py - camY;
       const c0 = Math.floor((-px - colW * 2) / pitch);
       const c1 = Math.ceil((W - px + colW * 2) / pitch);
       for (let cg = c0; cg <= c1; cg++) {
@@ -588,7 +601,7 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, wakeRef 
       if (wakeRef.current === wake) wakeRef.current = null;
       wakeLoopRef.current = () => {};
     };
-  }, [photos, progressRef, wakeRef, openFocus]);
+  }, [photos, progressRef, panPxRef, wakeRef, openFocus]);
 
   // ---------- focus view ----------
   const N = photos.length;

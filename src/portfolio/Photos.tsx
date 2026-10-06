@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { softRelease } from "./softRelease";
+import { softHold } from "../seams";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import { smoothstep } from "../math";
 import "./sections.css";
@@ -25,12 +25,24 @@ gsap.registerPlugin(ScrollTrigger);
  * hold, to half a viewport past it. That progress pans the plane vertically,
  * so scrolling still moves you through the photos; dragging moves you
  * anywhere. Photos stream in from /photos/manifest.json.
+ *
+ * Seam overhaul (owner brief 2026-10-06: section boundaries should never stop
+ * the page): the hold is 0.8vh (stack.css --seam-photos-hold, phones too; was
+ * 2vh) with softHold's C1 engage and release, and the Honours -> Recents seam
+ * is a 1-bit pixel iris drawn inside the plane's own canvas (RecentsCanvas),
+ * opened by the entrance progress below: the hero's iris, echoed.
  */
 
-// Hold length (2 viewports) lives in photos.css as --photos-hold: the section
-// is that much taller than its sticky stage. The plane's progress span ends
-// PLANE_TAIL_VH viewports past the end of the hold.
+// Hold length lives in CSS: photos.css --photos-hold, overridden to
+// --seam-photos-hold (80svh) by src/seams/stack.css while this section carries
+// data-seam-stack. The plane's progress span ends PLANE_TAIL_VH viewports past
+// the end of the hold.
 const PLANE_TAIL_VH = 0.5;
+// Scroll pan rate: px of plane travel per px of page scroll across the whole
+// photos-plane span. It was a fixed 1.4vh of travel over a 3.5vh span
+// (0.4px/px); the span is now 2.3vh, so the travel is computed from the
+// measured span and the pan keeps the same feel at any hold length.
+const PAN_RATE = 0.4;
 
 // Write the gallery header reveal STRAIGHT to CSS vars (no React state, so
 // the plane never re-renders on a scroll tick). Driven by ScrollTrigger on the
@@ -51,6 +63,13 @@ export function Photos() {
   // Plane progress 0..1 across the photos-plane span, written per
   // ScrollTrigger update into a REF (not state); the plane's rAF loop reads it.
   const progressRef = useRef(0.5);
+  // Plane travel (px) over the whole photos-plane span (PAN_RATE * span),
+  // measured on refresh. 0 = not measured yet (the plane uses its estimate).
+  const panPxRef = useRef(0);
+  // Honours -> Recents iris, 0..1: the entrance progress (section top from the
+  // viewport bottom to the viewport top). 1 = fully open (reduced motion, or
+  // anywhere past the entrance).
+  const irisRef = useRef(reducedMotion.value ? 1 : 0);
   // The plane's loop parks when idle; each progress write wakes it.
   const planeWakeRef = useRef<(() => void) | null>(null);
   // Header reveal written straight to CSS vars (no per-tick setState).
@@ -83,21 +102,19 @@ export function Photos() {
     if (reducedMotion.value) {
       applyGalleryHead(headerRef.current, 1);
       progressRef.current = 0.5;
+      irisRef.current = 1;
       return;
     }
 
-    // "photos-pin" is kept as a NON-pinning trigger spanning the hold: the
-    // section registry / jumpToSection read its start/end to land a menu jump
-    // at data-jump-progress inside the hold. It also keeps the header landed
-    // while held (applyGalleryHead no-ops when the value is unchanged).
-    const st = ScrollTrigger.create({
-      id: "photos-pin",
-      trigger: el,
-      start: "top top",
-      end: "bottom bottom",
-      invalidateOnRefresh: true,
-      onUpdate: () => applyGalleryHead(headerRef.current, 1),
-    });
+    // The sticky .photos-stage gets softHold (src/seams/softHold.ts): a small
+    // `translate` bump around each sticky edge, so the stage eases into the
+    // hold and back out of it (C1 engage + release, nothing left over; it
+    // replaces softRelease, which only eased the exit and left the stage L/2
+    // high over a page-tone strip). It also creates "photos-pin", the
+    // NON-pinning trigger over the sticky span that the section registry /
+    // jumpToSection read to land a menu jump at data-jump-progress.
+    const stage = el.querySelector<HTMLElement>(".photos-stage");
+    const hold = stage ? softHold({ id: "photos-pin", section: el, stage }) : null;
 
     // One continuous plane span: from the section's top entering the viewport
     // bottom, through the hold, to PLANE_TAIL_VH past the hold's end. Not
@@ -113,37 +130,47 @@ export function Photos() {
         planeWakeRef.current?.();
       },
       // Callbacks don't fire for refresh-time changes; keep the ref seeded.
+      // The span is re-measured here too (it moves with the hold length).
       onRefresh: (s) => {
+        panPxRef.current = PAN_RATE * Math.max(0, s.end - s.start);
         progressRef.current = s.progress;
         planeWakeRef.current?.();
       },
     });
 
-    // Entrance reveal: fade the header up as the section RISES into view,
-    // before the hold engages. Mirrors the Other Beat-A entrance so the
-    // Honours→Photos seam is a cross-dissolve, not a blank gap.
+    // Entrance: as the section RISES into view, before the hold engages, the
+    // header fades up and the pixel iris opens in the plane (irisRef; the
+    // canvas draws it as a pure function of this progress, so it reverses
+    // exactly on scroll-up and lands right after a cut jump). Written on
+    // refresh and leave as well: a load or jump below the section must still
+    // leave the header up and the iris open (the old photos-pin onUpdate used
+    // to pin the header at 1 through the hold).
+    const writeEntrance = (self: ScrollTrigger) => {
+      applyGalleryHead(headerRef.current, self.progress);
+      if (irisRef.current !== self.progress) {
+        irisRef.current = self.progress;
+        planeWakeRef.current?.();
+      }
+    };
     const entrance = ScrollTrigger.create({
       trigger: el,
       start: "top bottom",
       end: "top top",
-      onUpdate: (self) => applyGalleryHead(headerRef.current, self.progress),
+      invalidateOnRefresh: true,
+      onUpdate: writeEntrance,
+      onRefresh: writeEntrance,
+      onLeave: writeEntrance,
+      onLeaveBack: writeEntrance,
     });
 
     // Refresh after the loading screen lifts: trigger positions can shift
     // during initial layout. Same pattern as Other / Macintosh / Keypad.
     const stopLoaderWatch = refreshScrollOnLoaderLift();
 
-    // Soft release of the sticky stage at the end of the hold (softRelease.ts).
-    const stage = el.querySelector<HTMLElement>(".photos-stage");
-    const stopSoftRelease = stage
-      ? softRelease({ trigger: el, start: () => st.start, end: () => st.end, target: stage })
-      : () => {};
-
     return () => {
       stopLoaderWatch();
-      stopSoftRelease();
+      hold?.kill();
       plane.kill();
-      st.kill();
       entrance.kill();
     };
   }, []);
@@ -153,8 +180,13 @@ export function Photos() {
       ref={sectionRef}
       className="portfolio-section portfolio-photos"
       aria-labelledby="photos-sr-heading"
-      // Menu / footer jumps land just inside the hold (scroll.ts jumpToSection).
-      data-jump-progress="0.1"
+      // Opts into the seam layout contract (src/seams/stack.css): the hold
+      // becomes --seam-photos-hold (0.8vh) at every width while motion is OK.
+      data-seam-stack=""
+      // Menu / footer jumps land a quarter into the hold (scroll.ts
+      // jumpToSection): inside softHold's still core (0.1875..0.8125 of the
+      // hold), past the iris and the engage ease.
+      data-jump-progress="0.25"
     >
       {/* Sticky stage: the viewport-tall frame that holds while the taller
           section scrolls past (photos.css). */}
@@ -186,7 +218,12 @@ export function Photos() {
 
         {/* The photo plane: canvas, HUD and the portalled focus view. */}
         {planeMounted && (
-          <RecentsCanvas progressRef={progressRef} wakeRef={planeWakeRef} />
+          <RecentsCanvas
+            progressRef={progressRef}
+            panPxRef={panPxRef}
+            irisRef={irisRef}
+            wakeRef={planeWakeRef}
+          />
         )}
       </div>
     </section>

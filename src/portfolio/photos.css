@@ -16,9 +16,13 @@
    by the compositor with the native scroll: no engage frame, no shift.
    The section must NOT be a scroll container (overflow hidden/auto) or the
    sticky would bind to it; overflow-x: clip only clips. Combined selector
-   (0,2,0) so the shared .portfolio-section padding/flex never applies. */
+   (0,2,0) so the shared .portfolio-section padding/flex never applies.
+   Seam overhaul (2026-10-06): Photos.tsx sets data-seam-stack, and
+   src/seams/stack.css then overrides --photos-hold to --seam-photos-hold
+   (80svh, every width) and softHold eases both sticky edges. The 200svh
+   below is only the un-flagged fallback (what reverting that commit gives). */
 .portfolio-section.portfolio-photos {
-  --photos-hold: 200vh; /* hold distance: two viewports (was PIN_VH = 2) */
+  --photos-hold: 200vh; /* un-flagged hold: two viewports (was PIN_VH = 2) */
   --photos-hold: 200svh;
   position: relative;
   display: block;
