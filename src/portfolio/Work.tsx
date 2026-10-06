@@ -45,11 +45,19 @@ const SPINE_END = "bottom 60%";
  * Touch / phone one-shot (spec §5.3, rule §0.8: no scroll-linked writes on
  * touch). When the header's top crosses ONESHOT_LINE, node 0 drops in from
  * -DROP_PX (DROP_MS, --ease-out), then the spine draws 0 -> 1 over DRAW_MS on
- * --ease-in-out, lighting each node as the tip reaches it. 860ms in all.
+ * --ease-in-out, lighting each node as the tip reaches it (the draw leaves
+ * as the dot settles, DRAW_LEAD_MS early): 780ms in all.
  */
 const ONESHOT_LINE = 0.7;
 const DROP_PX = 40;
 const DROP_MS = 320;
+/**
+ * The draw leaves node 0 this long before the drop ends: on --ease-out the dot
+ * is within a pixel of home by then, and the overlap keeps the whole one-shot
+ * at 780ms nominal, comfortably inside the spec's 900ms even when the
+ * crossing is seen a frame or two late.
+ */
+const DRAW_LEAD_MS = 80;
 const DRAW_MS = toMs(DUR.slow);
 
 interface Stint {
@@ -194,7 +202,7 @@ function initialOpen(): boolean[] {
  *   the way down). Pure f(p): it rewinds on scroll-up and lands right after a
  *   cut jump. Desktop with a fine pointer only (SEAM_MQ.fine).
  * - Touch, phones and the 769-900 band: a one-shot instead (node 0 drops in,
- *   then the spine draws in 860ms), armed by the header crossing 70% and
+ *   then the spine draws on from it, 780ms in all), armed by the header crossing 70% and
  *   reset on scrolling back above.
  * - Reduced motion: every panel open, the spine full, every node lit.
  *
@@ -358,12 +366,15 @@ export function Work() {
         drop = null;
       };
       // Time-based tween of the fill (one writer, no CSS transition on it).
-      const draw = (to: 0 | 1, done?: () => void) => {
+      // `at` pins the tween to a schedule (DRAW_LEAD_MS before the drop's end) instead of the
+      // moment the timer happens to fire, so a late timer on a busy main
+      // thread never stretches the one-shot past its 780ms.
+      const draw = (to: 0 | 1, done?: () => void, at?: number) => {
         const from = fill;
         const dur = DRAW_MS * Math.abs(to - from);
-        const t0 = performance.now();
+        const t0 = at ?? performance.now();
         const tick = (now: number) => {
-          const k = dur > 0 ? Math.min(1, (now - t0) / dur) : 1;
+          const k = dur > 0 ? Math.min(1, Math.max(0, now - t0) / dur) : 1;
           fill = from + (to - from) * ease.inOut(k);
           setFill(fill);
           lightTo(fill);
@@ -390,7 +401,8 @@ export function Work() {
               ],
               { duration: DROP_MS, easing: EASE_CSS.out },
             ) ?? null;
-          timer = window.setTimeout(() => draw(1), DROP_MS);
+          const drawAt = performance.now() + DROP_MS - DRAW_LEAD_MS;
+          timer = window.setTimeout(() => draw(1, undefined, drawAt), DROP_MS - DRAW_LEAD_MS);
           return drop ?? undefined;
         }
         // Rewind: the spine retracts into node 0, then node 0 lifts away.
