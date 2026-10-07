@@ -100,12 +100,12 @@ interface HobbyLayoutEntry {
 const LAYOUT: Record<string, HobbyLayoutEntry> = {
   belt:     { pos: [-2.94,  0.31, -0.02], scale: 1.50, rot: [-0.85, -0.65, -3.10], radius: 0.64, placeholder: "dodecahedron", tone: "orange" },
   piano:    { pos: [-2.49,  1.42,  0.04], scale: 1.31, rot: [ 0.57, -0.03, -0.04], radius: 0.66, placeholder: "box",          tone: "ink"    },
-  pc:       { pos: [-0.17,  1.33,  0.11], scale: 2.03, rot: [-0.32, -0.27, -0.14], radius: 0.74, placeholder: "icosahedron",  tone: "orange" },
+  pc:       { pos: [-0.17,  1.18,  0.11], scale: 2.03, rot: [-0.32, -0.27, -0.14], radius: 0.74, placeholder: "icosahedron",  tone: "orange" },
   shoe:     { pos: [ 1.43,  0.42,  0.04], scale: 1.90, rot: [ 0.48, -0.79,  0.07], radius: 0.58, placeholder: "cone",         tone: "steel"  },
   keyboard: { pos: [ 0.07, -0.88,  0.00], scale: 1.80, rot: [ 0.61,  0.07, -0.29], radius: 0.62, placeholder: "torus",        tone: "ink"    },
   cursor:   { pos: [-2.43, -0.56,  0.02], scale: 1.57, rot: [-0.53,  0.10, -0.61], radius: 0.56, placeholder: "octahedron",   tone: "orange" },
   car:      { pos: [ 2.74, -0.78, -0.02], scale: 2.42, rot: [ 0.33,  0.24,  0.07], radius: 0.62, placeholder: "cylinder",     tone: "steel"  },
-  yarn:     { pos: [-0.24,  0.61, -0.04], scale: 1.71, rot: [ 0.80, -0.09,  0.04], radius: 0.54, placeholder: "sphere",       tone: "steel"  },
+  yarn:     { pos: [-0.24,  0.52, -0.04], scale: 1.71, rot: [ 0.80, -0.09,  0.04], radius: 0.54, placeholder: "sphere",       tone: "steel"  },
   luggage:  { pos: [ 3.00,  0.92,  0.02], scale: 1.98, rot: [ 0.04,  0.40,  0.19], radius: 0.62, placeholder: "tetrahedron",  tone: "ink"    },
   ski:      { pos: [-1.44, -0.06,  0.04], scale: 2.76, rot: [-0.31, -0.35,  0.13], radius: 0.62, placeholder: "ring",         tone: "steel"  },
 };

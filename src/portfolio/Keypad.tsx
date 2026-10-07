@@ -258,7 +258,7 @@ export const Keypad = memo(function Keypad() {
       // Seam 8: the footer sheet already covers the stage's middle (an End
       // key, a scrollbar drag or a fling straight to the page end): the
       // whole fall, thud and dial kick would play behind the paper. Land
-      // silently instead, so the keypad above the perforation is at rest.
+      // silently instead, so the keypad above the sheet edge is at rest.
       // Judged where the scroll is HEADED (Lenis's target on wheel input),
       // and with a little lead (0.6vh): an arrival that arms with the sheet
       // already that high is still travelling, and the fall's contact comes

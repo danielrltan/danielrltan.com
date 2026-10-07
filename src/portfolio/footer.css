@@ -1,16 +1,16 @@
 /* Footer: full-width band at the bottom of the page. Holds the
    jump-link grid, colophon, copyright, and the signature replay.
    Seam 8 (Footer.tsx header): on wide screens the band is a sheet that
-   feeds up over the stuck keypad, edged with pixel perforation teeth, and
-   its rows print as they clear the bottom of the screen.
+   feeds up over the stuck keypad, edged with a 1px hairline, and its rows
+   print as they clear the bottom of the screen.
 */
 
 .portfolio-footer {
   position: relative;
   /* Solid bg-deep (was a 2-stop vertical gradient down to #c8cacf;
      felt overdesigned). Separation from the keypad section comes from
-     the 1px ink hairline on top, or, with the seam flag, the perforation
-     teeth below (owner gate G6: the hairline is the fallback). */
+     the 1px ink hairline on top (owner 2026-10-07: the pixel perforation
+     teeth that replaced it on the seam were removed). */
   background: var(--bg-deep);
   border-top: 1px solid var(--ink-hairline);
   /* Intentional rhythm break: top is 96px (20% tighter than the 120px
@@ -29,30 +29,6 @@
 .footer-inner {
   max-width: 1280px;
   margin: 0 auto;
-}
-
-/* ── Seam 8: perforation edge ───────────────────────────────────────────
-   The sheet's top edge is a static row of 8px squares every 16px in the
-   sheet's own colour, standing 8px proud of it: tear-off teeth instead of
-   a hairline, in the site's pixel voice. Flat fill, hard steps, no shadow
-   (the ground is flat and gradient-free). Painted through a mask so the
-   fill stays the --bg-deep token. Static at every width and under reduced
-   motion; never takes the pointer. */
-.portfolio-footer[data-seam-stack] {
-  border-top: 0;
-}
-.portfolio-footer[data-seam-stack]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -8px;
-  height: 8px;
-  background: var(--bg-deep);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='8'%3E%3Crect width='8' height='8'/%3E%3C/svg%3E") 0 0 / 16px 8px repeat-x;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='8'%3E%3Crect width='8' height='8'/%3E%3C/svg%3E") 0 0 / 16px 8px repeat-x;
-  image-rendering: pixelated;
-  pointer-events: none;
 }
 
 /* ── Seam 8: the print ──────────────────────────────────────────────────

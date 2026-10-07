@@ -20,8 +20,8 @@ import "./footer.css";
  *   published as --footer-h on <html> by a ResizeObserver (the keypad
  *   section is 100svh + that, so the page length is unchanged); until the
  *   first write it is 0px, a valid interim with no overlap.
- * - The edge: a static row of 8px pixel perforation teeth replaces the 1px
- *   hairline (footer.css; owner gate G6, fallback the hairline).
+ * - The edge: the 1px ink hairline (footer.css). The 8px pixel perforation
+ *   teeth that replaced it were removed (owner 2026-10-07: "looks ugly").
  * - The print: each [data-print-row] line stays clipped until it has fully
  *   cleared the bottom of the screen (+24px), then prints with a
  *   left-to-right steps(9) wipe at the About boot timing (a CSS transition
@@ -41,7 +41,7 @@ import "./footer.css";
  *   Going down only: the "07" marker decodes as its row prints and the
  *   signature replays as its row prints. Keyboard focus prints a row at
  *   once (:focus-within), so a focused link is never invisible.
- * - Phones: no overlap (the footer flows), the same teeth and thresholds.
+ * - Phones: no overlap (the footer flows), the same edge and thresholds.
  *   Reduced motion: every row printed at mount, static signature.
  */
 const PRINT_MARGIN_PX = 24;
@@ -200,8 +200,8 @@ export function Footer() {
       ref={footerRef}
       className="portfolio-footer"
       aria-labelledby="footer-heading"
-      // Seam 8 flag: the perforation teeth, and (with the keypad section's
-      // flag, wide screens) the sheet's overlap. See the header.
+      // Seam 8 flag: (with the keypad section's flag, wide screens) the
+      // sheet's overlap. See the header.
       data-seam-stack=""
     >
       <h2 id="footer-heading" className="sr-only">
