@@ -655,7 +655,14 @@ interface BeatLoc {
   s: number;
   /** the section's pin (hold) length when located: 0 = it had none */
   srcPin: number;
+  /** Unheld section, reader within TAIL_VH of the next section's top: that
+   *  distance in viewports (else null). The seams across a boundary are
+   *  vh-ranged (e.g. work-play: Play's top from the bottom edge to 5%) while
+   *  an unheld section like Work has natural height, so a whole-section
+   *  fraction drifted their progress ~7pp on a resize. */
+  tailVh: number | null;
 }
+const TAIL_VH = 1; // the vh-ranged seams into a section start at its top = the bottom edge
 
 const RESTORE_WINDOW_MS = 2000;
 
@@ -687,7 +694,7 @@ function span(g: Geom, i: number, max: number) {
   return { top: a.top, pin: a.pin, pinEnd, next: Math.max(next, pinEnd) };
 }
 
-function locateBeat(y: number, g: Geom, max: number): BeatLoc | null {
+function locateBeat(y: number, g: Geom, max: number, vh: number): BeatLoc | null {
   let i = -1;
   g.forEach((a, k) => {
     if (a && a.top <= y + 0.5) i = k;
@@ -695,9 +702,17 @@ function locateBeat(y: number, g: Geom, max: number): BeatLoc | null {
   if (i < 0) return null;
   const sp = span(g, i, max);
   const s = (y - sp.top) / Math.max(1, sp.next - sp.top);
-  if (sp.pin > 0 && y <= sp.pinEnd) return { i, seg: "pin", f: (y - sp.top) / sp.pin, s, srcPin: sp.pin };
+  if (sp.pin > 0 && y <= sp.pinEnd) return { i, seg: "pin", f: (y - sp.top) / sp.pin, s, srcPin: sp.pin, tailVh: null };
   const rest = sp.next - sp.pinEnd;
-  return { i, seg: "rest", f: rest > 0 ? (y - sp.pinEnd) / rest : 0, s, srcPin: sp.pin };
+  const tail = (sp.next - y) / Math.max(1, vh);
+  return {
+    i,
+    seg: "rest",
+    f: rest > 0 ? (y - sp.pinEnd) / rest : 0,
+    s,
+    srcPin: sp.pin,
+    tailVh: sp.pin === 0 && sp.next < max && tail < TAIL_VH ? tail : null,
+  };
 }
 
 function resolveBeat(loc: BeatLoc, g: Geom, max: number): number | null {
@@ -712,6 +727,9 @@ function resolveBeat(loc: BeatLoc, g: Geom, max: number): number | null {
   // restored hold threw the reader past every hold (onto the Mac's
   // power-off); use the whole-section fraction, mirroring the pin branch.
   if (loc.srcPin === 0 && sp.pin > 0) return sp.top + loc.s * (sp.next - sp.top);
+  // Still unheld, close to the next section: keep the same distance to its
+  // top in viewports, so a vh-ranged seam into it keeps its progress.
+  if (loc.tailVh != null && sp.pin === 0) return Math.max(sp.top, sp.next - loc.tailVh * window.innerHeight);
   return sp.pinEnd + loc.f * (sp.next - sp.pinEnd);
 }
 
@@ -754,7 +772,7 @@ function installRefreshDiscipline() {
     ScrollTrigger.sort();
     const now = performance.now();
     if (geomCache && viewportChanged()) {
-      const loc = inputSinceResize ? null : locateBeat(stableY, geomCache.geom, geomCache.max);
+      const loc = inputSinceResize ? null : locateBeat(stableY, geomCache.geom, geomCache.max, geomCache.h);
       restoreIntent = loc ? { loc, until: now + RESTORE_WINDOW_MS, seq: scrollSeq } : null;
     } else if (restoreIntent && (now > restoreIntent.until || restoreIntent.seq !== scrollSeq)) {
       restoreIntent = null;
