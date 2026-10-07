@@ -16,7 +16,7 @@ export const COPIED = {
   text: "copied!",
   size: 32, // text px in glass units
   hold: 1.4, // seconds before the address flickers back
-  bump: 0.75, // keypad hop, as a fraction of the knob-press wobble
+  bump: 0.375, // keypad hop (owner: half of the tuned 0.75), as a fraction of the knob-press wobble
 };
 
 const REF_W = 179;
