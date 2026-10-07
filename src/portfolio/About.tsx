@@ -65,7 +65,7 @@ gsap.registerPlugin(ScrollTrigger);
 /**
  * "My room in real life!" callout: a hand-drawn arrow, rasterised onto a
  * pixel grid so it speaks the same Offbit pixel language as the wordmarks.
- * Built once at module load: a long, shallow quadratic curve that leaves the
+ * The 0 deg pose is built at module load: a long, shallow quadratic curve that leaves the
  * label heading left and sags slightly to a tip just above the room's
  * top-right wall, stamped 3 cells thick, plus two barbs swept back from the
  * tip along the curve's final direction. Unit squares, drawn crispEdges, so
@@ -76,11 +76,20 @@ gsap.registerPlugin(ScrollTrigger);
  * together from the tip outward. about.css shows them one after another, so
  * the arrow draws itself in after the bento has built (.is-drawn).
  */
-const ROOM_ARROW_SEGS = (() => {
+function rasterArrow(deg: number): string[] {
+  // The pose turned by `deg` on its tail (screen sense, negative = counter-
+  // clockwise), rotated in curve space BEFORE the cells snap, so every pose
+  // is grid-aligned pixel art (CSS-rotating the 0 deg pose turned its unit
+  // squares into a sawtooth ribbon). The pivot is the first stamp's origin
+  // (56, 6): the stamp's centre (57.5, 7.5) is the tail cell's centre.
+  const rad = (deg * Math.PI) / 180, sn = Math.sin(rad), cs = Math.cos(rad);
+  const turn = (x: number, y: number) =>
+    deg ? [56 + (x - 56) * cs - (y - 6) * sn, 6 + (x - 56) * sn + (y - 6) * cs] : [x, y];
   const seen = new Set<string>();
   const segs: string[][] = [];
   const T = 3; // stroke thickness in cells
-  const dot = (seg: number, x: number, y: number) => {
+  const dot = (seg: number, px: number, py: number) => {
+    const [x, y] = turn(px, py);
     for (let i = 0; i < T; i++) for (let j = 0; j < T; j++) {
       const c = `${Math.round(x) + i},${Math.round(y) + j}`;
       if (seen.has(c)) continue;
@@ -103,10 +112,22 @@ const ROOM_ARROW_SEGS = (() => {
       dot(SHAFT + Math.min(HEAD - 1, Math.floor((i / 14) * HEAD)), x1 + ax * i, y1 + ay * i);
     }
   }
-  return segs
-    .filter(Boolean)
-    .map((cells) => cells.map((c) => { const [x, y] = c.split(","); return `M${x} ${y}h1v1h-1z`; }).join(""));
-})();
+  // Fixed slots (one per draw step, --i): a turned pose never shifts the
+  // owner's draw order, even if one of its segments stamps nothing new.
+  return Array.from({ length: SHAFT + HEAD }, (_, k) =>
+    (segs[k] ?? []).map((c) => { const [x, y] = c.split(","); return `M${x} ${y}h1v1h-1z`; }).join(""));
+}
+const ROOM_ARROW_SEGS = rasterArrow(0);
+
+/** Turned poses for the swivel, cached per 0.2 deg (finer than one cell of
+ *  travel at the tip, so the turn reads continuous; only the cells step). */
+const ARROW_POSE_STEP = 5; // poses per degree
+const arrowPoses = new Map<number, string[]>();
+function arrowPose(key: number) {
+  let segs = arrowPoses.get(key);
+  if (!segs) arrowPoses.set(key, (segs = key ? rasterArrow(key / ARROW_POSE_STEP) : ROOM_ARROW_SEGS));
+  return segs;
+}
 
 /** Owner gate G3 (seam overhaul, default ON): while the Projects sheet rises
  *  over the still room, the "my room in real life!" arrow turns on its tail
@@ -147,22 +168,12 @@ function drawCallout(root: Element) {
   c.dispatchEvent(new Event(DRAWN_EVENT));
 }
 
-/** Every painted cell of the arrow, as [x, y] viewBox units (top-left). */
-const ROOM_ARROW_CELLS = ROOM_ARROW_SEGS.flatMap((d) =>
-  [...d.matchAll(/M(\d+) (\d+)/g)].map((m) => [Number(m[1]), Number(m[2])] as const),
-);
-/** The arrow's tail (about.css transform-origin), viewBox units. */
-const ARROW_TAIL = [57.5, 7.5] as const;
-/** Lowest painted point of the arrow turned by `deg` on its tail, viewBox
- *  units below the viewBox top (cell corners, so the pixels' real extent). */
+/** Lowest painted point of the arrow's pose turned by `deg`, viewBox units
+ *  below the viewBox top (cell bottoms: the pixels' real extent). */
 function arrowBottomAt(deg: number) {
-  const a = (deg * Math.PI) / 180, s = Math.sin(a), c = Math.cos(a);
   let max = 0;
-  for (const [x, y] of ROOM_ARROW_CELLS) {
-    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-      const ry = ARROW_TAIL[1] + (x + dx - ARROW_TAIL[0]) * s + (y + dy - ARROW_TAIL[1]) * c;
-      if (ry > max) max = ry;
-    }
+  for (const d of arrowPose(Math.round(deg * ARROW_POSE_STEP))) {
+    for (const m of d.matchAll(/M(-?\d+) (-?\d+)/g)) max = Math.max(max, Number(m[2]) + 1);
   }
   return max;
 }
@@ -390,9 +401,11 @@ export function About() {
 
   /* The arrow swivel (gate G3): the sheet's rise turns the room callout's
      arrow on its tail, from the room to the arriving Mac. Fine pointers on
-     the desk layout only (a scroll-linked rotate on touch lags threaded
-     scroll); writes the individual `rotate` property only (about.css puts
-     transform-origin on the tail). Ends when the sheet edge is 0.1vh below
+     the desk layout only (a scroll-linked turn on touch lags threaded
+     scroll). The turn is re-rasterised, not CSS-rotated: each angle's pose
+     is the same curve turned on its tail before its cells snap to the grid
+     (rasterArrow), swapped into the same draw paths. The angle stays
+     continuous; only the cells step. Ends when the sheet edge is 0.1vh below
      the arrow's TURNED head, so the head is aimed before the sheet reaches
      it.
 
@@ -420,8 +433,16 @@ export function About() {
     const gate = { k: 0 };
     let tween: gsap.core.Tween | null = null;
     let timer = 0;
+    // Writes the turned pose's cells into the owner's 18 draw paths (same
+    // order, same --i): no CSS rotate, so the cells stay on the pixel grid.
+    const paths = [...arrow.querySelectorAll<SVGPathElement>("path")];
+    let shown = 0;
     const write = (deg: number) => {
-      arrow.style.rotate = deg ? `${deg.toFixed(2)}deg` : "";
+      const key = Math.round(deg * ARROW_POSE_STEP);
+      if (key === shown) return;
+      shown = key;
+      const segs = arrowPose(key);
+      paths.forEach((path, i) => path.setAttribute("d", segs[i] ?? ""));
     };
     const render = () => write(ARROW_TURN_DEG * ease.inOutCubic(lastP) * gate.k);
     const open = () => {
