@@ -6,6 +6,8 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { track } from "../analytics";
 import { SOCIALS } from "../socials";
 import { knobAnchor } from "./KnobSparks";
+import { COPIED, copiedVisible, loadCopiedFont, makeCopiedTexture } from "./copiedScreen";
+import { reducedMotion } from "../motion";
 // keypad.glb is imported as a Vite asset so the build gives it a content-
 // hashed URL under /assets/ (cached immutably; a new model gets a new URL).
 // From public/ it was /keypad.glb with a 24 h cache, so browsers kept showing
@@ -25,7 +27,9 @@ import keypadUrl from "./keypad.glb?url";
  *                                       spin axis (rotation.y)
  *   frame                             - body, well floor, dial collar and
  *                                       side buttons (static)
- *   display                           - the screen (flashes on presses)
+ *   display                           - the screen (flashes on presses;
+ *                                       a click copies the email, see
+ *                                       copiedScreen.ts)
  *
  * Animations driven from useFrame with fixed-rate damping
  * (per the project's scroll-animations-fixed-rate rule): no spring
@@ -145,11 +149,12 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   // Clone + traverse synchronously so caps & dial are known before
   // the first render returns. Hit-volume meshes need their world
   // positions on mount.
-  const { cloned, recenterOffset, sphereRadius, caps, dial, dialHitPos, dialHitSize, screenMat } = useMemo(() => {
+  const { cloned, recenterOffset, sphereRadius, caps, dial, dialHitPos, dialHitSize, screenMat, screenHit } = useMemo(() => {
     const cl = scene.clone(true);
     const capMap: Record<string, CapState> = {};
     let dialObj: THREE.Object3D | null = null;
     let screenMaterial: THREE.Material | null = null;
+    let screenObj: THREE.Object3D | null = null;
     // Find the caps / dial / display, sharpen texture sampling, and turn on
     // shadows. Geometry and normals are used exactly as the build exported them.
     cl.traverse((obj) => {
@@ -176,6 +181,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
         // Display screen: captured (and its material CLONED so the
         // useGLTF cache stays pristine) for the interaction flash —
         // the OLED blips brighter on cap/dial presses.
+        screenObj = obj;
         const sm = obj as THREE.Mesh;
         if (sm.isMesh && sm.material && !Array.isArray(sm.material)) {
           sm.material = (sm.material as THREE.Material).clone();
@@ -272,6 +278,17 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
           return { r: (Math.max(sz.x, sz.z) / 2) * 1.12, h: sz.y * 1.6 };
         })()
       : null;
+    // Screen hit volume: the glass footprint, standing a little proud of it
+    // so a click lands before the recess walls.
+    const screenHit = screenObj
+      ? (() => {
+          hb.setFromObject(screenObj);
+          const pos = hb.getCenter(new THREE.Vector3());
+          const sz = hb.getSize(new THREE.Vector3());
+          pos.y = hb.max.y;
+          return { pos, size: new THREE.Vector3(sz.x, 0.12, sz.z) };
+        })()
+      : null;
 
     const box = new THREE.Box3().setFromObject(cl);
     const center = new THREE.Vector3();
@@ -287,6 +304,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       dialHitPos,
       dialHitSize,
       screenMat: screenMaterial as THREE.Material | null,
+      screenHit,
     };
   }, [scene, metalEnv]);
 
@@ -346,11 +364,33 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   // scale) materials; the screen material is a private clone, so the
   // cache and siblings are untouched.
   const screenFlashRef = useRef(0);
+  // "copied!" on the screen: click time (-1 = idle), the copied frame, and
+  // the material's own art to swap back to.
+  const copiedAtRef = useRef(-1);
+  const copiedTexRef = useRef<THREE.CanvasTexture | null>(null);
+  const screenArtRef = useRef<THREE.Texture | null>(null);
+  useEffect(() => {
+    const sm = screenMat as THREE.MeshStandardMaterial | null;
+    if (sm) screenArtRef.current = sm.map;
+    return () => {
+      if (sm && screenArtRef.current) sm.map = screenArtRef.current;
+      copiedTexRef.current?.dispose();
+      copiedTexRef.current = null;
+    };
+  }, [screenMat]);
 
   useFrame((_, dt) => {
     const map = capsRef.current;
     const now = performance.now();
     const k = 1 - Math.exp(-dt * PRESS_LERP_RATE);
+
+    const sm = screenMat as THREE.MeshStandardMaterial | null;
+    if (sm && copiedAtRef.current >= 0 && copiedTexRef.current) {
+      const show = copiedVisible((now - copiedAtRef.current) / 1000, reducedMotion.value);
+      if (show == null) copiedAtRef.current = -1;
+      const next = show ? copiedTexRef.current : screenArtRef.current;
+      if (sm.map !== next) sm.map = next;
+    }
 
     if (screenMat && screenFlashRef.current > 0) {
       screenFlashRef.current =
@@ -457,6 +497,33 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     );
   };
 
+  // Screen click: copy the email and flip the OLED to "copied!" (a second
+  // click restarts it). No clipboard, or it refused: open mailto instead.
+  const handleScreenEnter = (e: any) => {
+    e.stopPropagation();
+    emitCursorHover(true);
+  };
+  const handleScreenLeave = (e: any) => {
+    e.stopPropagation();
+    emitCursorHover(false);
+  };
+  const handleScreenClick = (e: any) => {
+    e.stopPropagation();
+    screenFlashRef.current = 0.85;
+    emitInteract(0.7);
+    track("contact_email", { context: "keypad_copy" });
+    const mailto = () => {
+      window.location.href = `mailto:${COPIED.email}`;
+    };
+    if (!navigator.clipboard?.writeText) return mailto();
+    navigator.clipboard.writeText(COPIED.email).then(async () => {
+      await loadCopiedFont();
+      copiedTexRef.current ??= makeCopiedTexture();
+      copiedAtRef.current = performance.now();
+      window.dispatchEvent(new CustomEvent("keypad-email-copied"));
+    }, mailto);
+  };
+
   const handleCapClick = (name: string) => (e: any) => {
     e.stopPropagation();
     const c = capsRef.current[name];
@@ -517,6 +584,17 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
             </mesh>
           );
         })}
+        {screenHit && (
+          <mesh
+            position={screenHit.pos}
+            onPointerOver={handleScreenEnter}
+            onPointerOut={handleScreenLeave}
+            onClick={handleScreenClick}
+          >
+            <boxGeometry args={[screenHit.size.x, screenHit.size.y, screenHit.size.z]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+        )}
         {dial && dialHitPos && dialHitSize && (
           <mesh
             ref={dialHitRef}

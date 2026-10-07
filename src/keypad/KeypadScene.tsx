@@ -11,6 +11,7 @@ import {
   type PulseChannel,
 } from "./RipplePost";
 import { KnobSparks } from "./KnobSparks";
+import { COPIED } from "./copiedScreen";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useIsMobile } from "../useIsMobile";
 import { isLowTier } from "../capabilityTier";
@@ -332,6 +333,30 @@ interface KeypadSceneProps {
   glowOpacityRef?: React.MutableRefObject<number>;
 }
 
+/** Screen-reader echo of the screen's "copied!" (cleared first, so a second
+ *  copy is announced again). */
+function CopiedAnnouncer() {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    let timer = 0;
+    const onCopied = () => {
+      const el = ref.current;
+      if (!el) return;
+      el.textContent = "";
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        el.textContent = "Email copied";
+      }, 50);
+    };
+    window.addEventListener("keypad-email-copied", onCopied);
+    return () => {
+      window.removeEventListener("keypad-email-copied", onCopied);
+      window.clearTimeout(timer);
+    };
+  }, []);
+  return <p ref={ref} className="sr-only" aria-live="polite" />;
+}
+
 export function KeypadScene({ dropRef, glowOpacityRef }: KeypadSceneProps) {
   const isMobile = useIsMobile();
   // Cursor target shared with RiceBlob (uniform driver) and with the
@@ -549,6 +574,7 @@ export function KeypadScene({ dropRef, glowOpacityRef }: KeypadSceneProps) {
         />
       </Canvas>
       <KnobSparks />
+      <CopiedAnnouncer />
       {TUNE_MODE && (
         <TuneHud tuneStateRef={tuneStateRef} transformMode={transformMode} />
       )}
@@ -688,18 +714,27 @@ function SceneContents({
   // performance.now() stamp of the last knob press (-1 = idle); drives
   // the whole-keypad cartoony wobble in the frame loop.
   const wobbleStartRef = useRef(-1);
+  // Wobble strength: 1 for the knob, COPIED.bump for the screen's hop.
+  const wobbleAmpRef = useRef(1);
   const { camera, invalidate, gl, size } = useThree();
 
-  // Knob press -> jiggle the whole device. KeypadModel dispatches
-  // "keypad-knob-press" on dial click; gated by reduced motion.
+  // Knob press / email copied -> jiggle the whole device. KeypadModel
+  // dispatches both; gated by reduced motion.
   useEffect(() => {
-    const onKnob = () => {
+    const wobble = (amp: number) => () => {
       if (reducedMotion.value) return;
       wobbleStartRef.current = performance.now();
+      wobbleAmpRef.current = amp;
       invalidate();
     };
+    const onKnob = wobble(1);
+    const onCopied = wobble(COPIED.bump);
     window.addEventListener("keypad-knob-press", onKnob);
-    return () => window.removeEventListener("keypad-knob-press", onKnob);
+    window.addEventListener("keypad-email-copied", onCopied);
+    return () => {
+      window.removeEventListener("keypad-knob-press", onKnob);
+      window.removeEventListener("keypad-email-copied", onCopied);
+    };
   }, [invalidate]);
 
   // Demand-loop wake-ups. (1) On mount: after a cut jump straight to Contact
@@ -867,7 +902,7 @@ function SceneContents({
     if (wStart > 0) {
       const age = (performance.now() - wStart) / 1000;
       if (age < WOBBLE_DURATION) {
-        const decay = Math.exp(-age * WOBBLE_DAMP);
+        const decay = Math.exp(-age * WOBBLE_DAMP) * wobbleAmpRef.current;
         wobX = Math.sin(age * WOBBLE_FREQ) * WOBBLE_ROT_AMP * decay;
         wobZ =
           Math.sin(age * WOBBLE_FREQ * 1.27 + 1.1) *
