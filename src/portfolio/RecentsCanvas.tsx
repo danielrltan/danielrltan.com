@@ -267,6 +267,14 @@ export const RecentsCanvas = memo(function RecentsCanvas({ progressRef, panPxRef
       const xr = crossRef.current?.getBoundingClientRect();
       seedX = xr && xr.width ? xr.left + xr.width / 2 - r.left : W / 2;
       seedY = xr && xr.height ? xr.top + xr.height / 2 - r.top : H / 2;
+      // Phones: the crosshair sits at the plane's bottom-left, still at the
+      // screen's bottom edge when the iris starts (stage top at mid-viewport),
+      // so the porthole opened off screen over half a blank screen. Seed it
+      // where the plane first shows instead: centred, near its top.
+      if (matches(MQ.compact)) {
+        seedX = W / 2;
+        seedY = Math.min(seedY, Math.round(window.innerHeight * 0.22));
+      }
       // Farthest corner of the CELL GRID (its last row / column overhang the
       // canvas), so the last cell centre is past the rim at iris 1.
       rFar = Math.max(
