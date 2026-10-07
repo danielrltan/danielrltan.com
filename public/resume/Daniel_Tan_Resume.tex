@@ -1,0 +1,176 @@
+%-------------------------
+% Resume in Latex
+% Author : Daniel Tan
+% Based off of: https://github.com/jakegut/resume
+% License : MIT
+% Build   : tectonic Daniel_Tan_Resume.tex  (source of truth: danielrltan.com repo, public/resume/)
+%------------------------
+
+\documentclass[letterpaper,10pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\usepackage{fontawesome5}
+\usepackage{iftex}
+\ifPDFTeX
+  \input{glyphtounicode}
+\fi
+
+\pagestyle{fancy}
+\fancyhf{} % clear all header and footer fields
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Adjust margins
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.6in}
+\addtolength{\textheight}{1.3in}
+
+\urlstyle{same}
+
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+% Sections formatting
+\titleformat{\section}{
+  \vspace{-1pt}\scshape\raggedright\large
+}{}{0em}{}[\color{black}\titlerule \vspace{-4pt}]
+
+% Ensure that generate pdf is machine readable/ATS parsable
+\ifPDFTeX
+  \pdfgentounicode=1
+\fi
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{
+  \item\small{
+    {#1 \vspace{-2pt}}
+  }
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & \textbf{#2} \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & \textbf{\small #2}\\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\nb}[1]{\mbox{#1}} % keep a name/award on one line
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
+
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-3pt}}
+
+%-------------------------------------------
+%%%%%%  RESUME STARTS HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+%----------HEADING----------
+\begin{center}
+    {\Huge \scshape Daniel Tan} \\ \vspace{1pt}
+    \small
+    \faIcon{map-marker-alt}\ Toronto, ON \hspace{6pt}
+    \faIcon{phone}\ 416-732-5553 \hspace{6pt}
+    \faIcon{envelope}\ \href{mailto:hello@danielrltan.com}{\underline{hello@danielrltan.com}} \hspace{6pt}
+    \faIcon{linkedin}\ \href{https://linkedin.com/in/danielrltan}{\underline{linkedin.com/in/danielrltan}} \hspace{6pt}
+    \faIcon{github}\ \href{https://github.com/danielrltan}{\underline{github.com/danielrltan}}
+\end{center}
+
+%-----------TECHNICAL SKILLS-----------
+\section{Skills \& Interests}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+     \textbf{Languages}: TypeScript, JavaScript, Python, Java, C++, Swift, SQL, Bash \\
+     \textbf{Frontend}: React, React Three Fiber, Three.js, HTML, CSS, GLTF \\
+     \textbf{Backend \& Data}: Node.js, FastAPI, Spring Boot, REST APIs, WebSockets, MongoDB, SQLite, IBM DB2, NumPy, Pandas \\
+     \textbf{AI/ML}: OpenAI API, PyTorch, Semantic Search, Multimodal Models (Video/Text), Model Evaluation \\
+     \textbf{Tools \& Platforms}: Git, GitHub, GitLab, Jira, Figma, Vercel, Railway, Fly.io, Docker, Prometheus, Notion, Agile/Scrum \\
+     \textbf{Interests}: Kickboxing, Skiing, Piano, Mechanical Keyboards, 3D Modelling \& Roblox UGC (Blender), Brawl Stars
+    }}
+ \end{itemize}
+
+%-----------EXPERIENCE-----------
+\section{Experience}
+  \resumeSubHeadingListStart
+
+    \resumeSubheading
+      {Broadridge Financial Solutions}{May 2026 -- Aug 2026}
+      {Software Developer Intern}{Toronto, ON}
+      \resumeItemListStart
+        \resumeItem{\textbf{Designed an AI release-readiness tool} for the tax engineering team behind investor communications for \textbf{265 Canadian financial institutions}, generating changelog, NFR-impact, and test-focus reports from consolidated sprint evidence.}
+        \resumeItem{\textbf{Built a validator agent running 8 automated checks} with live Jira and GitLab connectors auto-linking commits and merge requests across \textbf{5+ repositories}, validated on a production release manifest at a \textbf{16.5/17 compliance score}.}
+        \resumeItem{\textbf{Built an AI-assisted COBOL modernization PoC} transforming legacy tax-slip logic into structured YAML rules and a \textbf{Java 21 / Spring Boot} REST service with dynamic table routing, optimistic concurrency, and parameterized DB2 updates, verified by \textbf{2 integration tests with 0 failures}.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {Windscribe}{May 2025 -- Nov 2025}
+      {Software Developer Intern}{Toronto, ON}
+      \resumeItemListStart
+        \resumeItem{Engineered a ticket automation extension that autonomously resolved \textbf{30\% of support load}, cutting response times by \textbf{50\%} and improving \textbf{SLA compliance} for \textbf{89 million users}.}
+        \resumeItem{\textbf{Deployed an internal Slackbot ``Demerzel''} with thread-based context management, TOML-configured endpoints, Prometheus metrics, and Notion-integrated memory prompts built from \textbf{650+ articles} of Windscribe documentation.}
+        \resumeItem{\textbf{Integrated the OpenAI API for automated ticket answering}, generating context-aware summaries and responses that cut manual triage from \textbf{90 to 20 seconds} per ticket.}
+      \resumeItemListEnd
+
+  \resumeSubHeadingListEnd
+
+%-----------PROJECTS-----------
+\section{Projects}
+    \resumeSubHeadingListStart
+      \resumeProjectHeading
+          {\textbf{Poddleball.com} $|$ \emph{JavaScript, Node.js, WebSockets, Three.js, Swift, SQLite, Fly.io}}{September 2026 -- Present}
+          \resumeItemListStart
+            \resumeItem{\textbf{Launched a real-time multiplayer pickleball game played by swinging your phone or AirPod as the paddle}, started at Hack the North 2026; placed \textbf{\#25 on Product Hunt} on launch day with \textbf{20,000+ LinkedIn impressions}.}
+            \resumeItem{\textbf{Engineered an authoritative 60 Hz WebSocket game server} hosting up to \textbf{120 concurrent courts}, load-tested to 400 players at a sub-30 ms p99 tick, with client-side prediction cutting p95 ball error on lossy Wi-Fi from \textbf{223 to 15 cm}.}
+            \resumeItem{\textbf{Turned raw motion-sensor data into paddle swings} (Swift CoreMotion, browser motion APIs, MediaPipe body tracking), tuned on \textbf{140 labelled real swings}; added Google sign-in, SQLite stats, leaderboards and server-side anti-cheat.}
+            \resumeItem{\textbf{Shipped 320 commits in 16 days} by orchestrating parallel AI coding agents with file ownership and numeric regression tests, documenting \textbf{200+ design decisions} in an engineering build log.}
+          \resumeItemListEnd
+      \resumeProjectHeading
+          {\textbf{MoTrack.co} $|$ \emph{React, TypeScript, Node.js, MongoDB, Three.js}}{February 2025 -- Present}
+          \resumeItemListStart
+            \resumeItem{\textbf{Built and shipped a full-stack companion app} for Supercell's mo.co game (build creator, item database, tier lists, leaderboards) with client-side caching and shareable build links, owned end to end from concept to launch.}
+            \resumeItem{\textbf{Grew the platform to 30,000+ monthly active users} and a \textbf{1,500-member Discord community}, driving retention with a Discord bot that surfaces live build data from the app.}
+            \resumeItem{\textbf{Engineered a real-time 3D character customizer} with Three.js and React Three Fiber (GLTF pipeline, morph targets, material swapping), persisting presets in MongoDB for cross-device reuse.}
+          \resumeItemListEnd
+    \resumeSubHeadingListEnd
+
+%-----------EDUCATION-----------
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {University of Western Ontario}{Expected 2028}
+      {Dual Degree: BSc, Honours Specialization in Computer Science \& HBA, Ivey Business School}{London, ON}
+      \resumeItemListStart
+        \resumeItem{\textbf{GPA:} 3.9/4.0; \nb{Western Scholarship of Distinction (\$3,500)}, \nb{National Merit Scholarship (\$2,000)}, \nb{Chris Binns-Smith Memorial Scholarship (\$5,000)}}
+        \resumeItem{\textbf{Awards:} \#25 on Product Hunt for Poddle (Oct~2026), IBM watsonx Orchestrate Challenge Top 50 of 2000+ globally, \nb{Hack The 6ix} Finalist (400+ hackers), WFN Odyssey Cup First Place (\$500), \nb{TD Innovation Sprint Finalist}, \nb{2nd Place in 2024 Toronto Regional Real Estate Board Contest (\$2,500)}, \nb{Ontario 2023 Summer Company Grant (\$3,000)}}
+        \resumeItem{\textbf{Leadership:} \nb{Director of Flagship - Western Artificial Intelligence Club}, \nb{VP of Design - Western Founders Network Club}, \nb{Director of Outreach - Tech for Social Impact Club}, \nb{Developer - Western Developer's Society}}
+      \resumeItemListEnd
+  \resumeSubHeadingListEnd
+
+\end{document}
