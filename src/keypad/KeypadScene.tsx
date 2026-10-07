@@ -377,7 +377,28 @@ export function KeypadScene({ dropRef, glowOpacityRef }: KeypadSceneProps) {
     // canvas; listener lives on document, not the canvas wrapper.
     // The RiceBlob (which IS canvas-local) reads the same ref and
     // uses .active for its on/off.
+    // Seam 8: the footer sheet feeds OVER the stuck keypad. A cursor on the
+    // paper is not on the keypad, so neither the glow nor the tilt follows
+    // it (both ease out through .active), and a sheet sliding under a still
+    // cursor counts too (re-checked on scroll at the last position).
+    let lastX = -1;
+    let lastY = -1;
+    const onPaper = (el: Element | null) => !!el?.closest(".portfolio-footer");
+    const rest = () => {
+      if (!cursorRef.current.active && !riceCursorRef.current.active) return;
+      cursorRef.current = { ...cursorRef.current, active: false };
+      riceCursorRef.current = { ...riceCursorRef.current, active: false };
+    };
+    const onScroll = () => {
+      if (lastX >= 0 && onPaper(document.elementFromPoint(lastX, lastY))) rest();
+    };
     const onMove = (e: PointerEvent) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+      if (onPaper(e.target as Element | null)) {
+        rest();
+        return;
+      }
       cursorRef.current = {
         x: e.clientX / Math.max(1, window.innerWidth),
         y: e.clientY / Math.max(1, window.innerHeight),
@@ -399,9 +420,11 @@ export function KeypadScene({ dropRef, glowOpacityRef }: KeypadSceneProps) {
     };
     document.addEventListener("pointermove", onMove);
     window.addEventListener("pointerleave", onLeave);
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       document.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("scroll", onScroll);
     };
   }, [isMobile]);
 
