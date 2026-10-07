@@ -390,7 +390,11 @@ export function KeypadScene({ dropRef, glowOpacityRef }: KeypadSceneProps) {
       riceCursorRef.current = { ...riceCursorRef.current, active: false };
     };
     const onScroll = () => {
-      if (lastX >= 0 && onPaper(document.elementFromPoint(lastX, lastY))) rest();
+      // Hit-test only while something follows the cursor near the keypad:
+      // elementFromPoint flushes layout, and this listener sees every scroll.
+      if (lastX < 0 || !visibleRef.current) return;
+      if (!cursorRef.current.active && !riceCursorRef.current.active) return;
+      if (onPaper(document.elementFromPoint(lastX, lastY))) rest();
     };
     const onMove = (e: PointerEvent) => {
       lastX = e.clientX;
