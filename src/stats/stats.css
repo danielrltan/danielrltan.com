@@ -1,0 +1,463 @@
+/* The stats panel (/stats): Vercel-style dark. Its own page, so nothing from
+   src/index.css applies here. */
+:root {
+  color-scheme: dark;
+  --bg: #000;
+  --card: #0a0a0a;
+  --hover: #111;
+  --border: #1f1f1f;
+  --border-2: #2e2e2e;
+  --text: #ededed;
+  --muted: #a1a1a1;
+  --faint: #707070;
+  --blue: #52a8ff;
+  --blue-dim: rgba(82, 168, 255, 0.22);
+  --green: #3fb950;
+  --red: #ff6166;
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seg {
+  display: flex;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+.seg button {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  padding: 4px 12px;
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 13px;
+  cursor: pointer;
+}
+.seg button:hover {
+  color: var(--text);
+}
+.seg button.on {
+  background: #1f1f1f;
+  color: var(--text);
+}
+
+.icon-btn,
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+.icon-btn {
+  width: 34px;
+  height: 34px;
+}
+.btn {
+  height: 32px;
+  padding: 0 12px;
+  font-weight: 500;
+}
+.icon-btn:hover,
+.btn:hover {
+  color: var(--text);
+  border-color: var(--border-2);
+  background: var(--hover);
+}
+.btn.primary {
+  background: var(--text);
+  border-color: var(--text);
+  color: #000;
+}
+.btn.primary:hover {
+  background: #fff;
+}
+.btn.ghost {
+  background: none;
+}
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+.card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  overflow: hidden;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.card-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+.favicon {
+  border-radius: 5px;
+}
+.ext {
+  margin-left: auto;
+  color: var(--faint);
+  display: inline-flex;
+}
+.ext:hover {
+  color: var(--text);
+}
+
+.totals {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.total {
+  flex: 1;
+  padding: 16px 20px;
+}
+.total + .total {
+  border-left: 1px solid var(--border);
+}
+.total-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.total-value {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.delta {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+.delta.up {
+  color: var(--green);
+  background: rgba(63, 185, 80, 0.12);
+}
+.delta.down {
+  color: var(--red);
+  background: rgba(255, 97, 102, 0.12);
+}
+.delta.flat {
+  color: var(--muted);
+  background: #1a1a1a;
+}
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.dot.visitors {
+  background: var(--blue);
+}
+.dot.views {
+  background: var(--blue-dim);
+  box-shadow: inset 0 0 0 1px rgba(82, 168, 255, 0.5);
+}
+
+.chart {
+  position: relative;
+  padding: 20px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 180px;
+  border-bottom: 1px solid var(--border);
+}
+.col {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  touch-action: none;
+}
+.bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: 3px 3px 0 0;
+  min-height: 0;
+  transition: opacity 0.12s;
+}
+.bar.views {
+  background: var(--blue-dim);
+}
+.bar.visitors {
+  background: var(--blue);
+}
+.bars:hover .col:not(.on) .bar {
+  opacity: 0.45;
+}
+.axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.tip {
+  position: absolute;
+  top: 8px;
+  transform: translateX(-50%);
+  min-width: 150px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: #0f0f0f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  font-size: 13px;
+  z-index: 2;
+}
+.tip-day {
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.tip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tip-row b {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-weight: 500;
+}
+
+.lists {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.list {
+  padding: 16px 20px 20px;
+  min-width: 0;
+}
+.list + .list {
+  border-left: 1px solid var(--border);
+}
+.list-head {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+  padding: 0 10px;
+  margin-bottom: 2px;
+}
+.list-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 6px;
+  background: #161616;
+}
+.list-label,
+.list-value {
+  position: relative;
+}
+.list-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+.list-empty {
+  color: var(--faint);
+  padding: 6px 0;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 220px;
+  color: var(--muted);
+}
+.empty p {
+  margin: 0;
+}
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-2);
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+.dialog {
+  width: min(420px, 100%);
+  padding: 20px;
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--card);
+}
+.dialog h3 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.field {
+  display: block;
+  margin-bottom: 14px;
+}
+.field span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.field input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: #000;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.field input:focus {
+  outline: none;
+  border-color: var(--muted);
+}
+.dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 20px 16px 48px;
+  }
+  .card-head,
+  .total,
+  .list {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .chart {
+    padding: 16px 16px 10px;
+  }
+  .bars {
+    height: 140px;
+    gap: 2px;
+  }
+  .total-value {
+    font-size: 24px;
+  }
+  .lists {
+    grid-template-columns: 1fr;
+  }
+  .list + .list {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}

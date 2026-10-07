@@ -1,8 +1,15 @@
 {
   "rewrites": [
+    { "source": "/stats", "destination": "/stats.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
+    {
+      "source": "/stats(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
     {
       "source": "/assets/(.*)",
       "headers": [

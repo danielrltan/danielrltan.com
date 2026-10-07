@@ -9,6 +9,8 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
+      // stats.html: the owner's stats panel (src/stats), its own light entry
+      input: { main: "index.html", stats: "stats.html" },
       output: {
         // Split heavy vendor groups into their own chunks so the first paint
         // only parses what the room+hero need (three+r3f), and large libs are
