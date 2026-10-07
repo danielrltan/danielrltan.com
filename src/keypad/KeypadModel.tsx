@@ -7,6 +7,7 @@ import { track } from "../analytics";
 import { SOCIALS } from "../socials";
 import { knobAnchor } from "./KnobSparks";
 import { COPIED, copiedVisible, loadCopiedFont, makeCopiedTexture } from "./copiedScreen";
+import { makeHoverScreen, type HoverScreen } from "./hoverScreen";
 import { reducedMotion } from "../motion";
 // keypad.glb is imported as a Vite asset so the build gives it a content-
 // hashed URL under /assets/ (cached immutably; a new model gets a new URL).
@@ -28,8 +29,9 @@ import keypadUrl from "./keypad.glb?url";
  *   frame                             - body, well floor, dial collar and
  *                                       side buttons (static)
  *   display                           - the screen (flashes on presses;
- *                                       a click copies the email, see
- *                                       copiedScreen.ts)
+ *                                       hover turns the email orange, see
+ *                                       hoverScreen.ts; a click copies it,
+ *                                       see copiedScreen.ts)
  *
  * Animations driven from useFrame with fixed-rate damping
  * (per the project's scroll-animations-fixed-rate rule): no spring
@@ -369,6 +371,10 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   const copiedAtRef = useRef(-1);
   const copiedTexRef = useRef<THREE.CanvasTexture | null>(null);
   const screenArtRef = useRef<THREE.Texture | null>(null);
+  // Hover: the email fades to orange (hoverK 0..1, built on first hover).
+  const screenHotRef = useRef(false);
+  const hoverKRef = useRef(0);
+  const hoverScreenRef = useRef<HoverScreen | null>(null);
   useEffect(() => {
     const sm = screenMat as THREE.MeshStandardMaterial | null;
     if (sm) screenArtRef.current = sm.map;
@@ -376,6 +382,8 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
       if (sm && screenArtRef.current) sm.map = screenArtRef.current;
       copiedTexRef.current?.dispose();
       copiedTexRef.current = null;
+      hoverScreenRef.current?.dispose();
+      hoverScreenRef.current = null;
     };
   }, [screenMat]);
 
@@ -385,11 +393,24 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     const k = 1 - Math.exp(-dt * PRESS_LERP_RATE);
 
     const sm = screenMat as THREE.MeshStandardMaterial | null;
-    if (sm && copiedAtRef.current >= 0 && copiedTexRef.current) {
-      const show = copiedVisible((now - copiedAtRef.current) / 1000, reducedMotion.value);
-      if (show == null) copiedAtRef.current = -1;
-      const next = show ? copiedTexRef.current : screenArtRef.current;
-      if (sm.map !== next) sm.map = next;
+    if (sm) {
+      // hover fades in fast and out a touch slower; reduced motion snaps
+      const hot = screenHotRef.current ? 1 : 0;
+      const hk = hoverKRef.current;
+      if (hk !== hot) {
+        const next = reducedMotion.value ? hot : hk + (hot - hk) * (1 - Math.exp(-dt * (hot ? 22 : 12)));
+        hoverKRef.current = Math.abs(hot - next) < 0.004 ? hot : next;
+        if (!hoverScreenRef.current && screenArtRef.current) hoverScreenRef.current = makeHoverScreen(screenArtRef.current);
+        hoverScreenRef.current?.draw(hoverKRef.current);
+      }
+      const plain = hoverKRef.current > 0 && hoverScreenRef.current ? hoverScreenRef.current.tex : screenArtRef.current;
+      let next = plain;
+      if (copiedAtRef.current >= 0 && copiedTexRef.current) {
+        const show = copiedVisible((now - copiedAtRef.current) / 1000, reducedMotion.value);
+        if (show == null) copiedAtRef.current = -1;
+        if (show) next = copiedTexRef.current;
+      }
+      if (next && sm.map !== next) sm.map = next;
     }
 
     if (screenMat && screenFlashRef.current > 0) {
@@ -501,10 +522,13 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
   // click restarts it). No clipboard, or it refused: open mailto instead.
   const handleScreenEnter = (e: any) => {
     e.stopPropagation();
+    // a tap fires over but no out, so touch would leave it stuck orange
+    if (e.pointerType !== "touch") screenHotRef.current = true;
     emitCursorHover(true);
   };
   const handleScreenLeave = (e: any) => {
     e.stopPropagation();
+    screenHotRef.current = false;
     emitCursorHover(false);
   };
   const handleScreenClick = (e: any) => {
