@@ -78,9 +78,10 @@
 }
 
 /* The sheet's leading edge (seam 2): a static two-row hard pixel shadow cast
-   onto About as the opaque Projects sheet rises over it. 8px of ink at 6%,
-   then a flat 8px offset row at 3%; no blur, no gradient (the owner's ground
-   is flat). Only while the curtain exists: both sections' seam flags, desktop
+   onto About as the opaque Projects sheet rises over it. 8px of ink at 12%,
+   then a flat 8px offset row at 6%; no blur, no gradient (the owner's ground
+   is flat). (6% / 3% read as no edge at all: 241 then 247 over the white
+   cards and nothing over the room, so About looked cut off, not covered.) Only while the curtain exists: both sections' seam flags, desktop
    gate (narrow sets overflow:visible, so an ungated strip would paint above
    Projects on phones). */
 @media (width > 900px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
@@ -91,8 +92,8 @@
     right: 0;
     top: -8px;
     height: 8px;
-    background: rgba(13, 14, 16, 0.06);
-    box-shadow: 0 -8px 0 rgba(13, 14, 16, 0.03);
+    background: rgba(13, 14, 16, 0.12);
+    box-shadow: 0 -8px 0 rgba(13, 14, 16, 0.06);
     pointer-events: none;
   }
 }
