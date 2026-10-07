@@ -315,13 +315,24 @@ function writeCounts(root: Element | null, t: number): void {
 
 /**
  * Narrow tiles: rank each tile by its distance from the centre tile (the one
- * nearest the middle of the grid's box), in layout px so it holds for the
- * one-column ledger on phones and the three-up grid at 769-900 alike. Written
- * as --reveal-order (bits-and-pieces.css turns it into the reveal delay).
+ * nearest the middle of the grid's box), in layout px, on the three-up grid
+ * at 769-900 (its centre is on screen when the reveal fires). Written as
+ * --reveal-order (bits-and-pieces.css turns it into the reveal delay).
+ *
+ * The one-column ledger on phones ranks top-down instead: there the centre
+ * tile sits ~1100px below the fold when the reveal fires (grid top at 75%),
+ * so centre-out spent its first ~220ms on tiles nobody could see and then
+ * filled the visible ones last, bottom-up.
  */
 function rankTilesFromCentre(tiles: HTMLElement[]): void {
   const c = tiles.map((t) => ({ t, x: t.offsetLeft + t.offsetWidth / 2, y: t.offsetTop + t.offsetHeight / 2 }));
   if (!c.length) return;
+  if (new Set(c.map((k) => Math.round(k.x))).size === 1) {
+    c.map((k, i) => ({ k, i }))
+      .sort((a, b) => a.k.y - b.k.y || a.i - b.i)
+      .forEach(({ k }, rank) => k.t.style.setProperty("--reveal-order", String(rank)));
+    return;
+  }
   const xs = c.map((k) => k.x);
   const ys = c.map((k) => k.y);
   const mx = (Math.min(...xs) + Math.max(...xs)) / 2;
