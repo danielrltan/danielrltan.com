@@ -41,10 +41,12 @@ gsap.registerPlugin(ScrollTrigger);
  * up from the Mac shows the finished dashboard, never a blank sheet.
  *
  * SEAM (owner brief 2026-10-06: section boundaries never stop the page). About
- * no longer pins. On the desk layout the section is 200svh with a sticky inner
- * .about-hold (src/seams/stack.css, keyed on this section's data-seam-stack),
- * so the parked room simply stays still from the hero hand-off on, and the
- * Projects sheet rises 1:1 over it (the Mac side lives in Macintosh.tsx). Two
+ * no longer pins. On the desk layout the section is 100svh + a dwell + the
+ * cover with a sticky inner .about-hold (src/seams/stack.css, keyed on this
+ * section's data-seam-stack), so the parked room stays still from the hero
+ * hand-off on: uncovered for --seam-about-dwell (owner 2026-10-07: without it
+ * the page "just lets you fly by the about"), then the Projects sheet rises
+ * 1:1 over it (the Mac side lives in Macintosh.tsx). Two
  * seams ride that curtain here: `about-projects` stops painting the hold and
  * pauses the room bob once the sheet covers it, and `about-arrow` turns the
  * owner's "my room in real life!" arrow on its tail to point down at the
@@ -510,8 +512,8 @@ export function About() {
       ref={sectionRef}
       className="portfolio-section portfolio-about"
       /* Seam layout flag (src/seams/stack.css): on the desk layout the
-         section is 200svh and .about-hold sticks, so About sits still under
-         the rising Projects sheet. Static: only this file sets it. */
+         section is 100svh + dwell + cover and .about-hold sticks, so About
+         holds still, then sits under the rising Projects sheet. Static: only this file sets it. */
       data-seam-stack=""
     >
       {/* The sticky inner wrapper (stack.css). The section root stays in
