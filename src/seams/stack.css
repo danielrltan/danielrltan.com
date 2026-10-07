@@ -15,7 +15,7 @@
  * layout), and reverting one section's commit deactivates exactly its seam.
  * Cross-section rules need BOTH flags (adjacent-sibling combinator), so either
  * half can land first:
- * - About alone: About sticks for 1vh with nothing covering it (a still frame).
+ * - About alone: About sticks for its dwell + cover with nothing covering it (a still frame).
  * - Mac alone: the Mac hold works, no curtain margin.
  *
  * Specificity: section CSS is imported by each component, so load order is not
@@ -29,6 +29,20 @@
  * - motion (prefers-reduced-motion: no-preference)
  * Reduced motion: no holds, no curtains; every section is plain flow.
  *
+ * HOLDS (owner 2026-10-07: "a lack of pinning for each section ... you can
+ * just fly by it by accident"). Boundaries still never STOP the page dead
+ * (every hold is eased by softHold, or carries its own motion), but each
+ * section now holds the screen for a beat before the next one arrives:
+ * - About: still and uncovered for --seam-about-dwell before the Projects
+ *   sheet starts rising (the sheet's margin is unchanged, so the dwell is
+ *   pure extra section height).
+ * - Work: a stepped hold sized by Work.tsx (--work-hold, on data-work-hold,
+ *   set by the spine seam on desktop with a fine pointer only).
+ * - Play: the section sticks in its wrapper for --seam-play-hold while the
+ *   name tags cascade in.
+ * - Keypad: free of the footer for --seam-keypad-dwell before the sheet
+ *   starts feeding up over it.
+ *
  * Sticky containment: nothing between a sticky stage and <html> may be
  * overflow hidden/auto/scroll (it would bind the sticky to that box and it
  * would never stick). Use `clip`.
@@ -39,6 +53,9 @@
   --seam-cell: 8px;
   --seam-line: 2px;
   --seam-about-cover: 100svh;  /* About stays still under the rising Projects sheet for this long */
+  --seam-about-dwell: 60svh;   /* ...after holding uncovered for this long */
+  --seam-play-hold: 70svh;     /* Play holds while its name tags cascade in */
+  --seam-keypad-dwell: 50svh;  /* the keypad holds clear of the footer before the sheet rises */
   --seam-mac-hold: 180svh;     /* gate G1 (fallback 220svh: the extra goes to the landed dwell) */
   --seam-bp-hold: 50svh;       /* gate G7 fallback taken (was 30svh: at ~1000px/s its 108px soft edges braked
                                   the wall like a speed bump; 50svh gives 180px edges around a still core) */
@@ -51,7 +68,10 @@
 
 @media (width > 900px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
   /* 2: About under the curtain */
-  .portfolio-about[data-seam-stack] { height: calc(100svh + var(--seam-about-cover)); overflow: clip; z-index: 0; }
+  .portfolio-about[data-seam-stack] {
+    height: calc(100svh + var(--seam-about-dwell) + var(--seam-about-cover));
+    overflow: clip; z-index: 0;
+  }
   .portfolio-about[data-seam-stack] .about-hold { position: sticky; top: 0; height: 100svh; }
   .portfolio-about[data-seam-stack] + .portfolio-mac[data-seam-stack] {
     margin-top: calc(-1 * var(--seam-about-cover));
@@ -66,14 +86,22 @@
     overflow-x: clip; overflow-y: visible;   /* was overflow:hidden: that kills sticky and the edge shadow */
   }
   .portfolio-mac[data-seam-stack] .mac-sticky { position: sticky; top: 0; height: 100svh; }
+  /* Work: the stepped hold (Work.tsx sizes it and sets the flag) */
+  .portfolio-work[data-work-hold] { height: calc(100svh + var(--work-hold, 0px)); }
+  .portfolio-work[data-work-hold] .work-hold { position: sticky; top: 0; height: 100svh; overflow: clip; }
   /* Honours dwell */
   .portfolio-bp[data-seam-stack] { height: calc(100svh + var(--seam-bp-hold)); }
   .portfolio-bp[data-seam-stack] .bp-hold { position: sticky; top: 0; height: 100svh; }
 }
 
 @media (width > 768px) and (height > 500px) and (prefers-reduced-motion: no-preference) {
-  /* 8: keypad under the footer */
-  .portfolio-section.keypad-section[data-seam-stack] { height: calc(100svh + var(--footer-h)); }
+  /* Play hold (other.css runs the section 100px past the fold here: the canvas slack) */
+  .other-pin-wrap[data-seam-stack] { height: calc(100svh + 100px + var(--seam-play-hold)); }
+  .other-pin-wrap[data-seam-stack] > .portfolio-other { position: sticky; top: 0; }
+  /* 8: keypad under the footer, after its dwell */
+  .portfolio-section.keypad-section[data-seam-stack] {
+    height: calc(100svh + var(--seam-keypad-dwell) + var(--footer-h));
+  }
   .keypad-section[data-seam-stack] .keypad-hold { position: sticky; top: 0; height: 100svh; }
   .keypad-section[data-seam-stack] + .portfolio-footer[data-seam-stack] {
     margin-top: calc(-1 * var(--footer-h)); position: relative; z-index: 5;

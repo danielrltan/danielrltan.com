@@ -37,18 +37,20 @@ export interface SectionEntry {
 // do NOT expand them to the longer section-eyebrow phrasings.
 export const SECTION_REGISTRY: SectionEntry[] = [
   { number: "00", label: "Hero", selector: ".portfolio-section--hero" },
-  // About no longer holds: it stays still under the rising Projects sheet
-  // (seam about -> projects), so a jump lands on its doc top, the parked,
-  // finished dashboard.
+  // About holds still (a dwell, then under the rising Projects sheet; seam
+  // about -> projects). Its hold starts at its doc top, so a jump lands
+  // there: the parked, finished dashboard.
   { number: "01", label: "About", selector: ".portfolio-about" },
   // Projects holds on the Mac. A bare element jump would land on the hold's
   // opening beat; the section's data-jump-progress (Macintosh.tsx) lands on
   // the booted, interactive CRT instead.
   { number: "02", label: "Projects", selector: ".portfolio-mac", pinId: "mac-pin" },
-  // Work is natural height (no hold): a jump lands on its top.
+  // Work's stepped hold (desktop) starts at its doc top: a jump lands on its
+  // first beat.
   { number: "03", label: "Work", selector: ".portfolio-work" },
   // Play is interests-only — the "Recents" photos live in their own Photos
-  // section (below), so a jump lands on the section top (the 3D cluster).
+  // section (below). Its hold starts at the wrapper's top, so a jump lands
+  // there (the 3D cluster, name tags cascading in).
   { number: "04", label: "Play", selector: ".other-pin-wrap" },
   { number: "05", label: "Honours", selector: ".portfolio-bp", pinId: "bp-pin" },
   // Recents: the photo plane, a standalone section between Honours and Contact.

@@ -3,7 +3,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { refreshScrollOnLoaderLift } from "./scrollRefresh";
 import { ease, reducedMotion } from "../motion";
-import { mountSeam, oneShot, smooth, SEAM_MQ } from "../seams";
+import { mountSeam, oneShot, smooth, softHold, SEAM_MQ } from "../seams";
 import "./sections.css";
 import "./other.css";
 import { ScrambleText } from "./ScrambleText";
@@ -24,15 +24,17 @@ gsap.registerPlugin(ScrollTrigger);
  * reel" (the camera dollied to each hobby while the others dimmed). It is now a
  * single bold screen — the 3D HobbiesScene fills the viewport full-bleed and
  * floats all ten interest objects together as one dense, overlapping cluster
- * suspended in open space (the reference the user supplied). There is no pin, no
- * scroll stop, no per-hobby focus, and no dot strip; the objects are the whole
- * show. Hovering (or tapping) an object surfaces its label via a tooltip.
+ * suspended in open space (the reference the user supplied). There is no
+ * per-hobby focus and no dot strip; the objects are the whole show.
  *
- * SEAMS (2026-10-06 seam overhaul, owner brief "one workstation, one signal,
- * never stopping": something moves 1:1 with the wheel at every section
- * boundary, and only three short holds remain on the page). Play's 500px
- * sticky stop is gone; the section scrolls through at page speed and its two
- * boundaries are carried by the props instead:
+ * HOLD (owner 2026-10-07): on the `wide` gate the section sticks for
+ * --seam-play-hold (src/seams/stack.css, softHold 'play-pin') and, as it
+ * lands, every prop's name tag comes up in turn, left to right, so a visitor
+ * does not have to hover each one to read it. Hovering still lifts a prop
+ * afterwards. Phones keep their always-on tags and plain flow.
+ *
+ * SEAMS (2026-10-06 seam overhaul). The section's two boundaries are carried
+ * by the props:
  * - work → play, ZERO-G ARRIVAL: the ten props rise from below the fold in a
  *   left-to-right wave as the section comes up, and settle with a tiny
  *   overshoot exactly as its top reaches 5% of the viewport.
@@ -74,6 +76,15 @@ const ARRIVAL_SINK_MS = 400;
 // viewport, so the middle is clear before its podium build finishes.
 const DOORS_START = "top 85%";
 const DOORS_END = "top 25%";
+
+// Name-tag cascade (play-hold): once the wrapper's top crosses 10% of the
+// viewport (the section is landing on its hold), every prop's name tag comes
+// up in turn, left to right, over TAGS_IN_MS; scrolling back above the line
+// clears them in TAGS_OUT_MS. Visitors no longer have to hover each prop to
+// learn what it is; hovering still lifts the prop afterwards.
+const TAGS_LINE = 0.1;
+const TAGS_IN_MS = 1600;
+const TAGS_OUT_MS = 240;
 
 // Longest the deferred canvas mount waits for an idle period. The mount band
 // is ~2.5 viewports ahead, so even the cap lands it long before arrival.
@@ -149,8 +160,7 @@ export function Other() {
 
   useEffect(() => {
     // Triggers measure the WRAPPER (the registry selector and an in-flow
-    // element, spec §0.5). It is exactly the section's height now that the
-    // hold is gone.
+    // element, spec §0.5): the section plus its hold.
     const el = wrapRef.current;
     if (!el) return;
 
@@ -159,12 +169,15 @@ export function Other() {
       setInView(true);
     };
 
-    // NO SCROLL STOP (seam overhaul 2026-10-06). Play used to hold for 500px
-    // on a CSS sticky stop with a soft release: ~300px of scroll where
-    // nothing on screen answered the wheel. The owner's brief for the seams is
-    // that something moves 1:1 at every boundary and only three short holds
-    // remain (Projects, Honours, Recents), so the section now scrolls through
-    // at page speed and the zero-g arrival below is its entrance.
+    // THE HOLD (owner 2026-10-07: "the interests section no longer feels
+    // focused"). On the `wide` gate the wrapper is the section plus
+    // --seam-play-hold tall and the section sticks inside it
+    // (src/seams/stack.css), so the cluster holds the screen while the name
+    // tags cascade in (below); softHold eases both edges. Phones and reduced
+    // motion: the wrapper is exactly the section (a zero-length hold, nothing
+    // written).
+    const section = sectionRef.current;
+    const hold = section ? softHold({ id: "play-pin", section: el, stage: section }) : null;
 
     // Header entrance: ONE time-based reveal, latched (once). end:"max" keeps
     // it active from the reveal line to the page end, so a load or cut jump
@@ -297,7 +310,57 @@ export function Other() {
       reset: () => setDoors(0),
     });
 
+    // NAME-TAG CASCADE (see TAGS_*). Time-based, so it plays the same at any
+    // scroll speed and on touch. A cut jump or a load below the line still
+    // plays it (the tags are the point of arriving); only the clear is
+    // instant. Phones show every tag statically (HobbiesScene) and ignore
+    // the clock; reduced motion gets every tag up at once.
+    const setTags = (v: number) => {
+      if (v === hobbiesMotion.labels) return;
+      hobbiesMotion.labels = v;
+      hobbiesChanged();
+    };
+    let tagsRaf = 0;
+    const stopTags = () => {
+      if (tagsRaf) cancelAnimationFrame(tagsRaf);
+      tagsRaf = 0;
+    };
+    const tweenTags = (to: number, ms: number) => {
+      stopTags();
+      const from = hobbiesMotion.labels;
+      const dur = ms * Math.abs(to - from);
+      const t0 = performance.now();
+      const step = (now: number) => {
+        // rAF stamps the frame start, which can precede t0: clamp at 0.
+        const t = dur > 0 ? Math.min(1, Math.max(0, now - t0) / dur) : 1;
+        setTags(from + (to - from) * t);
+        tagsRaf = t < 1 ? requestAnimationFrame(step) : 0;
+      };
+      tagsRaf = requestAnimationFrame(step);
+    };
+    let stopTagsShot: (() => void) | null = null;
+    if (reducedMotion.value) {
+      setTags(1);
+    } else {
+      stopTagsShot = oneShot({
+        el,
+        line: TAGS_LINE,
+        play: (dir) => tweenTags(dir === 1 ? 1 : 0, dir === 1 ? TAGS_IN_MS : TAGS_OUT_MS),
+        snap: (dir) => {
+          if (dir === 1) tweenTags(1, TAGS_IN_MS);
+          else {
+            stopTags();
+            setTags(0);
+          }
+        },
+      });
+    }
+
     return () => {
+      stopTagsShot?.();
+      stopTags();
+      setTags(0);
+      hold?.kill();
       stopLoaderWatch();
       stopDoors();
       stopArrival();
@@ -307,10 +370,12 @@ export function Other() {
   }, []);
 
   return (
-    // In-flow wrapper, exactly the section's height (no hold). It is the
-    // registry selector for "Play" (sectionRegistry) and the seams' trigger,
-    // so the class name stays.
-    <div ref={wrapRef} className="other-pin-wrap">
+    // In-flow wrapper: the section plus the play hold on the `wide` gate,
+    // exactly the section elsewhere. It is the registry selector for "Play"
+    // (sectionRegistry) and the seams' trigger, so the class name stays.
+    // data-seam-stack: activates this section's half of src/seams/stack.css
+    // (the wrapper grows by --seam-play-hold and the section sticks in it).
+    <div ref={wrapRef} className="other-pin-wrap" data-seam-stack="">
     <section
       ref={sectionRef}
       className="portfolio-section portfolio-other"

@@ -230,11 +230,18 @@ export function mountMacRelay(opts: {
       stickyLeft = sr.left;
       fallback = { x: sticky.offsetWidth / 2, y: sticky.offsetHeight / 2 };
       const t = document.querySelector<HTMLElement>('[data-seam-target="work-node-0"]');
+      // Node positions are taken relative to Work's ledger, not its section:
+      // the ledger rides Work's sticky stepped hold (Work.tsx), so a refresh
+      // mid-hold sees it stuck and translated. At the dock (Work's top at
+      // relayDockAt, before the hold) the ledger sits flush with the section
+      // top, so ledger-relative == section-relative there.
+      const ledger = el?.querySelector<HTMLElement>(".work-ledger");
+      const refTop = ledger ? ledger.getBoundingClientRect().top + sy : workTop;
       if (el && t) {
         const r = t.getBoundingClientRect();
         n0 = {
           x: r.left + r.width / 2,
-          y: r.top + sy + r.height / 2 - workTop,
+          y: r.top + sy + r.height / 2 - refTop,
           size: Math.max(1, Math.min(r.width, r.height)),
         };
         // Owner-facing reason for the route (2026-10-06 filmstrip review): a
@@ -250,9 +257,9 @@ export function mountMacRelay(opts: {
           laneMinX = tr.width > 0 ? tr.right + LANE_CLEAR_PX + SEAM.relayPx / 2 : -Infinity;
         } else laneMinX = -Infinity;
         const head = el.querySelector("header") ?? title;
-        const headBottom = head ? head.getBoundingClientRect().bottom + sy - workTop : n0.y - 4 * SEAM.relayPx;
+        const headBottom = head ? head.getBoundingClientRect().bottom + sy - refTop : n0.y - 4 * SEAM.relayPx;
         const row = t.closest("li");
-        const rowTop = row ? row.getBoundingClientRect().top + sy - workTop : n0.y - 2 * SEAM.relayPx;
+        const rowTop = row ? row.getBoundingClientRect().top + sy - refTop : n0.y - 2 * SEAM.relayPx;
         gapY = Math.min((headBottom + rowTop) / 2, n0.y - SEAM.relayPx);
       } else n0 = null;
     },

@@ -57,6 +57,9 @@ export interface HobbiesMotion {
   arrival: number;
   /** 0..1 door parting (0 = closed). */
   doors: number;
+  /** 0..1 name-tag reveal clock (play-hold): each prop's tag fades in on its
+   *  own slice of it, left to right (labelOf). 0 = no tags, 1 = every tag up. */
+  labels: number;
   /** Rise depth as a fraction of the visible half-height: 1.3 on the scroll-linked
    *  desktop seam, 0.9 on the touch one-shot (a shorter, quicker lift). */
   depthK: number;
@@ -71,6 +74,7 @@ export interface HobbiesMotion {
 export const hobbiesMotion: HobbiesMotion = {
   arrival: 1,
   doors: 0,
+  labels: 0,
   depthK: 1.3,
   D: 0,
   // The leftmost and rightmost props always exist, so these two ranks bound the
@@ -94,6 +98,16 @@ export function arrivalOf(rank: number, arrival: number): number {
  *  (slightly negative through the soft overshoot). Pure. */
 export function liftOf(rank: number, arrival: number): number {
   return 1 - outBackSoft(arrivalOf(rank, arrival));
+}
+
+// Name-tag cascade: each tag's fade spans 30% of the clock and starts 70% x
+// its rank in, so the tags come up one after another in the same left-to-right
+// order the props rose in.
+const LABEL_LAG = 0.7;
+const LABEL_SPAN = 0.3;
+/** This prop's name-tag weight (0..1) at reveal clock `labels`. Pure. */
+export function labelOf(rank: number, labels: number): number {
+  return seg(labels, LABEL_LAG * rank, LABEL_LAG * rank + LABEL_SPAN);
 }
 
 let wake: (() => void) | null = null;

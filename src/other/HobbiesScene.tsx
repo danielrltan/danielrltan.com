@@ -11,6 +11,7 @@ import {
   type Hobby,
   hobbiesMotion,
   arrivalOf,
+  labelOf,
   liftOf,
   refreshHobbiesMirror,
   setHobbiesWake,
@@ -447,7 +448,12 @@ function HobbyMesh({
     // wander being off on mobile.
     const label = labelRef.current;
     if (label) {
-      const w = staticLabels ? 1 : hw < 0.001 ? 0 : hw;
+      // Desktop: the hover weight, or the play-hold cascade (Other.tsx) once
+      // it has reached this prop, whichever is higher. Hover still works
+      // after the cascade: it lifts the object as before.
+      const shown = labelOf(hobbiesMotion.ranks[index] ?? 0, hobbiesMotion.labels);
+      const lw = Math.max(hw, shown);
+      const w = staticLabels ? 1 : lw < 0.001 ? 0 : lw;
       const last = labelWRef.current;
       if (Math.abs(w - last) > 0.001 || (w === 0) !== (last === 0)) {
         labelWRef.current = w;

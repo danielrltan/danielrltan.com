@@ -390,6 +390,21 @@
 .work-acc.is-spine-scroll > .work-acc-item:not(.is-lit) .work-acc-pull-metric {
   opacity: 0;
 }
+/* Stepped hold (Work.tsx, desktop fine pointer): the role on its beat reads
+   at full strength, the others recede. Children, not the row: the row's own
+   opacity is its entrance. */
+.work-acc.is-stepped > .work-acc-item .work-acc-headline,
+.work-acc.is-stepped > .work-acc-item .work-acc-side,
+.work-acc.is-stepped > .work-acc-item .work-acc-year,
+.work-acc.is-stepped > .work-acc-item .work-acc-panel-body {
+  transition: opacity var(--t-slow) var(--ease-out);
+}
+.work-acc.is-stepped > .work-acc-item:not(.is-focus) .work-acc-headline,
+.work-acc.is-stepped > .work-acc-item:not(.is-focus) .work-acc-side,
+.work-acc.is-stepped > .work-acc-item:not(.is-focus) .work-acc-year,
+.work-acc.is-stepped > .work-acc-item:not(.is-focus) .work-acc-panel-body {
+  opacity: 0.32;
+}
 /* Reached nodes fill accent as the spine's tip passes them (.is-lit, written
    by the spine seam / phone one-shot, a class toggle): the timeline
    "completes" downward. Every row is open on desktop, so open no longer

@@ -10,7 +10,7 @@ import "./sections.css";
 import "./work-timeline.css";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ScrambleText } from "./ScrambleText";
-import { getLenis } from "../scroll";
+import { getLenis, scrollToY } from "../scroll";
 import {
   DUR,
   EASE_CSS,
@@ -23,7 +23,7 @@ import {
 import { useMedia } from "../useMedia";
 import { useReveal } from "./useReveal";
 import { track } from "../analytics";
-import { mountSeam, oneShot, SEAM, SEAM_MQ } from "../seams";
+import { mountSeam, oneShot, smooth, softHold, SEAM, SEAM_MQ } from "../seams";
 
 // ── Tunables (seam overhaul W3, .scratch/seams/SPEC.md §5.3) ────────────────
 /**
@@ -37,10 +37,112 @@ const WORK_ALL_OPEN = true;
 /**
  * Spine seam range on .portfolio-work (in flow): it starts where the Projects
  * relay pixel docks on node 0 (SEAM.relayDockAt, the W2 + W3 contract: Work's
- * top at 28% of the viewport) and is full once Work's bottom reaches 60%.
+ * top at 28% of the viewport) and is full at the end of the stepped hold
+ * (Work's bottom at the viewport bottom: the section is 100svh + the hold).
  */
 const SPINE_START = `top ${SEAM.relayDockAt * 100}%`;
-const SPINE_END = "bottom 60%";
+const SPINE_END = "bottom bottom";
+/**
+ * STEPPED HOLD (owner 2026-10-07: "the experience section no longer feels
+ * focused"). Desktop with a fine pointer: the ledger sits in a 100svh sticky
+ * .work-hold and steps through the roles. Each role gets a still beat of
+ * DWELL_VH with the other roles dimmed, then the ledger glides to the next
+ * role's header (just under the HUD clearance) on a smoothstep over
+ * GLIDE_K x the distance (peak speed 1.5 / GLIDE_K x the wheel, no velocity
+ * step at either end). The focus passes to the next role mid-glide, and the
+ * spine draws through it all, reaching each node at that hand-over, so the
+ * wheel always moves something.
+ */
+const DWELL_VH = 0.35;
+const GLIDE_K = 1.2;
+const GLIDE_MIN_VH = 0.15;
+
+/** One still beat of the stepped hold: the ledger parked at `y` for role `role`. */
+interface Beat {
+  /** Hold scroll (px from the hold's start) where the beat starts. */
+  s: number;
+  /** Ledger offset (px, scrolled up by this much) during the beat. */
+  y: number;
+  role: number;
+  /** Glide to the next beat: [s + dwell, s + dwell + glide]. */
+  glide: number;
+}
+interface StepModel {
+  beats: Beat[];
+  dwell: number;
+  /** Total hold length (px). */
+  len: number;
+  /** Approach: SPINE_START to the hold start (px). */
+  approach: number;
+}
+
+/** Read the stepped hold's beats from layout (offsetTop math: translate-proof). */
+function measureSteps(ledger: HTMLElement, list: HTMLElement): StepModel {
+  const vh = window.innerHeight;
+  const over = Math.max(0, ledger.offsetHeight - vh);
+  const pad = parseFloat(getComputedStyle(ledger).paddingTop) || 0;
+  const ys: Array<{ y: number; role: number }> = [];
+  (Array.from(list.children) as HTMLElement[]).forEach((li, i) => {
+    const y = Math.min(over, Math.max(0, list.offsetTop + li.offsetTop - pad));
+    ys.push({ y: i === 0 ? 0 : y, role: i });
+  });
+  // The last role's beat must show the ledger's end: if its header beat
+  // leaves the bottom below the fold, add a closing beat on the end.
+  const last = ys[ys.length - 1];
+  if (last && last.y < over - 1) ys.push({ y: over, role: last.role });
+  const dwell = DWELL_VH * vh;
+  const beats: Beat[] = [];
+  let pos = 0;
+  ys.forEach((b, j) => {
+    const next = ys[j + 1];
+    const d = next ? Math.abs(next.y - b.y) : 0;
+    const glide = next ? Math.max(GLIDE_MIN_VH * vh, GLIDE_K * d) : 0;
+    beats.push({ s: pos, y: b.y, role: b.role, glide });
+    pos += dwell + glide;
+  });
+  return { beats, dwell, len: pos, approach: SEAM.relayDockAt * vh };
+}
+
+/** Hold scroll where beat j's role takes the focus: mid-glide into it (0 for the first). */
+function switchAt(m: StepModel, j: number): number {
+  if (j <= 0) return 0;
+  const prev = m.beats[j - 1]!;
+  return prev.s + m.dwell + prev.glide / 2;
+}
+
+/** Ledger offset, focused role and spine fill at hold scroll h. Pure. */
+function stepAt(m: StepModel, f: number[], h: number): { y: number; role: number; fill: number } {
+  const { beats, dwell, len } = m;
+  if (!beats.length) return { y: 0, role: 0, fill: 0 };
+  if (h <= 0) return { y: 0, role: 0, fill: 0 };
+  if (h >= len) {
+    const b = beats[beats.length - 1]!;
+    return { y: b.y, role: b.role, fill: 1 };
+  }
+  // Fill: reaches each role's node exactly where that role takes the focus
+  // (switchAt), linear between, 1 at the hold's end.
+  let fill = 1;
+  for (let j = 0; j < beats.length; j++) {
+    const k0 = switchAt(m, j);
+    const k1 = j + 1 < beats.length ? switchAt(m, j + 1) : len;
+    if (h >= k1) continue;
+    const f0 = f[beats[j]!.role] ?? 0;
+    const f1 = j + 1 < beats.length ? (f[beats[j + 1]!.role] ?? 1) : 1;
+    fill = f0 + (f1 - f0) * ((h - k0) / Math.max(1, k1 - k0));
+    break;
+  }
+  for (let j = 0; j < beats.length; j++) {
+    const b = beats[j]!;
+    const next = beats[j + 1];
+    const end = next ? next.s : len;
+    if (h >= end) continue;
+    if (!next || h <= b.s + dwell) return { y: b.y, role: b.role, fill };
+    const t = smooth((h - b.s - dwell) / Math.max(1, b.glide));
+    return { y: b.y + (next.y - b.y) * t, role: t < 0.5 ? b.role : next.role, fill };
+  }
+  const b = beats[beats.length - 1]!;
+  return { y: b.y, role: b.role, fill: 1 };
+}
 /**
  * Touch / phone one-shot (spec §5.3, rule §0.8: no scroll-linked writes on
  * touch). When the header's top crosses ONESHOT_LINE, node 0 drops in from
@@ -183,7 +285,9 @@ function initialOpen(): boolean[] {
 }
 
 /**
- * Work: "The Ledger", an accordion timeline in natural page flow (no pin).
+ * Work: "The Ledger", an accordion timeline. On desktop with a fine pointer it
+ * sits in a stepped hold (STEPPED HOLD above: one still beat per role, the
+ * others dimmed); everywhere else it is in natural page flow.
  *
  * Every role is a node on a left spine and is always visible as a header
  * (dot-matrix year + sector + company + dates); an open role drops its detail
@@ -218,7 +322,14 @@ function initialOpen(): boolean[] {
  */
 export function Work() {
   const sectionRef = useRef<HTMLElement>(null);
+  const holdRef = useRef<HTMLDivElement>(null);
+  const ledgerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
+  /** The stepped hold's live model (null when Work flows): the focus handler reads it. */
+  const stepsRef = useRef<StepModel | null>(null);
+  /** The role on its beat (-1 = none). A ref like litRef, and read by the
+   *  row's className, so a re-render (a decode, a toggle) keeps it. */
+  const focusRef = useRef(-1);
   const itemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const headRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -320,8 +431,40 @@ export function Work() {
   useEffect(() => {
     const section = sectionRef.current;
     const list = listRef.current;
-    if (!section || !list) return;
+    const ledger = ledgerRef.current;
+    if (!section || !list || !ledger) return;
     let geo: SpineGeo | null = null;
+
+    // ── Stepped hold writes (scroll mode only) ──
+    let lastY = NaN;
+    let lastRole = -1;
+    const setStep = (y: number, role: number) => {
+      const r = Math.round(y * 2) / 2;
+      if (r !== lastY) {
+        lastY = r;
+        ledger.style.translate = r ? `0 ${-r}px` : "";
+      }
+      if (role !== lastRole) {
+        lastRole = role;
+        focusRef.current = role;
+        itemRefs.current.forEach((li, i) => li?.classList.toggle("is-focus", i === role));
+      }
+    };
+    /** Drop the hold: plain flow (fallback / final / reset / unmount). */
+    const unstep = () => {
+      const had = section.hasAttribute("data-work-hold");
+      stepsRef.current = null;
+      section.removeAttribute("data-work-hold");
+      section.style.removeProperty("--work-hold");
+      list.classList.remove("is-stepped");
+      ledger.style.translate = "";
+      lastY = NaN;
+      lastRole = -1;
+      focusRef.current = -1;
+      itemRefs.current.forEach((li) => li?.classList.remove("is-focus"));
+      // The section shrinks back to its content: re-measure every trigger.
+      if (had) requestScrollRefresh();
+    };
     const setFill = (v: number | null) => {
       if (v == null) list.style.removeProperty("--work-fill");
       else list.style.setProperty("--work-fill", v.toFixed(4));
@@ -443,7 +586,7 @@ export function Work() {
       };
     };
 
-    return mountSeam({
+    const stopSpine = mountSeam({
       id: "work-spine",
       trigger: () => section,
       start: SPINE_START,
@@ -451,8 +594,20 @@ export function Work() {
       when: SEAM_MQ.fine,
       measure: () => {
         geo = measureSpine(list);
-        geo.f.forEach((f, i) => {
-          if (cross[i]) cross[i].at = i === 0 ? 1e-6 : Math.max(1e-6, f);
+        // The stepped hold: size it (the section grows to 100svh + its
+        // length; stack.css keys the sticky on data-work-hold) before
+        // ScrollTrigger reads any position (this runs on refreshInit).
+        const m = measureSteps(ledger, list);
+        stepsRef.current = m;
+        section.setAttribute("data-work-hold", "");
+        section.style.setProperty("--work-hold", `${m.len.toFixed(1)}px`);
+        list.classList.add("is-stepped");
+        // Each metric decodes as the fill reaches its node: where its role
+        // takes the focus, as a fraction of the whole seam (approach + hold).
+        const total = Math.max(1, m.approach + m.len);
+        cross.forEach((c, i) => {
+          const j = m.beats.findIndex((x) => x.role === i);
+          c.at = i === 0 ? 1e-6 : Math.max(1e-6, j >= 0 ? (m.approach + switchAt(m, j) + 1) / total : 1);
         });
       },
       render: (p) => {
@@ -461,11 +616,24 @@ export function Work() {
         // Before, it sat readable, then scrambled into noise as the node
         // lit: already-read copy boiling.
         list.classList.add("is-spine-scroll");
-        setFill(p);
-        lightTo(p);
+        const m = stepsRef.current;
+        if (!m || !geo) {
+          setFill(p);
+          lightTo(p);
+          return;
+        }
+        // Approach (relay dock to the hold start): node 0 lit, the ledger
+        // still. Then the stepped hold.
+        const h = p * (m.approach + m.len) - m.approach;
+        const st = stepAt(m, geo.f, h);
+        const fill = p <= 0 ? 0 : Math.max(1e-4, st.fill);
+        setStep(st.y, st.role);
+        setFill(fill);
+        lightTo(fill);
       },
       cross,
       final: () => {
+        unstep();
         list.classList.remove("is-spine-scroll");
         geo = null;
         list.style.removeProperty("--work-fill-top");
@@ -473,13 +641,45 @@ export function Work() {
         setLit(() => true);
       },
       reset: () => {
+        unstep();
         list.classList.remove("is-spine-scroll");
         list.style.removeProperty("--work-fill-top");
         setFill(null);
         setLit(() => false);
       },
-      fallback,
+      fallback: () => {
+        unstep();
+        return fallback();
+      },
     });
+
+    // The hold trigger ('work-pin'): softHold eases the sticky .work-hold's
+    // engage and release edges. Zero length (writes nothing) whenever the
+    // section flows (no data-work-hold: the stage is the section's height).
+    const stage = holdRef.current;
+    const hold = stage ? softHold({ id: "work-pin", section, stage }) : null;
+
+    // Keyboard: a focused row under the clip would be invisible (the browser
+    // cannot scroll a clipped stage). Scroll the page to that role's beat.
+    const onFocus = (e: FocusEvent) => {
+      const m = stepsRef.current;
+      const li = (e.target as HTMLElement | null)?.closest?.(".work-acc-item");
+      if (!m || !li) return;
+      const i = itemRefs.current.indexOf(li as HTMLLIElement);
+      const b = m.beats.find((x) => x.role === i);
+      if (!b) return;
+      const top = section.getBoundingClientRect().top + window.scrollY;
+      const y = top + b.s + m.dwell / 2;
+      if (Math.abs(y - window.scrollY) > 2) void scrollToY(y, { preset: "nudge" });
+    };
+    list.addEventListener("focusin", onFocus);
+
+    return () => {
+      list.removeEventListener("focusin", onFocus);
+      hold?.kill();
+      stopSpine();
+      unstep();
+    };
     // Mounted once: the seam re-gates itself on MQ / reduced-motion flips,
     // and row toggles reach it through the refresh (measure), never a remount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -544,7 +744,11 @@ export function Work() {
       aria-label="Work experience timeline"
       className={`portfolio-section portfolio-work${entered ? " is-entered" : ""}${multi ? " is-multi" : ""}${reducedMotion ? " is-reduced-motion" : ""}`}
     >
-      <div className="work-ledger">
+      {/* The stepped hold's sticky stage (stack.css, keyed on data-work-hold,
+          which the spine seam sets on desktop with a fine pointer). A plain
+          block everywhere else. */}
+      <div className="work-hold" ref={holdRef}>
+      <div className="work-ledger" ref={ledgerRef}>
         <header className="work-ledger-head" data-reveal={isMobile ? "" : undefined}>
           <div className="work-ledger-head-text">
             <div className="work-ledger-head-left">
@@ -588,7 +792,7 @@ export function Work() {
                 style={{ ["--row-i" as string]: i }}
                 // Lit state comes from the spine (litRef), so a re-render
                 // writes the same classes the seam last painted.
-                className={`work-acc-item${open ? " is-open" : ""}${s.current ? " is-current" : ""}${litRef.current[i] ? " is-lit is-past" : ""}`}
+                className={`work-acc-item${open ? " is-open" : ""}${s.current ? " is-current" : ""}${litRef.current[i] ? " is-lit is-past" : ""}${focusRef.current === i ? " is-focus" : ""}`}
               >
                 <button
                   ref={(node) => {
@@ -703,6 +907,7 @@ export function Work() {
             );
           })}
         </ol>
+      </div>
       </div>
     </section>
   );

@@ -42,13 +42,15 @@ import "./keypad.css";
  *     landing still happens before the footer covers the keypad.
  *   - HOLD + RECEIPT FEED (seam 8, contact -> footer; seam overhaul
  *     2026-10-06, owner brief "section boundaries should never stop the
- *     page"): the GSAP pin is gone. The section is 100svh + the footer's
- *     height (--footer-h, written by Footer.tsx) and `.keypad-hold` sticks
- *     inside it (src/seams/stack.css, keyed on this section's
- *     data-seam-stack flag); the footer sheet carries a negative top margin
- *     of its own height and feeds up OVER the stuck keypad 1:1, like paper
- *     out of the device, printing its rows as they clear (Footer.tsx). So
- *     there is no dwell and no release: the keypad stays stuck to the end of
+ *     page"): the GSAP pin is gone. The section is 100svh + a dwell
+ *     (--seam-keypad-dwell; owner 2026-10-07: without it you "can just fly
+ *     by it by accident") + the footer's height (--footer-h, written by
+ *     Footer.tsx) and `.keypad-hold` sticks inside it (src/seams/stack.css,
+ *     keyed on this section's data-seam-stack flag). The keypad holds clear
+ *     for the dwell; then the footer sheet, which carries a negative top
+ *     margin of its own height, feeds up OVER the stuck keypad 1:1, like
+ *     paper out of the device, printing its rows as they clear (Footer.tsx).
+ *     There is no release: the keypad stays stuck to the end of
  *     the page, its top still showing above the sheet at max scroll. softHold
  *     softens the ENGAGE edge only (C1, no brake) and keeps the "keypad-pin"
  *     id as a NON-pinning hold trigger, so a menu / footer jump still lands
@@ -103,7 +105,9 @@ const DROP_TRIGGER_VH = 0.2;
  *  The run (seam 8): the landing must play before the rising footer sheet
  *  covers the keypad's centre. The drop arms with the section top at 0.2 vh;
  *  the keypad sticks at "top top" and the footer top (at section top + 1 vh)
- *  then rises 1:1, reaching mid-screen 0.5 vh later. Arm -> centre covered =
+ *  then rises 1:1, reaching mid-screen 0.5 vh later. (Since 2026-10-07 the
+ *  keypad's dwell adds --seam-keypad-dwell before the sheet rises, so the
+ *  numbers below are the conservative bound; they were sized without it.) Arm -> centre covered =
  *  0.2 + 0.5 = 0.7 vh = 630 px at 900 tall (it was 0.8 vh to the old pin's
  *  release). At a constant approach speed v the time available is 630 / v:
  *  - the full 800 ms settles inside it up to 630 / 0.8 = ~790 px/s, and its
