@@ -53,9 +53,9 @@
   --seam-cell: 8px;
   --seam-line: 2px;
   --seam-about-cover: 100svh;  /* About stays still under the rising Projects sheet for this long */
-  --seam-about-dwell: 60svh;   /* ...after holding uncovered for this long */
+  --seam-about-dwell: 120svh;  /* ...after holding uncovered for this long (owner 2026-10-07: 60svh was too short) */
   --seam-play-hold: 70svh;     /* Play holds while its name tags cascade in */
-  --seam-keypad-dwell: 50svh;  /* the keypad holds clear of the footer before the sheet rises */
+  --seam-keypad-dwell: 100svh; /* the keypad holds clear of the footer before the sheet rises (owner 2026-10-07: 50svh was too short) */
   --seam-mac-hold: 180svh;     /* gate G1 (fallback 220svh: the extra goes to the landed dwell) */
   --seam-bp-hold: 50svh;       /* gate G7 fallback taken (was 30svh: at ~1000px/s its 108px soft edges braked
                                   the wall like a speed bump; 50svh gives 180px edges around a still core) */
