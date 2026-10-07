@@ -665,6 +665,10 @@
   color: var(--ink);
   opacity: 0.9;
 }
+/* Key phrases (metrics, headline wins) marked `**…**` in Work.tsx. */
+.work-acc-bullet-key {
+  font-weight: 600;
+}
 
 /* (The old `.is-static` desktop/mobile split is gone: the whole section is now
    one click-driven accordion at every width, so there is no separate static
