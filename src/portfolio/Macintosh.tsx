@@ -500,7 +500,7 @@ export function Macintosh() {
       // the sheet, and the curtain margin once About's flag is set too).
       data-seam-stack=""
       // Menu / footer jumps land on the landed CRT (scroll.ts jumpToSection,
-      // against the 'mac-pin' hold trigger). 0.797 at the shipped hold; the
+      // against the 'mac-pin' hold trigger). 0.723 at the shipped hold; the
       // cine driver rewrites it from layout on every refresh (gate G1).
       data-jump-progress={macJumpProgress(MAC_CINE_END_DEFAULT).toFixed(3)}
     >

@@ -3,7 +3,7 @@
  *
  * Seam overhaul, 2026-10-06: the GSAP mac-pin (4.0vh + a landed magnet) is
  * gone. .portfolio-mac is now a tall in-flow section whose inner .mac-sticky
- * holds for --seam-mac-hold (H, 180svh; src/seams/stack.css), and on desktop
+ * holds for --seam-mac-hold (H, 240svh; src/seams/stack.css), and on desktop
  * the section rises 1:1 over a still About as an opaque sheet (the curtain).
  * One number drives the whole cinematic: c = (scrollY - (macTop - vh)) / vh,
  * the scroll since the sheet's top edge entered at the viewport bottom.
@@ -58,14 +58,14 @@ export const MAC_BEATS = {
   dotFadeLead: 0.06,
 } as const;
 
-/** The hold end (1 + H) at the shipped H = 1.8 (--seam-mac-hold: 180svh). Used until layout is read. */
-export const MAC_CINE_END_DEFAULT = 2.8;
+/** The hold end (1 + H) at the shipped H = 2.4 (--seam-mac-hold: 240svh). Used until layout is read. */
+export const MAC_CINE_END_DEFAULT = 3.4;
 
-/** The landed pose: the middle of the landed dwell (2.435 at H 1.8). Menu/footer jumps, the CTA glide and the static (narrow / reduced-motion) frame all show it. */
+/** The landed pose: the middle of the landed dwell (2.735 at H 2.4). Menu/footer jumps, the CTA glide and the static (narrow / reduced-motion) frame all show it. */
 export const macLandedC = (end: number) =>
   (MAC_BEATS.bootEnd + (end - MAC_BEATS.powerOffLead)) / 2;
 
-/** data-jump-progress on .portfolio-mac: the landed pose as a fraction of the hold (0.797 at H 1.8). */
+/** data-jump-progress on .portfolio-mac: the landed pose as a fraction of the hold (0.723 at H 2.4). */
 export const macJumpProgress = (end: number) =>
   end > 1 ? (macLandedC(end) - 1) / (end - 1) : 0;
 

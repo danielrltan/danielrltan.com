@@ -56,7 +56,7 @@
   --seam-about-dwell: 60svh;   /* ...after holding uncovered for this long (owner 2026-10-07: tried 120svh and 90svh, both too long) */
   --seam-play-hold: 70svh;     /* Play holds while its name tags cascade in */
   --seam-keypad-dwell: 100svh; /* the keypad holds clear of the footer before the sheet rises (owner 2026-10-07: 50svh was too short) */
-  --seam-mac-hold: 180svh;     /* gate G1 (fallback 220svh: the extra goes to the landed dwell) */
+  --seam-mac-hold: 240svh;     /* the extra over the landing goes to the landed dwell: ~1 viewport of still CRT (owner 2026-10-07: at 180svh the 0.37vh dwell was flown through on wheel muscle memory) */
   --seam-bp-hold: 50svh;       /* gate G7 fallback taken (was 30svh: at ~1000px/s its 108px soft edges braked
                                   the wall like a speed bump; 50svh gives 180px edges around a still core) */
   --seam-photos-hold: 80svh;
