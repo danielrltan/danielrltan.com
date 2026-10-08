@@ -46,14 +46,15 @@ const SPINE_END = "bottom bottom";
  * STEPPED HOLD (owner 2026-10-07: "the experience section no longer feels
  * focused"). Desktop with a fine pointer: the ledger sits in a 100svh sticky
  * .work-hold and steps through the roles. Each role gets a still beat of
- * DWELL_VH with the other roles dimmed, then the ledger glides to the next
+ * DWELL_VH (timing sweep 2026-10-07: 0.35 left the first role 180px still at
+ * 800 tall, under one trackpad flick) with the other roles dimmed, then the ledger glides to the next
  * role's header (just under the HUD clearance) on a smoothstep over
  * GLIDE_K x the distance (peak speed 1.5 / GLIDE_K x the wheel, no velocity
  * step at either end). The focus passes to the next role mid-glide, and the
  * spine draws through it all, reaching each node at that hand-over, so the
  * wheel always moves something.
  */
-const DWELL_VH = 0.35;
+const DWELL_VH = 0.6;
 const GLIDE_K = 1.2;
 const GLIDE_MIN_VH = 0.15;
 
@@ -92,7 +93,9 @@ function measureSteps(ledger: HTMLElement, list: HTMLElement): StepModel {
   if (last && last.y < over - 1) ys.push({ y: over, role: last.role });
   const dwell = DWELL_VH * vh;
   const beats: Beat[] = [];
-  let pos = 0;
+  // The first beat also covers softHold's engage half-zone (the stage is still
+  // easing in there), so the first role gets a full DWELL_VH of still ledger.
+  let pos = (SEAM.holdEdgeVh / 2) * vh;
   ys.forEach((b, j) => {
     const next = ys[j + 1];
     const d = next ? Math.abs(next.y - b.y) : 0;
