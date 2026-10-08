@@ -2,6 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Page-load diagnostics (public/rum.js): timings, long frames, clicks and,
+         for every Chromium load, a JS profile, sent to the owner's own collector
+         on poddleball.com and read on /stats. Async: it never holds up parsing. -->
+    <script async src="/rum.js" data-endpoint="https://poddleball.com/api/perf" data-site="danielrltan.com" data-profile="1" data-clicks="targets"></script>
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"

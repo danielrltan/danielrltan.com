@@ -2,6 +2,7 @@ import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ArrowUpRight, KeyRound, RefreshCw } from "lucide-react";
 import { KeyError, loadPoddle, loadUmami, type Day, type Row, type SiteStats } from "./data";
+import { Loading } from "./Loading";
 import "./stats.css";
 
 const RANGES = [7, 30, 90] as const;
@@ -294,6 +295,7 @@ function App() {
           <SiteCard key={s.id} site={s} range={range} tick={tick} onKeys={() => setKeys(true)} />
         ))}
       </div>
+      <Loading range={range} tick={tick} onKeys={() => setKeys(true)} />
       {keys && (
         <Keys
           onDone={() => {

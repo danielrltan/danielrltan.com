@@ -5,6 +5,12 @@
   ],
   "headers": [
     {
+      "source": "/((?!stats).*)",
+      "headers": [
+        { "key": "Document-Policy", "value": "js-profiling" }
+      ]
+    },
+    {
       "source": "/stats(.*)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }

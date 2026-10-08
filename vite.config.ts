@@ -3,8 +3,14 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  // Document-Policy: js-profiling lets public/rum.js profile a load (vercel.json
+  // sends it in production); the same here so dev and preview behave alike.
   server: {
     port: 5173,
+    headers: { "Document-Policy": "js-profiling" },
+  },
+  preview: {
+    headers: { "Document-Policy": "js-profiling" },
   },
   build: {
     chunkSizeWarningLimit: 1500,
