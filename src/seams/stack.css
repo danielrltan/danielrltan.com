@@ -62,7 +62,7 @@
   --seam-bp-hold: 110svh;      /* timing sweep 2026-10-07: 50svh left a 0.32vh still core (255px at 800 tall), skipped by one
                                   flick; 110svh gives ~0.83vh like the other holds. History: G7 took 50 over 30svh because
                                   30's 108px soft edges braked the wall like a speed bump */
-  --seam-photos-hold: 80svh;
+  --seam-photos-hold: 110svh;  /* timing sweep 2026-10-07: was 80svh, a 0.53vh still core; now ~0.83vh like the other holds */
   --footer-h: 0px;             /* written by Footer.tsx (W8) via ResizeObserver; 0 = no overlap (a valid interim) */
 }
 
