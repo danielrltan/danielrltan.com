@@ -5,6 +5,8 @@
 //  - GET /api/perf/profile?id=          its JS Self-Profiling trace, if it was sampled
 //  - GET /api/perf/profiles?site=&page= the newest profiled loads of a page, for the merged flame graph
 //  - GET /api/perf/clicks?site=&days=   click targets and interaction latency over the range
+//  - GET /api/perf/sourcemap?file=      a danielrltan.com chunk's source map, uploaded privately by the build (poddle NOTES 234):
+//                                       symbolicate() turns minified frames back into real names and files
 import { KeyError } from "./data";
 
 const API = "https://poddleball.com/api/perf";
@@ -201,3 +203,117 @@ export function fileLabel(u: string) {
     return u;
   }
 }
+
+// ---- source maps: minified frames -> real names and files -----------------------
+
+// A decoded map: per generated line, segments flattened as [genCol, src, srcLine, srcCol, name (-1 = none)] * n, sorted by genCol.
+type Decoded = { sources: string[]; names: string[]; lines: Int32Array[] };
+const B64 = new Int8Array(128).fill(-1);
+"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".split("").forEach((c, i) => (B64[c.charCodeAt(0)] = i));
+function decode(map: { sources: string[]; names?: string[]; mappings: string; sourceRoot?: string }): Decoded {
+  const lines: Int32Array[] = [];
+  const m = map.mappings;
+  let i = 0, src = 0, sl = 0, sc = 0, nm = 0;
+  let cur: number[] = [];
+  let gc = 0;
+  const vlq = () => {
+    let v = 0, shift = 0, d: number;
+    do {
+      d = B64[m.charCodeAt(i++)];
+      v += (d & 31) << shift;
+      shift += 5;
+    } while (d & 32);
+    return v & 1 ? -(v >>> 1) : v >>> 1;
+  };
+  while (i <= m.length) {
+    const c = m.charCodeAt(i);
+    if (i === m.length || c === 59 /* ; */) {
+      lines.push(Int32Array.from(cur));
+      cur = [];
+      gc = 0;
+      i++;
+      continue;
+    }
+    if (c === 44 /* , */) {
+      i++;
+      continue;
+    }
+    gc += vlq();
+    let name = -1, s0 = -1, l0 = 0, c0 = 0;
+    if (i < m.length && m.charCodeAt(i) !== 44 && m.charCodeAt(i) !== 59) {
+      src += vlq(); sl += vlq(); sc += vlq();
+      s0 = src; l0 = sl; c0 = sc;
+      if (i < m.length && m.charCodeAt(i) !== 44 && m.charCodeAt(i) !== 59) name = nm += vlq();
+    }
+    cur.push(gc, s0, l0, c0, name);
+  }
+  return { sources: map.sources.map(cleanSource), names: map.names ?? [], lines };
+}
+/** "../../src/hero/heroWipe.ts" -> "src/hero/heroWipe.ts"; "../../node_modules/three/build/x.js" -> "three/build/x.js" */
+function cleanSource(s: string) {
+  const nm = s.lastIndexOf("node_modules/");
+  if (nm >= 0) return s.slice(nm + 13);
+  return s.replace(/^(\.\.\/|\.\/|\/)+/, "");
+}
+/** The segment covering (line0, col0), or the one exactly there when `exact`. */
+function seg(d: Decoded, line0: number, col0: number, exact = false) {
+  const L = d.lines[line0];
+  if (!L || !L.length) return null;
+  let lo = 0, hi = L.length / 5 - 1, at = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (L[mid * 5] <= col0) (at = mid), (lo = mid + 1);
+    else hi = mid - 1;
+  }
+  if (at < 0 || L[at * 5 + 1] < 0 || (exact && L[at * 5] !== col0)) return null;
+  return { src: d.sources[L[at * 5 + 1]], line: L[at * 5 + 2] + 1, col: L[at * 5 + 3] + 1, name: L[at * 5 + 4] >= 0 ? d.names[L[at * 5 + 4]] : null };
+}
+
+const mapCache = new Map<string, Promise<Decoded | null>>();
+function mapFor(key: string, file: string) {
+  let p = mapCache.get(file);
+  if (!p) {
+    p = fetch(`${API}/sourcemap?file=${encodeURIComponent(file)}`, { headers: { Authorization: `Bearer ${key}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => (m && typeof m.mappings === "string" ? decode(m) : null))
+      .catch(() => null);
+    mapCache.set(file, p);
+  }
+  return p;
+}
+
+/**
+ * A trace with its minified frames replaced by what the source maps say: the real name (a renamed `function x(` carries it at the
+ * frame's position; for `x=(...)=>` it sits on the identifier before the `=`), and the original file, line and column. The profiler's
+ * line/column are 1-based and point at the function's `(` (measured, poddle NOTES 234). Frames with no map (another site's files,
+ * an unminified file, a map that was never uploaded) are left as they were.
+ */
+export async function symbolicate(key: string, t: Trace): Promise<Trace & { mapped: number }> {
+  const files = [...new Set(t.resources.filter((u) => /^\/assets\/[A-Za-z0-9_-]+\.js$/.test(u)))];
+  const maps = new Map<string, Decoded>();
+  await Promise.all(files.map(async (u) => { const d = await mapFor(key, u.slice(8) + ".map"); if (d) maps.set(u, d); }));
+  if (!maps.size) return { ...t, mapped: 0 };
+  const resources = [...t.resources];
+  const rid = (u: string) => { let i = resources.indexOf(u); if (i < 0) i = resources.push(u) - 1; return i; };
+  let mapped = 0;
+  const frames = t.frames.map((f) => {
+    const d = f.resourceId != null ? maps.get(t.resources[f.resourceId]) : undefined;
+    if (!d || f.line == null || f.column == null) return f;
+    const at = seg(d, f.line - 1, f.column - 1);
+    if (!at) return f;
+    const named = at.name ?? (f.name ? seg(d, f.line - 1, f.column - 2 - f.name.length, true)?.name : null);
+    mapped++;
+    return { name: named || f.name, resourceId: rid(at.src), line: at.line, column: at.col };
+  });
+  return { resources, frames, stacks: t.stacks, samples: t.samples, mapped };
+}
+
+/** What a frame belongs to, for colour and the legend: "src" for the site's own code, else its npm package; "" = the browser. */
+export function packageOf(file: string) {
+  if (!file) return "";
+  if (file.startsWith("src/")) return "src";
+  if (file.startsWith("/") || /^https?:/.test(file)) return fileLabel(file);
+  const p = file.split("/");
+  return p[0].startsWith("@") ? `${p[0]}/${p[1]}` : p[0];
+}
+

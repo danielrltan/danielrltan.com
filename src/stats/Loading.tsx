@@ -12,7 +12,10 @@ import {
   getView,
   listLoads,
   mergeTraces,
+  packageOf,
   pct,
+  sampleStacks,
+  symbolicate,
   profiledIds,
   toCpuProfile,
   type ClickStats,
@@ -48,12 +51,44 @@ const remember = (k: string, v: string) => {
 // ---- flame graph canvas (icicle for the merged tree, flame chart for one load) ----
 
 type Block = { depth: number; x0: number; x1: number; frame: Frame; total: number; self: number | null };
-const PALETTE = ["#ff7a3d", "#ffb347", "#f2d16b", "#7cc4a4", "#52a8ff", "#a78bfa", "#f472b6", "#5eead4"];
-function colorOf(f: Frame) {
-  if (!f.file) return "#3a3a3a"; // native / browser
+// by package: the site's own code (src/) is orange, each npm package its own colour, the browser grey
+const PALETTE = ["#ffb347", "#f2d16b", "#7cc4a4", "#52a8ff", "#a78bfa", "#f472b6", "#5eead4", "#c4b5fd", "#93c5fd"];
+function colorOfPkg(pkg: string) {
+  if (!pkg) return "#3a3a3a";
+  if (pkg === "src") return "#ff7a3d";
   let h = 0;
-  for (let i = 0; i < f.file.length; i++) h = (h * 31 + f.file.charCodeAt(i)) | 0;
+  for (let i = 0; i < pkg.length; i++) h = (h * 31 + pkg.charCodeAt(i)) | 0;
   return PALETTE[Math.abs(h) % PALETTE.length];
+}
+const colorOf = (f: Frame) => colorOfPkg(packageOf(f.file));
+
+// where the time went, by package (self time): the flame graph's legend
+function Legend({ rows }: { rows: [string, number][] }) {
+  const total = rows.reduce((a, r) => a + r[1], 0) || 1;
+  return (
+    <div className="legend">
+      {rows.slice(0, 9).map(([pkg, t]) => (
+        <span key={pkg || "browser"} className="legend-item" title={ms(t)}>
+          <i style={{ background: colorOfPkg(pkg) }} />
+          {pkg === "src" ? "your code" : pkg || "browser"} <b>{Math.round((t / total) * 100)}%</b>
+        </span>
+      ))}
+    </div>
+  );
+}
+function byPackageTree(root: FlameNode) {
+  const m = new Map<string, number>();
+  const walk = (n: FlameNode) => {
+    if (n !== root && n.self) m.set(packageOf(n.frame.file), (m.get(packageOf(n.frame.file)) ?? 0) + n.self);
+    n.children.forEach(walk);
+  };
+  walk(root);
+  return [...m].sort((a, b) => b[1] - a[1]);
+}
+function byPackageTrace(t: Trace) {
+  const m = new Map<string, number>();
+  for (const s of sampleStacks(t)) if (s.stack.length) { const k = packageOf(s.stack[s.stack.length - 1].file); m.set(k, (m.get(k) ?? 0) + s.ms); }
+  return [...m].sort((a, b) => b[1] - a[1]);
 }
 function treeBlocks(root: FlameNode): Block[] {
   const out: Block[] = [];
@@ -262,7 +297,7 @@ function LoadDetail({ id, keyStr, onClose }: { id: string; keyStr: string; onClo
       .then((x) => {
         if (!live) return;
         setV(x);
-        if (x.prof) getTrace(keyStr, id).then((t) => live && setTrace(t), () => {});
+        if (x.prof) getTrace(keyStr, id).then((t) => symbolicate(keyStr, t)).then((t) => live && setTrace(t), () => {});
       })
       .catch((e) => live && setErr(String(e?.message ?? e)));
     return () => {
@@ -273,7 +308,7 @@ function LoadDetail({ id, keyStr, onClose }: { id: string; keyStr: string; onClo
     if (!trace) return null;
     const c = flameChart(trace);
     const blocks: Block[] = c.blocks.map((b) => ({ depth: b.depth, x0: b.start, x1: b.end, frame: b.frame, total: b.end - b.start, self: null }));
-    return { blocks, span: [c.start, c.end] as [number, number] };
+    return { blocks, span: [c.start, c.end] as [number, number], pkgs: byPackageTrace(trace) };
   }, [trace]);
   const save = () => {
     if (!trace) return;
@@ -324,7 +359,10 @@ function LoadDetail({ id, keyStr, onClose }: { id: string; keyStr: string; onClo
             )}
           </div>
           {chart ? (
-            <Flame blocks={chart.blocks} span={chart.span} unit="time" />
+            <>
+              <Flame blocks={chart.blocks} span={chart.span} unit="time" />
+              <Legend rows={chart.pkgs} />
+            </>
           ) : (
             <div className="list-empty">
               {v.prof ? "Loading the profile…" : v.load?.profErr ? `Not profiled (${v.load.profErr})` : "This load was not in the profiled sample."}
@@ -401,10 +439,10 @@ export function Loading({ range, tick, onKeys }: { range: number; tick: number; 
     let live = true;
     setTree("loading");
     profiledIds(key, site, cur, days)
-      .then((ids) => Promise.all(ids.slice(0, 30).map((id) => getTrace(key, id).catch(() => null))))
+      .then((ids) => Promise.all(ids.slice(0, 30).map((id) => getTrace(key, id).then((t) => symbolicate(key, t)).catch(() => null))))
       .then((ts) => {
         if (!live) return;
-        const ok = ts.filter((t): t is Trace => !!t);
+        const ok: Trace[] = ts.filter((t) => t !== null) as Trace[];
         setTree(ok.length ? { root: mergeTraces(ok), n: ok.length } : null);
       })
       .catch(() => live && setTree(null));
@@ -412,7 +450,10 @@ export function Loading({ range, tick, onKeys }: { range: number; tick: number; 
       live = false;
     };
   }, [key, site, cur, days, tick]);
-  const merged = useMemo(() => (tree && tree !== "loading" ? { blocks: treeBlocks(tree.root), span: [0, tree.root.total] as [number, number] } : null), [tree]);
+  const merged = useMemo(
+    () => (tree && tree !== "loading" ? { blocks: treeBlocks(tree.root), span: [0, tree.root.total] as [number, number], pkgs: byPackageTree(tree.root) } : null),
+    [tree],
+  );
 
   return (
     <section className="card loading-card">
@@ -464,7 +505,10 @@ export function Loading({ range, tick, onKeys }: { range: number; tick: number; 
               <span>Flame graph{tree && tree !== "loading" ? ` · ${tree.n} profiled load${tree.n === 1 ? "" : "s"}, ${(tree.root.total / 1000).toFixed(1)} s of JS` : ""}</span>
             </div>
             {merged ? (
-              <Flame blocks={merged.blocks} span={merged.span} unit="tree" />
+              <>
+                <Flame blocks={merged.blocks} span={merged.span} unit="tree" />
+                <Legend rows={merged.pkgs} />
+              </>
             ) : (
               <div className="list-empty">{tree === "loading" ? "Loading profiles…" : "No profiled loads of this page yet (Chromium browsers only)."}</div>
             )}

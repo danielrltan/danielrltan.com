@@ -14,6 +14,10 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 1500,
+    // hidden maps: no sourceMappingURL in the chunks; scripts/upload-sourcemaps.mjs
+    // (postbuild) sends them privately to Poddle for /stats' flame graphs, then
+    // deletes them from dist, so none is ever published.
+    sourcemap: "hidden",
     rollupOptions: {
       // stats.html: the owner's stats panel (src/stats), its own light entry
       input: { main: "index.html", stats: "stats.html" },
