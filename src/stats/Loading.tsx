@@ -442,7 +442,7 @@ export function Loading({ range, tick, onKeys }: { range: number; tick: number; 
       .then((ids) => Promise.all(ids.slice(0, 30).map((id) => getTrace(key, id).then((t) => symbolicate(key, t)).catch(() => null))))
       .then((ts) => {
         if (!live) return;
-        const ok: Trace[] = ts.filter((t) => t !== null) as Trace[];
+        const ok = ts.filter((t): t is Trace => !!t);
         setTree(ok.length ? { root: mergeTraces(ok), n: ok.length } : null);
       })
       .catch(() => live && setTree(null));

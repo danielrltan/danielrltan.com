@@ -288,24 +288,22 @@ function mapFor(key: string, file: string) {
  * line/column are 1-based and point at the function's `(` (measured, poddle NOTES 234). Frames with no map (another site's files,
  * an unminified file, a map that was never uploaded) are left as they were.
  */
-export async function symbolicate(key: string, t: Trace): Promise<Trace & { mapped: number }> {
+export async function symbolicate(key: string, t: Trace): Promise<Trace> {
   const files = [...new Set(t.resources.filter((u) => /^\/assets\/[A-Za-z0-9_-]+\.js$/.test(u)))];
   const maps = new Map<string, Decoded>();
   await Promise.all(files.map(async (u) => { const d = await mapFor(key, u.slice(8) + ".map"); if (d) maps.set(u, d); }));
-  if (!maps.size) return { ...t, mapped: 0 };
+  if (!maps.size) return t;
   const resources = [...t.resources];
   const rid = (u: string) => { let i = resources.indexOf(u); if (i < 0) i = resources.push(u) - 1; return i; };
-  let mapped = 0;
   const frames = t.frames.map((f) => {
     const d = f.resourceId != null ? maps.get(t.resources[f.resourceId]) : undefined;
     if (!d || f.line == null || f.column == null) return f;
     const at = seg(d, f.line - 1, f.column - 1);
     if (!at) return f;
     const named = at.name ?? (f.name ? seg(d, f.line - 1, f.column - 2 - f.name.length, true)?.name : null);
-    mapped++;
     return { name: named || f.name, resourceId: rid(at.src), line: at.line, column: at.col };
   });
-  return { resources, frames, stacks: t.stacks, samples: t.samples, mapped };
+  return { resources, frames, stacks: t.stacks, samples: t.samples };
 }
 
 /** What a frame belongs to, for colour and the legend: "src" for the site's own code, else its npm package; "" = the browser. */
