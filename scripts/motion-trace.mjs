@@ -110,7 +110,6 @@ function initScript(sections) {
     lastWheelT: -1e9,
     pending: null,
   });
-  window.umami = { track: () => {} };
 
   // documentElement is null when init scripts run; attach once <html> exists.
   let html = document.documentElement;

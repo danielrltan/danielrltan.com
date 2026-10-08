@@ -1,7 +1,7 @@
 import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ArrowUpRight, KeyRound, RefreshCw } from "lucide-react";
-import { KeyError, loadPoddle, loadUmami, type Day, type Row, type SiteStats } from "./data";
+import { KeyError, loadPoddle, loadSite, type Day, type Row, type SiteStats } from "./data";
 import { Loading } from "./Loading";
 import "./stats.css";
 
@@ -52,9 +52,9 @@ const SITES: SiteDef[] = [
     name: "danielrltan.com",
     url: "https://danielrltan.com",
     icon: "/dt.png",
-    keyName: "stats.umamiKey",
-    keyLabel: "Umami API key",
-    load: loadUmami,
+    keyName: "stats.poddleKey",
+    keyLabel: "Poddle key",
+    load: loadSite,
   },
 ];
 
@@ -197,6 +197,11 @@ function SiteCard({ site, range, tick, onKeys }: { site: SiteDef; range: Range; 
             <List title="Pages" rows={state.data.pages} />
             <List title="Sources" rows={state.data.sources} />
           </div>
+          {state.data.events && (
+            <div className="lists one">
+              <List title="Events" rows={state.data.events} />
+            </div>
+          )}
         </>
       ) : state.status === "loading" ? (
         <div className="empty">
@@ -214,20 +219,24 @@ function SiteCard({ site, range, tick, onKeys }: { site: SiteDef; range: Range; 
   );
 }
 
+// one field per distinct key (both sites read the Poddle key)
+const KEYS = SITES.filter((s, i) => SITES.findIndex((x) => x.keyName === s.keyName) === i);
+store.set("stats.umamiKey", ""); // the old Umami key: no longer used
+
 function Keys({ onDone }: { onDone: () => void }) {
-  const [vals, setVals] = useState(() => Object.fromEntries(SITES.map((s) => [s.keyName, store.get(s.keyName)])));
+  const [vals, setVals] = useState(() => Object.fromEntries(KEYS.map((s) => [s.keyName, store.get(s.keyName)])));
   return (
     <div className="scrim" onPointerDown={(e) => e.target === e.currentTarget && onDone()}>
       <form
         className="dialog"
         onSubmit={(e) => {
           e.preventDefault();
-          for (const s of SITES) store.set(s.keyName, vals[s.keyName].trim());
+          for (const s of KEYS) store.set(s.keyName, vals[s.keyName].trim());
           onDone();
         }}
       >
         <h3>Keys</h3>
-        {SITES.map((s) => (
+        {KEYS.map((s) => (
           <label key={s.id} className="field">
             <span>{s.keyLabel}</span>
             <input

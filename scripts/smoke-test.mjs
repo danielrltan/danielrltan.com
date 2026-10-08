@@ -145,10 +145,10 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
   page.on("response", (r) => {
     if (r.status() >= 400) failedRequests.push(`${r.status()} ${r.url()}`);
   });
-  // Stub Umami so we can assert the tracking calls without a network.
+  // track() queues [event, data] on window.rumEvents for public/rum.js (which
+  // skips headless runs): read the queue to assert the tracking calls.
   await page.addInitScript(() => {
-    window.__events = [];
-    window.umami = { track: (e, d) => window.__events.push([e, d]) };
+    window.__events = window.rumEvents = [];
   });
 
   const url = query ? `${URL}?${query}` : URL;

@@ -1,22 +1,21 @@
 /**
- * Thin wrapper around Umami's `window.umami.track`. Safe to call before
- * the umami script has loaded (and safe under ad-blockers / DNT). The
- * function silently no-ops when the global is missing.
+ * Named events for the in-house analytics (public/rum.js, poddle NOTES 233):
+ * track() queues [event, data] on window.rumEvents; rum.js sends the queue with
+ * its next beacon to the owner's collector on poddleball.com, which counts each
+ * event per day as name + detail (the data's values in key order, URLs without
+ * their query). Read on /stats. Safe before rum.js has loaded (the queue waits)
+ * and when it never loads (headless runs, blocked requests): a silent no-op.
  *
  * Naming convention: a small set of meaningful event NAMES, each carrying
  * `data` props for the specifics (e.g. one `outbound_link` event with
  * `{ url, context }` rather than a separate event per link). This keeps the
- * Umami dashboard readable while still covering every interaction — the names
- * are the columns, the data props are the breakdowns.
+ * Events list readable while still covering every interaction — the names
+ * are the rows, the data props are the breakdowns.
  */
 
 declare global {
   interface Window {
-    umami?: {
-      track:
-        | ((event: string, data?: Record<string, unknown>) => void)
-        | ((cb: (props: Record<string, unknown>) => Record<string, unknown>) => void);
-    };
+    rumEvents?: [string, Record<string, unknown> | undefined][];
   }
 }
 
@@ -48,11 +47,10 @@ export function track(
   data?: Record<string, unknown>,
 ): void {
   if (typeof window === "undefined") return;
-  const u = window.umami;
-  if (!u || typeof u.track !== "function") return;
   try {
-    (u.track as (e: string, d?: Record<string, unknown>) => void)(event, data);
+    const q = (window.rumEvents ??= []);
+    if (q.length < 1000) q.push([event, data]);
   } catch {
-    // umami isn't ready yet, or the request was blocked. Silent no-op.
+    // never worth breaking the page for
   }
 }

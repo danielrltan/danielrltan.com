@@ -2,9 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Page-load diagnostics (public/rum.js): timings, long frames, clicks and,
-         for every Chromium load, a JS profile, sent to the owner's own collector
-         on poddleball.com and read on /stats. Async: it never holds up parsing. -->
+    <!-- In-house analytics + page-load diagnostics (public/rum.js): page views,
+         sources, src/analytics.ts events, timings, long frames, clicks and, for
+         every Chromium load, a JS profile, sent to the owner's own collector on
+         poddleball.com and read on /stats. No cookie, no third party. Async: it
+         never holds up parsing. -->
     <script async src="/rum.js" data-endpoint="https://poddleball.com/api/perf" data-site="danielrltan.com" data-profile="1" data-clicks="targets"></script>
     <meta
       name="viewport"
@@ -342,12 +344,5 @@
     </noscript>
 
     <script type="module" src="/src/main.tsx"></script>
-
-    <!-- Umami analytics: privacy-friendly, no cookies, no PII. -->
-    <script
-      defer
-      src="https://cloud.umami.is/script.js"
-      data-website-id="cc7aecbb-7a58-4e15-84de-1932fc608d79"
-    ></script>
   </body>
 </html>

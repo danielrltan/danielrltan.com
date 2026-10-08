@@ -312,6 +312,10 @@ h1 {
 .list + .list {
   border-left: 1px solid var(--border);
 }
+.lists.one {
+  grid-template-columns: 1fr;
+  border-top: 1px solid var(--border);
+}
 .list-head {
   color: var(--muted);
   font-size: 13px;
