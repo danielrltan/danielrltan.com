@@ -54,7 +54,9 @@
   --seam-line: 2px;
   --seam-about-cover: 100svh;  /* About stays still under the rising Projects sheet for this long */
   --seam-about-dwell: 60svh;   /* ...after holding uncovered for this long (owner 2026-10-07: tried 120svh and 90svh, both too long) */
-  --seam-play-hold: 70svh;     /* Play holds while its name tags cascade in */
+  --seam-play-hold: 110svh;    /* Play holds while its name tags cascade in. Timing sweep 2026-10-07 (.scratch/timing-sweep): every
+                                  single-screen hold leaves a ~0.83vh still core (hold - softHold edges) so one
+                                  trackpad flick (~600-900px) lands in it; at 70svh the core was 0.45vh (360px at 800 tall) */
   --seam-keypad-dwell: 100svh; /* the keypad holds clear of the footer before the sheet rises (owner 2026-10-07: 50svh was too short) */
   --seam-mac-hold: 240svh;     /* the extra over the landing goes to the landed dwell: ~1 viewport of still CRT (owner 2026-10-07: at 180svh the 0.37vh dwell was flown through on wheel muscle memory) */
   --seam-bp-hold: 50svh;       /* gate G7 fallback taken (was 30svh: at ~1000px/s its 108px soft edges braked
