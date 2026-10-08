@@ -59,8 +59,9 @@
                                   trackpad flick (~600-900px) lands in it; at 70svh the core was 0.45vh (360px at 800 tall) */
   --seam-keypad-dwell: 100svh; /* the keypad holds clear of the footer before the sheet rises (owner 2026-10-07: 50svh was too short) */
   --seam-mac-hold: 240svh;     /* the extra over the landing goes to the landed dwell: ~1 viewport of still CRT (owner 2026-10-07: at 180svh the 0.37vh dwell was flown through on wheel muscle memory) */
-  --seam-bp-hold: 50svh;       /* gate G7 fallback taken (was 30svh: at ~1000px/s its 108px soft edges braked
-                                  the wall like a speed bump; 50svh gives 180px edges around a still core) */
+  --seam-bp-hold: 110svh;      /* timing sweep 2026-10-07: 50svh left a 0.32vh still core (255px at 800 tall), skipped by one
+                                  flick; 110svh gives ~0.83vh like the other holds. History: G7 took 50 over 30svh because
+                                  30's 108px soft edges braked the wall like a speed bump */
   --seam-photos-hold: 80svh;
   --footer-h: 0px;             /* written by Footer.tsx (W8) via ResizeObserver; 0 = no overlap (a valid interim) */
 }
