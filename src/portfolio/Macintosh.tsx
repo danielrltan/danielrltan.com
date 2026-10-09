@@ -235,7 +235,6 @@ export function Macintosh() {
   // that jolts the stage → the reported open/ESC jitter. preventScroll
   // restores focus without moving the scroll position.
   const closeProject = () => {
-    if (selected) track("project_close", { project: selected.title });
     setSelected(null);
     setScreenRect(null);
     setHoveredControl(null);

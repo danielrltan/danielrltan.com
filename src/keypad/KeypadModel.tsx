@@ -556,7 +556,7 @@ export function KeypadModel({ onReady }: KeypadModelProps = {}) {
     emitInteract(1.0);
     const url = SOCIAL_URLS[name];
     if (!url) return;
-    track("keypad_press", { key: name });
+    track("outbound_link", { url: name, context: "keypad" });
     window.open(url, "_blank", "noopener,noreferrer");
   };
   const handleDialEnter = (e: any) => {

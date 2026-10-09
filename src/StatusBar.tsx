@@ -255,17 +255,12 @@ export function StatusBar({ visible = true }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Log menu open/close exactly once per real state change. Tracking lives in an
-  // effect (not inside the setState updater — that double-fires under StrictMode
-  // and is an impure updater). `menuViaRef` records how the last toggle fired.
+  // Log each menu open exactly once. Tracking lives in an effect (not inside
+  // the setState updater — that double-fires under StrictMode and is an impure
+  // updater). `menuViaRef` records how the last toggle fired.
   const menuViaRef = useRef("dial");
-  const menuFirstRef = useRef(true);
   useEffect(() => {
-    if (menuFirstRef.current) {
-      menuFirstRef.current = false;
-      return;
-    }
-    track(menuOpen ? "nav_open" : "nav_close", { via: menuViaRef.current });
+    if (menuOpen) track("nav_open", { via: menuViaRef.current });
   }, [menuOpen]);
   const toggleMenu = (via: string) => {
     menuViaRef.current = via;

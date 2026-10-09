@@ -548,12 +548,14 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
         { timeout: 4000 },
       );
       check(opened, "project detail opens");
+      const marked = await waitFor(page, () => !!document.querySelector(".mac-col.is-detail-open"), { timeout: 4000 });
+      check(marked, "project column marked is-detail-open");
       const closeBtn = page.getByRole("button", { name: "Close project" }).first();
       if ((await closeBtn.count()) > 0) await closeBtn.evaluate((b) => b.click());
       else await page.keyboard.press("Escape");
       const closed = await waitFor(
         page,
-        () => (window.__events || []).some((e) => e[0] === "project_close"),
+        () => !document.querySelector(".mac-col.is-detail-open"),
         { timeout: 4000 },
       );
       check(closed, "project detail closes");

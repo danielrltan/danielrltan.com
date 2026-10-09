@@ -3,7 +3,6 @@ import { MoveableCursor } from "./MoveableCursor";
 import { PanCursor } from "./PanCursor";
 import { JumpToTop } from "./JumpToTop";
 import { RoomHUD } from "./RoomHUD";
-import { track } from "./analytics";
 // Dev-only signature capture tool (reachable only via ?sign=1). Lazy so its
 // code never ships in the main bundle for normal visitors.
 const SignatureCapture = lazy(() =>
@@ -163,19 +162,16 @@ export default function App() {
 
   // Reveal the HUD once ready and the user has fully landed on About
   // (HERO.hudRevealVh = 1.0vh, after the iris resolves) so it never pops in
-  // over the transition. Latches; room_entered fires at that moment, never at
-  // mount. The HUD components are PRE-MOUNTED at `ready` (spec §5 O6 phase B,
-  // below), so this flip is only a data-hud change: no mount, no new
-  // ScrollTriggers on the pin-engage frames. Checked straight in the scroll
-  // event (scrollY is not a layout read), not a rAF later.
+  // over the transition. Latches. The HUD components are PRE-MOUNTED at
+  // `ready` (spec §5 O6 phase B, below), so this flip is only a data-hud
+  // change: no mount, no new ScrollTriggers on the pin-engage frames. Checked
+  // straight in the scroll event (scrollY is not a layout read), not a rAF
+  // later.
   useEffect(() => {
     if (!ready || hudVisible) return;
     const check = () => {
       const vhRatio = window.scrollY / Math.max(1, window.innerHeight);
-      if (vhRatio >= HERO.hudRevealVh) {
-        setHudVisible(true);
-        track("room_entered");
-      }
+      if (vhRatio >= HERO.hudRevealVh) setHudVisible(true);
     };
     check();
     window.addEventListener("scroll", check, { passive: true });

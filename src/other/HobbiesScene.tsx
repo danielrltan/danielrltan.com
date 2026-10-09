@@ -5,7 +5,6 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { isLowTier } from "../capabilityTier";
-import { track } from "../analytics";
 import {
   HOBBIES,
   type Hobby,
@@ -19,10 +18,6 @@ import {
 import { markSectionCanvasCreated } from "../useSectionCanvasMount";
 import { MQ, reducedMotion } from "../motion";
 import { useMedia } from "../useMedia";
-
-// First-focus-per-page guard for hobby_focus analytics (module scope persists
-// across the scene's mount-on-approach remounts, so each interest fires once).
-const SEEN_HOBBIES = new Set<string>();
 
 /**
  * Hobbies scene: BOLD CLUSTER, floating-in-space edition.
@@ -480,12 +475,6 @@ function HobbyMesh({
     // (they reveal a label), not clickable — and the custom cursor shows its
     // "clickable" spark variant whenever body cursor is "pointer", which falsely
     // signals these are clickable. Keep the plain arrow on hover.
-    // Count each interest's FIRST focus per page load (module-level Set), so the
-    // hover doesn't spam the same event every frame the cursor sits on it.
-    if (!SEEN_HOBBIES.has(hobby.id)) {
-      SEEN_HOBBIES.add(hobby.id);
-      track("hobby_focus", { hobby: hobby.label });
-    }
   };
   const onPointerOut = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
