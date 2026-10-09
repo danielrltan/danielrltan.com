@@ -1,8 +1,9 @@
-/* Hero composition: ASCII ring centerpiece, editorial type frame.
-   Wordmark hover paints a 16px square pixel-mesh over the black ink
-   fill via background-clip:text, masked to a 170px radial spotlight
-   that tracks the cursor. Coarse-pointer devices skip the matrix
-   (CSS + JS both gate it). */
+/* Hero composition (redesign 2026-10-09): the signature as an inflated 3D
+   tube over the glyph field (sig/signatureHero.ts) with the words set around
+   it, hobby props floating free. Replaced the glyph ring + DANIEL TAN
+   wordmark. The words are laid out from the signature's on-screen box, which
+   the scene (or the static fallback) writes as --sig-l/r/t/b on the
+   composition (sig/layout.ts). */
 
 /* Visually-hidden h1: the real accessible/SEO heading for the name.
    The visible wordmark is decorative (aria-hidden span soup), so this
@@ -46,11 +47,12 @@
   color: var(--ink);
   /* Load-in is gated on .is-visible (toggled by React when the loader
      clears). Default opacity 0; .is-visible below sets 1 after a one-shot
-     fade-in. The wordmark has its own keyframe entrance (hero-mega-in).
+     fade-in. The words have their own keyframe entrance (hero-say-in).
      IMPORTANT: no `transition` on opacity/transform here: the iris
      push-in (heroWipe.ts) is scroll-bound and must not be smoothed. */
   opacity: 0;
-  overflow: hidden; /* clip the oversized ASCII ring at the viewport edge */
+  overflow: hidden;
+  --hero-gutter: clamp(16px, 3.4vw, 48px);
   transform-origin: 50% 50%;
 }
 /* ─────────────────────────────────────────────────────────────────────
@@ -69,14 +71,6 @@
    promotion for the duration of the wipe only. */
 html[data-hero-wipe="manual"] .hero-composition {
   will-change: scale;
-}
-/* ...and drop the wordmark keyline (SVG feMorphology, software-rasterized) for
-   the manual wipe only: a main-thread scale can re-raster the composition
-   each frame there. On the scroll-driven path the push-in is a compositor
-   animation that rasters the composition once, so the keyline stays and the
-   wordmark doesn't visibly change on the first scroll px. */
-html[data-hero-wipe="manual"] .hero-mega-fill {
-  filter: none;
 }
 
 /* White pixel rim riding the iris edge. Its clip-path (the next pixel circle
@@ -100,10 +94,7 @@ html[data-hero-wipe] .hero-iris-rim {
   }
 }
 
-/* HI-DPR / browser-zoom / low tier / slow-frame degrade: drop the RESTING
-   wordmark keyline (#hero-ascii-outline, SVG feMorphology — rasterized at
-   DEVICE pixels, ~DPR² cost). data-hero-lite is set by App.tsx. */
-html[data-hero-lite] .hero-mega-fill { filter: none; }
+
 /* Opacity hand-off:
      1) LOAD-IN (0→1 over 600ms): a one-shot CSS animation on
         .is-visible runs at higher priority than normal cascade.
@@ -125,59 +116,118 @@ html[data-hero-lite] .hero-mega-fill { filter: none; }
   to   { opacity: 1; }
 }
 
-/* ASCII ring wrapper. Deliberately oversized: 130vw wide, 130vh
-   tall, centered. The visible ring lands as a tilted disc that clips
-   off the left & right edges of the viewport. Sits BEHIND the
-   wordmark. The iris push-in scale is applied to the composition root;
-   the ring participates automatically. */
-.hero-ring-wrap {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 130vw;
-  height: 130vh;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  z-index: 0;
-  /* Resting opacity. The ring sits at full presence the instant the hero
-     composition reveals (no entrance animation of its own). 0.7 (was
-     0.55): the inverted bold-orange field needs the extra presence;
-     per-tile alphas in the shader do the fine balancing. */
-  opacity: 0.7;
-}
 
-.hero-glyph-ring {
+/* ---- Signature stage ----------------------------------------------------
+   The WebGL canvas fills the composition (fixed, full viewport). The sparks
+   canvas (props.ts) sits above it, under the words. */
+.hero-sig-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.hero-sig-canvas,
+.hero-sig-sparks {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  display: block;
   pointer-events: none;
-  /* Resting POP: a saturation + contrast boost (the orange tile field reads rich
-     and the white symbols stop washing it out). PERF: the former
-     filter saturate(1.28) contrast(1.2) here ran a compositor colour-matrix over
-     the oversized live canvas on EVERY painted frame for every visitor. It's now
-     BAKED into POST_FRAG in HeroGlyphRing.tsx (sRGB-space, applied pre-premultiply
-     — pixel-identical to the old CSS filter), so no per-frame CSS filter remains.
-     Static colour grade, kept under reduced-motion too. */
+}
+.hero-sig-sparks {
+  z-index: 1;
+}
+/* Static fallback (low tier / reduced motion): the vector signature, white,
+   positioned from the same box. */
+.hero-sig-static {
+  position: absolute;
+  z-index: 0;
+  color: #ffffff;
+  pointer-events: none;
 }
 
-/* Static baked ring (low tier / reduced-motion fallback for .hero-glyph-ring).
-   The capture is the VISIBLE viewport crop of the live ring, so it's sized to
-   the viewport (100vw×100vh) and centred inside the 130vw×130vh wrap — matching
-   the live ring's on-screen framing 1:1. It inherits the wrap's 0.7 opacity and
-   rides the composition's iris push-in like the live ring. */
-.hero-ring-static {
+/* ---- Words -----------------------------------------------------------------
+   Offbit Bold, lowercase / sentence case (owner: no tracked caps). "hello"
+   sits above the signature's left edge, "I'm Daniel Tan" above its right,
+   "software engineer & designer" below its left. Phones move them to the
+   gutters (data-narrow). */
+.hero-brand {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 100vw;
-  height: 100vh;
-  transform: translate(-50%, -50%);
-  object-fit: cover;
-  object-position: center;
+  top: calc(var(--hero-gutter) + var(--safe-top, 0px));
+  left: calc(var(--hero-gutter) + var(--safe-left, 0px));
+  z-index: 3;
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1;
+  color: #ffffff;
   pointer-events: none;
-  user-select: none;
-  -webkit-user-drag: none;
+}
+.hero-say {
+  position: absolute;
+  z-index: 3;
+  margin: 0;
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  line-height: 0.92;
+  color: #ffffff;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.hero-say span {
+  display: block;
+}
+.hero-say--hello {
+  left: var(--sig-l, 25vw);
+  top: calc(var(--sig-t, 30vh) - 10px);
+  transform: translateY(-100%);
+  font-size: clamp(44px, 6vw, 96px);
+}
+.hero-say--name {
+  right: calc(100% - var(--sig-r, 75vw));
+  top: calc(var(--sig-t, 30vh) - 14px);
+  transform: translateY(-100%);
+  font-size: clamp(22px, 2.2vw, 34px);
+  text-align: right;
+}
+.hero-say--role {
+  left: var(--sig-l, 25vw);
+  top: calc(var(--sig-b, 65vh) + 18px);
+  font-size: clamp(34px, 4.6vw, 76px);
+}
+.hero-composition[data-narrow] .hero-say--hello {
+  left: calc(var(--hero-gutter) + var(--safe-left, 0px));
+  top: calc(var(--sig-t) - 8px);
+}
+.hero-composition[data-narrow] .hero-say--name {
+  right: calc(var(--hero-gutter) + var(--safe-right, 0px));
+}
+.hero-composition[data-narrow] .hero-say--role {
+  left: calc(var(--hero-gutter) + var(--safe-left, 0px));
+  top: calc(var(--sig-b) + 22px);
+}
+/* Entrance: the words rise in as the signature starts drawing. */
+.hero-composition.is-visible .hero-say,
+.hero-composition.is-visible .hero-brand {
+  animation: hero-say-in 900ms var(--ease-out) both;
+}
+.hero-composition.is-visible .hero-say--name { animation-delay: 80ms; }
+.hero-composition.is-visible .hero-say--role { animation-delay: 160ms; }
+@keyframes hero-say-in {
+  from { opacity: 0; translate: 0 14px; }
+  to   { opacity: 1; translate: 0 0; }
+}
+
+/* The signature's box, for heroWipe.ts's iris guard only. */
+.hero-name-box {
+  position: absolute;
+  left: var(--sig-l, 25vw);
+  top: var(--sig-t, 30vh);
+  width: calc(var(--sig-r, 75vw) - var(--sig-l, 25vw));
+  height: calc(var(--sig-b, 65vh) - var(--sig-t, 30vh));
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* Scroll cue: pixel down-chevron, bottom-centre of the hero, bobbing in
@@ -237,249 +287,23 @@ html[data-hero-diving] .hero-scroll-cue {
     filter: none !important;
     opacity: 1 !important;
   }
-  /* Kill ALL entrance choreography: wordmark slide/scale, ring
-     fade+scale, meta/scroll/scrim rise, the accent-dot pulse, and the
-     composition load-in fade. Previously only the parent transform was
-     neutralized, so children still slid/scaled in on reduced-motion.
-     Each element reverts to its settled resting state; the ring-wrap
-     needs its settled opacity restored explicitly (its base rule is
-     opacity:0, only lifted by the keyframe we're disabling). */
+  /* Kill all entrance choreography; everything rests in place. */
   .hero-composition.is-visible,
-  .hero-ring-wrap,
-  .hero-mega-fill {
+  .hero-composition.is-visible .hero-say,
+  .hero-composition.is-visible .hero-brand {
     animation: none !important;
   }
-  .hero-ring-wrap {
-    opacity: 0.55;
-    transform: translate(-50%, -50%);
-  }
 }
 
-/* ---- Mega wordmark: the centerpiece ----
-   Off-centre asymmetric stack. DANIEL anchors LEFT of viewport centre;
-   TAN drops down + RIGHT, overshooting flush-right so the composition
-   reads as a deliberate diagonal across the screen rather than a
-   centred block. The whole wordmark wrapper pulls slightly left of the
-   composition's centre column so the visual centre of mass falls
-   asymmetrically across the ASCII ring. */
-.hero-mega-wordmark {
-  position: relative;
-  z-index: 1;
-  align-self: center;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  /* flex-start + a deliberate translate gives the wordmark its
-     off-centre anchor without breaking the max-content shrink-wrap
-     used below. */
-  align-items: flex-start;
-  padding-left: 4vw;
-  /* Hit-testable only while the hero is actually visible: the scroll
-     choreography (heroWipe.ts) drops this to `none` once you leave the hero, so the
-     invisible wordmark can't swallow pointers from sections lower on
-     the page (main is a pointer-events:none pass-through). */
-  pointer-events: var(--hero-pointer-events, auto);
-}
-
-/* Welcoming greeting sitting just above the giant DANIEL TAN wordmark.
-   Small Geist line, left-aligned to the wordmark's left edge. */
-.hero-welcome {
-  margin: 0 0 clamp(10px, 1.6vh, 20px) 0.14em;
-  /* Pixel-retro voice (VT323), NOT the body sans. White fill with a deep-
-     orange keyline so it reads over the busy orange dither AND the light
-     patches (ink/black read terribly here). */
-  font-family: "VT323", monospace;
-  font-size: clamp(22px, 2.7vw, 40px);
-  letter-spacing: 0.04em;
-  line-height: 1.05;
-  color: #ffffff;
-  -webkit-text-stroke: 2.2px var(--accent-deep, #c23d00);
-  paint-order: stroke fill;
-  max-width: 34ch;
-  /* Balanced lines: at ~430px the greeting wrapped with "of" alone on the
-     last line. Short text, so balance's cost is nil. */
-  text-wrap: balance;
-}
-.hero-mega-text {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  line-height: 0.88;
-  /* OffBit pixel display: the wordmark joins the sitewide big-title
-     voice (section h2s, About wordmark, footer dot type). OffBit ships
-     400/700 only, and pixel glyphs collide under negative tracking, so
-     the old 800/-0.082em pair becomes 700/0. Size drops ~20%: pixel
-     glyphs run optically larger and the zero tracking widens the line,
-     so 13.5vw keeps DANIEL at the same visual footprint as before. */
-  font-family: var(--font-pixel);
-  font-weight: 700;
-  letter-spacing: 0;
-  font-size: clamp(84px, 13.5vw, 230px);
-  text-transform: uppercase;
-  user-select: none;
-  width: max-content;
-  max-width: 100%;
-}
-
-.hero-mega-line {
-  position: relative;
-  display: inline-block;
-  isolation: isolate;
-}
-.hero-mega-line-2 {
-  /* Asymmetric stagger: TAN shifts further right than DANIEL's end
-     and drops slightly so the two lines feel like a diagonal poured
-     across the viewport, not a stacked block. The 22% translate is
-     calibrated so on a typical viewport TAN's left edge starts past
-     DANIEL's right edge minus a couple of glyphs, enough horizontal
-     bite to feel asymmetric without breaking the wordmark's read. */
-  align-self: flex-start;
-  transform: translateX(22%);
-  margin-top: -0.06em;
-}
-
-.hero-mega-fill {
-  position: relative;
-  z-index: 2;
-  /* MONOTONE always-visible (user: orange + white only). SOLID white
-     fill reads bold over the orange symbol field; a DITHERED orange
-     dot-grid keyline (the #hero-ascii-outline SVG filter, not a smooth
-     line which read as cheap) carries the letterform over the white
-     ring and echoes the ASCII symbol field. */
-  color: #ffffff;
-  display: inline-block;
-  -webkit-text-stroke: 0.008em #ffffff;
-  filter: url(#hero-ascii-outline);
-  /* See hero-ring-wrap for the full entrance choreography note.
-     Wordmark fill enters FIRST at 0.40s: the persistent signature
-     is already anchored from the loading phase, so the wordmark is
-     the first new element to compose around it. */
-  animation: hero-mega-in 900ms var(--ease-out) both;
-  /* Tightened 0.4s -> 0.25s: the loader now plays before this, so every ms
-     of post-compose delay is pure perceived lag. The wordmark still trails
-     the ring/signature, just sooner. */
-  animation-delay: 0.25s;
-  /* No scroll-bound transform/mask here. The iris push-in is driven by
-     the .hero-composition root, so the wordmark moves as part of
-     the single rigid body. The previous mask-image erosion and
-     per-element scale/letter-spacing ramp were removed per user
-     feedback: "tacky with the gradient fade" / "looks glued
-     together". */
-}
-.hero-mega-char {
-  display: inline-block;
-  /* Inhale tracking: HeroSignature's rAF spring lerps smoothly in JS
-     but writes the translate3d QUANTISED to a pixel grid (~2% of the
-     font size), so glyphs hop in discrete steps that match the OffBit
-     pixel voice. NO CSS transition on transform — it would re-smooth
-     the very steps the quantisation creates. */
-  transform-origin: 50% 60%;
-  /* PERF: no permanent will-change. It pinned a compositor layer per glyph
-     (~9 on the FIRST screen, every visit) for the cursor-inhale — which only
-     runs on desktop HOVER and never on touch, so it was pure VRAM on phones.
-     The inhale's translate3d still GPU-promotes while it's actually animating. */
-}
-
-/* (A CRT scanline fill via background-clip:text lived here briefly;
-   removed per user: "looks cheesy and fake". The wordmark is solid
-   accent with the text-stroke weight boost only.) */
-
-/* The white "matrix" proximity-grid overlay was removed: white-on-orange
-   (and earlier white-on-white) read as a muddy haze rather than a reveal.
-   The wordmark's hover affordance is now the per-letter inhale-tracking
-   spring (see .hero-mega-char + HeroSignature's rAF loop), which keeps
-   the accent colour and just spreads the glyphs toward the cursor. */
-
-@keyframes hero-mega-in {
-  from { opacity: 0; transform: translateY(48px) scale(0.96); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@media (hover: none), (pointer: coarse) {
-  /* Touch has no hover, so the wordmark needs no pointer affordance;
-     it's pure display type. Drop pointer-events so a vertical swipe over
-     the full-height wordmark wrapper scrolls the page instead of being
-     swallowed by the hit-area. (The inhale rAF also bails on coarse
-     pointers, so the glyphs stay at rest.) */
-  .hero-mega-wordmark {
-    pointer-events: none;
-  }
-}
-
-/* The supplemental editorial tagline (.hero-mega-tagline*) and its
-   hero-tagline-in keyframe were removed: the wordmark JSX no longer
-   renders a tagline, so the rules were dead. */
-
-/* ─────────────────────────────────────────────────────────────────────
- * MOBILE / TABLET (≤768px): portrait-first build-out.
- * ────────────────────────────────────────────────────────────────────
- * Goal: MONUMENTAL name. The desktop diagonal stagger retires on
- * portrait; the wordmark becomes a justified poster block where BOTH
- * lines span the content width edge-to-edge (DANIEL ~24vw, TAN ~47vw),
- * the ASCII ring recedes to a quieter backdrop, the signature ghost
- * stays anchored behind, and the meta + scroll chips keep the bottom
- * corners. */
+/* Mobile / tablet (<=768px): safe-area aware gutters; the scroll cue moves to
+   the bottom-right corner. */
 @media (max-width: 768px) {
   .hero-composition {
-    /* Side padding pulled in (4vw) so the wordmark gets max width; safe-
-       area aware so the composition clears the notch / home indicator. */
     padding:
       calc(18px + var(--safe-top, 0px))
       calc(4vw + var(--safe-right, 0px))
       calc(20px + var(--safe-bottom, 0px))
       calc(4vw + var(--safe-left, 0px));
-  }
-  .hero-mega-wordmark {
-    /* Kill the desktop 4vw left nudge: on a narrow viewport every px of
-       width counts, so anchor DANIEL flush to the content box. */
-    padding-left: 0;
-  }
-  .hero-mega-text {
-    /* MONUMENTAL redesign (user: the old mobile hero was "lackluster",
-       the name "very small" — "make it take up the entire page"). The
-       name becomes a JUSTIFIED POSTER BLOCK: each line is sized so it
-       spans the full content width edge-to-edge. This base size is
-       DANIEL's (6 glyphs, ~24vw); TAN is overridden below. No px
-       ceiling — the point is that the name scales WITH the viewport;
-       the floor only guards sub-320px oddities. The per-line vw values
-       are measured against OffBit's real advance widths for these exact
-       glyph runs (the text never changes), so the fit holds on every
-       device width by construction. */
-    /* Measured: DANIEL in OffBit 700 is 3.074em wide, content box is
-       100vw - 2*4vw padding = 92vw → ~29.9vw would fill it edge-to-edge.
-       OVERFLOW HEADROOM (#24): pulled back ~8% to 27.5vw so the dilated
-       ASCII keyline band + per-glyph kerning never push past the content
-       box at 320/360/390px (the band adds width the bare advance measure
-       missed). Floor lowered 56→48px for sub-320 safety. */
-    font-size: max(48px, 27.5vw);
-    letter-spacing: 0;
-    /* 0.85 cropped the keyline band top/bottom; 0.9 + the padding-block on
-       .hero-mega-line below gives the dilated band vertical room. */
-    line-height: 0.9;
-  }
-  .hero-mega-line {
-    /* The #hero-ascii-outline filter DILATES the glyph alpha into a dotted
-       keyline band that extends past the glyph box top + bottom. At the
-       tight mobile line-height the band was cropped by the line box;
-       0.04em vertical padding gives it room to render uncut (#24). */
-    padding-block: 0.04em;
-  }
-  .hero-mega-line-2 {
-    /* TAN: 3 glyphs sized up so its width matches DANIEL's 6 — the
-       justified-block move that makes the lockup monumental instead of
-       a small left-ragged stack. No translateX: both lines run full
-       width, so the desktop diagonal device retires on portrait. */
-    /* Measured: TAN is 1.886em wide → ~48.7vw would fill the content box.
-       OVERFLOW HEADROOM (#24): pulled back ~7% to 45vw so the keyline band
-       on the 3 wide glyphs never overruns the right edge at 320/360/390px.
-       Floor lowered 110→96px for sub-320 safety. */
-    font-size: max(96px, 45vw);
-    transform: none;
-    margin-top: 0.02em;
-    align-self: flex-start;
   }
   /* Scroll cue (#25): sits in the bottom-RIGHT corner on mobile. left:auto +
      right:6vw + transform:none drops the desktop translateX(-50%) centring,
@@ -491,90 +315,17 @@ html[data-hero-diving] .hero-scroll-cue {
     transform: none;
     animation-name: hero-cue-bob-mobile;
   }
-  /* Ring: still a presence, but the monumental type owns the frame now.
-     Slightly smaller + quieter than the old 150vmax wash so the glyph
-     edges stay crisp against the ASCII texture. */
-  .hero-ring-wrap {
-    width: 135vmax;
-    height: 135vmax;
-    /* Quieter than desktop's 0.55: at phone size the dense ASCII field
-       sits directly under every glyph, and at 0.5+ it muddied the
-       wordmark's pixel edges. */
-    opacity: 0.35;
-  }
 }
 
-/* (The <=400px and short-landscape ring sizes that lived here were dead on
-   every phone: the (hover: none) ring rule below is later in the file and
-   wins on touch. Deleted rather than kept as traps.) */
-
-/* Short landscape (a phone on its side): MQ.shortLandscape in motion.ts,
-   ANY width, so a 932x430 Pro Max gets it too (the old block stopped at
-   900px wide and stopped at 480px tall). The old clamp(40px, 11vh, 84px)
-   left DANIEL TAN 43px tall at 844x390: a thin name in an empty orange
-   screen. Now the two lines take ~half the viewport height (26svh each at
-   line-height 0.88 is ~46%), capped by width so DANIEL (3.07em) always
-   fits. svh: the size must not jump as the landscape URL bar comes and
-   goes (vh fallback first for engines without it). */
+/* Short landscape (a phone on its side): no room for the scroll cue. */
 @media (orientation: landscape) and (max-height: 500px) {
-  .hero-mega-text {
-    font-size: 26vh;
-    font-size: min(26svh, 17vw);
-    line-height: 0.88;
-  }
-  .hero-mega-line-2 {
-    /* Landscape kills the portrait justified block (45vw of TAN would be
-       ~2x the viewport height): both lines share the vh-led size. */
-    font-size: inherit;
-    margin-top: -0.04em;
-  }
-  .hero-welcome {
-    font-size: clamp(18px, 5.5svh, 28px);
-    margin-bottom: 6px;
-  }
   .hero-composition {
     padding-top: calc(12px + var(--safe-top, 0px));
     padding-bottom: calc(12px + var(--safe-bottom, 0px));
   }
-  /* Short landscape: the giant wordmark + bottom row already fight for
-     the tiny vertical space; the scroll cue has nowhere to live without
-     overlapping, so hide it (#25). */
   .hero-scroll-cue {
     display: none;
   }
-}
-
-/* ─────────────────────────────────────────────────────────────────────
- * TOUCH / COARSE-POINTER (#7): the oversized ASCII ring is a decorative
- * backdrop. On phones/tablets it costs real GPU per frame for a body the
- * monumental wordmark already owns, so shrink it from the mobile 135vmax
- * wash to a quieter 110vmax. This wins over the max-width ring sizes above
- * (it's placed last + is orthogonal to width: a touch device at any size
- * gets the calmer ring).
- *
- * NOTE on the SPIN: the 26s ring rotation is NOT a CSS animation — it is a
- * per-frame WebGL torus.rotation.y tick inside HeroGlyphRing.tsx's useFrame
- * loop, driven by the spinDuration prop. CSS in this file cannot slow or
- * pause it (there is no CSS animation on .hero-glyph-ring / the canvas to
- * target). The spin IS slowed on touch (spinScale 0.45 without a fine
- * pointer, 0 under reduced motion) in HeroGlyphRing.tsx, and its R3F loop
- * stops entirely once the hero is offscreen; the CSS lever here is the
- * ring's footprint, which also cuts its on-screen pixel/filter cost. */
-@media (hover: none) {
-  .hero-ring-wrap {
-    width: 110vmax;
-    height: 110vmax;
-  }
-}
-
-/* Reduced motion: the ring already lands at rest opacity 0.55 (see the
-   prefers-reduced-motion block up top). Pull its footprint in to match the
-   touch treatment so the dense ASCII field is quieter for these users too.
-   (The WebGL spin itself is held still under reduced motion in
-   HeroGlyphRing.tsx.) */
-@media (prefers-reduced-motion: reduce) {
-  .hero-ring-wrap {
-    width: 110vmax;
-    height: 110vmax;
-  }
+  .hero-say--hello { font-size: clamp(28px, 9svh, 56px); }
+  .hero-say--role { font-size: clamp(24px, 7svh, 44px); }
 }

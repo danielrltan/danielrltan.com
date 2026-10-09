@@ -475,15 +475,11 @@ export function installHeroWipe(): void {
   // reads and no string building.
   const measure = (): Geometry | null => {
     const w = window.innerWidth || 1;
-    const text = q<HTMLElement>(".hero-mega-text");
-    const welcome = q<HTMLElement>(".hero-welcome");
-    if (!text) return null;
-    const a = text.getBoundingClientRect();
-    const b = welcome?.getBoundingClientRect();
-    const L = Math.min(a.left, b ? b.left : a.left);
-    const T = Math.min(a.top, b ? b.top : a.top);
-    const R = Math.max(a.right, b ? b.right : a.right);
-    const B = Math.max(a.bottom, b ? b.bottom : a.bottom);
+    // The name block the iris must keep off: the hero signature's box
+    // (HeroSignature writes it from sig/layout.ts).
+    const nameBox = q<HTMLElement>(".hero-name-box");
+    if (!nameBox) return null;
+    const { left: L, top: T, right: R, bottom: B } = nameBox.getBoundingClientRect();
     // Everything is measured where it sits PARKED (the hold's top at the
     // viewport top, the stage's park translate at 0), which is exactly where
     // the iris opens onto it. That holds from any scroll position (a reload

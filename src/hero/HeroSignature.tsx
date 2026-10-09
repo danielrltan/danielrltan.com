@@ -1,41 +1,38 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { HeroSignature2D } from "./HeroSignature2D";
-// HeroGlyphRing pulls in three.js + @react-three/fiber (the ~1MB `three`
-// chunk). Lazy-load it so that chunk leaves the entry/first-paint path: the
-// orange scrim, loader, and static wordmark paint immediately and the ring
-// streams in a beat later (it sits behind the loader until loaderDone anyway).
-// This is the single biggest first-paint win on weak hardware.
-const HeroGlyphRing = lazy(() =>
-  import("./HeroGlyphRing").then((m) => ({ default: m.HeroGlyphRing })),
-);
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+// The WebGL signature hero pulls in three.js (the ~1MB `three` chunk). Lazy-load
+// it so that chunk leaves the entry/first-paint path: the orange scrim, loader,
+// and the words paint immediately and the scene streams in behind the loader.
+const HeroSigScene = lazy(() => import("./sig/HeroSigScene"));
 import { loadSignatureData, type SignatureData } from "./signatureGeometry";
+import { signatureBox, type SigBox } from "./sig/layout";
+import { SignatureMark } from "../SignatureMark";
 import { useAssembly } from "../loading";
 import { useTier } from "../capabilityTier";
-import { DECAY, damp } from "../motion";
 import "./hero-composition.css";
 
-// LOW tier (weak GPU/CPU) or an explicit reduced-motion preference get a static,
-// baked still of the ring (public/hero-ring.webp) instead of the live WebGL
-// pipeline. Because this is a MOUNT-TIME branch, the lazy three.js chunk + the
-// 2-pass shader compile + all per-frame GPU work simply never happen there — the
-// single biggest first-screen cost on exactly the hardware that can't afford it.
-// It is a disclosed, brand-identical fallback (the same approach as the mobile
-// DOM section fallbacks), NOT a blank gap. The wordmark renders live on top,
-// exactly as it does over the live ring. Read once at module load (matches the
-// IS_SMALL_SCREEN pattern): the preference doesn't change mid-session.
+// LOW tier (weak GPU/CPU) or an explicit reduced-motion preference get a static
+// hero: the signature as a flat vector mark with the same words around it. A
+// MOUNT-TIME branch, so the lazy three.js chunk, the shader compiles and all
+// per-frame GPU work never happen there. Read once at module load: the
+// preference doesn't change mid-session.
 const PREFERS_REDUCED_MOTION =
   typeof window !== "undefined" &&
   typeof window.matchMedia === "function" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** public/signature.json's aspect, used until the data lands (static layout). */
+const FALLBACK_ASPECT = 2.6074;
+
 /**
- * Hero composition. ASCII ring is the kinetic centerpiece; editorial
- * type frames it (eyebrow top-left, wordmark center, meta row bottom).
+ * Hero composition (redesign 2026-10-09, after haoqi.design): Daniel's
+ * signature as an inflated 3D tube over the glyph field (sig/signatureHero.ts),
+ * "hello" / "I'm Daniel Tan" / "software engineer & designer" set around it,
+ * his hobby props floating free to grab and throw. Replaced the glyph ring +
+ * DANIEL TAN wordmark.
  *
  * State machine:
- *   drawing:    waits for loaderDone; the 2D signature draws on the orange
- *               scrim behind the held loader (the visitor never waits on it)
- *   transition: loaderDone, ~520ms crossfade window
+ *   drawing:    waits for the loader; the scene mounts (and compiles) behind it
+ *   transition: loader lifting, ~520ms crossfade; the signature draws itself in
  *   settled:    composition is the only visible layer; fires `hero-composed`
  */
 
@@ -45,15 +42,12 @@ export function HeroSignature() {
   const [data, setData] = useState<SignatureData | null>(null);
   const [phase, setPhase] = useState<Phase>("drawing");
   const assembly = useAssembly();
-  // Static ring fallback on the weakest hardware (or reduced-motion). See the
-  // PREFERS_REDUCED_MOTION note above — this keeps three.js off low-end entirely.
-  const staticRing = useTier() === "low" || PREFERS_REDUCED_MOTION;
+  const staticHero = useTier() === "low" || PREFERS_REDUCED_MOTION;
 
   useEffect(() => {
     let cancelled = false;
-    // The phase machine never waits on the signature: the hero composes BEHIND
-    // the held loader scrim, so a failed fetch (offline, 404) just costs the
-    // flourish — data stays null and HeroSignature2D draws nothing.
+    // The phase machine never waits on the signature: a failed fetch (offline,
+    // 404) just leaves the words over the bare field.
     void loadSignatureData().then((d) => {
       if (!cancelled && d) setData(d);
     });
@@ -66,15 +60,12 @@ export function HeroSignature() {
   //   1) drawing → transition once the loader has finished (loaderDone, not
   //      climaxReady, so the hero can't compose before the loader is off-screen)
   //   2) transition → settled (after the crossfade window)
-  // Splitting these into two effects so the timeout that schedules
-  // step 2 isn't torn down by the dep-change from step 1. When the
-  // single combined effect re-ran on phase change, React's cleanup
-  // cleared the timeout before it could fire, stranding the page
-  // in `transition` forever.
-  // Loader seam (spec §5 O9): the loader announces the START of its scrim
-  // fade with `loader-reveal-start`, so the composition fade + wordmark
-  // entrance play OVER the fading scrim instead of behind it. loaderDone stays
-  // the fallback (no event = the previous timing, unchanged).
+  // Split into two effects so the timeout that schedules step 2 isn't torn
+  // down by the dep-change from step 1 (a combined effect stranded the page in
+  // `transition` forever).
+  // Loader seam (spec §5 O9): the loader announces the START of its scrim fade
+  // with `loader-reveal-start`, so the composition fades in OVER the fading
+  // scrim instead of behind it. loaderDone stays the fallback.
   const [revealStarted, setRevealStarted] = useState(false);
   useEffect(() => {
     if (revealStarted) return;
@@ -93,347 +84,86 @@ export function HeroSignature() {
     const t = window.setTimeout(() => setPhase("settled"), 520);
     return () => window.clearTimeout(t);
   }, [phase]);
-  // Composition settled ⇒ the whole opening sequence (loader → signature →
-  // wordmark) is done. Signal AssemblyController to lift the orange scrim
-  // and unlock the page. This is the page-unlock seam (it replaced the
-  // fixed climaxDone timer, which would now fire mid-signature-draw).
+  // Composition settled ⇒ the opening sequence is done. Signal
+  // AssemblyController to lift the orange scrim and unlock the page.
   useEffect(() => {
     if (phase !== "settled") return;
     window.dispatchEvent(new Event("hero-composed"));
   }, [phase]);
-
-  // The 2D signature draws at full opacity on the orange loading scrim,
-  // fades through the transition, then DISAPPEARS once settled (user:
-  // remove the watermark behind the hero). The persistent low-opacity
-  // ghost behind the wordmark is gone; the signature is purely a
-  // loading-screen flourish now.
-  const twoDOpacity = phase === "drawing" ? 1 : 0.5;
-  // Unmount the 2D signature canvas once settled —
-  // frees its full-viewport backing buffer (~tens of MB) + one compositor layer,
-  // which compounds the hero's VRAM pressure on weak GPUs through the scroll.
-  const renderTwoD = phase !== "settled";
   const compositionVisible = phase !== "drawing";
 
-  // Wordmark split into per-character spans so the entrance /
-  // micro-hover staggers anchor to per-character elements.
-  const wordmarkLines = [
-    { text: "DANIEL", className: "hero-mega-line" },
-    { text: "TAN", className: "hero-mega-line hero-mega-line-2" },
-  ];
-
-  // Inhale tracking: per-letter proximity spread.
-  //
-  // Replaces the old white "matrix" spotlight (white-on-white over the
-  // orange wordmark read as a muddy haze). Each GLYPH is pushed
-  // outward from its line's horizontal centre, the push scaled by how
-  // close the cursor is (2D proximity) plus a small global hover bias.
-  // Motion is quantised to a pixel grid before it reaches the DOM (see
-  // GRID below) so the spread hops in discrete steps, on-voice with
-  // the pixel font. Letters keep the accent colour.
-  //
-  // A spring-eased rAF loop lerps each glyph's current offset toward its
-  // target; the loop self-stops once everything is hovering-off AND
-  // settled to rest. Pointer handlers only update the target/pointer —
-  // never setState. Touch / coarse pointers and reduced-motion skip it.
-  const wordmarkRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const wrap = wordmarkRef.current;
-    if (!wrap) return;
-    const coarse = window.matchMedia("(hover: none), (pointer: coarse)").matches;
-    if (coarse) return;
-    const reducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    if (reducedMotion) return;
-
-    const textEl = wrap.querySelector<HTMLElement>(".hero-mega-text");
-    const lineEls = Array.from(
-      wrap.querySelectorAll<HTMLElement>(".hero-mega-fill"),
-    );
-    if (!textEl || lineEls.length === 0) return;
-
-    type Glyph = {
-      el: HTMLElement;
-      dir: number; // signed distance from line centre: <0 left, >0 right
-      cx: number; // cached REST centre x (client coords)
-      cy: number; // cached REST centre y (client coords)
-      cur: number; // current x offset (px, smooth internal spring value)
-      tgt: number; // target x offset (px)
-      qx: number; // last QUANTISED offset written to the DOM
-    };
-    const glyphs: Glyph[] = [];
-    lineEls.forEach((lineEl) => {
-      const chars = Array.from(
-        lineEl.querySelectorAll<HTMLElement>(".hero-mega-char"),
-      );
-      const center = (chars.length - 1) / 2;
-      chars.forEach((el, idx) => {
-        glyphs.push({
-          el,
-          dir: idx - center,
-          cx: 0,
-          cy: 0,
-          cur: 0,
-          tgt: 0,
-          qx: 0,
-        });
-      });
-    });
-    if (glyphs.length === 0) return;
-
-    // Magnitudes scale with the live (clamped/responsive) font size so
-    // the spread reads the same from mobile clamp floor to 280px ceiling.
-    let MAX_PUSH = 24;
-    let BASE_PUSH = 9;
-    let SIGMA = 170;
-    // PIXEL GRID: the spring's smooth value is quantised to this step
-    // before it touches the DOM, so glyphs MOVE in discrete pixel jumps
-    // (matching the OffBit pixel-art voice) instead of sub-pixel
-    // smoothing. ~2% of the font size ≈ a visible fraction of one glyph
-    // block: stepped enough to read as pixel motion, fine enough that
-    // the spread's shape survives.
-    let GRID = 4;
-    const readFont = () => {
-      const fs = parseFloat(getComputedStyle(textEl).fontSize) || 200;
-      MAX_PUSH = fs * 0.11; // peak outward shove at the cursor
-      BASE_PUSH = fs * 0.04; // gentle global airy bias while hovering
-      SIGMA = fs * 0.85; // proximity falloff radius
-      GRID = Math.max(2, Math.round(fs * 0.02));
-    };
-    readFont();
-
-    let rafId = 0;
-    let pointerX = 0;
-    let pointerY = 0;
-    let hovering = false;
-
-    // PERF: cache each glyph's REST centre. getBoundingClientRect inside
-    // the rAF tick would force layout every frame across every letter.
-    // The measured centre includes any transform we've applied, so we
-    // subtract the current offset to recover the rest position — keeps
-    // the proximity field stable instead of drifting with the spread.
-    let rectsRaf = 0;
-    const refreshRects = () => {
-      rectsRaf = 0;
-      for (const g of glyphs) {
-        const r = g.el.getBoundingClientRect();
-        // Subtract the QUANTISED offset (what is actually applied to the
-        // DOM), not the smooth spring value, to recover the rest centre.
-        g.cx = r.left + r.width / 2 - g.qx;
-        g.cy = r.top + r.height / 2;
-      }
-    };
-    refreshRects();
-    const scheduleRects = () => {
-      if (rectsRaf !== 0) return;
-      rectsRaf = window.requestAnimationFrame(() => {
-        readFont();
-        refreshRects();
-      });
-    };
-
-    const computeTargets = () => {
-      for (const g of glyphs) {
-        if (!hovering) {
-          g.tgt = 0;
-          continue;
-        }
-        const dx = g.cx - pointerX;
-        const dy = g.cy - pointerY;
-        const prox = Math.exp(-(dx * dx + dy * dy) / (2 * SIGMA * SIGMA));
-        const push = BASE_PUSH + prox * MAX_PUSH;
-        g.tgt = g.dir * push;
-      }
-    };
-
-    // The spring lerps smoothly in JS, but the DOM only ever sees the
-    // value SNAPPED to the pixel grid — and only when the snapped value
-    // actually changes. Glyphs therefore hop grid-step by grid-step
-    // (the pixel-art read), and most frames write zero styles: strictly
-    // cheaper than the old per-frame sub-pixel transform on every
-    // glyph. The fractional scale lift (1→1.05) was removed with the
-    // smoothing: non-integer scaling of pixel glyphs blurs their blocks,
-    // which is the exact effect this rework is killing.
-    // dt-based (DECAY.standard, τ 100ms): the same feel at 60 and 120 Hz
-    // (was a 0.16-per-frame lerp, twice as fast on a 120 Hz display).
-    let lastTick = 0;
-    const tick = (now: number) => {
-      const dt = lastTick ? (now - lastTick) / 1000 : 1 / 60;
-      lastTick = now;
-      let moving = false;
-      for (const g of glyphs) {
-        g.cur = damp(g.cur, g.tgt, DECAY.standard, dt);
-        if (Math.abs(g.tgt - g.cur) > 0.05) moving = true;
-        const qx = Math.round(g.cur / GRID) * GRID;
-        if (qx !== g.qx) {
-          g.qx = qx;
-          g.el.style.transform = `translate3d(${qx}px,0,0)`;
-        }
-      }
-      if (moving || hovering) {
-        rafId = window.requestAnimationFrame(tick);
-      } else {
-        // Settle to exact rest.
-        for (const g of glyphs) {
-          g.cur = 0;
-          g.qx = 0;
-          g.el.style.transform = "translate3d(0,0,0)";
-        }
-        rafId = 0;
-        lastTick = 0;
-      }
-    };
-    const schedule = () => {
-      if (rafId === 0) rafId = window.requestAnimationFrame(tick);
-    };
-
-    const onMove = (e: PointerEvent) => {
-      pointerX = e.clientX;
-      pointerY = e.clientY;
-      hovering = true;
-      computeTargets();
-      schedule();
-    };
-    const onEnter = (e: PointerEvent) => {
-      // Re-cache in case the composition just shifted (hero→about dive
-      // moves the wordmark vertically) and read pointer immediately.
-      refreshRects();
-      pointerX = e.clientX;
-      pointerY = e.clientY;
-      hovering = true;
-      computeTargets();
-      schedule();
-    };
-    const onLeave = () => {
-      hovering = false;
-      for (const g of glyphs) {
-        g.tgt = 0;
-      }
-      schedule();
-    };
-
-    // PERF: only refresh rects on scroll while the cursor is actually over the
-    // wordmark — the proximity field is unused otherwise, so the default
-    // behaviour was a per-glyph getBoundingClientRect() forced-layout storm on
-    // every scroll frame (pricey inside the scaled + filtered composition).
-    // pointerenter already re-caches, so a scroll that ends over the wordmark
-    // still gets fresh rects on the next pointermove.
-    const onScrollRects = () => {
-      if (hovering) scheduleRects();
-    };
-    wrap.addEventListener("pointermove", onMove);
-    wrap.addEventListener("pointerenter", onEnter);
-    wrap.addEventListener("pointerleave", onLeave);
-    window.addEventListener("resize", scheduleRects, { passive: true });
-    window.addEventListener("scroll", onScrollRects, { passive: true });
-    return () => {
-      if (rafId !== 0) window.cancelAnimationFrame(rafId);
-      if (rectsRaf !== 0) window.cancelAnimationFrame(rectsRaf);
-      wrap.removeEventListener("pointermove", onMove);
-      wrap.removeEventListener("pointerenter", onEnter);
-      wrap.removeEventListener("pointerleave", onLeave);
-      window.removeEventListener("resize", scheduleRects);
-      window.removeEventListener("scroll", onScrollRects);
-    };
+  // Signature box -> CSS vars on the composition: the words and the iris
+  // guard (.hero-name-box, heroWipe.ts) are laid out from them in CSS. The 3D
+  // scene reports its box on every layout; the static hero computes the same
+  // box (sig/layout.ts) itself.
+  const compRef = useRef<HTMLDivElement | null>(null);
+  const [staticBox, setStaticBox] = useState<SigBox | null>(null);
+  const applyBox = useCallback((box: SigBox) => {
+    const el = compRef.current;
+    if (!el) return;
+    el.style.setProperty("--sig-l", `${box.left.toFixed(1)}px`);
+    el.style.setProperty("--sig-r", `${box.right.toFixed(1)}px`);
+    el.style.setProperty("--sig-t", `${box.top.toFixed(1)}px`);
+    el.style.setProperty("--sig-b", `${box.bottom.toFixed(1)}px`);
+    el.toggleAttribute("data-narrow", box.narrow);
   }, []);
+  useEffect(() => {
+    if (!staticHero) return;
+    const b = data?.bounds;
+    const aspect = b ? (b.maxX - b.minX) / Math.max(1, b.maxY - b.minY) : FALLBACK_ASPECT;
+    const run = () => {
+      const box = signatureBox(window.innerWidth, window.innerHeight, aspect);
+      applyBox(box);
+      setStaticBox(box);
+    };
+    run();
+    window.addEventListener("resize", run, { passive: true });
+    return () => window.removeEventListener("resize", run);
+  }, [staticHero, data, applyBox]);
 
   return (
     <>
-      <svg
-        aria-hidden
-        focusable="false"
-        width="0"
-        height="0"
-        style={{ position: "absolute" }}
-      >
-        <defs>
-          {/* ASCII outline: the wordmark's keyline is a DITHERED orange
-              dot-grid band around the glyphs (not a smooth line, which
-              read as cheap), echoing the symbol field. Dilate the glyph
-              alpha to a band, knock out the original to get the ring,
-              tile a small orange dot grid, and keep the dots only inside
-              the ring. White glyph composited on top. */}
-          <filter
-            id="hero-ascii-outline"
-            x="-12%"
-            y="-12%"
-            width="124%"
-            height="124%"
-            colorInterpolationFilters="sRGB"
-          >
-            <feMorphology
-              in="SourceAlpha"
-              operator="dilate"
-              radius="4.5"
-              result="dil"
-            />
-            <feComposite in="dil" in2="SourceAlpha" operator="out" result="ring" />
-            <feFlood floodColor="#ff4f00" x="1" y="1" width="2.4" height="2.4" />
-            <feComposite width="5" height="5" result="cell" />
-            <feTile in="cell" result="grid" />
-            <feComposite in="grid" in2="ring" operator="in" result="outline" />
-            <feMerge>
-              <feMergeNode in="outline" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-      </svg>
-      {renderTwoD && (
-        <HeroSignature2D
-          data={data}
-          opacity={twoDOpacity}
-          start={loaderLifting}
-        />
-      )}
       <div
+        ref={compRef}
         className={`hero-composition${compositionVisible ? " is-visible" : ""}${phase === "settled" ? " is-settled" : ""}`}
         aria-hidden={!compositionVisible}
       >
-        {/* Real accessible heading. The wordmark below is built from
-            aria-hidden decorative spans (per-char fill + matrix overlay),
-            so screen readers + SEO get the name from this single h1
-            instead of nothing. Visually hidden, DOM-real. */}
+        {/* Real accessible heading; everything visible below is decorative. */}
         <h1 className="hero-sr-heading">Daniel Tan, Software Engineer and Designer</h1>
 
-        <div className="hero-ring-wrap" aria-hidden>
-          {staticRing ? (
-            // Baked still of the ring at rest — no WebGL, no three.js, no shader
-            // compile. fetchPriority high so it paints with the opening beat.
-            <img
-              className="hero-ring-static"
-              src="/hero-ring.webp"
-              alt=""
-              draggable={false}
-              fetchPriority="high"
-            />
-          ) : (
+        {staticHero ? (
+          staticBox && (
+            <div
+              className="hero-sig-static"
+              aria-hidden
+              style={{ left: staticBox.left, top: staticBox.top + staticBox.height * 0.1 }}
+            >
+              <SignatureMark height={staticBox.height} strokeRatio={0.1} />
+            </div>
+          )
+        ) : (
+          data && (
             <Suspense fallback={null}>
-              <HeroGlyphRing color="#ff4f00" spinDuration={26} />
+              <HeroSigScene data={data} start={compositionVisible} onLayout={applyBox} />
             </Suspense>
-          )}
-        </div>
+          )
+        )}
 
-        <div className="hero-mega-wordmark" ref={wordmarkRef}>
-          {/* Greeting that leads INTO the wordmark below (no repeated name).
-              Decorative; the h1 above carries the semantic name for AT/SEO. */}
-          <p className="hero-welcome" aria-hidden>
-            Hey! Welcome to the website of
-          </p>
-          <div className="hero-mega-text" aria-hidden>
-            {wordmarkLines.map((line) => (
-              <span key={line.text} className={line.className}>
-                <span className="hero-mega-fill" aria-hidden>
-                  {line.text.split("").map((ch, i) => (
-                    <span key={i} className="hero-mega-char">
-                      {ch}
-                    </span>
-                  ))}
-                </span>
-              </span>
-            ))}
-          </div>
-        </div>
+        <span className="hero-brand" aria-hidden>
+          Daniel Tan
+        </span>
+        <p className="hero-say hero-say--hello" aria-hidden>
+          hello
+        </p>
+        <p className="hero-say hero-say--name" aria-hidden>
+          I&rsquo;m Daniel Tan
+        </p>
+        <p className="hero-say hero-say--role" aria-hidden>
+          <span>software engineer</span>
+          <span>&amp; designer</span>
+        </p>
+        {/* The signature's box: heroWipe.ts keeps the iris hole off it. */}
+        <div className="hero-name-box" aria-hidden />
       </div>
 
       {/* Pixel-iris rim (hero -> About handoff). Styled + animated only while

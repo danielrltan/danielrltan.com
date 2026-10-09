@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { SignatureMark } from "./SignatureMark";
 import { useIsMobile } from "./useIsMobile";
 import { scrollToY } from "./scroll";
 import "./crt-channel-menu.css"; // HUD CHROME entrance states (.hud-chrome)
@@ -55,7 +54,7 @@ export function useShownAfterPaint(visible: boolean): boolean {
 }
 
 /**
- * Top-left brand mark: Daniel's signature in a white tile. `visible` fades
+ * Top-left brand mark: "Daniel Tan" in Offbit on a white tile. `visible` fades
  * it in once the visitor has scrolled past the hero (App.tsx's hudVisible),
  * and it dodges the footer so it never sits over the sign-off.
  */
@@ -74,7 +73,7 @@ const TOP_STRIP_LEFT = 22;
 // Chip height matches the SectionDial bar (.snc-dial, 54px) so the two
 // top-row tiles read as one system: white tile left, white tile right.
 const TOP_STRIP_CHIP_H = 54;
-const BRAND_ICON_PX = 26;
+const BRAND_FONT_PX = 22;
 
 /** Top offset of the two top-strip tiles (brand here, dial in StatusBar). */
 export function hudTopOffset(compact: boolean): string {
@@ -87,10 +86,10 @@ export function RoomHUD({ visible }: Props) {
   const isMobile = useIsMobile();
   // Compress the brand chip on phones so it doesn't dominate the
   // narrower top-strip alongside small ui touchpoints. The visible cat
-  // shrinks (chipH/iconPx) but the TAP target is forced to ≥44px below
+  // shrinks (chipH/brandFontPx) but the TAP target is forced to ≥44px below
   // via minWidth/minHeight so it stays comfortably tappable.
   const chipH = isMobile ? 34 : TOP_STRIP_CHIP_H;
-  const iconPx = isMobile ? 22 : BRAND_ICON_PX;
+  const brandFontPx = isMobile ? 18 : BRAND_FONT_PX;
   // Safe-area aware top/left offsets so the brand mark clears the notch /
   // rounded corner (viewport-fit=cover). max(), not calc(+): the inset only
   // needs to WIN when it is bigger than the design gap, and it applies at
@@ -169,7 +168,7 @@ export function RoomHUD({ visible }: Props) {
           position: "absolute",
           top: topOffset,
           left: leftOffset,
-          // The signature is WIDE (aspect ~2.6:1), so the tile sizes to its
+          // The name is WIDE, so the tile sizes to its
           // content (width:auto) rather than a square. Height is the tap
           // target (≥44px on mobile) and matches the dial bar on desktop.
           //
@@ -187,12 +186,17 @@ export function RoomHUD({ visible }: Props) {
           zIndex: HUD_Z,
           pointerEvents: dodge ? "none" : "auto",
           opacity: dodge ? 0 : 1,
-          // currentColor drives the signature stroke (SignatureMark uses
-          // stroke="currentColor"). International Orange on the white tile.
+          // The name in the pixel face (owner 2026-10-09: "Daniel Tan" in
+          // place of the signature mark). International Orange on the white tile.
           color: "var(--accent)",
+          fontFamily: "var(--font-pixel)",
+          fontWeight: 700,
+          fontSize: brandFontPx,
+          lineHeight: 1,
+          whiteSpace: "nowrap",
         }}
       >
-        <SignatureMark height={iconPx} />
+        Daniel Tan
       </a>
     </div>
   );
