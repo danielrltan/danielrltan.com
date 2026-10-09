@@ -147,6 +147,26 @@ const BENTO_REST = ["portrait", "now", "explore", "study", "reach", "loc"]
   .map((key) => `.card.c-${key}`)
   .join(", ");
 
+/** One sweep down the whole bento (owner 2026-10-09: "a full sweep down each
+ *  layer rather than restarting each layer"): every card's build is timed off
+ *  its place in the grid, so the build edge + orange scan line travel at ONE
+ *  speed from the top card to the bottom row instead of each card starting
+ *  its own wipe. about.css reads --sweep-delay / --sweep-dur / --sweep-steps. */
+const SWEEP_MS = 1100;
+const SWEEP_STEPS = 30; // chunky steps over the whole span (the stepped pixel voice)
+function timeSweep(cards: HTMLElement[]) {
+  const rects = cards.map((c) => c.getBoundingClientRect());
+  const top = Math.min(...rects.map((r) => r.top));
+  const span = Math.max(...rects.map((r) => r.bottom)) - top;
+  if (!(span > 0)) return;
+  cards.forEach((c, i) => {
+    const r = rects[i]!;
+    c.style.setProperty("--sweep-delay", `${Math.round(((r.top - top) / span) * SWEEP_MS)}ms`);
+    c.style.setProperty("--sweep-dur", `${Math.round((r.height / span) * SWEEP_MS)}ms`);
+    c.style.setProperty("--sweep-steps", String(Math.max(3, Math.round((r.height / span) * SWEEP_STEPS))));
+  });
+}
+
 /** Arrival trio selectors, in reveal (stagger) order. */
 const ARRIVAL = [".about-banner", ".card.c-name", ".card.c-render"];
 
@@ -314,7 +334,9 @@ export function About() {
     const revealRest = () => {
       if (done) return;
       done = true;
-      el.querySelectorAll(BENTO_REST).forEach((c) => reveal(c, 0));
+      const rest = [...el.querySelectorAll<HTMLElement>(BENTO_REST)];
+      timeSweep(rest);
+      rest.forEach((c) => reveal(c, 0));
       drawCallout(el);
     };
     if (heroHandoff.cue) revealRest();

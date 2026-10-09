@@ -397,12 +397,16 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
      then the contents rise in after it (label, headline, details). Cards
      crossed in one scroll update cascade by --reveal-order (About.tsx) at
      --boot-gap, so the order reads as a sequence. */
+  /* Desktop bento: ONE sweep down the whole grid (owner 2026-10-09). About.tsx
+     (timeSweep) times each card off its place in the grid, so the build edge
+     and scan line cross every row at the same speed instead of restarting per
+     card. Narrow keeps the per-cell build on enter (no --sweep-* set). */
   --boot-gap: 110ms;
-  --boot-delay: calc(min(var(--reveal-order, 0), 4) * var(--boot-gap));
-  --boot-dur: 360ms;
+  --boot-delay: var(--sweep-delay, calc(min(var(--reveal-order, 0), 4) * var(--boot-gap)));
+  --boot-dur: var(--sweep-dur, 360ms);
   clip-path: inset(0 0 100% 0);
   transition:
-    clip-path var(--boot-dur) steps(9, jump-end),
+    clip-path var(--boot-dur) steps(var(--sweep-steps, 9), jump-end),
     opacity 120ms linear,
     transform var(--t-med) var(--ease-out);
   transition-delay: var(--boot-delay);
@@ -422,8 +426,10 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
 .card.c-render.is-revealed {
   clip-path: none;
 }
-/* Scan line: a 2px orange bar that rides the build edge down the panel, then
-   goes out. Plays once per reveal (the class latches). */
+/* Scan line: a 2px orange bar that rides the build edge down the panel. It
+   shows only while it moves (fill none), so on the desktop sweep it hands off
+   from row to row as one line instead of each card's line lingering.
+   Plays once per reveal (the class latches). */
 .card:not(.c-render)::after {
   content: "";
   position: absolute;
@@ -437,12 +443,11 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
   pointer-events: none;
 }
 .card.is-revealed:not(.c-render)::after {
-  animation: card-scan calc(var(--boot-dur) + 160ms) steps(11, jump-end) var(--boot-delay) both;
+  animation: card-scan var(--boot-dur) steps(var(--sweep-steps, 9), jump-end) var(--boot-delay) none;
 }
 @keyframes card-scan {
-  0% { top: 0; opacity: 1; }
-  70% { top: calc(100% - 2px); opacity: 1; }
-  100% { top: calc(100% - 2px); opacity: 0; }
+  from { top: 0; opacity: 1; }
+  to { top: calc(100% - 2px); opacity: 1; }
 }
 /* Contents rise in after their panel has built: label, then headline, then
    the details, --boot-item apart. Direct children only (their own hover
