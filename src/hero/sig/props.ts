@@ -1,6 +1,6 @@
 /**
  * Hobby props over the hero: the Play section's ten GLBs (src/other/hobbies.ts)
- * drifting in zero-g. Screen-space circle physics: slow wander, bounce off the
+ * drifting in zero-g, on their own transparent canvas ABOVE the hero words. Screen-space circle physics: slow wander, bounce off the
  * edges and each other, grab + throw with the hand's real release velocity, a
  * small springy pop on hover (the custom cursor pops too: body cursor
  * "pointer", the same signal the Mac / keypad canvases use). Hits throw a few
@@ -101,8 +101,12 @@ function addCarFloor(obj: THREE.Object3D): void {
 }
 
 export interface PropsOptions {
-  renderer: THREE.WebGLRenderer;
+  /** The hero's box (hit-testing + layout). */
   host: HTMLElement;
+  /** Layer ABOVE the hero words: the props' own transparent canvas and the
+   *  sparks go here, so the objects float over the text (owner 2026-10-09). */
+  overlay: HTMLElement;
+  dpr: number;
   fluid: Fluid;
   coarse: boolean;
   /** False while the hero isn't the resting screen: no hover, no grabs. */
@@ -114,6 +118,8 @@ export class HeroProps {
   private readonly camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
   private readonly bodies: Body[] = [];
   private readonly sparks: Spark[] = [];
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly canvas: HTMLCanvasElement;
   private readonly sparkCanvas: HTMLCanvasElement;
   private readonly sctx: CanvasRenderingContext2D | null;
   private readonly envTex: THREE.Texture;
@@ -132,7 +138,16 @@ export class HeroProps {
 
   constructor(opts: PropsOptions) {
     this.opts = opts;
-    const { renderer, host } = opts;
+    // Own transparent canvas over the words (a second GL context: the props
+    // can't sit between the field and the DOM text on the field's canvas).
+    this.canvas = document.createElement("canvas");
+    this.canvas.className = "hero-sig-props";
+    this.canvas.setAttribute("aria-hidden", "true");
+    opts.overlay.appendChild(this.canvas);
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(opts.dpr);
+    this.renderer.setClearColor(0x000000, 0);
+    const renderer = this.renderer;
     this.camera.position.set(0, 0, 10);
     const pm = new THREE.PMREMGenerator(renderer);
     this.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -203,7 +218,7 @@ export class HeroProps {
     this.sparkCanvas = document.createElement("canvas");
     this.sparkCanvas.className = "hero-sig-sparks";
     this.sparkCanvas.setAttribute("aria-hidden", "true");
-    host.appendChild(this.sparkCanvas);
+    opts.overlay.appendChild(this.sparkCanvas);
     this.sctx = this.sparkCanvas.getContext("2d");
 
     this.listen();
@@ -407,6 +422,7 @@ export class HeroProps {
     const first = this.W === 1;
     this.W = w;
     this.H = h;
+    this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     const visH = 2 * this.camera.position.z * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
@@ -556,8 +572,8 @@ export class HeroProps {
     document.body.style.cursor = on ? "pointer" : "";
   }
 
-  render(renderer: THREE.WebGLRenderer): void {
-    renderer.render(this.scene, this.camera);
+  render(): void {
+    this.renderer.render(this.scene, this.camera);
   }
 
   dispose(): void {
@@ -565,6 +581,8 @@ export class HeroProps {
     this.off.forEach((f) => f());
     this.setCursor(false);
     this.sparkCanvas.remove();
+    this.renderer.dispose();
+    this.canvas.remove();
     this.envTex.dispose();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;

@@ -118,15 +118,24 @@ html[data-hero-wipe] .hero-iris-rim {
 
 
 /* ---- Signature stage ----------------------------------------------------
-   The WebGL canvas fills the composition (fixed, full viewport). The sparks
-   canvas (props.ts) sits above it, under the words. */
+   The WebGL canvas fills the composition (fixed, full viewport), under the
+   words. */
 .hero-sig-stage {
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
 }
+/* Over the words (z 3): the props' own canvas + the sparks, so the objects
+   float across the hero text. */
+.hero-sig-over {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
 .hero-sig-canvas,
+.hero-sig-props,
 .hero-sig-sparks {
   position: absolute;
   inset: 0;

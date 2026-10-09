@@ -32,6 +32,7 @@ function heroActive(): boolean {
 export default function HeroSigScene({ data, start, onLayout }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const overRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<SignatureHero | null>(null);
   const layoutRef = useRef(onLayout);
   layoutRef.current = onLayout;
@@ -39,9 +40,11 @@ export default function HeroSigScene({ data, start, onLayout }: Props) {
   useEffect(() => {
     const host = hostRef.current;
     const canvas = canvasRef.current;
-    if (!host || !canvas) return;
+    const overlay = overRef.current;
+    if (!host || !canvas || !overlay) return;
     const scene = new SignatureHero({
       host,
+      overlay,
       canvas,
       data,
       coarse: COARSE,
@@ -61,8 +64,12 @@ export default function HeroSigScene({ data, start, onLayout }: Props) {
   }, [start, data]);
 
   return (
-    <div className="hero-sig-stage" ref={hostRef} aria-hidden>
-      <canvas className="hero-sig-canvas" ref={canvasRef} />
-    </div>
+    <>
+      <div className="hero-sig-stage" ref={hostRef} aria-hidden>
+        <canvas className="hero-sig-canvas" ref={canvasRef} />
+      </div>
+      {/* Above the words: the floating props + their sparks. */}
+      <div className="hero-sig-over" ref={overRef} aria-hidden />
+    </>
   );
 }

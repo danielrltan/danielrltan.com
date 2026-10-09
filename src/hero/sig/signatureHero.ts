@@ -9,8 +9,8 @@
  *                 carved in; uLight lights a spot of that copy.
  *   2. tubes   -> sigRT (MSAA): the signature, refracting bgRT behind it.
  *   3. comp    -> canvas: field + signature, the signature smeared by the flow.
- *   4. props   -> canvas: the hobby GLBs on top (props.ts), sparks on a 2D
- *                 canvas above.
+ *   4. props   -> their own transparent canvas ABOVE the hero words
+ *                 (props.ts), sparks on a 2D canvas above that.
  *
  * The light: during the opening draw-on it rides the pen tip; afterwards it
  * MIRRORS the cursor: wherever the pointer sits relative to the 3D signature
@@ -30,6 +30,9 @@ const RADIAL = 20;
 const TIME_SCALE = 0.48; // real pen timing, compressed (~1.65 s total)
 const DRAW_DELAY = 250; // ms after start()
 const SPOT_MARGIN = 0.5; // signature heights of spotlight falloff past its box
+// The cursor light stays off through the whole opening trace (pen-up gaps
+// included) and this long after it (owner: no interrupting the trace).
+const CURSOR_LIGHT_AFTER_MS = 700;
 
 // Raw sRGB triples for the ShaderMaterials (they skip three's colour chunks, so
 // no THREE.Color: that would linearise them; colour management stays on for
@@ -65,6 +68,8 @@ function fracAtTime(s: Stroke, t: number): number {
 
 export interface SignatureHeroOptions {
   host: HTMLElement;
+  /** Layer above the hero words for the props (see props.ts). */
+  overlay: HTMLElement;
   canvas: HTMLCanvasElement;
   data: SignatureData;
   coarse: boolean;
@@ -198,7 +203,7 @@ export class SignatureHero {
     this.setDraw(-1);
 
     this.fluid = new Fluid(this.renderer, { res: o.coarse ? 96 : 144, iterations: o.coarse ? 4 : 8, dissipation: 0.9, dyeDissipation: 0.75 });
-    this.props = new HeroProps({ renderer: this.renderer, host: o.host, fluid: this.fluid, coarse: o.coarse, isActive: o.isActive });
+    this.props = new HeroProps({ host: o.host, overlay: o.overlay, dpr: this.dpr, fluid: this.fluid, coarse: o.coarse, isActive: o.isActive });
 
     this.layout();
     this.listen();
@@ -438,7 +443,7 @@ export class SignatureHero {
     const p = this.pointer;
     const hit: [number, number, number] | null = tip
       ? [tip[0], tip[1], 1]
-      : p.inside && this.o.isActive()
+      : p.inside && this.o.isActive() && drawMs > this.drawEnd + CURSOR_LIGHT_AFTER_MS
         ? this.onSignatureArea(p.u, p.v)
         : null;
     const L = this.light;
@@ -517,10 +522,7 @@ export class SignatureHero {
     r.clear();
     r.render(this.sigScene, this.camera);
     this.blit(this.compMat, null);
-    r.autoClear = false;
-    r.clearDepth();
-    this.props.render(r);
-    r.autoClear = true;
+    this.props.render();
   };
 
   dispose(): void {
