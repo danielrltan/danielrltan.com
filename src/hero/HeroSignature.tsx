@@ -26,7 +26,7 @@ const FALLBACK_ASPECT = 2.6074;
 /**
  * Hero composition (redesign 2026-10-09, after haoqi.design): Daniel's
  * signature as an inflated 3D tube over the glyph field (sig/signatureHero.ts),
- * "hello" / "I'm Daniel Tan" / "software engineer & designer" set around it,
+ * "hello!" / "I'm Daniel Tan" / "software engineer & designer" set around it,
  * his hobby props floating free to grab and throw. Replaced the glyph ring +
  * DANIEL TAN wordmark.
  *
@@ -153,7 +153,7 @@ export function HeroSignature() {
           Daniel Tan
         </span>
         <p className="hero-say hero-say--hello" aria-hidden>
-          hello
+          hello!
         </p>
         <p className="hero-say hero-say--name" aria-hidden>
           I&rsquo;m Daniel Tan

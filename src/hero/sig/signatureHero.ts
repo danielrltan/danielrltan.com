@@ -106,7 +106,6 @@ export class SignatureHero {
   private baseY = 0;
   private readonly pointer = { x: 0, y: 0, tx: 0, ty: 0, u: 0.5, v: 0.5, inside: false, last: null as { u: number; v: number; t: number } | null };
   private readonly light = { u: 0.5, v: 0.5, k: 0 };
-  private lastTip: [number, number] | null = null;
   private t0 = -1;
   private prev = 0;
   private raf = 0;
@@ -203,7 +202,21 @@ export class SignatureHero {
 
     this.layout();
     this.listen();
+    // Probe for the acceptance scripts (like window.__hobbies / __knobAnchor).
+    (window as unknown as Record<string, unknown>).__sigHero = {
+      light: this.light,
+      target: this.target,
+      maskAt: (u: number, v: number) => {
+        const g = this.bgSigCanvas.getContext("2d");
+        if (!g) return 0;
+        const x = Math.round(u * this.bgSigCanvas.width);
+        const y = Math.round((1 - v) * this.bgSigCanvas.height);
+        return g.getImageData(x, y, 1, 1).data[0]! / 255;
+      },
+    };
   }
+  /** Where the light is heading this frame (field uv), for the probe. */
+  private readonly target = { u: 0, v: 0, tip: false, s: -1, f: 0 };
 
   // ---- geometry ---------------------------------------------------------------
   private buildStroke(raw: RawStroke, index: number): Stroke {
@@ -276,11 +289,13 @@ export class SignatureHero {
     g.strokeStyle = "#fff";
     g.lineCap = g.lineJoin = "round";
     g.lineWidth = sh * 0.045;
-    for (const st of this.raw) {
+    // Trace the tubes' OWN curves (smoothed, the path the pen tip follows), not
+    // the raw capture, so the opening trace light lands exactly on this copy.
+    for (const st of this.strokes) {
       g.beginPath();
-      st.forEach(([nx, ny], i) => {
-        const x = (nx - 0.5) * sw;
-        const y = (ny - 0.5) * sh;
+      st.curve.getSpacedPoints(Math.max(32, st.segments)).forEach((q, i) => {
+        const x = (q.x / this.aspect) * sw;
+        const y = -q.y * sh;
         if (i) g.lineTo(x, y);
         else g.moveTo(x, y);
       });
@@ -402,17 +417,20 @@ export class SignatureHero {
     return [nx, ny, k * k * (3 - 2 * k)];
   }
 
-  /** The pen tip during the draw-on, held through the pen-up gaps; null after. */
+  /** The pen tip while a stroke is being drawn in; null while the pen is up
+   *  (between strokes, the light fades and snaps on where the next starts). */
   private drawTip(drawMs: number): [number, number] | null {
     if (drawMs < 0 || drawMs > this.drawEnd) return null;
-    for (const s of this.strokes) {
-      if (drawMs < s.t0) break;
-      if (drawMs <= s.t1) {
-        const q = s.curve.getPointAt(fracAtTime(s, drawMs));
-        this.lastTip = [q.x / this.aspect + 0.5, 0.5 - q.y];
-      }
+    for (let i = 0; i < this.strokes.length; i++) {
+      const s = this.strokes[i]!;
+      if (drawMs < s.t0 || drawMs > s.t1) continue;
+      const f = fracAtTime(s, drawMs);
+      this.target.s = i;
+      this.target.f = f;
+      const q = s.curve.getPointAt(f);
+      return [q.x / this.aspect + 0.5, 0.5 - q.y];
     }
-    return this.lastTip;
+    return null;
   }
 
   private updateLight(dt: number, drawMs: number): void {
@@ -424,12 +442,16 @@ export class SignatureHero {
         ? this.onSignatureArea(p.u, p.v)
         : null;
     const L = this.light;
+    this.target.tip = !!tip;
     const want = hit ? hit[2] : 0;
-    L.k += (want - L.k) * (1 - Math.exp(-dt * (want > L.k ? 7 : 2.2)));
+    // The opening trace is ON at once and sits exactly on the pen tip (any
+    // easing trailed it by ~120 px on the big copy); the cursor light eases.
+    if (tip) L.k = 1;
+    else L.k += (want - L.k) * (1 - Math.exp(-dt * (want > L.k ? 7 : 2.2)));
     if (hit) {
       const [tu, tv] = this.bgSigUv(hit[0], hit[1]);
-      // Snap on first light; track the pen tip tightly, the cursor a touch softer.
-      const f = L.k < 0.05 ? 1 : 1 - Math.exp(-dt * (tip ? 30 : 14));
+      Object.assign(this.target, { u: tu, v: tv, tip: !!tip });
+      const f = tip || L.k < 0.05 ? 1 : 1 - Math.exp(-dt * 14);
       L.u += (tu - L.u) * f;
       L.v += (tv - L.v) * f;
     }
