@@ -1,20 +1,17 @@
 # Offbit font files
 
-Drop the Offbit OpenType / WOFF / WOFF2 files here, then the
-`@font-face` entries in `src/index.css` will pick them up
-automatically. Filenames the CSS expects:
+The site serves the `.woff2` files (`src/index.css`, and the Bold preload in
+`index.html`). The `.ttf` files are the Power Type sources they are built
+from; nothing links to them.
 
-- `Offbit-Regular.{woff2,woff,otf}`
-- `Offbit-Bold.{woff2,woff,otf}`
-- `OffbitDot-Regular.{woff2,woff,otf}`
-- `OffbitDot-Bold.{woff2,woff,otf}`
+The TTFs are mostly TrueType hinting, which a pixel face doesn't need, so the
+WOFF2s keep every glyph and drop the hints (Bold: 343 KB TTF -> 20 KB):
 
-If your downloaded filenames differ, rename them to match, or
-update the `src:` paths in `src/index.css` accordingly.
-
-If multiple formats aren't available, any one of woff2 / woff /
-otf is enough; the others can stay absent (they'll 404 silently and
-the browser will use whichever it found).
-
-While these files are missing, the font stack falls back to
-**Doto** (Google Fonts, similar pixel-dot face) then JetBrains Mono.
+```sh
+pip install fonttools brotli
+for f in OffBit-Bold OffBit-Regular OffBit-DotBold OffBit-Dot; do
+  pyftsubset $f.ttf --unicodes='*' --glyphs='*' --layout-features='*' \
+    --name-IDs='*' --name-languages='*' --notdef-outline --no-hinting \
+    --flavor=woff2 --output-file=$f.woff2
+done
+```

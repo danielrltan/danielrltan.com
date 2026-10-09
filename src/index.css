@@ -2,28 +2,28 @@
    Two families: solid (Offbit) and dotted (Offbit Dot). */
 @font-face {
   font-family: "Offbit";
-  src: url("/fonts/offbit/OffBit-Bold.ttf") format("truetype");
+  src: url("/fonts/offbit/OffBit-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Offbit";
-  src: url("/fonts/offbit/OffBit-Regular.ttf") format("truetype");
+  src: url("/fonts/offbit/OffBit-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Offbit Dot";
-  src: url("/fonts/offbit/OffBit-DotBold.ttf") format("truetype");
+  src: url("/fonts/offbit/OffBit-DotBold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: "Offbit Dot";
-  src: url("/fonts/offbit/OffBit-Dot.ttf") format("truetype");
+  src: url("/fonts/offbit/OffBit-Dot.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;

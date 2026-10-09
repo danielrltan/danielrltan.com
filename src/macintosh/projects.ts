@@ -39,7 +39,7 @@ export const MAC_PROJECTS: MacProject[] = [
     repoHref: "https://github.com/danielrltan/poddle",
     // The game's own Open Graph card (1200×630 from poddleball.com), resized to
     // 1000px. Cover-fit into the CRT thumb frame.
-    image: "/images/projects/poddle.jpg",
+    image: "/images/projects/poddle.webp",
     color: "#3a8fd8", // dominant of the OG card (sky blue)
   },
   {
@@ -52,7 +52,7 @@ export const MAC_PROJECTS: MacProject[] = [
       "AI-powered video indexing + semantic search tool for clinical footage. Auto-generates timestamped behavioural annotations, cutting psychologists' manual review from hours to seconds. Python/FastAPI backend integrating TwelveLabs video models, with NO patient data storage. End-to-end (React + Three.js, deployed on Vercel/Railway).",
     tags: ["Python", "FastAPI", "Semantic Search", "Multimodal", "React"],
     liveHref: "https://devpost.com/software/cognetech",
-    image: "/images/projects/cognetech.jpg",
+    image: "/images/projects/cognetech.webp",
     color: "#ff4f00",
   },
   {
@@ -63,7 +63,7 @@ export const MAC_PROJECTS: MacProject[] = [
       "Hack The 6ix Finalist. Plug-and-play universal BMS for second-life EV modules running on a QNX RTOS Raspberry Pi edge node. Normalised mixed-OEM telemetry and exposed a centralised fleet dashboard. Cloud analytics pipeline with FastAPI + MongoDB Atlas, Gemini-powered state-of-health estimation, physics-based PyBaMM simulator streaming packed binary over TCP for ~20K cells.",
     tags: ["C++", "Python", "React", "QNX", "MongoDB", "Gemini"],
     liveHref: "https://devpost.com/software/reamp",
-    image: "/images/projects/reamp.jpg",
+    image: "/images/projects/reamp.webp",
     color: "#5a3a1f",
   },
   {
