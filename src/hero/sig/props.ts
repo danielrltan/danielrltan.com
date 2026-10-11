@@ -25,6 +25,16 @@ const MAX_SPEED = 2200; // px/s: about the fastest flick a hand makes; also the 
 const RESTITUTION = 0.6;
 const HOVER_POP = 1.08;
 const SPARK_MIN = 140; // px/s of impact before anything sparks
+/** Props whose underside is a plain slab (the piano and the computer keyboard:
+ *  local -Y, found by rendering each face head-on). That face may turn toward
+ *  the camera only this far (its normal's z, 0 = edge-on, 1 = head-on), so a
+ *  sliver of it shows as they tumble but never mostly the back (owner
+ *  2026-10-11: "it just looks like a square / rectangle"). */
+const SLAB_BACKS: Record<string, THREE.Vector3> = {
+  "piano.glb": new THREE.Vector3(0, -1, 0),
+  "keyboard.glb": new THREE.Vector3(0, -1, 0),
+};
+const MAX_BACK_FACING = 0.25;
 
 interface Body {
   file: string;
@@ -133,6 +143,8 @@ export class HeroProps {
   private R = 50;
   private disposed = false;
   private readonly tmpQ = new THREE.Quaternion();
+  private readonly tmpN = new THREE.Vector3();
+  private readonly tmpT = new THREE.Vector3();
   private readonly off: Array<() => void> = [];
   private readonly opts: PropsOptions;
 
@@ -222,6 +234,8 @@ export class HeroProps {
     this.sctx = this.sparkCanvas.getContext("2d");
 
     this.listen();
+    // Probe for the acceptance scripts (like window.__sigHero).
+    (window as unknown as Record<string, unknown>).__heroProps = { bodies: this.bodies };
   }
 
   // ---- pointer: hover, grab, throw -----------------------------------------
@@ -520,6 +534,7 @@ export class HeroProps {
       b.extraSpin *= Math.exp(-dt * 1.2);
       this.tmpQ.setFromAxisAngle(b.axis, (b.spin + b.extraSpin) * dt);
       b.inner.quaternion.premultiply(this.tmpQ);
+      this.keepBackAway(b);
     }
 
     // Body-body collisions (equal mass), the held one pushing but not pushed.
@@ -564,6 +579,23 @@ export class HeroProps {
       b.pivot.visible = b.ready && b.scale > 0.01;
     }
     this.drawSparks(dt);
+  }
+
+  /** Turn a slab-backed prop just enough that its underside stays at most
+   *  MAX_BACK_FACING toward the camera (the camera looks down -Z). */
+  private keepBackAway(b: Body): void {
+    const back = SLAB_BACKS[b.file];
+    if (!back) return;
+    const n = this.tmpN.copy(back).applyQuaternion(b.inner.quaternion);
+    if (n.z <= MAX_BACK_FACING) return;
+    // Same heading in x/y, z pulled down to the limit.
+    const xy = Math.hypot(n.x, n.y);
+    const r = Math.sqrt(1 - MAX_BACK_FACING * MAX_BACK_FACING);
+    const t = xy > 1e-4
+      ? this.tmpT.set((n.x / xy) * r, (n.y / xy) * r, MAX_BACK_FACING)
+      : this.tmpT.set(0, -r, MAX_BACK_FACING);
+    this.tmpQ.setFromUnitVectors(n, t);
+    b.inner.quaternion.premultiply(this.tmpQ);
   }
 
   private setCursor(on: boolean): void {
