@@ -33,8 +33,6 @@ html[data-phone] { scroll-padding-bottom: calc(52px + 10px + env(safe-area-inset
 /* ---------- stage windows ---------- */
 .ph-win { position: relative; height: 58svh; -webkit-tap-highlight-color: transparent; touch-action: pan-y; }
 .ph-win.ph-hero { height: 100svh; }
-/* Full-bleed transit gaps: the camera flies between stations here, in plain view. */
-.ph-win.ph-transit { height: var(--h, 70svh); pointer-events: none; }
 
 /* ---------- section headers (m03 scale, stage-side) ---------- */
 .ph-head { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 56px var(--pad-r) 16px var(--pad-l); color: var(--ink); }
@@ -75,13 +73,10 @@ html[data-phone] { scroll-padding-bottom: calc(52px + 10px + env(safe-area-inset
 .ph-sheet.ph-dzb::after { bottom: calc(var(--dz) * -3); transform: scaleY(-1); }
 
 /* counters (m03 deck counter, one per item) */
-.ph-ctr-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 2px 0 18px; }
+.ph-ctr-row { margin: 2px 0 18px; }
 .ph-ctr { font-family: var(--font-pixel); font-weight: 700; line-height: .78; display: flex; align-items: flex-end; gap: 10px; white-space: nowrap; }
 .ph-ctr b { font-size: clamp(64px, 20vw, 88px); display: inline-block; letter-spacing: -.03em; }
 .ph-ctr span { font-size: 24px; color: var(--ink-faint); padding-bottom: 2px; }
-.ph-ticks { display: flex; gap: 6px; padding-bottom: 4px; }
-.ph-ticks i { display: block; width: 14px; height: 14px; background: var(--ink-hairline); }
-.ph-ticks i.ph-on { background: var(--accent); }
 .ph-rv .ph-sheet.ph-in .ph-ctr b { animation: ph-ctr-tick .24s steps(3, end) .1s both; }
 @keyframes ph-ctr-tick { 0% { translate: 0 -10px; opacity: .3; } 100% { translate: 0 0; opacity: 1; } }
 
@@ -134,24 +129,12 @@ html[data-phone] { scroll-padding-bottom: calc(52px + 10px + env(safe-area-inset
 .ph-after { padding-top: 18px; padding-bottom: 18px; }
 
 /* ---------- 04 play ---------- */
-.ph-win.ph-play { height: 230svh; }
+.ph-win.ph-play { height: 200svh; }
 .ph-play-pin { position: sticky; top: 0; height: 100svh; pointer-events: none; }
 .ph-play-name {
   position: absolute; left: var(--pad-l); right: var(--pad-r); bottom: calc(var(--dock-clear) + 22px);
   font: 700 clamp(48px, 15vw, 72px)/.86 var(--font-pixel); color: var(--ink);
 }
-.ph-ilist { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.ph-ilist button {
-  all: unset; box-sizing: border-box; position: relative; display: block; width: 100%; height: 76px; cursor: pointer;
-  background: var(--bg-page); color: var(--ink); -webkit-tap-highlight-color: transparent;
-  transition: background .16s steps(2, end), color .16s steps(2, end);
-}
-.ph-ilist .ph-k-n, .ph-ilist .ph-k-t { position: absolute; left: 10px; font-family: var(--font-pixel); font-weight: 700; }
-.ph-ilist .ph-k-n { top: 9px; font-size: 14px; line-height: 1; color: var(--ink-faint); }
-.ph-ilist .ph-k-t { bottom: 9px; font-size: 19px; line-height: 1; }
-.ph-ilist button:active { background: var(--bg-deep); }
-.ph-ilist button.ph-on { background: var(--accent); color: #fff; }
-.ph-ilist button.ph-on .ph-k-n { color: rgba(255,255,255,.7); }
 .ph-play-name.ph-tick { animation: ph-type-in .32s steps(4, end); }
 @keyframes ph-type-in { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 
@@ -161,11 +144,6 @@ html[data-phone] { scroll-padding-bottom: calc(52px + 10px + env(safe-area-inset
 .ph-tots div { border-top: 2px solid var(--ink); padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .ph-tots dt { font: 700 clamp(34px, 10.5vw, 44px)/.85 var(--font-pixel); color: var(--accent); }
 .ph-tots dd { color: var(--ink-muted); line-height: 1.3; }
-.ph-hcard { padding-top: 20px; }
-.ph-hc-m { display: flex; gap: 12px; align-items: baseline; color: var(--ink-muted); }
-.ph-hc-m .ph-label-sm { color: var(--accent-text); }
-.ph-hc-r { font: 700 clamp(64px, 20vw, 84px)/.8 var(--font-pixel); color: var(--accent); margin-top: 18px; letter-spacing: -.02em; }
-.ph-hc-t { font: 700 26px/1 var(--font-pixel); margin-top: 12px; }
 .ph-others { padding-top: 6px; padding-bottom: 6px; }
 .ph-hlist li { display: grid; grid-template-columns: 30px 1fr auto; column-gap: 10px; row-gap: 2px; padding: 13px 0; border-bottom: 1px solid var(--ink-hairline); align-items: baseline; }
 .ph-hlist li:last-child { border-bottom: 0; }

@@ -22,10 +22,11 @@ import "./phone.css";
  * white sheets over it that leave windows open where an object is the
  * subject, and a bottom dock of section keys (dock.ts).
  *
- * Every stage window (.ph-win[data-shot]) names its camera shot; a section
- * that changes station opens with a full-bleed transit gap (.ph-transit)
- * where that flight plays, BEFORE its header. Lab: .scratch/mobile-redesign
- * (m05). Classes are ph-* so the desktop CSS can't reach them.
+ * Every stage window (.ph-win[data-shot]) names its camera shot. Each section
+ * is header -> object window(s) -> sheets; an object arrives inside its own
+ * window (no separate transit gap), and nothing is shown twice. Lab:
+ * .scratch/mobile-redesign (m05). Classes are ph-* so the desktop CSS can't
+ * reach them.
  */
 
 const RESUME = "/resume/Daniel_Tan_Resume.pdf";
@@ -44,7 +45,7 @@ function Head({ n, title }: { n: number; title: string }) {
   );
 }
 
-/** Giant item counter + the ticks that mark where this item sits. */
+/** Giant item counter ("01 / 04"). */
 function Counter({ i, n }: { i: number; n: number }) {
   return (
     <div className="ph-ctr-row">
@@ -52,11 +53,6 @@ function Counter({ i, n }: { i: number; n: number }) {
         <b>{pad2(i + 1)}</b>
         <span>/ {pad2(n)}</span>
       </p>
-      <div className="ph-ticks" aria-hidden>
-        {Array.from({ length: n }, (_, k) => (
-          <i key={k} className={k === i ? "ph-on" : undefined} />
-        ))}
-      </div>
     </div>
   );
 }
@@ -65,12 +61,13 @@ function Arrow() {
   return <i aria-hidden>↗</i>;
 }
 
-const FEATURED = ENTRIES.filter((e) => e.featured);
-const OTHERS = ENTRIES.filter((e) => !e.featured);
 /** The small grey line under an "other" honour: its money/context, else the org or kind. */
 const otherNote = (e: (typeof ENTRIES)[number]) =>
   e.context ??
   (e.category === "Grant" ? "grant" : e.category === "Leadership" ? (e.blurb ?? "").replace(/\.$/, "") : "");
+/** The podium's three (drawn in 3D, with their context on the plinths) and the rest. */
+const FEATURED = ENTRIES.filter((e) => e.featured);
+const OTHERS = ENTRIES.filter((e) => !e.featured);
 
 export default function PhoneSite() {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -107,7 +104,6 @@ export default function PhoneSite() {
         </section>
 
         <section id="s01" className="ph-sec" data-sec="1" data-ground="light">
-          <div className="ph-win ph-transit" style={{ ["--h" as string]: "70svh" }} aria-hidden />
           <Head n={1} title="About" />
           <div className="ph-win ph-room" data-shot="room">
             <p className="ph-callout ph-label">
@@ -124,7 +120,6 @@ export default function PhoneSite() {
                 <b>
                   Daniel <span>Tan</span>
                 </b>
-                <span className="ph-label-sm ph-muted">Software developer / Toronto</span>
                 <span className="ph-meta ph-muted">Software Engineer / Designer</span>
               </figcaption>
             </figure>
@@ -133,7 +128,7 @@ export default function PhoneSite() {
               <em>feel alive</em>. Right now that&rsquo;s <em>AI tooling</em>, agentic systems, and interactive 3D on the web.
             </p>
           </div>
-          <div className="ph-sheet ph-facts ph-dzb">
+          <div className="ph-sheet ph-facts">
             <dl className="ph-spec">
               <div className="ph-spec-row">
                 <dt className="ph-label-sm">currently</dt>
@@ -179,7 +174,6 @@ export default function PhoneSite() {
         </section>
 
         <section id="s02" className="ph-sec" data-sec="2" data-ground="grey">
-          <div className="ph-win ph-transit" style={{ ["--h" as string]: "50svh" }} aria-hidden />
           <Head n={2} title="Projects" />
           {MAC_PROJECTS.map((p, i) => {
             const [date, stack] = p.meta.split(" · ");
@@ -236,7 +230,7 @@ export default function PhoneSite() {
           {STINTS.map((s, i) => {
             const [from, to] = s.pull.metric.split(/\s*→\s*/);
             return (
-              <article key={s.where} className={`ph-sheet ph-role${i === 0 ? " ph-dz" : ""}`}>
+              <article key={s.where} className="ph-sheet ph-role">
                 <Counter i={i} n={STINTS.length} />
                 <p className="ph-wc-top">
                   <span className="ph-wc-y">{s.year}</span>
@@ -256,7 +250,7 @@ export default function PhoneSite() {
               </article>
             );
           })}
-          <div className="ph-sheet ph-after ph-dzb">
+          <div className="ph-sheet ph-after">
             <a
               className="ph-btn ph-btn-ink"
               href={RESUME}
@@ -270,7 +264,6 @@ export default function PhoneSite() {
         </section>
 
         <section id="s04" className="ph-sec" data-sec="4" data-ground="light">
-          <div className="ph-win ph-transit" style={{ ["--h" as string]: "55svh" }} aria-hidden />
           <Head n={4} title="Some interests" />
           <div className="ph-win ph-play" data-shot="props">
             <div className="ph-play-pin">
@@ -279,24 +272,20 @@ export default function PhoneSite() {
               </p>
             </div>
           </div>
-          <div className="ph-sheet ph-interests ph-dz ph-dzb">
-            <ol className="ph-ilist">
-              {HOBBIES.map((h, i) => (
-                <li key={h.id}>
-                  <button type="button" data-k={i}>
-                    <span className="ph-k-n">{pad2(i + 1)}</span>
-                    <span className="ph-k-t">{h.label}</span>
-                  </button>
+        </section>
+
+        <section id="s05" className="ph-sec" data-sec="5" data-ground="light">
+          <Head n={5} title="The trophy wall" />
+          <div className="ph-win ph-podium" data-shot="podium">
+            {/* The plinths are canvas: their placements, for screen readers. */}
+            <ol className="ph-sr">
+              {FEATURED.map((e) => (
+                <li key={e.title}>
+                  {e.metric}, {e.title}: {e.category}, {e.context}
                 </li>
               ))}
             </ol>
           </div>
-        </section>
-
-        <section id="s05" className="ph-sec" data-sec="5" data-ground="light">
-          <div className="ph-win ph-transit" style={{ ["--h" as string]: "50svh" }} aria-hidden />
-          <Head n={5} title="The trophy wall" />
-          <div className="ph-win ph-podium" data-shot="podium" />
           <div className="ph-sheet ph-totals ph-dz">
             <dl className="ph-tots">
               <div>
@@ -313,16 +302,6 @@ export default function PhoneSite() {
               </div>
             </dl>
           </div>
-          {FEATURED.map((e) => (
-            <article key={e.title} className="ph-sheet ph-hcard">
-              <p className="ph-hc-m">
-                <span className="ph-label-sm">{e.category}</span>
-                <span className="ph-meta">{e.context}</span>
-              </p>
-              <p className="ph-hc-r">{e.metric}</p>
-              <h3 className="ph-hc-t">{e.title}</h3>
-            </article>
-          ))}
           <div className="ph-sheet ph-others">
             <ol className="ph-hlist">
               {OTHERS.map((e, i) => (
@@ -343,7 +322,6 @@ export default function PhoneSite() {
         </section>
 
         <section id="s07" className="ph-sec" data-sec="7" data-ground="orange">
-          <div className="ph-win ph-transit" style={{ ["--h" as string]: "50svh" }} aria-hidden />
           <Head n={7} title="Contact" />
           <div className="ph-win ph-keypad" data-shot="keypad" />
           <div className="ph-sheet ph-contact ph-dz ph-dzb">

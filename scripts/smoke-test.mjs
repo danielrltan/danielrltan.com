@@ -761,6 +761,20 @@ async function runPhoneScenario(browser, name, { viewport, query }) {
   PHONE_SECTIONS.slice(1).forEach((t, i) =>
     check(heads[i + 1]?.title === t && heads[i + 1]?.num === `0${i + 1}`, `section 0${i + 1} header: ${t}`),
   );
+  // Each object is shown once, in its own window: no transit gaps, no
+  // interest buttons, no featured honour cards, no tick squares; the trophy
+  // wall lists the 9 non-podium honours, the podium's 3 sit in its hidden list.
+  const gone = await page.evaluate(() => ({
+    transit: document.querySelectorAll(".ph-transit").length,
+    ilist: document.querySelectorAll(".ph-ilist").length,
+    hcard: document.querySelectorAll(".ph-hcard").length,
+    ticks: document.querySelectorAll(".ph-ticks").length,
+    hlist: document.querySelectorAll(".ph-hlist li").length,
+    podium: document.querySelectorAll(".ph-podium .ph-sr li").length,
+  }));
+  for (const k of ["transit", "ilist", "hcard", "ticks"]) check(gone[k] === 0, `no .ph-${k} in the DOM (${gone[k]})`);
+  check(gone.hlist === 9, `.ph-hlist lists the 9 non-podium honours (${gone.hlist})`);
+  check(gone.podium === 3, `.ph-podium .ph-sr lists the podium's 3 honours (${gone.podium})`);
 
   // 3. Scroll the page: the dock's active key visits 00..07 in order, the stage
   //    renders, and the 3D stations build ahead of their windows.
@@ -786,16 +800,34 @@ async function runPhoneScenario(browser, name, { viewport, query }) {
   }));
   check(Math.abs(jump.top) <= 4 && jump.on === "05", `dock jump lands on 05 (header top ${jump.top}, key ${jump.on})`);
 
-  // 5. Interests: a key turns the carousel to that prop (name + key light up).
-  await scrollToSelector(page, "#s04 > .ph-head");
-  await page.click('.ph-ilist button[data-k="6"]');
+  // 5. Interests: scrolling through the tall Play window turns the carousel
+  //    (the pinned name moves off the first prop onto another).
+  const HOBBY_LABELS = ["Kickboxing", "Piano", "Workstation", "Fashion", "Keyboards", "Design", "Cars", "3D Modelling", "Travel", "Skiing"];
+  await scrollToSelector(page, ".ph-play");
+  // (coming back up from 05 the ring swings back through the props: wait for it)
+  const opened = await page
+    .waitForFunction(() => document.querySelector(".ph-play-name")?.textContent?.trim() === "Kickboxing", null, { timeout: 15_000, polling: 100 })
+    .then(() => true, () => false);
+  const firstName = await page.evaluate(() => document.querySelector(".ph-play-name")?.textContent?.trim() ?? "");
+  check(opened, `Play window opens on Kickboxing (${firstName})`);
+  await page.evaluate(() => {
+    const w = document.querySelector(".ph-play");
+    const top = window.scrollY + w.getBoundingClientRect().top;
+    window.scrollTo(0, top + 0.6 * Math.max(0, w.offsetHeight - window.innerHeight));
+  });
   await settleScroll(page);
-  const picked = await waitFor(
-    page,
-    () => document.querySelector(".ph-play-name")?.textContent === "Cars" && document.querySelector('.ph-ilist button[data-k="6"]').classList.contains("ph-on"),
-    { timeout: 8000 },
-  );
-  check(picked, "interest key turns the carousel to Cars");
+  const turned = await page
+    .waitForFunction(
+      ({ first, labels }) => {
+        const t = document.querySelector(".ph-play-name")?.textContent?.trim();
+        return !!t && t !== first && labels.includes(t);
+      },
+      { first: firstName, labels: HOBBY_LABELS },
+      { timeout: 15_000, polling: 100 },
+    )
+    .then(() => true, () => false);
+  const nowName = await page.evaluate(() => document.querySelector(".ph-play-name")?.textContent?.trim());
+  check(turned, `scrolling the Play window turns the carousel (${firstName} -> ${nowName})`);
 
   // 6. Links: projects, contact, résumé.
   const links = await page.evaluate(() => ({

@@ -28,7 +28,7 @@ const spring = (s: Spring, target: number, dt: number, k = 120, c = 12) => {
 };
 const EMAIL = "hello@danielrltan.com";
 
-export function installObjects(ctx: StageCtx, mount: Mount, scrollTo: (y: number) => void): () => void {
+export function installObjects(ctx: StageCtx, mount: Mount): () => void {
   const { renderer, scene, camera, root, REDUCED } = ctx;
   let alive = true;
   const offs: Array<() => void> = [];
@@ -347,7 +347,6 @@ export function installObjects(ctx: StageCtx, mount: Mount, scrollTo: (y: number
     });
     const playWin = win(".ph-play");
     const nameEl = playWin.querySelector<HTMLElement>(".ph-play-name")!;
-    const btns = [...root.querySelectorAll<HTMLButtonElement>(".ph-ilist button")];
     let top = 0;
     let span = 1;
     let front = -1;
@@ -358,14 +357,6 @@ export function installObjects(ctx: StageCtx, mount: Mount, scrollTo: (y: number
       span = Math.max(1, playWin.offsetHeight - vh);
     };
     measure(window.innerWidth, window.innerHeight);
-    btns.forEach((b) => {
-      const go = () => {
-        dragRot = 0;
-        scrollTo(top + (+b.dataset.k! / (N - 1)) * span);
-      };
-      b.addEventListener("click", go);
-      offs.push(() => b.removeEventListener("click", go));
-    });
     const ringRot = { x: 0, v: 0 };
     mountIf("props", {
       object: group,
@@ -386,7 +377,6 @@ export function installObjects(ctx: StageCtx, mount: Mount, scrollTo: (y: number
           nameEl.classList.remove("ph-tick");
           void nameEl.offsetWidth;
           nameEl.classList.add("ph-tick");
-          btns.forEach((b, i) => b.classList.toggle("ph-on", i === f));
         }
         items.forEach((it, i) => {
           it.extra *= Math.exp(-dt * 2.5);
@@ -426,9 +416,9 @@ export function installObjects(ctx: StageCtx, mount: Mount, scrollTo: (y: number
     const VX = 0.13;
     const N = 5;
     const PL = [
-      { x: -0.74, h: 6, color: "white", big: "Finalist", small: "Hack The 6ix", label: null as THREE.Mesh | null },
-      { x: 0, h: 9, color: "orange", big: "#25", small: "Product Hunt", label: null as THREE.Mesh | null },
-      { x: 0.74, h: 4, color: "white", big: "Top 50", small: "IBM Watsonx", label: null as THREE.Mesh | null },
+      { x: -0.74, h: 6, color: "white", big: "Finalist", small: "Hack The 6ix", note: "top 1% · 400+", label: null as THREE.Mesh | null },
+      { x: 0, h: 9, color: "orange", big: "#25", small: "Product Hunt", note: "oct 4, 2026", label: null as THREE.Mesh | null },
+      { x: 0.74, h: 4, color: "white", big: "Top 50", small: "IBM Watsonx", note: "of 2000+", label: null as THREE.Mesh | null },
     ];
     interface Cell {
       pi: number;
@@ -489,6 +479,9 @@ export function installObjects(ctx: StageCtx, mount: Mount, scrollTo: (y: number
       g.font = "700 30px Offbit";
       g.fillStyle = pl.color === "orange" ? "rgba(255,255,255,.85)" : "rgba(13,14,16,.6)";
       g.fillText(pl.small.toLowerCase(), 128, 166);
+      // Each placement's context lives here, not in a card that repeats the podium.
+      g.font = "700 24px Offbit";
+      g.fillText(pl.note, 128, 202);
       const t = new THREE.CanvasTexture(c);
       t.colorSpace = THREE.SRGBColorSpace;
       t.anisotropy = 4;
@@ -512,8 +505,8 @@ export function installObjects(ctx: StageCtx, mount: Mount, scrollTo: (y: number
     mountIf("podium", {
       object: group,
       update(dt, t, st) {
-        // Arrival progress: 0 far away -> 1 once the camera is on the podium.
-        const prog = st.b?.at === "podium" && st.a?.at !== "podium" ? st.t : st.a?.at === "podium" ? 1 : 0;
+        // Its window's arrival: 0 as the window enters -> 1 once the camera has settled.
+        const prog = st.arrive.podium;
         const lv = REDUCED ? maxLayer + 1 : prog * (maxLayer + 2);
         const hy = hops.map((h) => Math.max(0, spring(h, 0, dt, 110, 9)));
         const moving = hy.some((h) => h > 1e-4) || Math.abs(lv - builtLv) > 1e-3;

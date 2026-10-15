@@ -1,13 +1,14 @@
 import * as THREE from "three";
-import { scrollToY } from "../scroll";
 import { installObjects } from "./objects";
 
 /*
  * The phone site's stage: ONE fixed WebGL canvas behind the whole page. Scroll
- * drives a single camera through Daniel's objects in order (room, Mac, hobby
- * props, voxel podium, keypad); the page is sharp white sheets that leave
- * windows open where an object is the subject. Lab: .scratch/mobile-redesign
- * (m05-stage.js), tuned there frame by frame; keep the numbers in step.
+ * places a camera on Daniel's objects in order (room, Mac, hobby props, voxel
+ * podium, keypad); the page is sharp white sheets that leave windows open
+ * where an object is the subject. Each object is shown exactly once, in its
+ * own window(s): the camera ARRIVES as that window rises in (no flights from
+ * the previous object, no transit gaps). Lab: .scratch/mobile-redesign
+ * (m05-stage.js, its `arrive` offsets); keep the numbers in step.
  */
 
 export interface Station {
@@ -25,6 +26,8 @@ interface Shot {
   pos: THREE.Vector3;
   look: THREE.Vector3;
   fov: number;
+  /** Where the camera starts its arrival, as an offset from pos (first window of a station). */
+  arrive?: THREE.Vector3;
   P: THREE.Vector3;
   L: THREE.Vector3;
 }
@@ -34,21 +37,18 @@ interface CamState {
   fov: number;
 }
 type Win = HTMLElement & { _top: number; _h: number };
-type Seg =
-  | { k: "dwell"; y0: number; y1: number; w: Win; shot: Shot; A: Shot; B: Shot; r: number }
-  | { k: "hold"; y0: number; y1: number; st: CamState; w: Win; A: Shot; B: Shot; r: number }
-  | { k: "move"; y0: number; y1: number; from: CamState; to: CamState; F: number; A: Shot; B: Shot; r: number }
-  | { k: "fly"; y0: number; y1: number; from: CamState; to: CamState; W: { P: THREE.Vector3; L: THREE.Vector3 }; Fs: number; FB: number; A: Shot; B: Shot; r: number };
+// Every segment belongs to one window (w) and its region (r).
+type Seg = { y0: number; y1: number; w: Win; shot: Shot; r: number } & (
+  | { k: "dwell" }
+  | { k: "arrive" | "move"; from: CamState; to: CamState }
+);
 export interface StageState {
-  a: Shot | null;
-  b: Shot | null;
-  /** Flight progress (eased), 1 outside flights. */
-  t: number;
   /** The (smoothed) scroll position the camera is placed for. */
   y: number;
-  /** The station the next flight lands on, staged ahead of time. */
-  next: StationKey | null;
+  /** Each station's arrival progress (linear): 0 as its first window enters, 1 once settled. */
+  arrive: Record<StationKey, number>;
 }
+type PhProbe = { drawn: StationKey[]; frames: number; cam: () => { x: number; y: number; z: number } };
 export interface StageCtx {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
@@ -60,9 +60,8 @@ export interface StageCtx {
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
-// World stations (where each object lives), about one frame width apart side
-// by side, so every flight is a close truck: A slides out of one edge, large,
-// as B slides in from the other.
+// World stations (where each object lives). Each window draws only its own
+// station, so neighbours never show in each other's frame whatever the spacing.
 const AT: Record<StationKey, THREE.Vector3> = {
   room: V(0, -3.4, 0),
   mac: V(3.2, -3.5, 0),
@@ -70,40 +69,23 @@ const AT: Record<StationKey, THREE.Vector3> = {
   podium: V(10.5, -3.4, 0),
   keypad: V(14.4, -3.7, 0),
 };
-// pos/look are offsets from the station.
-const SHOT_SPEC: Record<string, { at: StationKey; pos: THREE.Vector3; look: THREE.Vector3; fov: number }> = {
-  room: { at: "room", pos: V(0, 1.6, 10), look: V(0, -0.1, 0), fov: 30 },
-  mac0: { at: "mac", pos: V(-1.7, 1.7, 7.9), look: V(0, 0.7, 0), fov: 30 },
+// pos/look are offsets from the station. `arrive` (the lab's numbers) is where
+// a station's first window starts its camera, added to pos with the aim kept on
+// the object, so it is in frame from the window's first rows and only grows
+// and turns as the camera settles: further out (+z) and up (+y) for a crane.
+const SHOT_SPEC: Record<string, { at: StationKey; pos: THREE.Vector3; look: THREE.Vector3; fov: number; arrive?: THREE.Vector3 }> = {
+  room: { at: "room", pos: V(0, 1.6, 10), look: V(0, -0.1, 0), fov: 30, arrive: V(-0.8, 1.6, 2.2) }, // crane down onto it
+  mac0: { at: "mac", pos: V(-1.7, 1.7, 7.9), look: V(0, 0.7, 0), fov: 30, arrive: V(-1.6, 0.5, 2.4) }, // truck in
   mac1: { at: "mac", pos: V(2.3, 1.3, 7.7), look: V(0, 0.7, 0), fov: 30 },
   mac2: { at: "mac", pos: V(-1.1, 0.75, 8.0), look: V(0, 0.75, 0), fov: 30 },
   mac3: { at: "mac", pos: V(0.6, 1.2, 7.3), look: V(0, 0.78, 0), fov: 30 },
-  props: { at: "props", pos: V(0, 1.4, 6.9), look: V(0, -0.15, 0), fov: 30 },
-  podium: { at: "podium", pos: V(2.0, 1.3, 7.0), look: V(0, -0.02, 0), fov: 30 },
-  keypad: { at: "keypad", pos: V(0, 9.2, 4.2), look: V(0, 0.4, 0.3), fov: 32 },
+  props: { at: "props", pos: V(0, 1.4, 6.9), look: V(0, -0.15, 0), fov: 30, arrive: V(1.2, 1.6, 2.2) }, // crane down
+  podium: { at: "podium", pos: V(2.0, 1.3, 7.0), look: V(0, -0.02, 0), fov: 30, arrive: V(1.0, 0.5, 3.0) }, // dolly in
+  keypad: { at: "keypad", pos: V(0, 9.2, 4.2), look: V(0, 0.4, 0.3), fov: 32, arrive: V(0, 2.6, 1.0) }, // drop onto it
 };
 const SHOTS: Record<string, Shot> = Object.fromEntries(
   Object.entries(SHOT_SPEC).map(([k, s]) => [k, { ...s, P: s.pos.clone().add(AT[s.at]), L: s.look.clone().add(AT[s.at]) }]),
 );
-// Each flight is one quadratic curve from A's exit framing to B's entry
-// framing; its control point bends the truck a little (a slight lift and pull
-// toward the lens at mid-move, so the frame widens just enough to hold both).
-const ARC: Record<string, THREE.Vector3> = {
-  "sky>room": V(0, 0, 0.6), // crane down out of the hero's orange sky onto the room
-  "room>mac": V(0, 0.2, 0.3), // truck across to the Mac
-  "mac>props": V(0, 0.2, 0.3), // lift off the Mac, settle onto the props
-  "props>podium": V(0, 0.2, 0.3), // dolly across to the podium
-  "sky>keypad": V(0, 0.6, 0), // drop out of open sky onto the keypad
-};
-// Where a flight with no object before it (the first one, after the hero, and
-// the one after Recents) starts: open sky, offset from B's entry framing.
-const SKY: Partial<Record<StationKey, THREE.Vector3>> = {
-  room: V(0, 2.6, 0),
-  keypad: V(0, 2.6, -3.8),
-};
-const SKY_LOOK: Partial<Record<StationKey, THREE.Vector3>> = {
-  room: V(0, 2.6, 0),
-  keypad: V(0, 0, -3.8),
-};
 const GROUND: Record<string, THREE.Vector3> = {
   orange: V(1, 0x4f / 255, 0),
   light: V(0xee / 255, 0xf0 / 255, 0xf3 / 255),
@@ -177,17 +159,19 @@ export function installStage(root: HTMLElement): () => void {
     dirty = true;
   };
 
-  // ── Scroll -> camera: a timeline of segments along the page ────────────────
-  //   dwell: the camera sits on a window's shot with a gentle scroll-scrubbed
-  //          drift (a few degrees of orbit + a touch of dolly).
-  //   move:  same station, next window (the Mac's projects): an orbit.
-  //   hold:  A's window has gone and opaque sheets cover the stage.
-  //   fly:   a station change, flown VISIBLY through the full-bleed transit gap
-  //          that sits BEFORE B's header, landing on B's entry framing.
-  // Every segment starts and ends at zero velocity, so there is no velocity
-  // step at any window edge. The frame centre ("focus") is a point on the
-  // PAGE, so 3D moves 1:1 with the DOM it belongs to.
+  // ── Scroll -> camera: each window has its own short timeline ───────────────
+  //   arrive: a station's first window, from its top edge entering at the
+  //           screen's bottom until the window is centred (a tall one: pinned):
+  //           the camera eases from the shot + `arrive` onto the shot.
+  //   move:   the Mac's next window, same span: an orbit from the previous
+  //           window's last framing.
+  //   dwell:  from there until the window leaves: the shot with a gentle
+  //           scroll-scrubbed drift (a few degrees of orbit + a touch of dolly).
+  // Each starts and ends at zero velocity, so there is no step where they
+  // join. The frame centre ("focus") is a point on the PAGE, so 3D moves 1:1
+  // with the DOM it belongs to.
   let segs: Seg[] = [];
+  let arrivals: Partial<Record<StationKey, Seg>> = {};
   let sheets: Array<[number, number]> = [];
   let bounds: Array<{ top: number; g: string }> = [];
   let regions: Array<{ top: number; bot: number }> = [];
@@ -204,11 +188,12 @@ export function installStage(root: HTMLElement): () => void {
   function lockOf(w: Win, y: number) {
     return w._h > vh ? THREE.MathUtils.clamp(y + vh / 2, w._top + vh / 2, w._top + w._h - vh / 2) : w._top + w._h / 2;
   }
-  function arcPoint(a: CamState, b: CamState, key: string) {
-    return {
-      P: a.P.clone().add(b.P).multiplyScalar(0.5).add(ARC[key] ?? V(0, 0, 1)),
-      L: a.L.clone().add(b.L).multiplyScalar(0.5),
-    };
+  // The centre of the part of a window on screen (the screen's bottom edge
+  // while it has not entered yet).
+  function sliceOf(w: Win, y: number) {
+    const t = THREE.MathUtils.clamp(w._top, y, y + vh);
+    const b = THREE.MathUtils.clamp(w._top + w._h, y, y + vh);
+    return (t + b) / 2;
   }
 
   function measure() {
@@ -219,7 +204,7 @@ export function installStage(root: HTMLElement): () => void {
       w._top = docTop(w);
       w._h = w.offsetHeight;
     });
-    // Stage regions: runs of adjacent windows (the hero screen + its transit are one).
+    // Stage regions: runs of adjacent windows (in practice each window is its own).
     regions = [];
     for (const el of main.querySelectorAll<HTMLElement>(".ph-win")) {
       const top = docTop(el);
@@ -229,63 +214,36 @@ export function installStage(root: HTMLElement): () => void {
       else regions.push({ top, bot });
     }
     const regOf = (top: number) => regions.findIndex((r) => top >= r.top - 1 && top < r.bot);
-    const dw = wins.map((w) => {
+    segs = [];
+    arrivals = {};
+    let prev: Shot | null = null;
+    for (const w of wins) {
       const shot = SHOTS[w.dataset.shot!];
       const top = w._top;
       const h = w._h;
-      const a0 = h > vh ? top : top + h / 2 - vh / 2;
-      const a1 = h > vh ? top + h - vh : a0;
-      const c = Math.min(h, vh) * 0.32;
-      // A pinned (tall) window's dwell starts as it pins, where its lock is the screen centre.
-      return { w, shot, y0: h > vh ? a0 : a0 - c, y1: a1 + c, r: regOf(top) };
-    });
-    segs = [];
-    for (let i = 0; i < dw.length; i++) {
-      const D = dw[i];
-      const P = i > 0 ? dw[i - 1] : null;
-      const to = stateOf(D.shot, -1);
-      if (P && P.shot.at === D.shot.at) {
-        // Next Mac window: the orbit, played inside the arriving window.
-        segs.push({ k: "move", y0: P.y1, y1: Math.max(P.y1 + 1, D.y0), from: stateOf(P.shot, 1), to, F: lockOf(D.w, D.y0), A: P.shot, B: D.shot, r: D.r });
+      const r = regOf(top);
+      // Settled as the window is centred (a tall one: as it pins, where its
+      // lock is the screen centre); the move runs from its first rows to there.
+      const settle = h > vh ? top : top + h / 2 - vh / 2;
+      const enter = top - vh;
+      const to = stateOf(shot, -1);
+      if (prev?.at === shot.at) {
+        // The Mac's next project: the orbit, played inside the arriving window.
+        segs.push({ k: "move", y0: enter, y1: settle, w, shot, r, from: stateOf(prev, 1), to });
       } else {
-        // Order: A's content -> transit (the flight) -> B's header -> B's
-        // window. The flight plays inside the transit, while the gap is well
-        // on screen (A seen leaving, B arriving), and ends with B framed there;
-        // the opaque header passes over it like a cut.
-        const sec = D.w.closest(".ph-sec")!;
-        const T = sec.querySelector<HTMLElement>(":scope > .ph-transit")!;
-        const tTop = docTop(T);
-        const tH = T.offsetHeight;
-        const FB = tTop + tH / 2;
-        // The first flight starts with the scroll itself: the room rises in
-        // under the hero layer's scrubbed fade (heroWipe), never after it.
-        const y0 = P ? tTop - vh * 0.72 : 0;
-        const y1 = Math.max(y0 + vh * 0.4, tTop + tH - vh * 0.6);
-        let from: CamState;
-        let A: Shot;
-        // The first station (after the hero) and the one after Recents have no
-        // object before them: fly in from open sky, never from the previous
-        // station (no Honours podium after Honours).
-        const sky = !P || !!sec.previousElementSibling?.querySelector(".ph-photos");
-        if (sky) {
-          from = { P: to.P.clone().add(SKY[D.shot.at]!), L: to.L.clone().add(SKY_LOOK[D.shot.at]!), fov: to.fov };
-          A = D.shot;
-        } else {
-          from = stateOf(P!.shot, 1);
-          A = P!.shot;
-        }
-        if (P && y0 > P.y1) segs.push({ k: "hold", y0: P.y1, y1: y0, st: stateOf(P.shot, 1), w: P.w, A: P.shot, B: P.shot, r: P.r });
-        const key = sky ? "sky>" + D.shot.at : P!.shot.at + ">" + D.shot.at;
-        segs.push({ k: "fly", y0, y1, from, to, W: arcPoint(from, to, key), Fs: FB, FB, A, B: D.shot, r: regOf(tTop) });
+        // A new station: it arrives in its own window, never flown in from the
+        // previous object (that one was already seen in its own window).
+        const from = { P: to.P.clone().add(shot.arrive ?? V(0, 0, 0)), L: to.L.clone(), fov: to.fov };
+        const a: Seg = { k: "arrive", y0: enter, y1: settle, w, shot, r, from, to };
+        segs.push(a);
+        arrivals[shot.at] = a;
       }
-      segs.push({ k: "dwell", y0: D.y0, y1: D.y1, w: D.w, shot: D.shot, A: D.shot, B: D.shot, r: D.r });
+      segs.push({ k: "dwell", y0: settle, y1: top + h, w, shot, r });
+      prev = shot;
     }
     segs.sort((a, b) => a.y0 - b.y0);
-    // The ground switches where each section starts, or at its transit's midpoint.
-    bounds = [...main.querySelectorAll<HTMLElement>(":scope > .ph-sec")].map((s) => {
-      const t = s.firstElementChild?.classList.contains("ph-transit") ? (s.firstElementChild as HTMLElement) : null;
-      return { top: t ? docTop(t) + t.offsetHeight / 2 : docTop(s), g: s.dataset.ground ?? "light" };
-    });
+    // The ground switches where each section starts (its header's top edge).
+    bounds = [...main.querySelectorAll<HTMLElement>(":scope > .ph-sec")].map((s) => ({ top: docTop(s), g: s.dataset.ground ?? "light" }));
     sheets = [...main.querySelectorAll<HTMLElement>(".ph-sheet, .ph-opaque")].map((s) => {
       const t = docTop(s);
       return [t, t + s.offsetHeight];
@@ -298,17 +256,14 @@ export function installStage(root: HTMLElement): () => void {
   // ── Camera ─────────────────────────────────────────────────────────────────
   const _p = new THREE.Vector3();
   const _l = new THREE.Vector3();
-  const _c = new THREE.Vector3();
   const _o = new THREE.Vector3();
-  const bez = (out: THREE.Vector3, a: THREE.Vector3, w: THREE.Vector3, b: THREE.Vector3, k: number) => {
-    // Quadratic through w at k = .5.
-    _c.copy(w).multiplyScalar(2).addScaledVector(a, -0.5).addScaledVector(b, -0.5);
-    const u = 1 - k;
-    return out.copy(a).multiplyScalar(u * u).addScaledVector(_c, 2 * u * k).addScaledVector(b, k * k);
-  };
   const tilt = { x: 0, y: 0 };
   const tiltTarget = { x: 0, y: 0 };
-  const state: StageState = { a: null, b: null, t: 0, y: 0, next: null };
+  const state: StageState = { y: 0, arrive: { room: 0, mac: 0, props: 0, podium: 0, keypad: 0 } };
+  // Debug probe (always on, cheap): what the last rendered frame drew, for tests.
+  const lastCam = new THREE.Vector3();
+  const probe: PhProbe = { drawn: [], frames: 0, cam: () => ({ x: lastCam.x, y: lastCam.y, z: lastCam.z }) };
+  (window as Window & { __phStage?: PhProbe }).__phStage = probe;
 
   function segAt(y: number, list = segs) {
     let s = list[0];
@@ -318,10 +273,12 @@ export function installStage(root: HTMLElement): () => void {
     }
     return s;
   }
+  const progOf = (s: Seg, y: number) => (s.y1 > s.y0 ? THREE.MathUtils.clamp((y - s.y0) / (s.y1 - s.y0), 0, 1) : 1);
   // Point the camera for one segment at scroll y (focus uses the raw scroll yr).
   function camFor(s: Seg, y: number, yr: number) {
-    let p = s.y1 > s.y0 ? THREE.MathUtils.clamp((y - s.y0) / (s.y1 - s.y0), 0, 1) : 1;
-    if (REDUCED && s.k !== "dwell") p = p < 0.5 ? 0 : 1; // cut, don't fly
+    let p = progOf(s, y);
+    // Reduced motion: an arrival is just the shot; the Mac's orbit is a cut.
+    if (REDUCED && s.k !== "dwell") p = s.k === "arrive" || p >= 0.5 ? 1 : 0;
     let fov: number;
     let focus: number;
     if (s.k === "dwell") {
@@ -331,36 +288,30 @@ export function installStage(root: HTMLElement): () => void {
       _p.copy(_l).add(_o);
       fov = s.shot.fov;
       focus = lockOf(s.w, yr);
-    } else if (s.k === "hold") {
-      _p.copy(s.st.P);
-      _l.copy(s.st.L);
-      fov = s.st.fov;
-      focus = lockOf(s.w, yr);
-    } else if (s.k === "move") {
-      // An orbit between the Mac's windows (cylindrical about the station).
+    } else {
       const k = ease(p);
-      const c = AT[s.B.at];
       const a = s.from;
       const b = s.to;
-      const ra = Math.hypot(a.P.x - c.x, a.P.z - c.z);
-      const rb = Math.hypot(b.P.x - c.x, b.P.z - c.z);
-      const aa = Math.atan2(a.P.x - c.x, a.P.z - c.z);
-      const ab = Math.atan2(b.P.x - c.x, b.P.z - c.z);
-      const r = THREE.MathUtils.lerp(ra, rb, k);
-      const ang = THREE.MathUtils.lerp(aa, ab, k);
-      _p.set(c.x + Math.sin(ang) * r, THREE.MathUtils.lerp(a.P.y, b.P.y, k), c.z + Math.cos(ang) * r);
+      if (s.k === "move") {
+        // An orbit between the Mac's windows (cylindrical about the station).
+        const c = AT[s.shot.at];
+        const ra = Math.hypot(a.P.x - c.x, a.P.z - c.z);
+        const rb = Math.hypot(b.P.x - c.x, b.P.z - c.z);
+        const aa = Math.atan2(a.P.x - c.x, a.P.z - c.z);
+        const ab = Math.atan2(b.P.x - c.x, b.P.z - c.z);
+        const r = THREE.MathUtils.lerp(ra, rb, k);
+        const ang = THREE.MathUtils.lerp(aa, ab, k);
+        _p.set(c.x + Math.sin(ang) * r, THREE.MathUtils.lerp(a.P.y, b.P.y, k), c.z + Math.cos(ang) * r);
+      } else {
+        // Arrival: one eased crane/truck/dolly onto the shot, aim on the object.
+        _p.lerpVectors(a.P, b.P, k);
+      }
       _l.lerpVectors(a.L, b.L, k);
       fov = THREE.MathUtils.lerp(a.fov, b.fov, k);
-      focus = s.F;
-    } else {
-      // Flight: one eased truck inside the transit gap. The aim leads the
-      // dolly a little, so A swings out and B swings in across the middle of
-      // the move instead of both hanging off the edges.
-      const k = ease(p);
-      bez(_p, s.from.P, s.W.P, s.to.P, k);
-      bez(_l, s.from.L, s.W.L, s.to.L, ease(THREE.MathUtils.clamp((p - 0.18) / 0.56, 0, 1)));
-      fov = THREE.MathUtils.lerp(s.from.fov, s.to.fov, k);
-      focus = THREE.MathUtils.lerp(s.Fs, s.FB, k);
+      // The object starts centred on the sliver of window already on screen
+      // (so it shows from the first rows, not once half the window is in) and
+      // eases onto the window's own centre as the camera settles.
+      focus = REDUCED ? lockOf(s.w, yr) : THREE.MathUtils.lerp(sliceOf(s.w, yr), lockOf(s.w, yr), k);
     }
     const shift = vh / 2 - (focus - yr);
     if (Math.abs(shift) > 0.5) camera.setViewOffset(sizedW, sizedH, 0, shift * (sizedH / Math.max(1, canvas.clientHeight)), sizedW, sizedH);
@@ -373,7 +324,6 @@ export function installStage(root: HTMLElement): () => void {
     camera.fov = fov;
     camera.lookAt(_l);
     camera.updateProjectionMatrix();
-    return p;
   }
   // Each stage region shows its own part of the timeline: the segment that
   // owns it at this scroll, or (before/after) its first/last segment held still.
@@ -383,24 +333,19 @@ export function installStage(root: HTMLElement): () => void {
     if (y <= own[0].y0) return own[0];
     return segAt(y, own);
   }
-  let landed = "";
-  function placeCamera(y: number, yr: number) {
-    if (!segs.length) return;
-    const s = segAt(y);
-    const p = camFor(s, y, yr);
-    // The room's callout prints in once the room has landed (never over it mid-flight).
-    const l = s.k === "dwell" ? s.shot.at : "";
-    if (l !== landed) {
-      landed = l;
-      main.dataset.landed = l;
-    }
-    const nx = segs[segs.indexOf(s) + 1];
-    state.next = s.k !== "fly" && nx?.k === "fly" && nx.A !== nx.B ? nx.B.at : null;
-    state.a = s.A;
-    state.b = s.B;
-    state.t = s.k === "fly" ? ease(p) : 1;
-    state.y = y;
+  // The regions on screen this frame, each with its segment (built in frame(),
+  // drawn by renderStage()). Off-screen stations neither update nor draw.
+  let live: Array<{ r: { top: number; bot: number }; sg: Seg }> = [];
+  function placeLive(y: number, yr: number) {
+    const H = canvas.clientHeight || vh;
+    live = [];
+    regions.forEach((r, ri) => {
+      if (r.bot <= yr || r.top >= yr + H) return;
+      const sg = segForRegion(ri, y);
+      if (sg) live.push({ r, sg });
+    });
   }
+  let landed = "";
   function placeGround(y: number) {
     let i = 0;
     while (i < bounds.length - 1 && bounds[i + 1].top <= y) i++;
@@ -477,48 +422,69 @@ export function installStage(root: HTMLElement): () => void {
       tilt.y += (tiltTarget.y - tilt.y) * tk;
       dirty = true;
     }
-    placeCamera(smoothY, y);
     placeGround(y);
+    placeLive(smoothY, y);
+    state.y = smoothY;
+    for (const k of Object.keys(state.arrive) as StationKey[]) {
+      const a = arrivals[k];
+      state.arrive[k] = REDUCED || !a ? 1 : progOf(a, smoothY);
+    }
+    // The room's callout prints in once the room has settled (never over it mid-move).
+    const l = live.find((v) => v.sg.k === "dwell")?.sg.shot.at ?? "";
+    if (l !== landed) {
+      landed = l;
+      main.dataset.landed = l;
+    }
+    // Every station with a window on screen animates (once per frame, with the
+    // camera of its first such window: the room's card billboards to it).
     let animating = false;
-    for (const [k, st] of Object.entries(stations) as Array<[StationKey, Station]>) {
-      // Stage one station ahead: the next flight's destination is already placed.
-      st.group.visible = state.a?.at === k || state.b?.at === k || state.next === k;
-      if (st.update && st.group.visible) animating = st.update(dt, now / 1000, state) || animating;
+    const done = new Set<StationKey>();
+    for (const { sg } of live) {
+      const k = sg.shot.at;
+      const st = stations[k];
+      if (done.has(k) || !st.update) continue;
+      done.add(k);
+      camFor(sg, smoothY, y);
+      animating = st.update(dt, now / 1000, state) || animating;
     }
     if (visible && (dirty || (animating && !REDUCED))) {
       renderStage(y);
       dirty = false;
-    }
+    } else if (!visible) probe.drawn = []; // opaque sheets cover the whole stage
     raf = requestAnimationFrame(frame);
   }
-  // Ground over the whole screen; 3D only inside the stage regions on screen,
-  // each clipped to its region (so no object ever shows under a heading or edge).
+  // Ground over the whole screen; 3D only inside the windows on screen, each
+  // clipped to its region and drawing ONLY its own station (so no object ever
+  // shows under a heading or edge, or in another object's window).
   function renderStage(y: number) {
-    const list = Object.values(stations);
-    const keep = list.map((s) => s.group.visible);
     const k = sizedH / Math.max(1, canvas.clientHeight);
-    list.forEach((s) => (s.group.visible = false));
+    for (const st of Object.values(stations)) st.group.visible = false;
     renderer.autoClear = true;
     renderer.render(scene, camera); // ground only
     groundQuad.visible = false;
     renderer.autoClear = false;
     renderer.setScissorTest(true);
-    regions.forEach((r, ri) => {
+    const drawn: StationKey[] = [];
+    for (const { r, sg } of live) {
+      const key = sg.shot.at;
+      const st = stations[key];
       const t = Math.max(0, r.top - y);
       const b = Math.min(canvas.clientHeight, r.bot - y);
-      if (b <= t) return;
-      const sg = segForRegion(ri, smoothY);
-      if (!sg) return;
+      if (b <= t || !st.object) continue; // not built yet: nothing to draw
       camFor(sg, smoothY, y);
-      for (const [key, st] of Object.entries(stations)) st.group.visible = key === sg.A.at || key === sg.B.at;
+      st.group.visible = true;
       renderer.setScissor(0, sizedH - b * k, sizedW, (b - t) * k);
       renderer.clearDepth();
       renderer.render(scene, camera);
-    });
+      st.group.visible = false;
+      if (!drawn.includes(key)) drawn.push(key);
+      lastCam.copy(camera.position);
+    }
     renderer.setScissorTest(false);
     renderer.autoClear = true;
     groundQuad.visible = true;
-    list.forEach((s, i) => (s.group.visible = keep[i]));
+    probe.drawn = drawn;
+    probe.frames++;
   }
   const kick = () => {
     if (!raf && running) {
@@ -581,6 +547,10 @@ export function installStage(root: HTMLElement): () => void {
       const st = station();
       if (!st.tap) return;
       const ndc = { x: (e.clientX / vw) * 2 - 1, y: -(e.clientY / canvas.clientHeight) * 2 + 1 };
+      // Raycast with THIS window's camera (another window may have been drawn last).
+      const ri = regions.findIndex((r) => (w as Win)._top >= r.top - 1 && (w as Win)._top < r.bot);
+      const sg = ri < 0 ? null : segForRegion(ri, smoothY);
+      if (sg) camFor(sg, smoothY, window.scrollY);
       if (st.tap(ndc)) askGyro();
       dirty = true;
     };
@@ -673,9 +643,6 @@ export function installStage(root: HTMLElement): () => void {
     offs.push(() => io.disconnect());
   }
 
-  // Interests: a key scrolls the tall Play window to that prop.
-  const scrollTo = (y: number) => void scrollToY(y, { immediate: REDUCED });
-
   resize();
   void document.fonts?.ready.then(() => measure());
   on("load", measure);
@@ -684,13 +651,14 @@ export function installStage(root: HTMLElement): () => void {
     kick();
   }, { passive: true });
   kick();
-  const disposeObjects = installObjects({ renderer, scene, camera, root, REDUCED, invalidate: () => (dirty = true) }, mount, scrollTo);
+  const disposeObjects = installObjects({ renderer, scene, camera, root, REDUCED, invalidate: () => (dirty = true) }, mount);
 
   return () => {
     running = false;
     if (raf) cancelAnimationFrame(raf);
     offs.forEach((f) => f());
     disposeObjects();
+    delete (window as Window & { __phStage?: PhProbe }).__phStage;
     root.classList.remove("ph-rv");
     scene.traverse((o) => {
       const m = o as THREE.Mesh;
