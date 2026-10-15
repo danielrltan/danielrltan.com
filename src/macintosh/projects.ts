@@ -9,6 +9,8 @@ export interface MacProject {
   title: string;
   meta: string;
   blurb: string;
+  /** The blurb's opening, for the phone site's project cards. */
+  short: string;
   tags: string[];
   liveHref?: string;
   repoHref?: string;
@@ -34,6 +36,8 @@ export const MAC_PROJECTS: MacProject[] = [
     meta: "Sep 2026 · Three.js, Node, WebSockets, Swift",
     blurb:
       "Hack the North 2026. Wii Sports-style online pickleball where your phone (or one AirPod) is the paddle. Scan a QR code and the phone streams its motion sensors to the game, nothing to install; on a Mac, a Swift menu-bar app reads AirPod head-tracking via CoreMotion. Swings are read from orientation and rotation rate alone, with a jitter buffer and grip-independent calibration. Authoritative Node + WebSocket server with rooms, a bot and fair hit registration; three.js court in the browser.",
+    short:
+      "Hack the North 2026. Wii Sports-style online pickleball where your phone (or one AirPod) is the paddle. Scan a QR code and the phone streams its motion sensors to the game, nothing to install; on a Mac, a Swift menu-bar app reads AirPod head-tracking via CoreMotion.",
     tags: ["Three.js", "Node.js", "WebSockets", "Swift", "CoreMotion", "MediaPipe"],
     liveHref: "https://poddleball.com",
     repoHref: "https://github.com/danielrltan/poddle",
@@ -50,6 +54,8 @@ export const MAC_PROJECTS: MacProject[] = [
     meta: "Jan 2026 · Python, FastAPI, Multimodal",
     blurb:
       "AI-powered video indexing + semantic search tool for clinical footage. Auto-generates timestamped behavioural annotations, cutting psychologists' manual review from hours to seconds. Python/FastAPI backend integrating TwelveLabs video models, with NO patient data storage. End-to-end (React + Three.js, deployed on Vercel/Railway).",
+    short:
+      "AI-powered video indexing + semantic search tool for clinical footage. Auto-generates timestamped behavioural annotations, cutting psychologists' manual review from hours to seconds.",
     tags: ["Python", "FastAPI", "Semantic Search", "Multimodal", "React"],
     liveHref: "https://devpost.com/software/cognetech",
     image: "/images/projects/cognetech.webp",
@@ -61,6 +67,8 @@ export const MAC_PROJECTS: MacProject[] = [
     meta: "Jul 2025 · C++, Python, QNX",
     blurb:
       "Hack The 6ix Finalist. Plug-and-play universal BMS for second-life EV modules running on a QNX RTOS Raspberry Pi edge node. Normalised mixed-OEM telemetry and exposed a centralised fleet dashboard. Cloud analytics pipeline with FastAPI + MongoDB Atlas, Gemini-powered state-of-health estimation, physics-based PyBaMM simulator streaming packed binary over TCP for ~20K cells.",
+    short:
+      "Hack The 6ix Finalist. Plug-and-play universal BMS for second-life EV modules running on a QNX RTOS Raspberry Pi edge node.",
     tags: ["C++", "Python", "React", "QNX", "MongoDB", "Gemini"],
     liveHref: "https://devpost.com/software/reamp",
     image: "/images/projects/reamp.webp",
@@ -72,6 +80,8 @@ export const MAC_PROJECTS: MacProject[] = [
     meta: "Feb 2025 – Present · React, Node, MongoDB, Three.js",
     blurb:
       "Full-stack companion app for Supercell's mo.co: build creator, item database, tier lists and leaderboards, with client-side caching and shareable build links. Grown to 30,000+ monthly active users and a 1,500-member Discord, fed by a bot that surfaces live build data. Includes a real-time 3D character customizer (Three.js / R3F, GLTF morph targets + material swaps) with presets persisted in MongoDB.",
+    short:
+      "Full-stack companion app for Supercell's mo.co: build creator, item database, tier lists and leaderboards. Grown to 30,000+ monthly active users and a 1,500-member Discord.",
     tags: ["React", "TypeScript", "Node.js", "MongoDB", "Three.js", "R3F"],
     liveHref: "https://motrack.co",
     // The site's own Open Graph card (1200×630 from motrack.co), re-encoded to

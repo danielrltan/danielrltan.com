@@ -8,6 +8,9 @@ import { RoomHUD } from "./RoomHUD";
 const SignatureCapture = lazy(() =>
   import("./SignatureCapture").then((m) => ({ default: m.SignatureCapture })),
 );
+// The phone site (<=600px wide): its own page under the same hero + loader.
+// Lazy, so none of it ships to desktop.
+const PhoneSite = lazy(() => import("./phone/PhoneSite"));
 import { AssemblyProvider } from "./loading";
 import { BootLoader } from "./loading/BootLoader";
 import { HeroSignature } from "./hero/HeroSignature";
@@ -21,7 +24,21 @@ import { installHeroWipe } from "./hero/heroWipe";
 import { useFinePointer } from "./useMedia";
 import { StatusBar } from "./StatusBar";
 import { isLowTier, demoteTier } from "./capabilityTier";
-import { HERO, MQ, matches } from "./motion";
+import { BREAKPOINT, HERO, MQ, matches } from "./motion";
+
+/**
+ * Phone or not, decided ONCE before mount (like initTier): a phone in portrait
+ * (<=600px wide) gets src/phone instead of the desktop sections. Rotating it
+ * later keeps the phone site; tablets and phones on their side keep the
+ * stacked desktop layout. ?phone=1 / ?phone=0 force either way.
+ */
+const PHONE = (() => {
+  if (typeof window === "undefined") return false;
+  const force = new URLSearchParams(window.location.search).get("phone");
+  if (force === "1" || force === "0") return force === "1";
+  return matches(`(max-width: ${BREAKPOINT.phone}px)`);
+})();
+if (PHONE) document.documentElement.setAttribute("data-phone", "");
 
 /*
  * App shell: the fixed hero layer, the sections, and the HUD. The hero hands
@@ -296,6 +313,8 @@ export default function App() {
    * and mac.glb for nothing. Decided once at mount: a later rotation to a
    * wide layout still lazy-loads the scene on approach. */
   useEffect(() => {
+    // The phone site loads its own stage and models (src/phone).
+    if (PHONE) return;
     const w = window as unknown as {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
       cancelIdleCallback?: (id: number) => void;
@@ -374,26 +393,36 @@ export default function App() {
         {/* Middle-button pan / autoscroll cursor (mouse only, like the above). */}
         {ready && finePointer && <PanCursor />}
 
-        <PortfolioSections />
-
-        {/* The single fixed cross-section overlay (#seam-layer, z 12, hidden
-            until a seam claims it). A sibling of <main>; it renders itself only
-            on desktop with a fine pointer and motion OK (src/seams/overlay.ts). */}
-        <SeamLayer />
-
-        {/* Brand mark (signature). Gated on hudVisible so it reveals AFTER the
-            hero (the hero already carries the big signature wordmark, and a
-            small mark over the orange field read as redundant + unreadable). */}
-        <RoomHUD visible={hudVisible} />
-
-        {/* Section indicator (dial) + jump-to-top. Pre-mounted at `ready`
-            (spec §5 O6 phase B) and revealed by `visible`: while hidden they
-            are inert and track the section silently, so the 1.0vh reveal is
-            a CSS state flip, not a mount landing on About's pin engage. */}
-        {ready && (
+        {PHONE ? (
+          // The phone site: its own stage, sections and bottom dock (src/phone).
+          // The hero above is the same; heroWipe's scrubbed fade hands off to it.
+          <Suspense fallback={null}>
+            <PhoneSite />
+          </Suspense>
+        ) : (
           <>
-            <StatusBar visible={hudVisible} />
-            <JumpToTop visible={hudVisible} />
+            <PortfolioSections />
+
+            {/* The single fixed cross-section overlay (#seam-layer, z 12, hidden
+                until a seam claims it). A sibling of <main>; it renders itself only
+                on desktop with a fine pointer and motion OK (src/seams/overlay.ts). */}
+            <SeamLayer />
+
+            {/* Brand mark (signature). Gated on hudVisible so it reveals AFTER the
+                hero (the hero already carries the big signature wordmark, and a
+                small mark over the orange field read as redundant + unreadable). */}
+            <RoomHUD visible={hudVisible} />
+
+            {/* Section indicator (dial) + jump-to-top. Pre-mounted at `ready`
+                (spec §5 O6 phase B) and revealed by `visible`: while hidden they
+                are inert and track the section silently, so the 1.0vh reveal is
+                a CSS state flip, not a mount landing on About's pin engage. */}
+            {ready && (
+              <>
+                <StatusBar visible={hudVisible} />
+                <JumpToTop visible={hudVisible} />
+              </>
+            )}
           </>
         )}
       </div>

@@ -6,7 +6,8 @@
 // outline is sane, every section resolves, the nav menu opens/jumps/closes,
 // the Work accordion and the Projects detail work, the 3D sections mount
 // their canvases on approach, every image/asset resolves, and the analytics
-// hooks fire. Runs the same flow at desktop and phone widths.
+// hooks fire. Phones (<=600px) get the phone site (src/phone): its own
+// scenario checks the sections, dock, stage, links and assets.
 //
 //   npm run build && npm run test:smoke          # against vite preview (auto-started)
 //   URL=http://localhost:5173/ node scripts/smoke-test.mjs   # against a dev server
@@ -708,6 +709,128 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
   await context.close();
 }
 
+// The phone site (src/phone, <=600px wide): its own sections, one fixed WebGL
+// stage, a bottom dock. Same loader + hero as desktop.
+const PHONE_SECTIONS = ["Hero", "About", "Projects", "Experience", "Some interests", "The trophy wall", "Recents", "Contact"];
+async function runPhoneScenario(browser, name, { viewport, query }) {
+  console.log(`\n== ${name} (${viewport.width}x${viewport.height}, phone site) ==`);
+  const context = await browser.newContext({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  const pageErrors = [];
+  const consoleErrors = [];
+  const failedRequests = [];
+  page.on("pageerror", (e) => pageErrors.push((e.stack || e.message).split("\n").slice(0, 4).join(" <- ")));
+  page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
+  page.on("response", (r) => r.status() >= 400 && failedRequests.push(`${r.status()} ${r.url()}`));
+  await page.addInitScript(() => {
+    window.__events = window.rumEvents = [];
+  });
+  const t0 = Date.now();
+  await page.goto(query ? `${URL}?${query}` : URL, { waitUntil: "domcontentloaded" });
+
+  // 1. Loader lifts; one <main>, one <h1> (the hero's); the desktop sections never mount.
+  const lifted = await waitFor(page, () => !document.documentElement.classList.contains("loading-active"), { timeout: LOADER_TIMEOUT_MS });
+  check(lifted, `loader lifted (${Date.now() - t0}ms)`);
+  await sleep(1500);
+  const outline = await page.evaluate(() => ({
+    boot: !!document.getElementById("boot-screen"),
+    seo: !!document.getElementById("seo-fallback"),
+    mains: document.querySelectorAll("main").length,
+    h1s: document.querySelectorAll("h1").length,
+    phone: !!document.querySelector(".ph-site"),
+    desktop: !!document.querySelector(".portfolio-mac, .portfolio-about, .snc-dial"),
+    stage: !!document.querySelector("canvas.ph-stage"),
+  }));
+  check(!outline.boot, "static #boot-screen removed");
+  check(!outline.seo, "#seo-fallback removed after mount");
+  check(outline.mains === 1, `exactly one <main> (${outline.mains})`);
+  check(outline.h1s === 1, `exactly one <h1> (${outline.h1s})`);
+  check(outline.phone && !outline.desktop, "phone site mounted, desktop sections not");
+  check(outline.stage, "phone stage canvas present");
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}-00-hero.png` });
+
+  // 2. Every section, in order, with its number + title.
+  const heads = await page.evaluate(() =>
+    [...document.querySelectorAll(".ph-site > .ph-sec")].map((s) => ({
+      id: s.id,
+      title: s.querySelector(".ph-head h2")?.textContent?.trim() ?? null,
+      num: s.querySelector(".ph-head .ph-num")?.textContent?.trim() ?? null,
+    })),
+  );
+  check(heads.length === 8, `8 phone sections (${heads.length})`);
+  PHONE_SECTIONS.slice(1).forEach((t, i) =>
+    check(heads[i + 1]?.title === t && heads[i + 1]?.num === `0${i + 1}`, `section 0${i + 1} header: ${t}`),
+  );
+
+  // 3. Scroll the page: the dock's active key visits 00..07 in order, the stage
+  //    renders, and the 3D stations build ahead of their windows.
+  const seen = [];
+  const docH = await page.evaluate(() => document.documentElement.scrollHeight);
+  let shot = 1;
+  for (let y = 0; y <= docH; y += Math.round(viewport.height * 0.6)) {
+    await scrollTo(page, y);
+    const k = await page.evaluate(() => document.querySelector(".ph-dock-keys a.ph-on")?.textContent ?? null);
+    if (k && seen[seen.length - 1] !== k) seen.push(k);
+    if (SHOTS && y % (viewport.height * 3) < viewport.height * 0.6) await page.screenshot({ path: `${SHOTS}/${name}-${String(shot++).padStart(2, "0")}.png` });
+  }
+  check(seen.join(",") === "00,01,02,03,04,05,06,07", `dock visits every section in order (${seen.join(",")})`);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check(overflow <= 0, `no horizontal overflow (${overflow}px)`);
+
+  // 4. Dock jump: key 05 glides to the trophy wall's header.
+  await page.click('.ph-dock-keys a[href="#s05"]');
+  await settleScroll(page);
+  const jump = await page.evaluate(() => ({
+    top: Math.round(document.querySelector("#s05 > .ph-head").getBoundingClientRect().top),
+    on: document.querySelector(".ph-dock-keys a.ph-on")?.textContent,
+  }));
+  check(Math.abs(jump.top) <= 4 && jump.on === "05", `dock jump lands on 05 (header top ${jump.top}, key ${jump.on})`);
+
+  // 5. Interests: a key turns the carousel to that prop (name + key light up).
+  await scrollToSelector(page, "#s04 > .ph-head");
+  await page.click('.ph-ilist button[data-k="6"]');
+  await settleScroll(page);
+  const picked = await waitFor(
+    page,
+    () => document.querySelector(".ph-play-name")?.textContent === "Cars" && document.querySelector('.ph-ilist button[data-k="6"]').classList.contains("ph-on"),
+    { timeout: 8000 },
+  );
+  check(picked, "interest key turns the carousel to Cars");
+
+  // 6. Links: projects, contact, résumé.
+  const links = await page.evaluate(() => ({
+    proj: [...document.querySelectorAll(".ph-proj .ph-links a")].map((a) => `${a.textContent.trim()}|${a.getAttribute("href")}`),
+    mail: document.querySelector(".ph-mail")?.getAttribute("href"),
+    socials: [...document.querySelectorAll(".ph-clist a")].map((a) => a.getAttribute("href")),
+  }));
+  check(links.proj.length === 5 && links.proj.some((l) => l.startsWith("View live") && l.endsWith("poddleball.com")) && links.proj.some((l) => l.startsWith("View dev post")), `project links (${links.proj.length})`);
+  check(links.mail === "mailto:hello@danielrltan.com", "contact mailto");
+  check(links.socials.length === 5 && links.socials.includes("/resume/Daniel_Tan_Resume.pdf"), `contact links (${links.socials.length})`);
+
+  // 7. Assets: photos laid out from the manifest; loaded images are intact.
+  const manifest = await (await page.request.get(new globalThis.URL("photos/manifest.json", URL).toString())).json();
+  const nPhotos = await page.evaluate(() => document.querySelectorAll(".ph-photos img").length);
+  check(nPhotos === manifest.length, `Recents lays out every photo (${nPhotos}/${manifest.length})`);
+  const imgs = await page.evaluate(() => [...document.images].filter((i) => i.complete).map((i) => ({ src: i.currentSrc || i.src, ok: i.naturalWidth > 0 })));
+  const broken = imgs.filter((i) => !i.ok);
+  check(broken.length === 0, `all ${imgs.length} loaded <img> intact${broken.length ? ": " + broken.map((i) => i.src).join(", ") : ""}`);
+  for (const path of ["resume/Daniel_Tan_Resume.pdf", "mac.glb", "render.webp", "hobbies/glove.glb"]) {
+    const r = await page.request.get(new globalThis.URL(path, URL).toString());
+    check(r.ok(), `asset 200: /${path}`);
+  }
+
+  // 8. Analytics wiring.
+  const events = await page.evaluate(() => (window.__events || []).map((e) => e[0]));
+  for (const ev of ["section_view", "nav_jump"]) check(events.includes(ev), `analytics event fired: ${ev}`);
+
+  // 9. No runtime errors, no failed requests.
+  check(pageErrors.length === 0, `no page errors${pageErrors.length ? ": " + pageErrors.join(" | ") : ""}`);
+  const realConsoleErrors = consoleErrors.filter((t) => !/GL Driver Message|WebGL-/.test(t));
+  check(realConsoleErrors.length === 0, `no console errors${realConsoleErrors.length ? ": " + realConsoleErrors.slice(0, 5).join(" | ") : ""}`);
+  check(failedRequests.length === 0, `no failed requests${failedRequests.length ? ": " + failedRequests.join(", ") : ""}`);
+  await context.close();
+}
+
 async function startPreview() {
   if (process.env.URL) return null;
   const child = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
@@ -735,7 +858,7 @@ const browser = await chromium.launch({
 try {
   const q = TIER ? `tier=${TIER}` : "";
   await runScenario(browser, "desktop", { viewport: { width: 1440, height: 900 }, mobile: false, query: q });
-  await runScenario(browser, "mobile", { viewport: { width: 390, height: 844 }, mobile: true, query: q });
+  await runPhoneScenario(browser, "mobile", { viewport: { width: 390, height: 844 }, query: q });
 } finally {
   await browser.close();
   preview?.kill();
