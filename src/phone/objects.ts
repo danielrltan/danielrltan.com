@@ -617,7 +617,7 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
     });
   };
 
-  // ── 07 Contact: the keypad on the orange ground. Keys press and open
+  // ── 07 Contact: the keypad upright on the orange wall. Keys press and open
   // the real links; the OLED opens mail; the dial spins.
   builders.keypad = async () => {
     const gltf = await loadGLB(keypadUrl);
@@ -637,15 +637,24 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
       parts[k].userData.press = { x: 0, v: 0 };
     }
     const group = new THREE.Group();
+    // Stood up against a wall, keys facing the camera (the OLED on top).
+    const stand = new THREE.Group();
+    stand.add(pad);
+    stand.rotation.x = Math.PI / 2;
     const body = new THREE.Group();
-    body.add(pad);
+    body.add(stand);
     body.scale.setScalar(0.68);
-    body.position.set(0.05, 0, 0);
     group.add(body);
-    // No floor of its own: the window's CSS orange shows through the
-    // transparent canvas; an ink contact shadow seats it.
-    const sh = contactShadow(3.4, 3.9, shadowTex("13,14,16", 0.32));
-    sh.position.y = 0.04;
+    // Centred on the station, its back flat on the wall plane (z = 0).
+    const box = new THREE.Box3().setFromObject(body);
+    const size = box.getSize(new THREE.Vector3());
+    const mid = box.getCenter(new THREE.Vector3());
+    body.position.set(-mid.x, -mid.y, -box.min.z);
+    // No wall of its own: the window's CSS orange shows through the
+    // transparent canvas; an ink contact shadow on the wall seats it.
+    const sh = contactShadow(size.x * 1.2, size.y * 1.2, shadowTex("13,14,16", 0.32));
+    sh.rotation.x = 0;
+    sh.position.set(0.18, -0.28, 0.005);
     group.add(sh);
     const tilt = { x: 0, v: 0 };
     let knobV = 0;
@@ -663,8 +672,9 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
         knobV *= Math.exp(-dt * 1.5);
         if (Math.abs(knobV) < 0.01) knobV = 0;
         if (parts.knob) parts.knob.rotation.y += (REDUCED ? 0 : 0.25) * st.amb + knobV * dt;
-        body.rotation.z = spring(tilt, 0, dt, 60, 7) + (REDUCED ? 0 : Math.sin(t * 0.5) * 0.02);
-        body.rotation.x = REDUCED ? 0 : Math.sin(t * 0.37) * 0.02;
+        // A press rocks it back on the wall; otherwise a slight sway.
+        body.rotation.y = spring(tilt, 0, dt, 60, 7) + (REDUCED ? 0 : Math.sin(t * 0.5) * 0.02);
+        body.rotation.x = REDUCED ? 0 : Math.sin(t * 0.37) * 0.015;
         return pressing || knobV !== 0 || busy(tilt, 0);
       },
       tap(ndc) {
@@ -678,7 +688,7 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
           return true;
         }
         (o.userData.press as Spring).v += 1.6;
-        tilt.v += (o.position.x > 0 ? -1 : 1) * 0.6;
+        tilt.v += (o.position.x > 0 ? 1 : -1) * 0.6;
         if (k === "display") {
           track("contact_email", { context: "keypad" });
           location.href = LINKS.display;

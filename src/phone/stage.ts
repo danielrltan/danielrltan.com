@@ -114,7 +114,7 @@ const SHOT_SPEC: Record<string, { at: StationKey; pos: THREE.Vector3; look: THRE
   mac3: { at: "mac", pos: V(0.6, 1.2, 7.3), look: V(0, 0.78, 0), fov: 30 },
   props: { at: "props", pos: V(0, 1.4, 6.9), look: V(0, -0.15, 0), fov: 30, arrive: V(1.2, 1.6, 2.2) }, // crane down
   podium: { at: "podium", pos: V(2.0, 1.5, 7.0), look: V(0, 0.58, 0), fov: 30, arrive: V(1.0, 0.5, 3.0) }, // dolly in (aim mid-height: the #25 trophy tops out at 1.44)
-  keypad: { at: "keypad", pos: V(0, 9.2, 4.2), look: V(0, 0.4, 0.3), fov: 32, arrive: V(0, 2.6, 1.0) }, // drop onto it
+  keypad: { at: "keypad", pos: V(2.5, 1.4, 8.6), look: V(0, -0.22, 0.3), fov: 32, arrive: V(0.9, 0.5, 3.6) }, // dolly in, slight 3/4 so its depth shows
 };
 const SHOTS: Record<string, Shot> = Object.fromEntries(
   Object.entries(SHOT_SPEC).map(([k, s]) => [k, { ...s, P: s.pos.clone().add(AT[s.at]), L: s.look.clone().add(AT[s.at]) }]),
