@@ -2,22 +2,34 @@ import * as THREE from "three";
 import { installObjects } from "./objects";
 
 /*
- * The phone site's stage: ONE fixed WebGL canvas behind the whole page. Scroll
- * places a camera on Daniel's objects in order (room, Mac, hobby props, voxel
- * podium, keypad); the page is sharp white sheets that leave windows open
- * where an object is the subject. Each object is shown exactly once, in its
- * own window(s): the camera ARRIVES as that window rises in (no flights from
- * the previous object, no transit gaps). Lab: .scratch/mobile-redesign
- * (m05-stage.js, its `arrive` offsets); keep the numbers in step.
+ * The phone site's stage. Scroll places a camera on Daniel's objects in order
+ * (room, Mac, hobby props, voxel podium, keypad). Every window
+ * (.ph-win[data-shot]) holds its own 2D canvas (.ph-gl) that scrolls WITH the
+ * page, so the 3D can never trail the DOM; ONE off-DOM WebGL renderer draws
+ * each on-screen window's station with that window's camera and copies the
+ * pixels into its canvas in the same task. The section grounds are CSS (the
+ * canvases are transparent). Each object is shown exactly once, in its own
+ * window(s): the camera ARRIVES as that window rises in, driven by the raw
+ * scroll (it stops the instant the finger does). Frames are drawn only when
+ * something changes; ambient drift runs at <= 30 fps and rests 4 s after the
+ * last input. Lab: .scratch/mobile-redesign (m05-stage.js, its `arrive`
+ * offsets); keep the numbers in step.
  */
 
 export interface Station {
   group: THREE.Group;
   object?: THREE.Object3D;
+  /** Per frame while a window of it is near the screen; `t` is the ambient clock.
+   *  Returns true only while something of its own still moves (spring, hop, glitch, drag). */
   update?: (dt: number, t: number, st: StageState) => boolean;
   measure?: (vw: number, vh: number) => void;
   drag?: (dx: number) => void;
-  tap?: (ndc: { x: number; y: number }) => boolean;
+  /** A tap in `win` (ndc in that window's canvas; the shared camera is posed for it). */
+  tap?: (ndc: { x: number; y: number }, win: HTMLElement) => boolean;
+  /** Before each window's draw: per-window state (the Mac shows that window's project). */
+  prepare?: (win: HTMLElement) => void;
+  /** Textures to upload before the first reveal besides those on the group's materials. */
+  warm?: THREE.Texture[];
 }
 export type StationKey = "room" | "mac" | "props" | "podium" | "keypad";
 export type StationImpl = Omit<Station, "group">;
@@ -36,17 +48,38 @@ interface CamState {
   L: THREE.Vector3;
   fov: number;
 }
-type Win = HTMLElement & { _top: number; _h: number };
-// Every segment belongs to one window (w) and its region (r).
-type Seg = { y0: number; y1: number; w: Win; shot: Shot; r: number } & (
-  | { k: "dwell" }
-  | { k: "arrive" | "move"; from: CamState; to: CamState }
-);
+type Seg = { y0: number; y1: number; shot: Shot } & ({ k: "dwell" } | { k: "arrive" | "move"; from: CamState; to: CamState });
+/** One stage window: its DOM box (cached), its canvas, and its two segments. */
+interface Win {
+  el: HTMLElement;
+  /** Where the canvas lives: the window itself, or the sticky Interests pin. */
+  host: HTMLElement;
+  sticky: boolean;
+  cv: HTMLCanvasElement;
+  g: CanvasRenderingContext2D | null;
+  shot: Shot;
+  /** Document top and height of the window; CSS size of its canvas. */
+  top: number;
+  h: number;
+  cw: number;
+  ch: number;
+  /** Arrive (or the Mac's move) as it rises in, then dwell until it leaves. */
+  a: Seg;
+  d: Seg;
+  /** Near the screen last frame / needs a draw / its canvas holds a frame. */
+  near: boolean;
+  need: boolean;
+  full: boolean;
+}
 export interface StageState {
-  /** The (smoothed) scroll position the camera is placed for. */
+  /** The raw scroll position the cameras are placed for. */
   y: number;
   /** Each station's arrival progress (linear): 0 as its first window enters, 1 once settled. */
   arrive: Record<StationKey, number>;
+  /** Ambient time step this frame (0 while ambient drift rests). */
+  amb: number;
+  /** Windows near the screen this frame, with their arrive/move progress (1 once settled). */
+  wins: Array<{ el: HTMLElement; p: number }>;
 }
 type PhProbe = { drawn: StationKey[]; frames: number; cam: () => { x: number; y: number; z: number } };
 export interface StageCtx {
@@ -80,75 +113,53 @@ const SHOT_SPEC: Record<string, { at: StationKey; pos: THREE.Vector3; look: THRE
   mac2: { at: "mac", pos: V(-1.1, 0.75, 8.0), look: V(0, 0.75, 0), fov: 30 },
   mac3: { at: "mac", pos: V(0.6, 1.2, 7.3), look: V(0, 0.78, 0), fov: 30 },
   props: { at: "props", pos: V(0, 1.4, 6.9), look: V(0, -0.15, 0), fov: 30, arrive: V(1.2, 1.6, 2.2) }, // crane down
-  podium: { at: "podium", pos: V(2.0, 1.3, 7.0), look: V(0, -0.02, 0), fov: 30, arrive: V(1.0, 0.5, 3.0) }, // dolly in
+  podium: { at: "podium", pos: V(2.0, 1.5, 7.0), look: V(0, 0.58, 0), fov: 30, arrive: V(1.0, 0.5, 3.0) }, // dolly in (aim mid-height: the #25 trophy tops out at 1.44)
   keypad: { at: "keypad", pos: V(0, 9.2, 4.2), look: V(0, 0.4, 0.3), fov: 32, arrive: V(0, 2.6, 1.0) }, // drop onto it
 };
 const SHOTS: Record<string, Shot> = Object.fromEntries(
   Object.entries(SHOT_SPEC).map(([k, s]) => [k, { ...s, P: s.pos.clone().add(AT[s.at]), L: s.look.clone().add(AT[s.at]) }]),
 );
-const GROUND: Record<string, THREE.Vector3> = {
-  orange: V(1, 0x4f / 255, 0),
-  light: V(0xee / 255, 0xf0 / 255, 0xf3 / 255),
-  grey: V(0xd8 / 255, 0xda / 255, 0xde / 255),
-};
 const UP = V(0, 1, 0);
 const DRIFT_A = THREE.MathUtils.degToRad(4);
 const DRIFT_D = 0.025;
 const ease = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+/** Ambient drift rests this long after the last scroll or touch, and draws at most 30 fps. */
+const AMBIENT_MS = 4000;
+const AMBIENT_FRAME = 1000 / 30;
 
 export function installStage(root: HTMLElement): () => void {
   const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const DPR = Math.min(window.devicePixelRatio || 1, 1.5);
-  const canvas = root.querySelector<HTMLCanvasElement>(".ph-stage")!;
+  // Measured (M4 Metal, iPhone 14 Pro viewport, 4x CPU): MSAA off at DPR 2
+  // costs 40-60% less GPU per window than MSAA on at DPR 2, and less than MSAA
+  // on at DPR 1.5, and is sharper on a 3x screen.
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
   const main = root.querySelector<HTMLElement>(".ph-site")!;
   const offs: Array<() => void> = [];
+  let alive = true;
   const on = <K extends keyof WindowEventMap>(k: K, f: (e: WindowEventMap[K]) => void, o?: AddEventListenerOptions) => {
     window.addEventListener(k, f, o);
     offs.push(() => window.removeEventListener(k, f, o));
   };
 
-  // ── Renderer + camera ──────────────────────────────────────────────────────
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
+  // ── Renderer + camera: one context on a canvas that is never in the DOM
+  // (its class only names it for the perf tools). Each window's pixels are
+  // copied out of it into that window's own canvas.
+  const glc = document.createElement("canvas");
+  glc.className = "ph-stage";
+  const renderer = new THREE.WebGLRenderer({ canvas: glc, antialias: false, alpha: true, premultipliedAlpha: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(DPR);
+  renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
   let dirty = true;
 
-  // ── Ground: a full-screen quad drawn first. The ground belongs to the page,
-  // not the camera: section A's colour above the next section's boundary, B's
-  // below, joined by a 3-row pixel dither (75/50/25 %) that scrolls with the
-  // page, so it can never drift from the DOM.
-  const groundMat = new THREE.ShaderMaterial({
-    vertexShader: "void main(){ gl_Position = vec4(position.xy * 2.0, 0.999, 1.0); }",
-    fragmentShader: `uniform vec3 uA; uniform vec3 uB; uniform float uSplit; uniform float uCell; uniform vec2 uRes;
-      void main(){
-        float yTop = uRes.y - gl_FragCoord.y;
-        float d = floor((yTop - uSplit) / uCell);
-        float cx = mod(floor(gl_FragCoord.x / uCell), 4.0);
-        bool a = d < 0.0 || (d == 0.0 && cx < 3.0) || (d == 1.0 && mod(cx, 2.0) == 1.0) || (d == 2.0 && cx == 2.0);
-        gl_FragColor = vec4(a ? uA : uB, 1.0);
-      }`,
-    uniforms: {
-      uA: { value: GROUND.orange.clone() },
-      uB: { value: GROUND.orange.clone() },
-      uSplit: { value: 1e6 },
-      uCell: { value: 12 * DPR },
-      uRes: { value: new THREE.Vector2(1, 1) },
-    },
-    depthTest: false,
-    depthWrite: false,
-  });
-  const groundQuad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), groundMat);
-  groundQuad.frustumCulled = false;
-  groundQuad.renderOrder = -1000;
-  scene.add(groundQuad);
-
   const stations = {} as Record<StationKey, Station>;
   for (const k of Object.keys(AT) as StationKey[]) {
     const g = new THREE.Group();
     g.position.copy(AT[k]);
+    g.visible = false;
     scene.add(g);
     stations[k] = { group: g };
   }
@@ -156,8 +167,48 @@ export function installStage(root: HTMLElement): () => void {
     const st = stations[key];
     Object.assign(st, impl);
     if (impl.object) st.group.add(impl.object);
+    warm(key);
     dirty = true;
+    kick();
   };
+
+  // ── Prewarm: upload a station's textures and compile its programs in idle
+  // time, one job per idle slot, long before its window, so the first reveal
+  // never pays for them inside a scroll frame. (compile() walks hidden groups.)
+  const jobs: Array<() => Promise<unknown> | void> = [];
+  let pumping = false;
+  // (iOS Safari has no requestIdleCallback.)
+  const idle = (f: () => void) =>
+    typeof requestIdleCallback === "function" ? requestIdleCallback(f, { timeout: 1200 }) : setTimeout(f, 50);
+  function pump() {
+    if (pumping || !jobs.length || !alive) return;
+    pumping = true;
+    idle(() => {
+      const job = jobs.shift()!;
+      Promise.resolve()
+        .then(() => (alive ? job() : undefined))
+        .catch(() => {})
+        .then(() => {
+          pumping = false;
+          pump();
+        });
+    });
+  }
+  function warm(key: StationKey) {
+    const st = stations[key];
+    const texs = new Set<THREE.Texture>(st.warm ?? []);
+    st.group.traverse((o) => {
+      const mats = (o as THREE.Mesh).material;
+      for (const mt of Array.isArray(mats) ? mats : mats ? [mats] : []) {
+        for (const v of Object.values(mt)) if ((v as THREE.Texture | null)?.isTexture) texs.add(v as THREE.Texture);
+        const u = (mt as THREE.ShaderMaterial).uniforms;
+        if (u) for (const { value } of Object.values(u)) if ((value as THREE.Texture | null)?.isTexture) texs.add(value as THREE.Texture);
+      }
+    });
+    for (const t of texs) jobs.push(() => renderer.initTexture(t));
+    jobs.push(() => renderer.compileAsync(st.group, camera, scene));
+    pump();
+  }
 
   // ── Scroll -> camera: each window has its own short timeline ───────────────
   //   arrive: a station's first window, from its top edge entering at the
@@ -168,89 +219,75 @@ export function installStage(root: HTMLElement): () => void {
   //   dwell:  from there until the window leaves: the shot with a gentle
   //           scroll-scrubbed drift (a few degrees of orbit + a touch of dolly).
   // Each starts and ends at zero velocity, so there is no step where they
-  // join. The frame centre ("focus") is a point on the PAGE, so 3D moves 1:1
-  // with the DOM it belongs to.
-  let segs: Seg[] = [];
+  // join. Every window frames its object on its own centre, through a fixed
+  // full-screen virtual viewport (one stable svh), so nothing moves when the
+  // iOS toolbar shows or hides.
   let arrivals: Partial<Record<StationKey, Seg>> = {};
-  let sheets: Array<[number, number]> = [];
-  let bounds: Array<{ top: number; g: string }> = [];
-  let regions: Array<{ top: number; bot: number }> = [];
-  let vh = window.innerHeight;
-  let vw = window.innerWidth;
-  let sizedW = 0;
-  let sizedH = 0;
+  let vw = document.documentElement.clientWidth;
+  let svh = window.innerHeight;
   const docTop = (el: Element) => el.getBoundingClientRect().top + window.scrollY;
+  // A 100svh probe: read once, and again only when the width changes.
+  const svhProbe = document.createElement("div");
+  svhProbe.setAttribute("aria-hidden", "true");
+  svhProbe.style.cssText = "position:absolute;left:0;top:0;width:0;height:100svh;visibility:hidden;pointer-events:none";
+  root.appendChild(svhProbe);
+  const readSvh = () => svhProbe.offsetHeight || window.innerHeight;
 
   function stateOf(shot: Shot, q: number): CamState {
     const o = shot.P.clone().sub(shot.L).applyAxisAngle(UP, q * DRIFT_A).multiplyScalar(1 - q * DRIFT_D);
     return { P: shot.L.clone().add(o), L: shot.L.clone(), fov: shot.fov };
   }
-  function lockOf(w: Win, y: number) {
-    return w._h > vh ? THREE.MathUtils.clamp(y + vh / 2, w._top + vh / 2, w._top + w._h - vh / 2) : w._top + w._h / 2;
-  }
-  // The centre of the part of a window on screen (the screen's bottom edge
-  // while it has not entered yet).
-  function sliceOf(w: Win, y: number) {
-    const t = THREE.MathUtils.clamp(w._top, y, y + vh);
-    const b = THREE.MathUtils.clamp(w._top + w._h, y, y + vh);
-    return (t + b) / 2;
-  }
+
+  // The windows, each with its own canvas (first child, so the window's own
+  // labels paint above it; the sticky Interests window keeps it in its pin).
+  const wins: Win[] = [...main.querySelectorAll<HTMLElement>(".ph-win[data-shot]")].map((el) => {
+    const pin = el.querySelector<HTMLElement>(".ph-play-pin");
+    const host = pin ?? el;
+    const cv = document.createElement("canvas");
+    cv.className = "ph-gl";
+    cv.setAttribute("aria-hidden", "true");
+    cv.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none";
+    cv.width = cv.height = 0;
+    host.prepend(cv);
+    const shot = SHOTS[el.dataset.shot!];
+    const seg: Seg = { k: "dwell", y0: 0, y1: 0, shot };
+    return { el, host, sticky: !!pin, cv, g: cv.getContext("2d"), shot, top: 0, h: 0, cw: 0, ch: 0, a: seg, d: seg, near: false, need: true, full: false };
+  });
+  offs.push(() => wins.forEach((w) => w.cv.remove()));
 
   function measure() {
-    vh = window.innerHeight;
-    vw = window.innerWidth;
-    const wins = [...main.querySelectorAll<HTMLElement>(".ph-win[data-shot]")] as Win[];
-    wins.forEach((w) => {
-      w._top = docTop(w);
-      w._h = w.offsetHeight;
-    });
-    // Stage regions: runs of adjacent windows (in practice each window is its own).
-    regions = [];
-    for (const el of main.querySelectorAll<HTMLElement>(".ph-win")) {
-      const top = docTop(el);
-      const bot = top + el.offsetHeight;
-      const last = regions[regions.length - 1];
-      if (last && Math.abs(last.bot - top) < 2) last.bot = bot;
-      else regions.push({ top, bot });
-    }
-    const regOf = (top: number) => regions.findIndex((r) => top >= r.top - 1 && top < r.bot);
-    segs = [];
-    arrivals = {};
     let prev: Shot | null = null;
+    arrivals = {};
     for (const w of wins) {
-      const shot = SHOTS[w.dataset.shot!];
-      const top = w._top;
-      const h = w._h;
-      const r = regOf(top);
-      // Settled as the window is centred (a tall one: as it pins, where its
-      // lock is the screen centre); the move runs from its first rows to there.
-      const settle = h > vh ? top : top + h / 2 - vh / 2;
-      const enter = top - vh;
+      w.top = docTop(w.el);
+      w.h = w.el.offsetHeight;
+      w.cw = w.host.clientWidth;
+      w.ch = w.host.clientHeight;
+      const { shot, top, h } = w;
+      // Settled as the window is centred (a tall one: as it pins); the
+      // arrival runs from its first rows to there.
+      const settle = h > svh ? top : top + h / 2 - svh / 2;
+      const enter = top - svh;
       const to = stateOf(shot, -1);
       if (prev?.at === shot.at) {
         // The Mac's next project: the orbit, played inside the arriving window.
-        segs.push({ k: "move", y0: enter, y1: settle, w, shot, r, from: stateOf(prev, 1), to });
+        w.a = { k: "move", y0: enter, y1: settle, shot, from: stateOf(prev, 1), to };
       } else {
         // A new station: it arrives in its own window, never flown in from the
         // previous object (that one was already seen in its own window).
         const from = { P: to.P.clone().add(shot.arrive ?? V(0, 0, 0)), L: to.L.clone(), fov: to.fov };
-        const a: Seg = { k: "arrive", y0: enter, y1: settle, w, shot, r, from, to };
-        segs.push(a);
-        arrivals[shot.at] = a;
+        w.a = { k: "arrive", y0: enter, y1: settle, shot, from, to };
+        arrivals[shot.at] = w.a;
       }
-      segs.push({ k: "dwell", y0: settle, y1: top + h, w, shot, r });
+      w.d = { k: "dwell", y0: settle, y1: top + h, shot };
+      w.need = true;
       prev = shot;
     }
-    segs.sort((a, b) => a.y0 - b.y0);
-    // The ground switches where each section starts (its header's top edge).
-    bounds = [...main.querySelectorAll<HTMLElement>(":scope > .ph-sec")].map((s) => ({ top: docTop(s), g: s.dataset.ground ?? "light" }));
-    sheets = [...main.querySelectorAll<HTMLElement>(".ph-sheet, .ph-opaque")].map((s) => {
-      const t = docTop(s);
-      return [t, t + s.offsetHeight];
-    });
-    for (const st of Object.values(stations)) st.measure?.(vw, vh);
+    sizeGL();
+    for (const st of Object.values(stations)) st.measure?.(vw, svh);
     photos.measure();
     dirty = true;
+    kick();
   }
 
   // ── Camera ─────────────────────────────────────────────────────────────────
@@ -259,35 +296,26 @@ export function installStage(root: HTMLElement): () => void {
   const _o = new THREE.Vector3();
   const tilt = { x: 0, y: 0 };
   const tiltTarget = { x: 0, y: 0 };
-  const state: StageState = { y: 0, arrive: { room: 0, mac: 0, props: 0, podium: 0, keypad: 0 } };
+  const state: StageState = { y: 0, arrive: { room: 0, mac: 0, props: 0, podium: 0, keypad: 0 }, amb: 0, wins: [] };
   // Debug probe (always on, cheap): what the last rendered frame drew, for tests.
   const lastCam = new THREE.Vector3();
   const probe: PhProbe = { drawn: [], frames: 0, cam: () => ({ x: lastCam.x, y: lastCam.y, z: lastCam.z }) };
   (window as Window & { __phStage?: PhProbe }).__phStage = probe;
 
-  function segAt(y: number, list = segs) {
-    let s = list[0];
-    for (const g of list) {
-      if (y >= g.y0) s = g;
-      else break;
-    }
-    return s;
-  }
   const progOf = (s: Seg, y: number) => (s.y1 > s.y0 ? THREE.MathUtils.clamp((y - s.y0) / (s.y1 - s.y0), 0, 1) : 1);
-  // Point the camera for one segment at scroll y (focus uses the raw scroll yr).
-  function camFor(s: Seg, y: number, yr: number) {
-    let p = progOf(s, y);
-    // Reduced motion: an arrival is just the shot; the Mac's orbit is a cut.
-    if (REDUCED && s.k !== "dwell") p = s.k === "arrive" || p >= 0.5 ? 1 : 0;
+  // Pose the shared camera for window w at scroll y: its segment's shot (eased
+  // from the raw scroll), seen through w's slice of the virtual viewport.
+  function camFor(w: Win, y: number) {
+    const s = y < w.d.y0 ? w.a : w.d;
+    // Reduced motion: static settled shots (no arrival, no orbit, no drift).
+    const p = REDUCED && s.k !== "dwell" ? 1 : progOf(s, y);
     let fov: number;
-    let focus: number;
     if (s.k === "dwell") {
       const q = REDUCED ? 0 : Math.sin(((p * 2 - 1) * Math.PI) / 2);
       _o.copy(s.shot.P).sub(s.shot.L).applyAxisAngle(UP, q * DRIFT_A).multiplyScalar(1 - q * DRIFT_D);
       _l.copy(s.shot.L);
       _p.copy(_l).add(_o);
       fov = s.shot.fov;
-      focus = lockOf(s.w, yr);
     } else {
       const k = ease(p);
       const a = s.from;
@@ -308,14 +336,13 @@ export function installStage(root: HTMLElement): () => void {
       }
       _l.lerpVectors(a.L, b.L, k);
       fov = THREE.MathUtils.lerp(a.fov, b.fov, k);
-      // The object starts centred on the sliver of window already on screen
-      // (so it shows from the first rows, not once half the window is in) and
-      // eases onto the window's own centre as the camera settles.
-      focus = REDUCED ? lockOf(s.w, yr) : THREE.MathUtils.lerp(sliceOf(s.w, yr), lockOf(s.w, yr), k);
     }
-    const shift = vh / 2 - (focus - yr);
-    if (Math.abs(shift) > 0.5) camera.setViewOffset(sizedW, sizedH, 0, shift * (sizedH / Math.max(1, canvas.clientHeight)), sizedW, sizedH);
-    else if (camera.view?.enabled) camera.clearViewOffset();
+    // The lab framed every shot on a full screen with the window centred on
+    // it: the window's canvas is that screen's middle slice.
+    const cw = Math.max(1, w.cw);
+    const ch = Math.max(1, w.ch);
+    camera.aspect = cw / svh;
+    camera.setViewOffset(cw, svh, 0, (svh - ch) / 2, cw, ch);
     camera.position.copy(_p);
     // Gyro (after a tap): a small parallax offset in camera space.
     camera.lookAt(_l);
@@ -325,67 +352,34 @@ export function installStage(root: HTMLElement): () => void {
     camera.lookAt(_l);
     camera.updateProjectionMatrix();
   }
-  // Each stage region shows its own part of the timeline: the segment that
-  // owns it at this scroll, or (before/after) its first/last segment held still.
-  function segForRegion(ri: number, y: number) {
-    const own = segs.filter((g) => g.r === ri);
-    if (!own.length) return null;
-    if (y <= own[0].y0) return own[0];
-    return segAt(y, own);
-  }
-  // The regions on screen this frame, each with its segment (built in frame(),
-  // drawn by renderStage()). Off-screen stations neither update nor draw.
-  let live: Array<{ r: { top: number; bot: number }; sg: Seg }> = [];
-  function placeLive(y: number, yr: number) {
-    const H = canvas.clientHeight || vh;
-    live = [];
-    regions.forEach((r, ri) => {
-      if (r.bot <= yr || r.top >= yr + H) return;
-      const sg = segForRegion(ri, y);
-      if (sg) live.push({ r, sg });
-    });
-  }
-  let landed = "";
-  function placeGround(y: number) {
-    let i = 0;
-    while (i < bounds.length - 1 && bounds[i + 1].top <= y) i++;
-    const A = bounds[i];
-    const N = bounds[i + 1];
-    const ga = A?.g ?? "orange";
-    let gb = ga;
-    let split = 1e6;
-    if (N && N.top < y + canvas.clientHeight) {
-      gb = N.g;
-      split = (N.top - y) * (sizedH * DPR / Math.max(1, canvas.clientHeight));
-    }
-    groundMat.uniforms.uA.value.copy(GROUND[ga]);
-    groundMat.uniforms.uB.value.copy(GROUND[gb]);
-    groundMat.uniforms.uSplit.value = split;
-  }
-  // Is any part of the viewport NOT covered by an opaque sheet?
-  function stageVisible(y: number) {
-    let reach = y;
-    for (const [t, b] of sheets) {
-      if (b <= reach) continue;
-      if (t > reach + 12) return true; // hairline gaps between sheets count as covered
-      reach = Math.max(reach, b);
-      if (reach >= y + vh) return false;
-    }
-    return reach < y + vh;
-  }
+  // Where a window's canvas sits on screen at scroll y (the pin sticks).
+  const hostTop = (w: Win, y: number) =>
+    (w.sticky ? THREE.MathUtils.clamp(y, w.top, w.top + w.h - w.ch) : w.top) - y;
 
-  // ── Sizing: only reallocate on width changes (iOS URL bar show/hide changes height).
+  // ── Sizing: the GL canvas is as big as the biggest window canvas and only
+  // reallocates when that changes (the width, or the stable svh). A height-only
+  // resize (the iOS toolbar) changes nothing.
+  let glW = 0;
+  let glH = 0;
+  function sizeGL() {
+    let w = 1;
+    let h = 1;
+    for (const v of wins) {
+      w = Math.max(w, v.cw);
+      h = Math.max(h, v.ch);
+    }
+    // +1: a window's rounded device size may not exceed the floored GL size.
+    if (w + 1 !== glW || h + 1 !== glH) {
+      glW = w + 1;
+      glH = h + 1;
+      renderer.setSize(glW, glH, false);
+    }
+  }
   function resize() {
     const w = document.documentElement.clientWidth;
-    const h = Math.max(window.innerHeight, canvas.clientHeight || 0);
-    if (w !== sizedW || Math.abs(h - sizedH) > 120) {
-      sizedW = w;
-      sizedH = h;
-      renderer.setSize(w, h, false);
-      groundMat.uniforms.uRes.value.set(w * DPR, h * DPR);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    }
+    if (w === vw) return;
+    vw = w;
+    svh = readSvh();
     measure();
   }
   on("resize", resize);
@@ -393,104 +387,145 @@ export function installStage(root: HTMLElement): () => void {
   ro.observe(main);
   offs.push(() => ro.disconnect());
 
-  // ── Loop: render only when the stage shows and something changed or animates.
+  // ── Loop: draw a window only when something it shows changed: the scroll
+  // moved, it came near the screen, its station still moves, or ambient drift
+  // is due (<= 30 fps, resting 4 s after the last input). Otherwise the loop
+  // stops until the next scroll, touch or invalidate.
   let running = !document.hidden;
   let raf = 0;
-  let smoothY = window.scrollY;
-  let lastRawY = -1;
   let last = performance.now();
+  let lastY = NaN;
+  let lastDraw = 0;
+  let lastInput = performance.now();
+  let ambT = 0;
+  let landed = "";
+  const moving = new Set<StationKey>();
+  const updated = new Set<StationKey>();
   function frame(now: number) {
     raf = 0;
     if (!running) return;
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
     last = now;
     const y = window.scrollY;
-    const prevY = smoothY;
-    const visible = stageVisible(y);
-    // While opaque sheets cover the stage nobody sees the camera: let it catch
-    // up at once, so it is never still travelling when the stage reopens.
-    smoothY = REDUCED || !visible ? y : smoothY + (y - smoothY) * (1 - Math.exp(-dt * 9));
-    if (y !== lastRawY) {
-      lastRawY = y;
-      dirty = true;
-    }
-    if (Math.abs(y - smoothY) < 0.3) smoothY = y;
-    if (smoothY !== prevY) dirty = true;
-    const tk = 1 - Math.exp(-dt * 4);
-    if (Math.abs(tiltTarget.x - tilt.x) + Math.abs(tiltTarget.y - tilt.y) > 0.001) {
+    const scrolled = y !== lastY;
+    lastY = y;
+    const ambOn = !REDUCED && now - lastInput < AMBIENT_MS;
+    if (ambOn) ambT += dt;
+    let tilting = false;
+    if (Math.abs(tiltTarget.x - tilt.x) + Math.abs(tiltTarget.y - tilt.y) > 0.002) {
+      const tk = 1 - Math.exp(-dt * 4);
       tilt.x += (tiltTarget.x - tilt.x) * tk;
       tilt.y += (tiltTarget.y - tilt.y) * tk;
-      dirty = true;
+      tilting = true;
     }
-    placeGround(y);
-    placeLive(smoothY, y);
-    state.y = smoothY;
+    // Windows near the screen (cached boxes; a quarter screen of margin so an
+    // entering window already holds its frame on its first visible row).
+    const vhNow = window.innerHeight;
+    const M = svh * 0.25;
+    const near: Win[] = [];
+    const seen = new Set<Win>();
+    let landedNow = "";
+    for (const w of wins) {
+      const t = hostTop(w, y);
+      if (t >= vhNow + M || t + w.ch <= -M) {
+        w.near = false;
+        continue;
+      }
+      if (!w.near) w.need = true;
+      w.near = true;
+      near.push(w);
+      if (t < vhNow && t + w.ch > 0) {
+        seen.add(w);
+        // The room's callout prints in once the room has settled (never over it mid-move).
+        if (!landedNow && y >= w.d.y0) landedNow = w.shot.at;
+      }
+    }
+    if (landedNow !== landed) {
+      landed = landedNow;
+      main.dataset.landed = landedNow;
+    }
+    state.y = y;
+    state.amb = ambOn ? dt : 0;
+    state.wins = near.map((w) => ({ el: w.el, p: REDUCED ? 1 : progOf(w.a, y) }));
     for (const k of Object.keys(state.arrive) as StationKey[]) {
       const a = arrivals[k];
-      state.arrive[k] = REDUCED || !a ? 1 : progOf(a, smoothY);
+      state.arrive[k] = REDUCED || !a ? 1 : progOf(a, y);
     }
-    // The room's callout prints in once the room has settled (never over it mid-move).
-    const l = live.find((v) => v.sg.k === "dwell")?.sg.shot.at ?? "";
-    if (l !== landed) {
-      landed = l;
-      main.dataset.landed = l;
-    }
-    // Every station with a window on screen animates (once per frame, with the
-    // camera of its first such window: the room's card billboards to it).
-    let animating = false;
-    const done = new Set<StationKey>();
-    for (const { sg } of live) {
-      const k = sg.shot.at;
+    // Each station near the screen steps once (posed for its first window:
+    // the room's card billboards to it).
+    moving.clear();
+    updated.clear();
+    for (const w of near) {
+      const k = w.shot.at;
       const st = stations[k];
-      if (done.has(k) || !st.update) continue;
-      done.add(k);
-      camFor(sg, smoothY, y);
-      animating = st.update(dt, now / 1000, state) || animating;
+      if (updated.has(k) || !st.update || !st.object) continue;
+      updated.add(k);
+      camFor(w, y);
+      if (st.update(dt, ambT, state)) moving.add(k);
     }
-    if (visible && (dirty || (animating && !REDUCED))) {
-      renderStage(y);
-      dirty = false;
-    } else if (!visible) probe.drawn = []; // opaque sheets cover the whole stage
-    raf = requestAnimationFrame(frame);
+    // Scroll, ambient drift and springs only redraw windows actually on screen:
+    // one in the margin holds still (its arrival has not begun, or its dwell
+    // has ended) and was drawn as it came near.
+    const all = dirty || tilting;
+    const amb = ambOn && now - lastDraw >= AMBIENT_FRAME - 1;
+    const scr = scrolled && !REDUCED;
+    dirty = false;
+    let drew = false;
+    for (const w of near) {
+      if (!(all || w.need || (seen.has(w) && (scr || amb || moving.has(w.shot.at))))) continue;
+      w.need = false;
+      drew = drawWin(w, y) || drew;
+    }
+    if (drew) {
+      lastDraw = now;
+      probe.frames++;
+    }
+    const shown = new Set<StationKey>();
+    for (const w of seen) if (w.full) shown.add(w.shot.at);
+    probe.drawn = [...shown];
+    if ((moving.size && seen.size) || tilting || (ambOn && seen.size)) raf = requestAnimationFrame(frame);
   }
-  // Ground over the whole screen; 3D only inside the windows on screen, each
-  // clipped to its region and drawing ONLY its own station (so no object ever
-  // shows under a heading or edge, or in another object's window).
-  function renderStage(y: number) {
-    const k = sizedH / Math.max(1, canvas.clientHeight);
-    for (const st of Object.values(stations)) st.group.visible = false;
-    renderer.autoClear = true;
-    renderer.render(scene, camera); // ground only
-    groundQuad.visible = false;
-    renderer.autoClear = false;
+  // Draw window w: its station alone, through its camera, into the shared GL
+  // canvas's bottom-left corner, then copy that into the window's canvas in
+  // the same task (the GL buffer is still valid).
+  function drawWin(w: Win, y: number) {
+    const st = stations[w.shot.at];
+    const g = w.g;
+    if (!g || !st.object || !w.cw || !w.ch) {
+      // Not built yet: an empty (transparent) window shows its CSS ground.
+      if (g && w.full) g.clearRect(0, 0, w.cv.width, w.cv.height);
+      w.full = false;
+      return false;
+    }
+    const pw = Math.round(w.cw * DPR);
+    const ph = Math.round(w.ch * DPR);
+    if (w.cv.width !== pw || w.cv.height !== ph) {
+      w.cv.width = pw;
+      w.cv.height = ph;
+    }
+    camFor(w, y);
+    st.prepare?.(w.el);
+    for (const s of Object.values(stations)) s.group.visible = s === st;
+    renderer.setViewport(0, 0, w.cw, w.ch);
+    renderer.setScissor(0, 0, w.cw, w.ch);
     renderer.setScissorTest(true);
-    const drawn: StationKey[] = [];
-    for (const { r, sg } of live) {
-      const key = sg.shot.at;
-      const st = stations[key];
-      const t = Math.max(0, r.top - y);
-      const b = Math.min(canvas.clientHeight, r.bot - y);
-      if (b <= t || !st.object) continue; // not built yet: nothing to draw
-      camFor(sg, smoothY, y);
-      st.group.visible = true;
-      renderer.setScissor(0, sizedH - b * k, sizedW, (b - t) * k);
-      renderer.clearDepth();
-      renderer.render(scene, camera);
-      st.group.visible = false;
-      if (!drawn.includes(key)) drawn.push(key);
-      lastCam.copy(camera.position);
-    }
-    renderer.setScissorTest(false);
-    renderer.autoClear = true;
-    groundQuad.visible = true;
-    probe.drawn = drawn;
-    probe.frames++;
+    renderer.render(scene, camera);
+    st.group.visible = false;
+    g.clearRect(0, 0, pw, ph);
+    g.drawImage(glc, 0, glc.height - ph, pw, ph, 0, 0, pw, ph);
+    w.full = true;
+    lastCam.copy(camera.position);
+    return true;
   }
-  const kick = () => {
-    if (!raf && running) {
+  function kick() {
+    if (!raf && running && alive) {
       last = performance.now();
       raf = requestAnimationFrame(frame);
     }
+  }
+  const input = () => {
+    lastInput = performance.now();
+    kick();
   };
   const onVis = () => {
     running = !document.hidden;
@@ -499,6 +534,16 @@ export function installStage(root: HTMLElement): () => void {
   };
   document.addEventListener("visibilitychange", onVis);
   offs.push(() => document.removeEventListener("visibilitychange", onVis));
+  // If the system reclaims the context, three rebuilds its state on restore;
+  // every window then draws again (and the warm jobs re-upload).
+  const onRestored = () => {
+    wins.forEach((w) => (w.need = true));
+    (Object.keys(stations) as StationKey[]).forEach((k) => stations[k].object && warm(k));
+    dirty = true;
+    kick();
+  };
+  glc.addEventListener("webglcontextrestored", onRestored);
+  offs.push(() => glc.removeEventListener("webglcontextrestored", onRestored));
 
   // ── Touch: inside a window, a horizontal drag turns that object (vertical
   // pan stays native via touch-action: pan-y); a tap pokes it. The first tap
@@ -510,6 +555,7 @@ export function installStage(root: HTMLElement): () => void {
     gyroBase ??= [e.beta, e.gamma];
     tiltTarget.x = THREE.MathUtils.clamp((e.gamma - gyroBase[1]) / 28, -1, 1);
     tiltTarget.y = THREE.MathUtils.clamp((e.beta - gyroBase[0]) / 28, -1, 1);
+    if (Math.abs(tiltTarget.x - tilt.x) + Math.abs(tiltTarget.y - tilt.y) > 0.002) kick();
   };
   function askGyro() {
     if (gyroAsked || REDUCED) return;
@@ -520,13 +566,15 @@ export function installStage(root: HTMLElement): () => void {
     if (typeof DOE.requestPermission === "function") DOE.requestPermission().then((r) => r === "granted" && go()).catch(() => {});
     else go();
   }
-  for (const w of main.querySelectorAll<HTMLElement>(".ph-win[data-shot]")) {
-    const station = () => stations[SHOTS[w.dataset.shot!].at];
+  for (const w of wins) {
+    const el = w.el;
+    const station = () => stations[w.shot.at];
     let d: { x: number; y: number; lx: number; drag: boolean; id: number } | null = null;
     let dragged = false;
     const down = (e: PointerEvent) => {
       d = { x: e.clientX, y: e.clientY, lx: e.clientX, drag: false, id: e.pointerId };
       dragged = false;
+      input();
     };
     const move = (e: PointerEvent) => {
       if (!d || e.pointerId !== d.id) return;
@@ -536,6 +584,7 @@ export function installStage(root: HTMLElement): () => void {
       if (d.drag) {
         station().drag?.((e.clientX - d.lx) / vw);
         dirty = true;
+        input();
       }
       d.lx = e.clientX;
     };
@@ -545,27 +594,28 @@ export function installStage(root: HTMLElement): () => void {
     const click = (e: MouseEvent) => {
       if (dragged || (e.target as Element).closest("a, button")) return;
       const st = station();
-      if (!st.tap) return;
-      const ndc = { x: (e.clientX / vw) * 2 - 1, y: -(e.clientY / canvas.clientHeight) * 2 + 1 };
-      // Raycast with THIS window's camera (another window may have been drawn last).
-      const ri = regions.findIndex((r) => (w as Win)._top >= r.top - 1 && (w as Win)._top < r.bot);
-      const sg = ri < 0 ? null : segForRegion(ri, smoothY);
-      if (sg) camFor(sg, smoothY, window.scrollY);
-      if (st.tap(ndc)) askGyro();
+      if (!st.tap || !st.object) return;
+      // NDC in THIS window's canvas, raycast with THIS window's camera.
+      const r = w.cv.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const ndc = { x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1 };
+      camFor(w, window.scrollY);
+      if (st.tap(ndc, el)) askGyro();
       dirty = true;
+      input();
     };
     const opt = { passive: true };
-    w.addEventListener("pointerdown", down, opt);
-    w.addEventListener("pointermove", move, opt);
-    w.addEventListener("pointerup", end, opt);
-    w.addEventListener("pointercancel", end, opt);
-    w.addEventListener("click", click);
+    el.addEventListener("pointerdown", down, opt);
+    el.addEventListener("pointermove", move, opt);
+    el.addEventListener("pointerup", end, opt);
+    el.addEventListener("pointercancel", end, opt);
+    el.addEventListener("click", click);
     offs.push(() => {
-      w.removeEventListener("pointerdown", down);
-      w.removeEventListener("pointermove", move);
-      w.removeEventListener("pointerup", end);
-      w.removeEventListener("pointercancel", end);
-      w.removeEventListener("click", click);
+      el.removeEventListener("pointerdown", down);
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", end);
+      el.removeEventListener("pointercancel", end);
+      el.removeEventListener("click", click);
     });
   }
 
@@ -576,6 +626,8 @@ export function installStage(root: HTMLElement): () => void {
     const box = main.querySelector<HTMLElement>(".ph-photos")!;
     let cols: HTMLElement[] = [];
     let lift = [0, 0, 0];
+    let boxTop = 0;
+    let boxH = 1;
     const measureP = () => {
       if (!cols.length) return;
       const hs = cols.map((c) => c.scrollHeight);
@@ -583,17 +635,18 @@ export function installStage(root: HTMLElement): () => void {
       lift = hs.map((h) => h - lo);
       // The block is as tall as the shortest column (they all end bottom-aligned).
       if (!REDUCED) box.style.height = Math.round(lo + 6 + 40) + "px";
+      boxTop = docTop(box);
+      boxH = Math.max(1, box.offsetHeight);
       drift();
     };
+    // From the cached box (no layout read per scroll event).
     const drift = () => {
       if (REDUCED || !cols.length) return;
-      const r = box.getBoundingClientRect();
-      if (r.bottom < -vh || r.top > vh * 2) return;
-      const k = THREE.MathUtils.clamp((vh - r.top) / r.height, 0, 1);
+      const top = boxTop - window.scrollY;
+      if (top + boxH < -svh || top > svh * 2) return;
+      const k = THREE.MathUtils.clamp((svh - top) / boxH, 0, 1);
       cols.forEach((c, i) => (c.style.transform = `translate3d(0, ${(-k * lift[i]).toFixed(1)}px, 0)`));
     };
-    let alive = true;
-    offs.push(() => (alive = false));
     void fetch("/photos/manifest.json")
       .then((r) => r.json() as Promise<Array<{ src: string; w: number; h: number }>>)
       .then((list) => {
@@ -643,23 +696,37 @@ export function installStage(root: HTMLElement): () => void {
     offs.push(() => io.disconnect());
   }
 
-  resize();
-  void document.fonts?.ready.then(() => measure());
+  svh = readSvh();
+  measure();
+  void document.fonts?.ready.then(() => alive && measure());
   on("load", measure);
-  on("scroll", () => {
-    dirty = true;
-    kick();
-  }, { passive: true });
+  on("scroll", input, { passive: true });
   kick();
-  const disposeObjects = installObjects({ renderer, scene, camera, root, REDUCED, invalidate: () => (dirty = true) }, mount);
+  const disposeObjects = installObjects(
+    {
+      renderer,
+      scene,
+      camera,
+      root,
+      REDUCED,
+      invalidate: () => {
+        dirty = true;
+        kick();
+      },
+    },
+    mount,
+  );
 
   return () => {
+    alive = false;
     running = false;
     if (raf) cancelAnimationFrame(raf);
     offs.forEach((f) => f());
     disposeObjects();
     delete (window as Window & { __phStage?: PhProbe }).__phStage;
     root.classList.remove("ph-rv");
+    svhProbe.remove();
+    jobs.length = 0;
     scene.traverse((o) => {
       const m = o as THREE.Mesh;
       m.geometry?.dispose();

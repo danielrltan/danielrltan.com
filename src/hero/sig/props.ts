@@ -147,6 +147,12 @@ export class HeroProps {
   private readonly tmpT = new THREE.Vector3();
   private readonly off: Array<() => void> = [];
   private readonly opts: PropsOptions;
+  /** Phone site only (html[data-phone]): the blocking touchstart/touchmove sit
+   *  on window only while they can act (hero active or a prop held); see
+   *  syncTouch. Everywhere else they stay attached for the page's life. */
+  private readonly touchGated = document.documentElement.hasAttribute("data-phone");
+  private touchFns: [(e: TouchEvent) => void, (e: TouchEvent) => void] | null = null;
+  private touchOn = false;
 
   constructor(opts: PropsOptions) {
     this.opts = opts;
@@ -265,13 +271,13 @@ export class HeroProps {
     on("pointercancel", () => this.release());
     on("blur", () => this.release());
     // Touch: only a touch that lands ON a prop stops the page scrolling.
-    on("touchstart", (e) => {
+    const touchStart = (e: TouchEvent) => {
       const t = e.touches[0];
       if (!t || e.touches.length > 1) return;
       const p = local(t.clientX, t.clientY);
       if (p.inside && this.grab(p.x, p.y)) e.preventDefault();
-    }, { passive: false });
-    on("touchmove", (e) => {
+    };
+    const touchMove = (e: TouchEvent) => {
       if (!this.held) return;
       e.preventDefault();
       const t = e.touches[0];
@@ -279,8 +285,39 @@ export class HeroProps {
         const p = local(t.clientX, t.clientY);
         this.track(p.x, p.y);
       }
-    }, { passive: false });
+    };
+    if (this.touchGated) {
+      this.touchFns = [touchStart, touchMove];
+      this.off.push(() => this.setTouch(false));
+      this.syncTouch();
+    } else {
+      on("touchstart", touchStart, { passive: false });
+      on("touchmove", touchMove, { passive: false });
+    }
     on("touchend", () => this.release());
+  }
+
+  /** Phone only: attach the blocking touch listeners while they can act (the
+   *  hero is active, or a prop is still held), drop them otherwise, so a touch
+   *  past the hero never waits on the main thread. Called every hero frame
+   *  (the rAF keeps ticking while culled) and once at construction. */
+  syncTouch(): void {
+    if (!this.touchGated || this.disposed) return;
+    this.setTouch(this.held !== null || this.opts.isActive());
+  }
+
+  private setTouch(on: boolean): void {
+    const fns = this.touchFns;
+    if (!fns || on === this.touchOn) return;
+    this.touchOn = on;
+    const o: AddEventListenerOptions = { passive: false };
+    if (on) {
+      window.addEventListener("touchstart", fns[0], o);
+      window.addEventListener("touchmove", fns[1], o);
+    } else {
+      window.removeEventListener("touchstart", fns[0], o);
+      window.removeEventListener("touchmove", fns[1], o);
+    }
   }
 
   /** The hero layer doesn't take pointer events, so a grab's click would land

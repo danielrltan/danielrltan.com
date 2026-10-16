@@ -21,11 +21,22 @@ interface Spring {
   x: number;
   v: number;
 }
+// Semi-implicit Euler in <= 1/120 s substeps (stable for the stiff ring even
+// on a throttled 50 ms frame); snaps to rest so it can report it has stopped.
 const spring = (s: Spring, target: number, dt: number, k = 120, c = 12) => {
-  s.v += ((target - s.x) * k - s.v * c) * dt;
-  s.x += s.v * dt;
+  const n = Math.min(8, Math.ceil(dt * 120));
+  for (let i = 0; i < n; i++) {
+    s.v += ((target - s.x) * k - s.v * c) * (dt / n);
+    s.x += s.v * (dt / n);
+  }
+  if (Math.abs(s.v) < 1e-4 && Math.abs(target - s.x) < 1e-4) {
+    s.x = target;
+    s.v = 0;
+  }
   return s.x;
 };
+/** Still moving (not yet snapped to rest at its target)? */
+const busy = (s: Spring, target: number) => s.v !== 0 || s.x !== target;
 const EMAIL = "hello@danielrltan.com";
 
 export function installObjects(ctx: StageCtx, mount: Mount): () => void {
@@ -36,20 +47,19 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
   const loadGLB = (url: string) => loader.loadAsync(url) as Promise<GLTF>;
   const loadTex = (url: string) => new THREE.TextureLoader().loadAsync(url);
 
-  // Shared light rig: white key, cool fill, an orange kicker.
+  // Shared light rig: white key, cool fill (neutral: no coloured kicker, and
+  // the key is low enough that no lit face clips past white).
   const pm = new THREE.PMREMGenerator(renderer);
   const env = pm.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environment = env;
-  scene.environmentIntensity = 0.5;
+  scene.environmentIntensity = 0.35;
   pm.dispose();
   scene.add(new THREE.AmbientLight("#eef1f4", 0.45));
-  const key = new THREE.DirectionalLight("#ffffff", 2.6);
+  const key = new THREE.DirectionalLight("#ffffff", 1.8);
   key.position.set(4, 7, 5);
   const fill = new THREE.DirectionalLight("#d7dde3", 0.8);
   fill.position.set(-5, 3, 2);
-  const kick = new THREE.DirectionalLight("#ff4f00", 1.0);
-  kick.position.set(-2, -1, -5);
-  scene.add(key, fill, kick);
+  scene.add(key, fill);
 
   // Soft contact shadow (a blurred ellipse on its own plane).
   function shadowTex(rgb = "13,14,16", a = 0.34) {
@@ -104,7 +114,8 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
     ["keypad", ".ph-keypad"],
   ];
   const scan = () => {
-    for (const [k, sel] of order) if (win(sel).getBoundingClientRect().top < window.innerHeight * 6) want(k);
+    for (const [k, sel] of order) if (!built[k] && win(sel).getBoundingClientRect().top < window.innerHeight * 6) want(k);
+    if (order.every(([k]) => built[k])) window.removeEventListener("scroll", scan);
   };
   const composed = new Promise<void>((res) => {
     if (!document.documentElement.classList.contains("loading-active")) return res();
@@ -166,7 +177,7 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
         const k = 1 - (bob + h) * 0.9;
         sh.scale.set(k, k, 1);
         (sh.material as THREE.MeshBasicMaterial).opacity = 0.9 * k;
-        return true;
+        return busy(hop, 0);
       },
       tap() {
         hop.v += 3.2;
@@ -175,8 +186,9 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
     });
   };
 
-  // ── 02 Mac: the classic CRT; its screen tunes to the project whose window
-  // is most on screen (stepped row wipe + a glitch band), scanlines + barrel.
+  // ── 02 Mac: the classic CRT; each Mac window shows ITS OWN project (set
+  // before that window's draw), scanlines + barrel; a glitch band plays once
+  // as that window's arrival settles, and on a tap.
   builders.mac = async () => {
     const [gltf, texs] = await Promise.all([loadGLB("/mac.glb"), Promise.all(MAC_PROJECTS.map((p) => loadTex(p.image!)))]);
     texs.forEach((t) => {
@@ -196,8 +208,14 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
       if (m.name === "screen") screen = m;
       else if ((m.material as THREE.MeshStandardMaterial)?.isMeshStandardMaterial) {
         const mt = m.material as THREE.MeshStandardMaterial;
+        // The case and bezel ship warm cream: recolour them to the palette's
+        // cool page white (the slot stays ink).
+        if (mt.name === "MacBody" || mt.name === "MacBezel") {
+          mt.color.set("#eef0f3");
+          mt.roughness = 0.6;
+        }
         mt.roughness = Math.max(0.35, mt.roughness ?? 0.5);
-        mt.envMapIntensity = 1.5; // presence on the light grey ground
+        mt.envMapIntensity = 1.0; // no face clips past white
       }
     });
     if (!screen) throw new Error("mac.glb has no screen mesh");
@@ -207,20 +225,17 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
     const crt = new THREE.ShaderMaterial({
       uniforms: {
         uA: { value: texs[0] },
-        uB: { value: texs[0] },
         uAspA: { value: asp[0] },
-        uAspB: { value: asp[0] },
-        uMix: { value: 0 },
         uTime: { value: 0 },
         uGlitch: { value: 0 },
-        uOn: { value: 1 },
         uMin: { value: new THREE.Vector2(bb.min.x, bb.min.y) },
         uSize: { value: new THREE.Vector2(bb.max.x - bb.min.x, bb.max.y - bb.min.y) },
       },
       vertexShader: `uniform vec2 uMin; uniform vec2 uSize; varying vec2 vUv;
         void main(){ vUv = (position.xy - uMin) / uSize; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform sampler2D uA; uniform sampler2D uB; uniform float uAspA; uniform float uAspB;
-        uniform float uMix; uniform float uTime; uniform float uGlitch; uniform float uOn; uniform vec2 uSize; varying vec2 vUv;
+      // Neutral grade: no warm offset or gain (whites stay white), a light red split.
+      fragmentShader: `uniform sampler2D uA; uniform float uAspA;
+        uniform float uTime; uniform float uGlitch; uniform vec2 uSize; varying vec2 vUv;
         float h(float n){ return fract(sin(n * 91.345) * 43758.5453); }
         vec3 img(sampler2D t, float a, vec2 uv){
           vec2 u = uv - 0.5; float s = (uSize.x / uSize.y) / a;
@@ -234,16 +249,10 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
           float r = floor(uv.y * rows);
           float band = uGlitch * step(0.86, h(r + floor(uTime * 24.0)));
           uv.x += band * (h(r * 1.7 + uTime) - 0.5) * 0.12;
-          vec3 a = img(uA, uAspA, uv); vec3 b = img(uB, uAspB, uv);
-          float row = floor((1.0 - uv.y) * 18.0) / 18.0;
-          vec3 col = row < uMix ? b : a;
-          vec2 uv2 = uv + vec2(0.004, 0.0);
-          float rr = row < uMix ? img(uB, uAspB, uv2).r : img(uA, uAspA, uv2).r;
-          col.r = mix(col.r, rr, 0.6);
-          col *= 0.78 + 0.22 * sin(uv.y * rows * 3.14159);
-          col = col * 1.08 + vec3(0.02, 0.012, 0.0);
+          vec3 col = img(uA, uAspA, uv);
+          col.r = mix(col.r, img(uA, uAspA, uv + vec2(0.004, 0.0)).r, 0.25);
+          col *= 0.84 + 0.16 * sin(uv.y * rows * 3.14159);
           col *= smoothstep(-0.01, 0.09, edge);
-          col = mix(vec3(0.03), col, uOn);
           col += band * 0.12;
           gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
         }`,
@@ -257,56 +266,53 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
     const glow = contactShadow(2.3, 1.3, shadowTex("13,14,16", 0.5));
     glow.position.y = -0.16;
     group.add(glow);
-    const macWins = [...root.querySelectorAll<HTMLElement>(".ph-mac")];
-    let next = 0;
-    let mixT = 1;
+    // Each Mac window's own screen: its project (data-ch) and its glitch.
+    const screens = new Map<HTMLElement, { ch: number; glitch: number; played: boolean }>();
+    root.querySelectorAll<HTMLElement>(".ph-mac").forEach((el, i) => {
+      const ch = THREE.MathUtils.clamp(Number(el.dataset.ch ?? i) || 0, 0, texs.length - 1);
+      screens.set(el, { ch, glitch: 0, played: false });
+    });
     const yaw = { x: 0, v: 0 };
     const hop = { x: 0, v: 0 };
     let yawTarget = 0;
-    let glitch = 0;
     mountIf("mac", {
       object: group,
-      update(dt, t) {
-        // The screen shows the project of whichever Mac window is most on screen.
-        let pick: number | null = null;
-        let best = 0;
-        macWins.forEach((w, i) => {
-          const r = w.getBoundingClientRect();
-          const v = Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0);
-          if (v > best) {
-            best = v;
-            pick = i;
-          }
-        });
-        if (pick != null && pick !== next && mixT >= 1) {
-          next = pick;
-          mixT = 0;
-          glitch = 1;
-          crt.uniforms.uB.value = texs[next];
-          crt.uniforms.uAspB.value = asp[next];
-        }
-        if (mixT < 1) {
-          mixT = REDUCED ? 1 : Math.min(1, mixT + dt / 0.45);
-          crt.uniforms.uMix.value = Math.floor(mixT * 18) / 18; // stepped rows
-          if (mixT >= 1) {
-            crt.uniforms.uA.value = texs[next];
-            crt.uniforms.uAspA.value = asp[next];
-            crt.uniforms.uMix.value = 0;
+      warm: texs,
+      update(dt, t, st) {
+        // A window's glitch plays once, as its arrival (or orbit) settles.
+        for (const { el, p } of st.wins) {
+          const s = screens.get(el);
+          if (s && !s.played && p >= 1) {
+            s.played = true;
+            if (!REDUCED) s.glitch = 1;
           }
         }
-        glitch = Math.max(0, glitch - dt * 2.2);
-        crt.uniforms.uGlitch.value = REDUCED ? 0 : glitch;
-        crt.uniforms.uTime.value = t;
+        let glitching = false;
+        for (const s of screens.values()) {
+          if (s.glitch <= 0) continue;
+          s.glitch = Math.max(0, s.glitch - dt * 2.2);
+          glitching = true;
+        }
         yawTarget *= Math.exp(-dt * 0.8);
+        if (Math.abs(yawTarget) < 1e-3) yawTarget = 0;
         spin.rotation.y = spring(yaw, yawTarget, dt, 40, 9) + (REDUCED ? 0 : Math.sin(t * 0.4) * 0.07);
         spin.position.y = Math.max(0, spring(hop, 0, dt, 90, 8));
-        return true;
+        return glitching || yawTarget !== 0 || busy(yaw, yawTarget) || busy(hop, 0);
+      },
+      prepare(el) {
+        const s = screens.get(el);
+        const i = s?.ch ?? 0;
+        crt.uniforms.uA.value = texs[i];
+        crt.uniforms.uAspA.value = asp[i];
+        crt.uniforms.uGlitch.value = REDUCED ? 0 : (s?.glitch ?? 0);
+        crt.uniforms.uTime.value = performance.now() / 1000;
       },
       drag(dx) {
         yawTarget = THREE.MathUtils.clamp(yawTarget + dx * 4, -1.2, 1.2);
       },
-      tap() {
-        glitch = 1;
+      tap(_ndc, el) {
+        const s = screens.get(el);
+        if (s && !REDUCED) s.glitch = 1;
         hop.v += 2.4;
         return true;
       },
@@ -333,17 +339,19 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
         });
       });
       const body = normalise(g.scene, 0.5);
+      body.rotation.set(0.25 * Math.sin(i * 2.1), i * 0.9, 0.2 * Math.cos(i * 1.3));
+      // Its lowest point at scale 1 (a spin about y never changes it).
+      const bot = new THREE.Box3().setFromObject(body).min.y;
       const pivot = new THREE.Group();
       pivot.add(body);
       const sh = contactShadow(0.95, 0.95);
-      sh.position.y = -0.56;
+      sh.position.y = bot - 0.01;
       const slot = new THREE.Group();
       slot.add(pivot, sh);
       slot.position.set(Math.sin(i * STEP) * R, 0, Math.cos(i * STEP) * R);
       ring.add(slot);
-      body.rotation.set(0.25 * Math.sin(i * 2.1), i * 0.9, 0.2 * Math.cos(i * 1.3));
       body.userData.i = i;
-      return { pivot, body, sh, pop: { x: 1, v: 0 }, extra: 0, lastRing: 0 };
+      return { pivot, body, sh, bot, pop: { x: 1, v: 0 }, extra: 0, lastRing: 0 };
     });
     const playWin = win(".ph-play");
     const nameEl = playWin.querySelector<HTMLElement>(".ph-play-name")!;
@@ -358,39 +366,98 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
     };
     measure(window.innerWidth, window.innerHeight);
     const ringRot = { x: 0, v: 0 };
+    let lastRot = NaN;
+    // Scroll -> ring position u (in slots): each slot holds through the middle
+    // of its stretch of scroll and turns between. When scrolling stops between
+    // two slots, the ring settles on the nearer one (held until the scroll
+    // passes it, so resuming never turns the ring backwards).
+    const slotOf = (p: number) => {
+      const v = p * (N - 1);
+      const k = Math.min(N - 2, Math.floor(v));
+      const x = THREE.MathUtils.clamp((v - k - 0.2) / 0.6, 0, 1);
+      return k + x * x * (3 - 2 * x);
+    };
+    let held: number | null = null;
+    let lastY = NaN;
+    let still = 0;
+    let pinned = false;
+    const _c = new THREE.Vector3();
+    const _g = new THREE.Vector3();
+    const replayTick = () => {
+      nameEl.classList.remove("ph-tick");
+      void nameEl.offsetWidth;
+      nameEl.classList.add("ph-tick");
+    };
     mountIf("props", {
       object: group,
       measure,
       update(dt: number, t: number, st: StageState) {
         const p = THREE.MathUtils.clamp((st.y - top) / span, 0, 1);
+        // The name shows once the pin has stuck (above that it rides under the dock).
+        const pin = st.y >= top - 1;
+        if (pin !== pinned) {
+          pinned = pin;
+          nameEl.classList.toggle("ph-pinned", pin);
+          if (pin) replayTick();
+        }
+        const u = slotOf(p);
+        const dy = st.y - lastY;
+        if (dy) {
+          still = 0;
+          if (held !== null && !((dy > 0 && held > u) || (dy < 0 && held < u))) held = null;
+        } else still += dt;
+        lastY = st.y;
+        // Scroll at rest between slots: settle on the nearer one.
+        const waiting = held === null && Math.abs(u - Math.round(u)) > 1e-3;
+        if (waiting && still > 0.15) held = Math.round(u);
         dragRot += dragV * dt;
         dragV *= Math.exp(-dt * 3);
         // Ease toward the nearest whole slot when nobody is dragging.
-        if (Math.abs(dragV) < 0.05) dragRot += (Math.round(dragRot / STEP) * STEP - dragRot) * (1 - Math.exp(-dt * 4));
-        const target = -p * (N - 1) * STEP + dragRot;
-        const rot = REDUCED ? target : spring(ringRot, target, dt, 60, 13);
+        if (Math.abs(dragV) < 0.05) {
+          dragV = 0;
+          const slot = Math.round(dragRot / STEP) * STEP;
+          dragRot += (slot - dragRot) * (1 - Math.exp(-dt * 4));
+          if (Math.abs(slot - dragRot) < 1e-4) dragRot = slot;
+        }
+        // The scroll turns the ring almost directly (a stiff, critically damped
+        // spring), so it stops when the finger does.
+        const target = -(held ?? u) * STEP + dragRot;
+        const rot = REDUCED ? target : spring(ringRot, target, dt, 200, 28);
+        const turned = rot !== lastRot;
+        lastRot = rot;
         ring.rotation.y = rot;
-        const f = ((Math.round(-rot / STEP) % N) + N) % N;
+        // The camera's yaw about the ring (it is posed for this window before
+        // update): the slot facing it is the front one, drawn biggest.
+        group.updateWorldMatrix(true, false);
+        group.getWorldPosition(_g);
+        _c.copy(camera.position).sub(_g);
+        const yaw = Math.atan2(_c.x, _c.z);
+        const f = ((Math.round((yaw - rot) / STEP) % N) + N) % N;
         if (f !== front) {
           front = f;
           nameEl.textContent = HOBBIES[f].label;
-          nameEl.classList.remove("ph-tick");
-          void nameEl.offsetWidth;
-          nameEl.classList.add("ph-tick");
+          replayTick();
         }
+        let popping = false;
         items.forEach((it, i) => {
           it.extra *= Math.exp(-dt * 2.5);
-          it.pivot.rotation.y += ((REDUCED ? 0 : 0.35) + it.extra) * dt - (ring.rotation.y - it.lastRing);
-          it.lastRing = ring.rotation.y;
+          if (it.extra < 0.01) it.extra = 0;
+          it.pivot.rotation.y += (REDUCED ? 0 : 0.35) * st.amb + it.extra * dt - (rot - it.lastRing);
+          it.lastRing = rot;
           const bob = REDUCED ? 0 : Math.sin(t * 1.2 + i * 1.7) * 0.05;
-          it.pivot.position.y = bob;
           // Front-ness: the slot facing the camera reads big, the back row small.
-          const a = i * STEP + ring.rotation.y;
+          const a = i * STEP + rot - yaw;
           const fr = Math.pow((Math.cos(a) + 1) / 2, 4);
-          it.pivot.scale.setScalar(spring(it.pop, 1, dt, 160, 10) * (0.46 + 0.54 * fr));
-          it.sh.scale.setScalar((1 - bob * 1.5) * (0.46 + 0.54 * fr));
+          const s = spring(it.pop, 1, dt, 160, 10) * (0.46 + 0.54 * fr);
+          if (it.extra || busy(it.pop, 1)) popping = true;
+          it.pivot.position.y = bob;
+          it.pivot.scale.setScalar(s);
+          // The shadow sits just under the scaled prop; only the front ones cast one.
+          it.sh.position.y = bob + it.bot * s - 0.01;
+          it.sh.scale.setScalar(s);
+          (it.sh.material as THREE.MeshBasicMaterial).opacity = fr;
         });
-        return true;
+        return turned || popping || dragV !== 0 || (waiting && still <= 0.15);
       },
       drag(dx) {
         dragRot += dx * 3.2;
@@ -455,7 +522,9 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const mats: Record<string, THREE.Material> = {
       white: new THREE.MeshStandardMaterial({ color: "#f4f5f7", roughness: 0.55 }),
-      orange: new THREE.MeshStandardMaterial({ color: "#ff4f00", roughness: 0.5 }),
+      // No specular sheen (it greyed the orange) and a touch of self-light, so
+      // the lit front face reads as the palette #ff4f00 and the sides go darker.
+      orange: new THREE.MeshPhysicalMaterial({ color: "#ff4f00", roughness: 0.5, specularIntensity: 0, emissive: "#ff4f00", emissiveIntensity: 0.2 }),
     };
     const group = new THREE.Group();
     const meshes: Record<string, THREE.InstancedMesh> = {};
@@ -509,7 +578,7 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
         const prog = st.arrive.podium;
         const lv = REDUCED ? maxLayer + 1 : prog * (maxLayer + 2);
         const hy = hops.map((h) => Math.max(0, spring(h, 0, dt, 110, 9)));
-        const moving = hy.some((h) => h > 1e-4) || Math.abs(lv - builtLv) > 1e-3;
+        const moving = hops.some((h) => busy(h, 0)) || Math.abs(lv - builtLv) > 1e-3;
         if (moving) {
           for (const k of ["white", "orange"]) {
             const m = meshes[k];
@@ -524,14 +593,16 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
             m.instanceMatrix.needsUpdate = true;
           }
           PL.forEach((pl, i) => {
-            pl.label!.visible = lv > pl.h * 0.6;
+            // Only once its plinth is complete (never over a half-built one).
+            pl.label!.visible = lv >= pl.h + 0.5;
             pl.label!.position.y = Math.min(pl.h * VX - (N * VX) / 2 - 0.02, 0.62) + hy[i];
           });
           builtLv = lv;
         }
         yawTarget *= Math.exp(-dt * 0.8);
+        if (Math.abs(yawTarget) < 1e-3) yawTarget = 0;
         group.rotation.y = spring(yaw, yawTarget, dt, 40, 9) + (REDUCED ? 0 : Math.sin(t * 0.35) * 0.05);
-        return true;
+        return moving || yawTarget !== 0 || busy(yaw, yawTarget);
       },
       drag(dx) {
         yawTarget = THREE.MathUtils.clamp(yawTarget + dx * 3, -0.9, 0.9);
@@ -546,7 +617,7 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
     });
   };
 
-  // ── 07 Contact: the keypad on an orange glyph floor. Keys press and open
+  // ── 07 Contact: the keypad on the orange ground. Keys press and open
   // the real links; the OLED opens mail; the dial spins.
   builders.keypad = async () => {
     const gltf = await loadGLB(keypadUrl);
@@ -571,51 +642,30 @@ export function installObjects(ctx: StageCtx, mount: Mount): () => void {
     body.scale.setScalar(0.68);
     body.position.set(0.05, 0, 0);
     group.add(body);
-    // Glyph floor: the hero's tile vocabulary, static, orange on orange.
-    const c = document.createElement("canvas");
-    c.width = c.height = 64;
-    const g = c.getContext("2d")!;
-    g.fillStyle = "#ff4f00";
-    g.fillRect(0, 0, 64, 64);
-    g.fillStyle = "#ff7a3c";
-    g.fillRect(4, 4, 24, 24);
-    g.fillStyle = "#ff4f00";
-    g.fillRect(9, 9, 14, 14);
-    g.fillStyle = "#ff7a3c";
-    g.fillRect(40, 8, 16, 16);
-    g.fillRect(12, 44, 8, 8);
-    for (let i = 0; i < 20; i++) {
-      g.fillRect(36 + i, 36 + i, 3, 3);
-      g.fillRect(55 - i, 36 + i, 3, 3);
-    }
-    const ft = new THREE.CanvasTexture(c);
-    ft.colorSpace = THREE.SRGBColorSpace;
-    ft.wrapS = ft.wrapT = THREE.RepeatWrapping;
-    ft.repeat.set(40, 40);
-    ft.magFilter = THREE.NearestFilter;
-    ft.anisotropy = 4;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), new THREE.MeshBasicMaterial({ map: ft }));
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = 0.035;
-    group.add(floor);
-    const sh = contactShadow(3.4, 3.9, shadowTex("120,30,0", 0.5));
+    // No floor of its own: the window's CSS orange shows through the
+    // transparent canvas; an ink contact shadow seats it.
+    const sh = contactShadow(3.4, 3.9, shadowTex("13,14,16", 0.32));
     sh.position.y = 0.04;
     group.add(sh);
     const tilt = { x: 0, v: 0 };
     let knobV = 0;
     mountIf("keypad", {
       object: group,
-      update(dt, t) {
+      update(dt, t, st) {
+        let pressing = false;
         for (const k in parts) {
           if (k === "knob") continue;
           const p = parts[k];
-          p.position.y = p.userData.y0 - Math.max(0, spring(p.userData.press as Spring, 0, dt, 140, 10));
+          const s = p.userData.press as Spring;
+          p.position.y = p.userData.y0 - Math.max(0, spring(s, 0, dt, 140, 10));
+          if (busy(s, 0)) pressing = true;
         }
         knobV *= Math.exp(-dt * 1.5);
-        if (parts.knob) parts.knob.rotation.y += ((REDUCED ? 0 : 0.25) + knobV) * dt;
+        if (Math.abs(knobV) < 0.01) knobV = 0;
+        if (parts.knob) parts.knob.rotation.y += (REDUCED ? 0 : 0.25) * st.amb + knobV * dt;
         body.rotation.z = spring(tilt, 0, dt, 60, 7) + (REDUCED ? 0 : Math.sin(t * 0.5) * 0.02);
         body.rotation.x = REDUCED ? 0 : Math.sin(t * 0.37) * 0.02;
-        return true;
+        return pressing || knobV !== 0 || busy(tilt, 0);
       },
       tap(ndc) {
         ray.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera);

@@ -17,10 +17,11 @@ import "./phone.css";
 /**
  * The phone site (<=600px wide, decided once at mount in App.tsx). The live
  * signature hero stays on top in App's fixed hero layer (heroWipe's scrubbed
- * fade); everything after it is this page: one fixed WebGL stage behind the
- * whole scroll (stage.ts) whose camera flies between Daniel's objects, sharp
- * white sheets over it that leave windows open where an object is the
- * subject, and a bottom dock of section keys (dock.ts).
+ * fade); everything after it is this page: sections painted in their CSS
+ * ground colour, sharp white sheets, and a window wherever an object is the
+ * subject. stage.ts puts a WebGL canvas (.ph-gl) inside each window and flies
+ * its camera in as the window scrolls in; a bottom dock of section keys
+ * (dock.ts).
  *
  * Every stage window (.ph-win[data-shot]) names its camera shot. Each section
  * is header -> object window(s) -> sheets; an object arrives inside its own
@@ -96,7 +97,6 @@ export default function PhoneSite() {
 
   return (
     <div className="ph-root" ref={rootRef}>
-      <canvas className="ph-stage" aria-hidden />
       <main className="ph-site">
         {/* 00: the hero itself is App's fixed layer; this is its first screen. */}
         <section id="s00" className="ph-sec" data-sec="0" data-ground="orange">
@@ -332,7 +332,8 @@ export default function PhoneSite() {
               {[...SOCIALS]
                 .sort((a, b) => ORDER.indexOf(a.node) - ORDER.indexOf(b.node))
                 .map((s) => (
-                  <li key={s.node}>
+                  // The keypad's keys are these links; the rows stay for screen readers only.
+                  <li key={s.node} className="ph-sr">
                     <a href={s.href} target="_blank" rel="noopener noreferrer" aria-label={s.aria} onClick={outbound(s.href, "contact")}>
                       <span>{s.label}</span>
                       <Arrow />
@@ -346,20 +347,6 @@ export default function PhoneSite() {
                 </a>
               </li>
             </ul>
-          </div>
-          <div className="ph-marquee" aria-hidden>
-            <div className="ph-mq-track">
-              {[0, 1].map((k) => (
-                <Fragment key={k}>
-                  <span>let&rsquo;s connect</span>
-                  <b />
-                  <span>say hi</span>
-                  <b />
-                  <span>drop a line</span>
-                  <b />
-                </Fragment>
-              ))}
-            </div>
           </div>
           <footer className="ph-foot">
             <span>© Daniel Tan 2026</span>

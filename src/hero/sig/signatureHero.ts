@@ -482,6 +482,8 @@ export class SignatureHero {
     this.raf = requestAnimationFrame(this.frame);
     const dt = Math.min(0.05, (now - this.prev) / 1000);
     this.prev = now;
+    // Phone only (no-op elsewhere): touch listeners follow the hero's activity.
+    this.props.syncTouch();
     if (!this.o.shouldRender()) return;
     const t = (now - this.t0) / 1000;
     const drawMs = now - this.t0 - DRAW_DELAY;

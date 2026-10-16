@@ -709,8 +709,8 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
   await context.close();
 }
 
-// The phone site (src/phone, <=600px wide): its own sections, one fixed WebGL
-// stage, a bottom dock. Same loader + hero as desktop.
+// The phone site (src/phone, <=600px wide): its own sections, a 2D canvas
+// (.ph-gl) in each stage window fed by one offscreen WebGL renderer, a bottom dock. Same loader + hero as desktop.
 const PHONE_SECTIONS = ["Hero", "About", "Projects", "Experience", "Some interests", "The trophy wall", "Recents", "Contact"];
 async function runPhoneScenario(browser, name, { viewport, query }) {
   console.log(`\n== ${name} (${viewport.width}x${viewport.height}, phone site) ==`);
@@ -740,13 +740,18 @@ async function runPhoneScenario(browser, name, { viewport, query }) {
     phone: !!document.querySelector(".ph-site"),
     desktop: !!document.querySelector(".portfolio-mac, .portfolio-about, .snc-dial"),
     stage: !!document.querySelector("canvas.ph-stage"),
+    wins: document.querySelectorAll(".ph-win[data-shot]").length,
+    gl: document.querySelectorAll(".ph-win[data-shot] canvas.ph-gl").length,
+    probe: !!window.__phStage,
   }));
   check(!outline.boot, "static #boot-screen removed");
   check(!outline.seo, "#seo-fallback removed after mount");
   check(outline.mains === 1, `exactly one <main> (${outline.mains})`);
   check(outline.h1s === 1, `exactly one <h1> (${outline.h1s})`);
   check(outline.phone && !outline.desktop, "phone site mounted, desktop sections not");
-  check(outline.stage, "phone stage canvas present");
+  check(!outline.stage, "no fixed canvas.ph-stage (each window draws its own)");
+  check(outline.wins >= 5 && outline.gl === outline.wins, `every stage window holds one canvas.ph-gl (${outline.gl}/${outline.wins})`);
+  check(outline.probe, "window.__phStage probe present");
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}-00-hero.png` });
 
   // 2. Every section, in order, with its number + title.
@@ -780,14 +785,37 @@ async function runPhoneScenario(browser, name, { viewport, query }) {
   //    renders, and the 3D stations build ahead of their windows.
   const seen = [];
   const docH = await page.evaluate(() => document.documentElement.scrollHeight);
+  const frames0 = await page.evaluate(() => window.__phStage?.frames ?? 0);
+  const glDrawn = new Set();
+  const stations = new Set();
   let shot = 1;
   for (let y = 0; y <= docH; y += Math.round(viewport.height * 0.6)) {
     await scrollTo(page, y);
     const k = await page.evaluate(() => document.querySelector(".ph-dock-keys a.ph-on")?.textContent ?? null);
     if (k && seen[seen.length - 1] !== k) seen.push(k);
+    // Windows on screen have drawn into their own canvas (it got a size).
+    const st = await page.evaluate(() => ({
+      gl: [...document.querySelectorAll(".ph-win[data-shot]")]
+        .filter((w) => {
+          const r = w.getBoundingClientRect();
+          const c = w.querySelector("canvas.ph-gl");
+          return r.bottom > 0 && r.top < innerHeight && c && c.width > 0 && c.height > 0;
+        })
+        .map((w) => w.dataset.shot),
+      drawn: window.__phStage?.drawn ?? [],
+    }));
+    st.gl.forEach((s) => glDrawn.add(s));
+    st.drawn.forEach((s) => stations.add(s));
     if (SHOTS && y % (viewport.height * 3) < viewport.height * 0.6) await page.screenshot({ path: `${SHOTS}/${name}-${String(shot++).padStart(2, "0")}.png` });
   }
   check(seen.join(",") === "00,01,02,03,04,05,06,07", `dock visits every section in order (${seen.join(",")})`);
+  const allShots = await page.evaluate(() => [...document.querySelectorAll(".ph-win[data-shot]")].map((w) => w.dataset.shot));
+  const undrawn = allShots.filter((s) => !glDrawn.has(s));
+  check(undrawn.length === 0, `every window drew into its .ph-gl canvas when scrolled to (${glDrawn.size}/${allShots.length}${undrawn.length ? "; missing " + undrawn.join(",") : ""})`);
+  const frames1 = await page.evaluate(() => window.__phStage?.frames ?? 0);
+  check(frames1 > frames0, `__phStage reports draws while scrolling (${frames0} -> ${frames1})`);
+  const wantSt = ["room", "mac", "props", "podium", "keypad"].filter((s) => !stations.has(s));
+  check(wantSt.length === 0, `__phStage drew every station (${[...stations].join(",")})`);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check(overflow <= 0, `no horizontal overflow (${overflow}px)`);
 

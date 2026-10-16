@@ -469,6 +469,11 @@ export function installHeroWipe(): void {
   const heroLayer = () => q<HTMLElement>(".scroll-layer--hero");
   const irisMode = () => !roomlessQ.matches && !reducedMotion.value;
   const scrubMode = () => !irisMode() && compactQ.matches && !reducedMotion.value;
+  // Phone site (App's PHONE flag, decided once before mount): the hero leaves
+  // 1:1 with its first screen (#s00) like a normal section, no fade, so it is
+  // never composited over About's header. Off on every non-phone layout.
+  const isPhone = root.hasAttribute("data-phone");
+  const phoneMode = () => isPhone && !irisMode();
 
   // ── Geometry (seed, radius curve, cached keyframe strings) ────────────────
   // Measured at rest (hero-composed, resize) so the build frame does no layout
@@ -812,6 +817,33 @@ export function installHeroWipe(): void {
   // Scrub path's upward drift (px, <= 0); 0 everywhere else.
   let scrubShift = 0;
   let lastShift = "";
+  // Phone hand-off: #s00's document bottom (px; 0 = not measured yet) and the
+  // static clip that trims the layer (100vh = lvh on iOS) to #s00 (100svh),
+  // so its bottom strip never sits over About while it scrolls away.
+  let phoneH = 0;
+  let phoneClip = "";
+  let lastClip = "";
+  const measurePhone = () => {
+    if (!isPhone) return;
+    const s00 = document.getElementById("s00");
+    const el = heroLayer();
+    if (!s00 || !el) {
+      phoneH = 0;
+      return;
+    }
+    const h = s00.getBoundingClientRect().bottom + window.scrollY;
+    phoneH = h > 0 ? h : 0;
+    const trim = phoneH ? Math.max(0, el.offsetHeight - phoneH) : 0;
+    phoneClip = trim >= 0.5 ? `inset(0 0 ${trim.toFixed(1)}px 0)` : "";
+  };
+  const setPhoneClip = (on: boolean) => {
+    if (!isPhone) return;
+    const el = heroLayer();
+    const v = on ? phoneClip : "";
+    if (!el || v === lastClip) return;
+    lastClip = v;
+    el.style.clipPath = v;
+  };
   const writeFade = () => {
     const el = heroLayer();
     if (el) {
@@ -872,6 +904,7 @@ export function installHeroWipe(): void {
     setPointer(diving ? "none" : "auto");
 
     if (irisMode()) {
+      setPhoneClip(false);
       if (fadeRaf || fadeOpacity !== 1 || scrubShift) {
         // Leaving the fade path (resize past 900 / reduced-motion toggle).
         fadeShown = true;
@@ -917,6 +950,25 @@ export function installHeroWipe(): void {
       setLayerPointer("none");
       heroState.wiping = false;
       if (fromIris) writeFade();
+      if (phoneMode()) {
+        // Phone: the layer scrolls away 1:1 with #s00 at full opacity, then is
+        // culled (hidden, not rendered) once #s00 is off screen; scrolling back
+        // reverses it exactly.
+        if (fadeRaf) cancelAnimationFrame(fadeRaf);
+        fadeRaf = 0;
+        if (!phoneH) measurePhone();
+        const H = phoneH || vh;
+        const gone = y >= H;
+        fadeOpacity = fadeFrom = fadeTo = gone ? 0 : 1;
+        fadeShown = !gone;
+        scrubShift = -Math.min(y, H);
+        setPhoneClip(true);
+        writeFade();
+        // Same scroll point as the scrub path's cue.
+        if (gone || ratio >= SCRUB_FROM_VH + SCRUB_CUE_P * (SCRUB_TO_VH - SCRUB_FROM_VH)) heroHandoff.set("cue");
+        return;
+      }
+      setPhoneClip(false);
       if (scrubMode()) {
         // Scrubbed fade: opacity + drift written from the scroll position
         // itself (no timed tween to chase). See header.
@@ -1025,6 +1077,7 @@ export function installHeroWipe(): void {
       if (built) teardown();
       if (parkDriven.length) cancelAll(parkDriven);
       geo = measure();
+      measurePhone();
       update(true);
     }, 120);
   };
@@ -1039,6 +1092,12 @@ export function installHeroWipe(): void {
   // measure can still see the old layout), and after late content shifts
   // About. Only rebuilds when the seed actually moved.
   const remeasure = () => {
+    if (isPhone) {
+      const h = phoneH;
+      const c = phoneClip;
+      measurePhone();
+      if (phoneH !== h || phoneClip !== c) update(true);
+    }
     const next = measure();
     if (!next) return;
     const g = geo;
@@ -1062,7 +1121,7 @@ export function installHeroWipe(): void {
     if (ev.phase !== "end" || ev.mode !== "cut") return;
     update(true);
     // The scrub path already wrote the landing's exact state in update().
-    if (!irisMode() && !scrubMode()) snapFade();
+    if (!irisMode() && !scrubMode() && !phoneMode()) snapFade();
   });
   // The hero settled (opaque, composed): arm About's arrival trio underneath
   // it and measure the iris geometry off the scroll path.
