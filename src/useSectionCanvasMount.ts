@@ -55,6 +55,76 @@ export function markSectionCanvasCreated(canvas: HTMLCanvasElement): void {
   canvas.closest("[data-section-canvas]")?.setAttribute(CREATED_ATTR, "");
 }
 
+/**
+ * THE EAGER QUEUE. Capable desktops still build every section scene before
+ * anyone can scroll to it, but no longer all at once inside the loader: five
+ * contexts creating, parsing their GLBs and linking their programs together
+ * starved the loader's smooth-frame gate and the hero's compose behind the
+ * scrim. So an eager mount waits for the scrim's fade to START (the hero has
+ * composed; the page unlocks ~1 s later), then the sections go ONE AT A TIME
+ * in page order, each in the first idle period after the previous one's mount
+ * frames (idle = that scene's build and first frame have run). A section that
+ * comes near the viewport before its turn (the Mac, just under About; a
+ * jump-menu teleport) mounts at once, so nothing waits on the queue.
+ * Measured (local build, M4 Metal, cold): the reveal 2.93 -> 2.88 s, and at
+ * CPU 4x 4.03 -> 3.08 s with every section drawn ~1.5 s after it; opening the
+ * queue at hero-composed instead held the fade's start (+150 ms).
+ */
+const QUEUE_FALLBACK_MS = 6000; // no loader event came (failsafe paths): start anyway
+const QUEUE_IDLE_TIMEOUT_MS = 700;
+type Waiting = { el: HTMLElement; go: () => void };
+const waiting: Waiting[] = [];
+let queueOpen = false;
+let queueBusy = false;
+
+function pumpQueue() {
+  if (!queueOpen || queueBusy || !waiting.length) return;
+  // Page order: the next section down is the next one reached.
+  waiting.sort((a, b) =>
+    a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+  );
+  const next = waiting.shift()!;
+  queueBusy = true;
+  next.go();
+  // Two frames for the mount's commit and first render, then the idle period
+  // that says its work is done, before the next section starts.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const done = () => {
+        queueBusy = false;
+        pumpQueue();
+      };
+      const w = window as Window & {
+        requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+      };
+      if (w.requestIdleCallback) w.requestIdleCallback(done, { timeout: QUEUE_IDLE_TIMEOUT_MS });
+      else window.setTimeout(done, 120);
+    }),
+  );
+}
+
+if (typeof window !== "undefined") {
+  const open = () => {
+    if (queueOpen) return;
+    queueOpen = true;
+    pumpQueue();
+  };
+  for (const e of ["loader-reveal-start", "loader-revealed"])
+    window.addEventListener(e, open, { once: true });
+  window.setTimeout(open, QUEUE_FALLBACK_MS);
+}
+
+/** Queue an eager mount; returns a cancel. `go` runs at the section's turn. */
+function enqueueEager(el: HTMLElement, go: () => void): () => void {
+  const w: Waiting = { el, go };
+  waiting.push(w);
+  pumpQueue();
+  return () => {
+    const i = waiting.indexOf(w);
+    if (i >= 0) waiting.splice(i, 1);
+  };
+}
+
 function isMobileViewport(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -137,9 +207,10 @@ export function useSectionCanvasMount(
       return;
     }
     // EAGER PATH (ported back from the pre-gate era, commit 439829b's
-    // `useState(true)`): capable DESKTOP hardware mounts the canvas IMMEDIATELY,
-    // so the WebGL context + GLB + first paint build during the loader hold
-    // instead of on scroll-approach — the keypad-and-friends "loads in late /
+    // `useState(true)`): capable DESKTOP hardware mounts the canvas up front
+    // (through the eager queue: from the loader's fade, one section at a time),
+    // so the WebGL context + GLB + first paint are built before anyone can
+    // scroll there instead of on scroll-approach — the keypad-and-friends "loads in late /
     // glitches in" regression the on-approach gate introduced. The
     // IntersectionObserver approach-gate (below) is kept ONLY for low-tier
     // (freeze-prone) GPUs and the mobile-opted-in sections (Hobbies/Photos),
@@ -159,8 +230,27 @@ export function useSectionCanvasMount(
     // Touchscreen laptops are NOT touch-primary (trackpad), so capable desktop
     // keeps mounting eagerly — the known "queued in late" regression stays fixed.
     if (!isMobile && !isLowTier() && !isTouchPrimary()) {
-      setMounted(true);
-      return;
+      let done = false;
+      let cancel = () => {};
+      let near: IntersectionObserver | null = null;
+      const mount = () => {
+        if (done) return;
+        done = true;
+        cancel();
+        near?.disconnect();
+        setMounted(true);
+      };
+      cancel = enqueueEager(el, mount);
+      if (!done && typeof IntersectionObserver !== "undefined") {
+        near = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && mount(), {
+          rootMargin: `${Math.round(mountVh * 100)}% 0px ${Math.round(mountVh * 100)}% 0px`,
+        });
+        near.observe(el);
+      }
+      return () => {
+        cancel();
+        near?.disconnect();
+      };
     }
     if (typeof IntersectionObserver === "undefined") {
       // No IO support (very old browsers): fail OPEN — mount immediately so the
