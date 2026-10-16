@@ -294,8 +294,6 @@ export function installStage(root: HTMLElement): () => void {
   const _p = new THREE.Vector3();
   const _l = new THREE.Vector3();
   const _o = new THREE.Vector3();
-  const tilt = { x: 0, y: 0 };
-  const tiltTarget = { x: 0, y: 0 };
   const state: StageState = { y: 0, arrive: { room: 0, mac: 0, props: 0, podium: 0, keypad: 0 }, amb: 0, wins: [] };
   // Debug probe (always on, cheap): what the last rendered frame drew, for tests.
   const lastCam = new THREE.Vector3();
@@ -344,10 +342,6 @@ export function installStage(root: HTMLElement): () => void {
     camera.aspect = cw / svh;
     camera.setViewOffset(cw, svh, 0, (svh - ch) / 2, cw, ch);
     camera.position.copy(_p);
-    // Gyro (after a tap): a small parallax offset in camera space.
-    camera.lookAt(_l);
-    camera.translateX(tilt.x * 0.35);
-    camera.translateY(tilt.y * 0.22);
     camera.fov = fov;
     camera.lookAt(_l);
     camera.updateProjectionMatrix();
@@ -411,13 +405,6 @@ export function installStage(root: HTMLElement): () => void {
     lastY = y;
     const ambOn = !REDUCED && now - lastInput < AMBIENT_MS;
     if (ambOn) ambT += dt;
-    let tilting = false;
-    if (Math.abs(tiltTarget.x - tilt.x) + Math.abs(tiltTarget.y - tilt.y) > 0.002) {
-      const tk = 1 - Math.exp(-dt * 4);
-      tilt.x += (tiltTarget.x - tilt.x) * tk;
-      tilt.y += (tiltTarget.y - tilt.y) * tk;
-      tilting = true;
-    }
     // Windows near the screen (cached boxes; a quarter screen of margin so an
     // entering window already holds its frame on its first visible row).
     const vhNow = window.innerHeight;
@@ -466,7 +453,7 @@ export function installStage(root: HTMLElement): () => void {
     // Scroll, ambient drift and springs only redraw windows actually on screen:
     // one in the margin holds still (its arrival has not begun, or its dwell
     // has ended) and was drawn as it came near.
-    const all = dirty || tilting;
+    const all = dirty;
     const amb = ambOn && now - lastDraw >= AMBIENT_FRAME - 1;
     const scr = scrolled && !REDUCED;
     dirty = false;
@@ -483,7 +470,7 @@ export function installStage(root: HTMLElement): () => void {
     const shown = new Set<StationKey>();
     for (const w of seen) if (w.full) shown.add(w.shot.at);
     probe.drawn = [...shown];
-    if ((moving.size && seen.size) || tilting || (ambOn && seen.size)) raf = requestAnimationFrame(frame);
+    if ((moving.size && seen.size) || (ambOn && seen.size)) raf = requestAnimationFrame(frame);
   }
   // Draw window w: its station alone, through its camera, into the shared GL
   // canvas's bottom-left corner, then copy that into the window's canvas in
@@ -546,26 +533,7 @@ export function installStage(root: HTMLElement): () => void {
   offs.push(() => glc.removeEventListener("webglcontextrestored", onRestored));
 
   // ── Touch: inside a window, a horizontal drag turns that object (vertical
-  // pan stays native via touch-action: pan-y); a tap pokes it. The first tap
-  // on a 3D object also asks for device orientation (iOS needs the gesture).
-  let gyroAsked = false;
-  let gyroBase: [number, number] | null = null;
-  const onOrient = (e: DeviceOrientationEvent) => {
-    if (e.beta == null || e.gamma == null) return;
-    gyroBase ??= [e.beta, e.gamma];
-    tiltTarget.x = THREE.MathUtils.clamp((e.gamma - gyroBase[1]) / 28, -1, 1);
-    tiltTarget.y = THREE.MathUtils.clamp((e.beta - gyroBase[0]) / 28, -1, 1);
-    if (Math.abs(tiltTarget.x - tilt.x) + Math.abs(tiltTarget.y - tilt.y) > 0.002) kick();
-  };
-  function askGyro() {
-    if (gyroAsked || REDUCED) return;
-    gyroAsked = true;
-    const DOE = window.DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> } | undefined;
-    if (!DOE) return;
-    const go = () => on("deviceorientation", onOrient, { passive: true });
-    if (typeof DOE.requestPermission === "function") DOE.requestPermission().then((r) => r === "granted" && go()).catch(() => {});
-    else go();
-  }
+  // pan stays native via touch-action: pan-y); a tap pokes it.
   for (const w of wins) {
     const el = w.el;
     const station = () => stations[w.shot.at];
@@ -589,8 +557,7 @@ export function installStage(root: HTMLElement): () => void {
       d.lx = e.clientX;
     };
     const end = () => (d = null);
-    // Taps go through "click" (a user gesture in WebKit, so window.open and the
-    // motion-permission request are allowed). Real links/buttons keep their own job.
+    // Taps go through "click" (a user gesture in WebKit, so window.open is allowed). Real links/buttons keep their own job.
     const click = (e: MouseEvent) => {
       if (dragged || (e.target as Element).closest("a, button")) return;
       const st = station();
@@ -600,7 +567,7 @@ export function installStage(root: HTMLElement): () => void {
       if (!r.width || !r.height) return;
       const ndc = { x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1 };
       camFor(w, window.scrollY);
-      if (st.tap(ndc, el)) askGyro();
+      st.tap(ndc, el);
       dirty = true;
       input();
     };

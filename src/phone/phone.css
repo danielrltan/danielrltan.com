@@ -5,7 +5,7 @@
    .ph-root makes no stacking context: the dock (inside it) must sit above the
    fixed hero layer (App.tsx, z 11) while the page (.ph-site, z 1) sits under it. */
 .ph-root {
-  --gut: 16px;
+  --gut: 20px;
   --pad-r: calc(var(--gut) + env(safe-area-inset-right));
   --pad-l: calc(var(--gut) + env(safe-area-inset-left));
   --step: steps(4, end);
@@ -50,7 +50,7 @@ html[data-phone] { color-scheme: light; scroll-padding-bottom: calc(52px + 10px 
 .ph-callout svg { width: 40px; height: 40px; margin-right: 26px; shape-rendering: crispEdges; }
 
 /* ---------- sheets ---------- */
-.ph-sheet { position: relative; z-index: 1; background: var(--bg-surface); padding: 22px var(--pad-r) 24px var(--pad-l); }
+.ph-sheet { position: relative; z-index: 1; background: var(--bg-surface); padding: 28px var(--pad-r) 32px var(--pad-l); }
 /* Consecutive sheets join with an opaque 8 px seam in the section's ground colour (m03's card gap),
    so no sliver of a 3D object shows between them. */
 .ph-sheet + .ph-sheet { border-top: 8px solid var(--seam, var(--bg-page)); }
@@ -114,15 +114,17 @@ html[data-phone] { color-scheme: light; scroll-padding-bottom: calc(52px + 10px 
 /* ---------- 03 experience ---------- */
 .ph-wc-top { display: flex; align-items: baseline; gap: 12px; }
 .ph-wc-y { font: 700 20px/1 var(--font-pixel); color: var(--accent); }
-.ph-role h3 { font-size: 40px; margin-top: 10px; }
-.ph-metric { font: 700 clamp(46px, 15vw, 64px)/.86 var(--font-pixel); letter-spacing: -.02em; margin-top: 30px; display: flex; flex-direction: column; }
+.ph-role { padding-top: 44px; padding-bottom: 48px; }
+.ph-role .ph-wc-top { margin-top: 18px; }
+.ph-role h3 { font-size: 40px; margin-top: 12px; }
+.ph-metric { font: 700 clamp(46px, 15vw, 64px)/.86 var(--font-pixel); letter-spacing: -.02em; margin-top: 36px; display: flex; flex-direction: column; }
 .ph-metric span:first-child { color: var(--ink-muted); }
 .ph-metric span:last-child { color: var(--accent); }
-.ph-role .ph-body { color: var(--ink); font-size: 16px; line-height: 1.45; margin-top: 18px; }
-.ph-wc-meta { margin-top: 22px; display: flex; flex-direction: column; color: var(--ink-muted); }
+.ph-role .ph-body { color: var(--ink); font-size: 16px; line-height: 1.45; margin-top: 24px; }
+.ph-wc-meta { margin-top: 30px; display: flex; flex-direction: column; color: var(--ink-muted); }
 .ph-wc-meta span { padding: 8px 0; border-top: 1px solid var(--ink-hairline); }
 .ph-wc-meta span:last-child { padding-bottom: 0; }
-.ph-after { padding-top: 18px; padding-bottom: 18px; }
+.ph-after { padding-top: 28px; padding-bottom: 32px; }
 
 /* ---------- 04 play ---------- */
 .ph-win.ph-play { height: 550svh; } /* ~50svh of scroll per hobby */
@@ -140,7 +142,7 @@ html[data-phone] { color-scheme: light; scroll-padding-bottom: calc(52px + 10px 
 /* ---------- 05 honours ---------- */
 .ph-win.ph-podium { height: 48svh; }
 .ph-tots { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 10px; }
-.ph-tots div { border-top: 2px solid var(--ink); padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.ph-tots div { display: flex; flex-direction: column; gap: 6px; }
 .ph-tots dt { font: 700 clamp(34px, 10.5vw, 44px)/.85 var(--font-pixel); color: var(--accent); }
 .ph-tots dd { color: var(--ink-muted); line-height: 1.3; }
 .ph-others { padding-top: 6px; padding-bottom: 6px; }
@@ -159,7 +161,7 @@ html[data-phone] { color-scheme: light; scroll-padding-bottom: calc(52px + 10px 
 
 /* ---------- 07 contact ---------- */
 .ph-win.ph-keypad { height: 64svh; }
-.ph-contact { padding-top: 10px; padding-bottom: 10px; }
+.ph-contact { padding-top: 16px; padding-bottom: 16px; }
 .ph-mail { display: flex; align-items: center; min-height: 64px; font: 700 clamp(25px, 7.6vw, 34px)/1 var(--font-pixel); color: var(--accent); overflow-wrap: anywhere; border-bottom: 2px solid var(--ink); }
 .ph-clist a { display: flex; justify-content: space-between; align-items: center; height: 58px; border-bottom: 1px solid var(--ink-hairline); font: 700 26px/1 var(--font-pixel); transition: color .16s steps(2, end); }
 .ph-clist li:last-child a { border-bottom: 0; }

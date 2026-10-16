@@ -332,8 +332,8 @@ export default function PhoneSite() {
               {[...SOCIALS]
                 .sort((a, b) => ORDER.indexOf(a.node) - ORDER.indexOf(b.node))
                 .map((s) => (
-                  // The keypad's keys are these links; the rows stay for screen readers only.
-                  <li key={s.node} className="ph-sr">
+                  // Plain rows as well as the keypad's keys, so the links work without WebGL.
+                  <li key={s.node}>
                     <a href={s.href} target="_blank" rel="noopener noreferrer" aria-label={s.aria} onClick={outbound(s.href, "contact")}>
                       <span>{s.label}</span>
                       <Arrow />
