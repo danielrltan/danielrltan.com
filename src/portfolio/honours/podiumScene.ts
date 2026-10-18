@@ -643,6 +643,9 @@ export function createPodiumScene(
       for (const d of disposables) d.dispose();
       for (const it of items) it.group.traverse((o) => (o as THREE.InstancedMesh).isInstancedMesh && (o as THREE.InstancedMesh).dispose());
       renderer.dispose();
+      // Release the GL context now, as src/phone/stage.ts does: dispose() alone leaves it for GC, so on touch
+      // devices (approach-gated mount/unmount) every scroll back past the podium stacked another live context.
+      renderer.forceContextLoss();
       canvas.remove();
     },
   };
