@@ -6,7 +6,7 @@ import "./sections.css";
 import "./about.css";
 import { ScrambleText } from "./ScrambleText";
 import { track } from "../analytics";
-import { MQ, SEAM_MQ, ease, reducedMotion as reducedMotionPref } from "../motion";
+import { MQ, reducedMotion as reducedMotionPref } from "../motion";
 import { mountSeam } from "../seams/seam";
 import { useMedia } from "../useMedia";
 import { heroHandoff } from "../hero/heroState";
@@ -46,11 +46,11 @@ gsap.registerPlugin(ScrollTrigger);
  * section's data-seam-stack), so the parked room stays still from the hero
  * hand-off on: uncovered for --seam-about-dwell (owner 2026-10-07: without it
  * the page "just lets you fly by the about"), then the Projects sheet rises
- * 1:1 over it (the Mac side lives in Macintosh.tsx). Two
- * seams ride that curtain here: `about-projects` stops painting the hold and
- * pauses the room bob once the sheet covers it, and `about-arrow` turns the
- * owner's "my room in real life!" arrow on its tail to point down at the
- * arriving Mac (gate G3).
+ * 1:1 over it (the Mac side lives in Macintosh.tsx). One seam rides that
+ * curtain here: `about-projects` stops painting the hold and pauses the room
+ * bob once the sheet covers it. The "my room in real life!" arrow stays put
+ * (owner 2026-10-26: the scroll-linked swivel that turned it down at the
+ * arriving Mac, gate G3, is gone).
  *
  * NARROW (MQ.narrow: ≤900px, or a phone on its side) has no hold and no
  * curtain (mirrors Work): a pinned, internally-scrolling stage was a nested
@@ -67,7 +67,7 @@ gsap.registerPlugin(ScrollTrigger);
 /**
  * "My room in real life!" callout: a hand-drawn arrow, rasterised onto a
  * pixel grid so it speaks the same Offbit pixel language as the wordmarks.
- * The 0 deg pose is built at module load: a long, shallow quadratic curve that leaves the
+ * Built once at module load: a long, shallow quadratic curve that leaves the
  * label heading left and sags slightly to a tip just above the room's
  * top-right wall, stamped 3 cells thick, plus two barbs swept back from the
  * tip along the curve's final direction. Unit squares, drawn crispEdges, so
@@ -78,20 +78,11 @@ gsap.registerPlugin(ScrollTrigger);
  * together from the tip outward. about.css shows them one after another, so
  * the arrow draws itself in after the bento has built (.is-drawn).
  */
-function rasterArrow(deg: number): string[] {
-  // The pose turned by `deg` on its tail (screen sense, negative = counter-
-  // clockwise), rotated in curve space BEFORE the cells snap, so every pose
-  // is grid-aligned pixel art (CSS-rotating the 0 deg pose turned its unit
-  // squares into a sawtooth ribbon). The pivot is the first stamp's origin
-  // (56, 6): the stamp's centre (57.5, 7.5) is the tail cell's centre.
-  const rad = (deg * Math.PI) / 180, sn = Math.sin(rad), cs = Math.cos(rad);
-  const turn = (x: number, y: number) =>
-    deg ? [56 + (x - 56) * cs - (y - 6) * sn, 6 + (x - 56) * sn + (y - 6) * cs] : [x, y];
+function rasterArrow(): string[] {
   const seen = new Set<string>();
   const segs: string[][] = [];
   const T = 3; // stroke thickness in cells
-  const dot = (seg: number, px: number, py: number) => {
-    const [x, y] = turn(px, py);
+  const dot = (seg: number, x: number, y: number) => {
     for (let i = 0; i < T; i++) for (let j = 0; j < T; j++) {
       const c = `${Math.round(x) + i},${Math.round(y) + j}`;
       if (seen.has(c)) continue;
@@ -114,33 +105,11 @@ function rasterArrow(deg: number): string[] {
       dot(SHAFT + Math.min(HEAD - 1, Math.floor((i / 14) * HEAD)), x1 + ax * i, y1 + ay * i);
     }
   }
-  // Fixed slots (one per draw step, --i): a turned pose never shifts the
-  // owner's draw order, even if one of its segments stamps nothing new.
+  // One slot per draw step (--i), in the owner's draw order.
   return Array.from({ length: SHAFT + HEAD }, (_, k) =>
     (segs[k] ?? []).map((c) => { const [x, y] = c.split(","); return `M${x} ${y}h1v1h-1z`; }).join(""));
 }
-const ROOM_ARROW_SEGS = rasterArrow(0);
-
-/** Turned poses for the swivel, cached per 0.2 deg (finer than one cell of
- *  travel at the tip, so the turn reads continuous; only the cells step). */
-const ARROW_POSE_STEP = 5; // poses per degree
-const arrowPoses = new Map<number, string[]>();
-function arrowPose(key: number) {
-  let segs = arrowPoses.get(key);
-  if (!segs) arrowPoses.set(key, (segs = key ? rasterArrow(key / ARROW_POSE_STEP) : ROOM_ARROW_SEGS));
-  return segs;
-}
-
-/** Owner gate G3 (seam overhaul, default ON): while the Projects sheet rises
- *  over the still room, the "my room in real life!" arrow turns on its tail
- *  to point down at the arriving Mac, and swings back on scroll-up. No words
- *  are added. false = the static arrow. */
-const ARROW_SWIVEL = true;
-/** The arrow's turn when the sheet edge is 0.1vh below it (deg; negative =
- *  counter-clockwise on screen). The head starts out pointing left at the
- *  room; the Mac arrives down and to the left of the arrow's tail, so a
- *  ~50 deg turn aims the head at the Mac (judged at 1440x900 and 1280x720). */
-const ARROW_TURN_DEG = -50;
+const ROOM_ARROW_SEGS = rasterArrow();
 
 /** The rest of the bento, revealed together after the arrival trio. */
 const BENTO_REST = ["portrait", "now", "explore", "study", "reach", "loc"]
@@ -178,37 +147,11 @@ function reveal(el: Element | null | undefined, order: number) {
 }
 
 /** Draw the room callout's arrow in (latched; about.css times it to start
- *  once the cells revealed alongside it have built). Stamps the latch time
- *  and announces it (DRAWN_EVENT), so the arrow swivel can wait for the
- *  owner's draw to finish before it turns the arrow. */
-const DRAWN_EVENT = "about-callout-drawn";
+ *  once the cells revealed alongside it have built). */
 function drawCallout(root: Element) {
   const c = root.querySelector<HTMLElement>(".about-room-callout");
   if (!c || c.classList.contains("is-drawn")) return;
-  c.dataset.drawnAt = String(performance.now());
   c.classList.add("is-drawn");
-  c.dispatchEvent(new Event(DRAWN_EVENT));
-}
-
-/** Lowest painted point of the arrow's pose turned by `deg`, viewBox units
- *  below the viewBox top (cell bottoms: the pixels' real extent). */
-function arrowBottomAt(deg: number) {
-  let max = 0;
-  for (const d of arrowPose(Math.round(deg * ARROW_POSE_STEP))) {
-    for (const m of d.matchAll(/M(-?\d+) (-?\d+)/g)) max = Math.max(max, Number(m[2]) + 1);
-  }
-  return max;
-}
-/** About.css draw-in length: --draw-wait + 140ms + (last --i) x --draw-step. */
-function drawDurationMs(callout: Element, steps: number) {
-  const cs = getComputedStyle(callout);
-  const ms = (v: string) => {
-    const t = v.trim();
-    const n = parseFloat(t);
-    if (!Number.isFinite(n)) return 0;
-    return /ms$/.test(t) ? n : /s$/.test(t) ? n * 1000 : n;
-  };
-  return ms(cs.getPropertyValue("--draw-wait")) + 140 + Math.max(0, steps - 1) * ms(cs.getPropertyValue("--draw-step"));
 }
 
 /** Cells the narrow layout reveals on enter (incl. the room cell on tablets;
@@ -422,112 +365,6 @@ export function About() {
     el.addEventListener("focusin", onFocus);
     return () => el.removeEventListener("focusin", onFocus);
   }, [mobile]);
-
-  /* The arrow swivel (gate G3): the sheet's rise turns the room callout's
-     arrow on its tail, from the room to the arriving Mac. Fine pointers on
-     the desk layout only (a scroll-linked turn on touch lags threaded
-     scroll). The turn is re-rasterised, not CSS-rotated: each angle's pose
-     is the same curve turned on its tail before its cells snap to the grid
-     (rasterArrow), swapped into the same draw paths. The angle stays
-     continuous; only the cells step. Ends when the sheet edge is 0.1vh below
-     the arrow's TURNED head, so the head is aimed before the sheet reaches
-     it.
-
-     The owner's draw comes first (775d518 / 07efda5: the arrow draws itself
-     from the label onto the room, time-based after the bento builds). At any
-     brisk scroll the curtain starts before that draw has finished, so the
-     turn is gated on it: k = 0 until .is-drawn + the full draw time has
-     elapsed, and the arrow draws pointing at the room. If the draw finishes
-     with the sheet already partway up, k eases 0 -> 1 in a one-shot 300ms
-     catch-up to the scroll's angle; from then on it is the pure f(p) turn
-     again (reverses exactly). The ONE documented exception to pure f(p) in
-     this seam. */
-  useEffect(() => {
-    const el = sectionRef.current;
-    const arrow = el?.querySelector<SVGSVGElement>(".about-room-callout-arrow");
-    const callout = el?.querySelector<HTMLElement>(".about-room-callout");
-    const stage = el?.querySelector<HTMLElement>(".about-stage");
-    const banner = el?.querySelector<HTMLElement>(".about-banner");
-    if (!ARROW_SWIVEL || !el || !arrow || !callout || !stage || !banner) return;
-    // The arrow's TURNED bottom, px below the hold's top. Layout offsets only
-    // (offsetTop ignores the park translate, the iris pull-back scale and the
-    // banner's reveal lift), so it reads the same at any scroll position.
-    let line = 0;
-    let lastP = 0;
-    const gate = { k: 0 };
-    let tween: gsap.core.Tween | null = null;
-    let timer = 0;
-    // Writes the turned pose's cells into the owner's 18 draw paths (same
-    // order, same --i): no CSS rotate, so the cells stay on the pixel grid.
-    const paths = [...arrow.querySelectorAll<SVGPathElement>("path")];
-    let shown = 0;
-    const write = (deg: number) => {
-      const key = Math.round(deg * ARROW_POSE_STEP);
-      if (key === shown) return;
-      shown = key;
-      const segs = arrowPose(key);
-      paths.forEach((path, i) => path.setAttribute("d", segs[i] ?? ""));
-    };
-    const render = () => write(ARROW_TURN_DEG * ease.inOutCubic(lastP) * gate.k);
-    const open = () => {
-      if (gate.k === 1 || tween) return;
-      if (lastP <= 0 || reducedMotionPref.value) {
-        gate.k = 1;
-        render();
-        return;
-      }
-      tween = gsap.to(gate, { k: 1, duration: 0.3, ease: "power2.inOut", onUpdate: render, onComplete: () => { tween = null; } });
-    };
-    const arm = () => {
-      if (!callout.classList.contains("is-drawn")) return;
-      const at = Number(callout.dataset.drawnAt) || 0;
-      const left = at + drawDurationMs(callout, ROOM_ARROW_SEGS.length) - performance.now();
-      window.clearTimeout(timer);
-      if (left <= 0) open();
-      else timer = window.setTimeout(open, left + 16);
-    };
-    arm();
-    callout.addEventListener(DRAWN_EVENT, arm);
-    const stop = mountSeam({
-      id: "about-arrow",
-      when: SEAM_MQ.fine,
-      trigger: () => document.querySelector(".portfolio-mac"),
-      start: "top bottom",
-      end: () => {
-        const mac = document.querySelector(".portfolio-mac");
-        const top = mac ? mac.getBoundingClientRect().top + window.scrollY : 0;
-        const vh = window.innerHeight;
-        // The sheet's top at (line + 0.1vh) on screen; never before the start.
-        return Math.max(top - vh + 1, top - line - 0.1 * vh);
-      },
-      measure: () => {
-        const cs = getComputedStyle(arrow);
-        const w = parseFloat(cs.width) || arrow.getBoundingClientRect().width;
-        // viewBox 62 wide; the head swings DOWN as it turns, so the bottom
-        // that the sheet must not reach is the turned one.
-        const bottom = (w / 62) * Math.max(24, arrowBottomAt(ARROW_TURN_DEG));
-        line = stage.offsetTop + banner.offsetTop + (parseFloat(cs.top) || 0) + bottom;
-      },
-      render: (p) => {
-        lastP = p;
-        if (!tween) render();
-      },
-      final: () => {
-        lastP = 0;
-        write(0);
-      },
-      reset: () => {
-        lastP = 0;
-        write(0);
-      },
-    });
-    return () => {
-      stop();
-      callout.removeEventListener(DRAWN_EVENT, arm);
-      window.clearTimeout(timer);
-      tween?.kill();
-    };
-  }, [roomless]);
 
   return (
     <section

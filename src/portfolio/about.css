@@ -246,10 +246,6 @@ html[data-hero-covering]:not([data-hero-park]) .portfolio-about {
   width: 14.86%;
   height: auto;
   fill: var(--accent, #ff4f00);
-  /* The arrow swivel (About.tsx, gate G3) swaps in poses turned on the
-     tail, re-rasterised on the grid; the turned head paints below the
-     62x24 viewBox. */
-  overflow: visible;
 }
 /* DRAW-IN (owner 2026-10-06): the callout waits for the bento, then the
    label lands and the arrow draws itself from the label down to the room,
