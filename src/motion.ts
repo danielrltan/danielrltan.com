@@ -174,7 +174,7 @@ export const SEAM = {
  *          MQ.compact. Keypad sticky + footer overlap.
  * - motion: no reduced motion. Recents hold (every width).
  * - fine:  desk and not touch-primary. Scroll-linked DOM writes (the overlay
- *          relay, arrow swivel, drum rotation, zero-g lift): touch scroll is
+ *          relay, drum rotation, zero-g lift): touch scroll is
  *          threaded, so a JS transform per scroll frame lags it and judders.
  * Functions, not values: they read the live media state on every call.
  */

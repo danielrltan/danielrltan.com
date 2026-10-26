@@ -321,7 +321,7 @@ scroll-linked hand-off from the section above to the one below.
   Honours dwell); `wide` = width > 768 and height > 500, motion OK (keypad
   under the footer); `motion` = no reduced motion (the Recents hold, every
   width); `fine` = desk and not touch-primary (scroll-linked DOM writes such
-  as the relay pixel, the arrow swivel, the drum). Reduced motion: no holds,
+  as the relay pixel, the drum). Reduced motion: no holds,
   no sheets, plain flow, every seam at `final()`.
 - **Sticky containment:** nothing between a sticky stage and `<html>` may be
   `overflow: hidden | auto | scroll` (it binds the sticky to that box and it
