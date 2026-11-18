@@ -112,3 +112,54 @@ async function loadTraffic(site: string, key: string, range: number): Promise<Si
     ...(site === "poddleball.com" ? {} : { events: top(events, 12) }),
   };
 }
+
+// ---- Poddle insights (GET /api/insights, /api/insights/live) -------------------
+// Anonymous totals only; contract in the Poddle repo docs/INSIGHTS.md.
+
+export type KN = { k: string; n: number };
+export type LivePlayer = { name: string | null; bot: boolean; status: string | null };
+export type LiveCourt = { mode: string; secs: number; score: [number, number]; watchers: number; players: LivePlayer[] };
+export type Live = {
+  at: number;
+  online: number;
+  menu: number;
+  court: number;
+  watching: number;
+  signedIn: number;
+  guests: number;
+  screens: { screen: string; n: number }[];
+  countries: { cc: string; n: number }[];
+  devices: KN[];
+  courts: LiveCourt[];
+};
+export type InsDay = {
+  day: string;
+  signups: number;
+  players: number;
+  matches: number;
+  byKind: Record<string, number>;
+  sessions: number;
+  avgSessionS: number;
+  visitors: number;
+};
+export type Insights = {
+  days: number;
+  totals: { accounts: number; players: number; matches: number };
+  active: { d1: number; d7: number; d30: number; d1Accounts: number; d7Accounts: number; d30Accounts: number };
+  daily: InsDay[];
+  hours: number[];
+  match: { avgS: number; medianS: number; endings: Record<string, number> };
+  retention: { week: string; signups: number; w1: number | null; w2: number | null; w3: number | null; w4: number | null }[];
+  top: { name: string; matches: number; wins: number; trophies: number }[];
+  countries: { cc: string; n: number }[];
+  devices: KN[];
+  os: KN[];
+  browsers: KN[];
+  sessionLen: KN[];
+  screens: { screen: string; opens: number; ms: number }[];
+  presses: { key: string; n: number }[];
+};
+
+const INSIGHTS_API = "https://poddleball.com/api/insights";
+export const loadLive = (key: string): Promise<Live> => getJson(`${INSIGHTS_API}/live`, key);
+export const loadInsights = (key: string, days: number): Promise<Insights> => getJson(`${INSIGHTS_API}?days=${days}`, key);
