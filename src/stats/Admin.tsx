@@ -88,13 +88,13 @@ function useRuns(onDone: () => void | Promise<void>) {
 function Go({ id, st, label, onClick, disabled, danger }: { id: string; st: Record<string, St>; label: string; onClick: () => void; disabled?: boolean; danger?: boolean }) {
   const s = st[id];
   return (
-    <span className="ad-go">
+    <span className="adm-go">
       <button className={`btn${danger ? " danger" : " primary"}`} disabled={disabled || s?.busy} onClick={onClick}>
-        {s?.busy ? <i className="ad-spin" /> : null}
+        {s?.busy ? <i className="adm-spin" /> : null}
         {label}
       </button>
       {s?.msg && !s.busy && (
-        <span className={`ad-res${s.err ? " err" : ""}`} role="status">
+        <span className={`adm-res${s.err ? " err" : ""}`} role="status">
           {s.err ? <X size={13} /> : <Check size={13} />}
           {s.msg}
         </span>
@@ -105,7 +105,7 @@ function Go({ id, st, label, onClick, disabled, danger }: { id: string; st: Reco
 
 function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={on} disabled={disabled} className={`ad-tog${on ? " on" : ""}`} onClick={() => onChange(!on)}>
+    <button type="button" role="switch" aria-checked={on} disabled={disabled} className={`adm-tog${on ? " on" : ""}`} onClick={() => onChange(!on)}>
       <i />
       {label}
     </button>
@@ -136,20 +136,20 @@ function ItemPicker({ items, value, onChange }: { items: AdminItem[]; value: str
 
   if (picked && !open) {
     return (
-      <div className="ad-picked">
-        <span className={`ad-rar r-${picked.rarity.toLowerCase()}`} />
+      <div className="adm-picked">
+        <span className={`adm-rar r-${picked.rarity.toLowerCase()}`} />
         <b>{picked.name}</b>
         <span className="dim">{picked.kind}</span>
-        <button className="ad-x" aria-label="Clear item" onClick={() => onChange("")}>
+        <button className="adm-x" aria-label="Clear item" onClick={() => onChange("")}>
           <X size={14} />
         </button>
       </div>
     );
   }
   return (
-    <div className="ad-picker">
+    <div className="adm-picker">
       <input
-        className="ad-in"
+        className="adm-in"
         placeholder="Search items"
         value={q}
         onFocus={() => setOpen(true)}
@@ -159,23 +159,23 @@ function ItemPicker({ items, value, onChange }: { items: AdminItem[]; value: str
         }}
       />
       {open && (
-        <div className="ad-pick-list">
+        <div className="adm-pick-list">
           {groups.length === 0 && <div className="list-empty">No items</div>}
           {groups.map((g) => (
             <div key={g.kind}>
-              <div className="ad-pick-kind">{g.kind}</div>
+              <div className="adm-pick-kind">{g.kind}</div>
               {g.list.map((it) => (
                 <button
                   key={it.id}
-                  className="ad-pick-row"
+                  className="adm-pick-row"
                   onClick={() => {
                     onChange(it.id);
                     setOpen(false);
                     setQ("");
                   }}
                 >
-                  <span className={`ad-rar r-${it.rarity.toLowerCase()}`} />
-                  <span className="ad-pick-name">{it.name}</span>
+                  <span className={`adm-rar r-${it.rarity.toLowerCase()}`} />
+                  <span className="adm-pick-name">{it.name}</span>
                   <span className="dim">{it.rarity}</span>
                 </button>
               ))}
@@ -231,8 +231,8 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
   const amtOk = amount.trim() !== "" && Number.isInteger(amt) && amt !== 0 && Math.abs(amt) <= 100000;
   const taking = amtOk && amt < 0;
 
-  if (err) return <div className="ad-body"><div className="list-empty">{err}</div></div>;
-  if (!p) return <div className="ad-body"><div className="spinner" /></div>;
+  if (err) return <div className="adm-body"><div className="list-empty">{err}</div></div>;
+  if (!p) return <div className="adm-body"><div className="spinner" /></div>;
 
   const nm = p.name;
   const post = (path: string, body: Record<string, unknown>) => adminPost(keyVal, path, { name: nm, ...body });
@@ -240,16 +240,16 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
   const withdraw = (id: number | string) => run(`w${id}`, () => adminPost(keyVal, "notice/withdraw", { id }), "Withdrawn");
 
   return (
-    <div className="ad-body">
-      <div className="ad-who">
+    <div className="adm-body">
+      <div className="adm-who">
         <h3>{nm}</h3>
         <span className="dim">Created {whenDay(p.createdAt)}</span>
-        <span className="ad-spacer" />
+        <span className="adm-spacer" />
         <span className={`chip static${p.lbHidden ? " bot" : ""}`}>{p.lbHidden ? "Hidden on boards" : "On boards"}</span>
         <span className="chip static">{p.sharing ? "Sharing on" : "Sharing off"}</span>
       </div>
 
-      <div className="ins-tiles ad-tiles">
+      <div className="ins-tiles adm-tiles">
         {[
           ["Rank", rank],
           ["Trophies", n0(p.trophies)],
@@ -269,16 +269,16 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
         ))}
       </div>
 
-      <div className="ad-sub">Items <b>{p.owned.length}</b></div>
+      <div className="adm-sub">Items <b>{p.owned.length}</b></div>
       {p.owned.length === 0 ? (
-        <div className="list-empty ad-pad">None</div>
+        <div className="list-empty adm-pad">None</div>
       ) : (
-        <div className="ad-chips">
+        <div className="adm-chips">
           {p.owned.map((id) => {
             const it = itemName.get(id);
             return (
               <span className="chip static" key={id}>
-                {it && <span className={`ad-rar r-${it.rarity.toLowerCase()}`} />}
+                {it && <span className={`adm-rar r-${it.rarity.toLowerCase()}`} />}
                 {it?.name ?? id}
               </span>
             );
@@ -286,57 +286,57 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
         </div>
       )}
 
-      <div className="ad-two">
+      <div className="adm-two">
         <div>
-          <div className="ad-sub">Notices <b>{p.notices.length}</b></div>
-          {p.notices.length === 0 && <div className="list-empty ad-pad">None</div>}
+          <div className="adm-sub">Notices <b>{p.notices.length}</b></div>
+          {p.notices.length === 0 && <div className="list-empty adm-pad">None</div>}
           {p.notices.map((n) => (
-            <div className="ad-line" key={n.id}>
-              <div className="ad-line-top">
+            <div className="adm-line" key={n.id}>
+              <div className="adm-line-top">
                 <span className={`chip static ${n.kind === "warning" ? "st-away" : ""}`}>{n.kind === "warning" ? "Warning" : "Message"}</span>
                 <span className="dim">Sent {when(n.at)}</span>
-                <span className={n.seenAt ? "dim" : "ad-unread"}>{n.seenAt ? `Read ${when(n.seenAt)}` : "Unread"}</span>
-                <span className="ad-spacer" />
+                <span className={n.seenAt ? "dim" : "adm-unread"}>{n.seenAt ? `Read ${when(n.seenAt)}` : "Unread"}</span>
+                <span className="adm-spacer" />
                 <Go id={`w${n.id}`} st={st} label="Withdraw" danger onClick={() => withdraw(n.id)} />
               </div>
-              <div className="ad-text">{n.text}</div>
+              <div className="adm-text">{n.text}</div>
             </div>
           ))}
         </div>
         <div>
-          <div className="ad-sub">Gifts <b>{p.gifts.length}</b></div>
-          {p.gifts.length === 0 && <div className="list-empty ad-pad">None</div>}
+          <div className="adm-sub">Gifts <b>{p.gifts.length}</b></div>
+          {p.gifts.length === 0 && <div className="list-empty adm-pad">None</div>}
           {p.gifts.map((g) => (
-            <div className="ad-line" key={g.id}>
-              <div className="ad-line-top">
+            <div className="adm-line" key={g.id}>
+              <div className="adm-line-top">
                 {g.coins ? <span className="chip static">{n0(g.coins)} coins</span> : null}
                 {g.item ? <span className="chip static">{itemName.get(g.item)?.name ?? g.item}</span> : null}
                 <span className="dim">{when(g.at)}</span>
-                <span className="ad-spacer" />
-                <span className={g.shownAt ? "dim" : "ad-unread"}>{g.shownAt ? "Shown" : "Not shown"}</span>
+                <span className="adm-spacer" />
+                <span className={g.shownAt ? "dim" : "adm-unread"}>{g.shownAt ? "Shown" : "Not shown"}</span>
               </div>
-              {g.note && <div className="ad-text">{g.note}</div>}
+              {g.note && <div className="adm-text">{g.note}</div>}
             </div>
           ))}
         </div>
       </div>
 
-      <div className="ad-sub">Actions</div>
-      <div className="ad-actions">
+      <div className="adm-sub">Actions</div>
+      <div className="adm-actions">
         <Seg value={action} options={ACTIONS} onChange={setAction} />
         {action === "Coins" && (
-          <div className="ad-form">
-            <div className="ad-grid">
-              <label className="ad-f">
+          <div className="adm-form">
+            <div className="adm-grid">
+              <label className="adm-f">
                 <span>Amount</span>
-                <input className="ad-in mono" inputMode="numeric" placeholder="500 or -500" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                <input className="adm-in mono" inputMode="numeric" placeholder="500 or -500" value={amount} onChange={(e) => setAmount(e.target.value)} />
               </label>
-              <label className="ad-f grow">
+              <label className="adm-f grow">
                 <span>Note</span>
-                <input className="ad-in" maxLength={NOTE_MAX} value={coinNote} onChange={(e) => setCoinNote(e.target.value)} />
+                <input className="adm-in" maxLength={NOTE_MAX} value={coinNote} onChange={(e) => setCoinNote(e.target.value)} />
               </label>
             </div>
-            <div className="ad-foot">
+            <div className="adm-foot">
               <Toggle on={coinGift && !taking} disabled={taking} onChange={setCoinGift} label="As a gift" />
               <Go
                 id="coins"
@@ -349,13 +349,13 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
           </div>
         )}
         {action === "Item" && (
-          <div className="ad-form">
+          <div className="adm-form">
             <ItemPicker items={items} value={item} onChange={setItem} />
-            <label className="ad-f">
+            <label className="adm-f">
               <span>Note</span>
-              <input className="ad-in" maxLength={NOTE_MAX} value={itemNote} onChange={(e) => setItemNote(e.target.value)} />
+              <input className="adm-in" maxLength={NOTE_MAX} value={itemNote} onChange={(e) => setItemNote(e.target.value)} />
             </label>
-            <div className="ad-foot">
+            <div className="adm-foot">
               <Toggle on={itemGift} onChange={setItemGift} label="As a gift" />
               <Go
                 id="item"
@@ -368,19 +368,19 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
           </div>
         )}
         {action === "Inbox" && (
-          <div className="ad-form">
+          <div className="adm-form">
             <Seg value={kind} options={["Warning", "Message"] as const} onChange={setKind} />
-            <label className="ad-f">
+            <label className="adm-f">
               <span>Text</span>
-              <textarea className="ad-in" rows={3} maxLength={MSG_MAX} value={text} onChange={(e) => setText(e.target.value)} />
+              <textarea className="adm-in" rows={3} maxLength={MSG_MAX} value={text} onChange={(e) => setText(e.target.value)} />
               <em className={text.length > MSG_MAX - 40 ? "warn" : ""}>{text.length}/{MSG_MAX}</em>
             </label>
-            <div className={`ad-prev ${kind.toLowerCase()}`} aria-label="Preview">
-              <div className="ad-prev-icon">{kind === "Warning" ? <TriangleAlert size={20} /> : <MessageSquare size={20} />}</div>
-              <div className="ad-prev-text">{text.trim() || <span className="dim">Your text</span>}</div>
-              <div className="ad-prev-ok">OK</div>
+            <div className={`adm-prev ${kind.toLowerCase()}`} aria-label="Preview">
+              <div className="adm-prev-icon">{kind === "Warning" ? <TriangleAlert size={20} /> : <MessageSquare size={20} />}</div>
+              <div className="adm-prev-text">{text.trim() || <span className="dim">Your text</span>}</div>
+              <div className="adm-prev-ok">OK</div>
             </div>
-            <div className="ad-foot">
+            <div className="adm-foot">
               <span />
               <Go
                 id="notice"
@@ -393,12 +393,12 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
           </div>
         )}
         {action === "Rename" && (
-          <div className="ad-form">
-            <label className="ad-f">
+          <div className="adm-form">
+            <label className="adm-f">
               <span>New name</span>
-              <input className="ad-in" maxLength={24} value={to} onChange={(e) => setTo(e.target.value)} />
+              <input className="adm-in" maxLength={24} value={to} onChange={(e) => setTo(e.target.value)} />
             </label>
-            <div className="ad-foot">
+            <div className="adm-foot">
               <Toggle on={reserved} onChange={setReserved} label="Reserved" />
               <Go
                 id="rename"
@@ -418,16 +418,16 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
           </div>
         )}
         {action === "Access" && (
-          <div className="ad-form">
-            <div className="ad-row">
+          <div className="adm-form">
+            <div className="adm-row">
               <span>{p.lbHidden ? "Hidden on leaderboards" : "Visible on leaderboards"}</span>
               <Go id="lb" st={st} label={p.lbHidden ? "Show" : "Hide"} onClick={() => run("lb", () => post("lb-hide", { hidden: !p.lbHidden }), "Updated")} />
             </div>
-            <div className="ad-row">
+            <div className="adm-row">
               <span>Share link</span>
               <Go id="unshare" st={st} label="Stop sharing" disabled={!p.sharing} onClick={() => run("unshare", () => post("unshare", {}), "Stopped")} />
             </div>
-            <div className="ad-row">
+            <div className="adm-row">
               <span>Name hold</span>
               <Go id="release" st={st} label="Release" onClick={() => run("release", () => post("release", {}), "Released")} />
             </div>
@@ -435,19 +435,19 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
         )}
       </div>
 
-      <div className="ad-danger">
-        <div className="ad-sub red">Danger</div>
-        <div className="ad-grid">
-          <label className="ad-f grow">
+      <div className="adm-danger">
+        <div className="adm-sub red">Danger</div>
+        <div className="adm-grid">
+          <label className="adm-f grow">
             <span>Reset stats: type <code>{nm}</code></span>
-            <input className="ad-in mono" value={confReset} onChange={(e) => setConfReset(e.target.value)} />
+            <input className="adm-in mono" value={confReset} onChange={(e) => setConfReset(e.target.value)} />
           </label>
           <Go id="reset" st={st} label="Reset stats" danger disabled={confReset !== nm} onClick={() => run("reset", () => post("reset-stats", { confirm: confReset }), "Reset").then((ok) => ok && setConfReset(""))} />
         </div>
-        <div className="ad-grid">
-          <label className="ad-f grow">
+        <div className="adm-grid">
+          <label className="adm-f grow">
             <span>Delete account: type <code>delete {nm}</code></span>
-            <input className="ad-in mono" value={confDel} onChange={(e) => setConfDel(e.target.value)} />
+            <input className="adm-in mono" value={confDel} onChange={(e) => setConfDel(e.target.value)} />
           </label>
           <Go
             id="delete"
@@ -500,16 +500,16 @@ function PlayersTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
 
   return (
     <>
-      <div className="ad-search">
-        <input className="ad-in" placeholder="Search players" value={q} autoCapitalize="off" spellCheck={false} onChange={(e) => setQ(e.target.value)} />
-        {searching && <i className="ad-spin big" />}
+      <div className="adm-search">
+        <input className="adm-in" placeholder="Search players" value={q} autoCapitalize="off" spellCheck={false} onChange={(e) => setQ(e.target.value)} />
+        {searching && <i className="adm-spin big" />}
       </div>
-      {err && <div className="ad-pad ad-res err"><X size={13} />{err}</div>}
+      {err && <div className="adm-pad adm-res err"><X size={13} />{err}</div>}
       {hits && (
-        <div className="ad-hits">
+        <div className="adm-hits">
           {hits.length === 0 && <div className="list-empty">No players</div>}
           {hits.map((h) => (
-            <button key={h.name} className={`ad-hit${sel === h.name ? " on" : ""}`} onClick={() => setSel(h.name)}>
+            <button key={h.name} className={`adm-hit${sel === h.name ? " on" : ""}`} onClick={() => setSel(h.name)}>
               <b>{h.name}</b>
               <span className="dim">{when(h.lastOn)}</span>
             </button>
@@ -598,45 +598,45 @@ function CodesTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
 
   return (
     <>
-      <div className="ad-body">
-        <div className="ad-sub first">New code</div>
-        <div className="ad-form flat">
-          <div className="ad-grid">
-            <label className="ad-f grow">
+      <div className="adm-body">
+        <div className="adm-sub first">New code</div>
+        <div className="adm-form flat">
+          <div className="adm-grid">
+            <label className="adm-f grow">
               <span>Code</span>
-              <div className="ad-with">
-                <input className="ad-in mono" placeholder="Blank = server picks" maxLength={24} value={code} autoCapitalize="characters" onChange={(e) => setCode(e.target.value.toUpperCase())} />
+              <div className="adm-with">
+                <input className="adm-in mono" placeholder="Blank = server picks" maxLength={24} value={code} autoCapitalize="characters" onChange={(e) => setCode(e.target.value.toUpperCase())} />
                 <button className="btn" onClick={() => setCode(randomCode())}>
                   <Dices size={14} /> Random
                 </button>
               </div>
             </label>
           </div>
-          <div className="ad-grid four">
-            <label className="ad-f">
+          <div className="adm-grid four">
+            <label className="adm-f">
               <span>Coins</span>
-              <input className="ad-in mono" inputMode="numeric" value={coins} onChange={(e) => setCoins(e.target.value)} />
+              <input className="adm-in mono" inputMode="numeric" value={coins} onChange={(e) => setCoins(e.target.value)} />
             </label>
-            <label className="ad-f">
+            <label className="adm-f">
               <span>Max uses</span>
-              <input className="ad-in mono" inputMode="numeric" value={uses} onChange={(e) => setUses(e.target.value)} />
+              <input className="adm-in mono" inputMode="numeric" value={uses} onChange={(e) => setUses(e.target.value)} />
             </label>
-            <label className="ad-f">
+            <label className="adm-f">
               <span>Days</span>
-              <input className="ad-in mono" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} />
+              <input className="adm-in mono" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} />
             </label>
           </div>
-          <div className="ad-f">
+          <div className="adm-f">
             <span>Item</span>
             <ItemPicker items={items} value={item} onChange={setItem} />
           </div>
-          <div className="ad-foot">
+          <div className="adm-foot">
             <span />
             <Go id="create" st={st} label="Create" disabled={bad} onClick={create} />
           </div>
         </div>
         {made && (
-          <div className="ad-made">
+          <div className="adm-made">
             <code>{made}</code>
             <button
               className="btn"
@@ -649,15 +649,15 @@ function CodesTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
           </div>
         )}
       </div>
-      <div className="scroll ad-tablewrap">
+      <div className="scroll adm-tablewrap">
         {err ? (
-          <div className="list-empty ad-pad">{err}</div>
+          <div className="list-empty adm-pad">{err}</div>
         ) : !codes ? (
-          <div className="ad-pad"><div className="spinner" /></div>
+          <div className="adm-pad"><div className="spinner" /></div>
         ) : codes.length === 0 ? (
-          <div className="list-empty ad-pad">No codes</div>
+          <div className="list-empty adm-pad">No codes</div>
         ) : (
-          <table className="ins-table ad-table">
+          <table className="ins-table adm-table">
             <thead>
               <tr>
                 <th>Code</th>
@@ -683,7 +683,7 @@ function CodesTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
                     </td>
                     <td className="c-ends">{c.endsAt ? whenDay(c.endsAt) : "None"}</td>
                     <td className="c-state">
-                      <span className={`chip static ad-state ${s}`}>{s}</span>
+                      <span className={`chip static adm-state ${s}`}>{s}</span>
                     </td>
                     <td className="r c-act">
                       {s === "live" && <Go id={`off${c.code}`} st={st} label="Turn off" danger onClick={() => run(`off${c.code}`, () => adminPost(keyVal, "codes/off", { code: c.code }), "Off")} />}
@@ -721,17 +721,17 @@ function LogTab({ keyVal }: { keyVal: string }) {
       live = false;
     };
   }, [keyVal]);
-  if (err) return <div className="list-empty ad-pad">{err}</div>;
-  if (!log) return <div className="ad-pad"><div className="spinner" /></div>;
-  if (!log.length) return <div className="list-empty ad-pad">No actions yet</div>;
+  if (err) return <div className="list-empty adm-pad">{err}</div>;
+  if (!log) return <div className="adm-pad"><div className="spinner" /></div>;
+  if (!log.length) return <div className="list-empty adm-pad">No actions yet</div>;
   return (
-    <div className="ad-log">
+    <div className="adm-log">
       {log.map((l, i) => (
-        <div className="ad-log-row" key={i}>
-          <span className="dim ad-log-t">{when(l.at)}</span>
-          <span className="chip static ad-log-a">{l.action}</span>
-          <b className="ad-log-g">{l.target ?? ""}</b>
-          <span className="dim ad-log-d">{detailText(l.detail)}</span>
+        <div className="adm-log-row" key={i}>
+          <span className="dim adm-log-t">{when(l.at)}</span>
+          <span className="chip static adm-log-a">{l.action}</span>
+          <b className="adm-log-g">{l.target ?? ""}</b>
+          <span className="dim adm-log-d">{detailText(l.detail)}</span>
         </div>
       ))}
     </div>
@@ -771,7 +771,7 @@ export function Admin({ keyName, onKeys }: { keyName: string; onKeys: () => void
   else body = <LogTab keyVal={keyVal} />;
 
   return (
-    <section className="card ins-card ad-card">
+    <section className="card ins-card adm-card">
       <header className="card-head ins-head">
         <h2>Admin</h2>
         <div className="ins-tabs">
