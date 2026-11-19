@@ -190,18 +190,28 @@ function Legend({ series }: { series: Series[] }) {
 }
 
 /** Labelled vertical columns (hours of the day, session lengths). */
-function Hist({ items, every = 1 }: { items: { label: string; value: number }[]; every?: number }) {
+function Hist({ items, every = 1, unit }: { items: { label: string; value: number; tip?: string }[]; every?: number; unit: string }) {
+  const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(1, ...items.map((i) => i.value));
+  const n = items.length;
   return (
-    <div className="hist">
+    <div className="hist" onPointerLeave={() => setHover(null)}>
       <div className="hist-bars">
-        {items.map((it) => (
-          <div className="hist-col" key={it.label} title={`${it.label}: ${n0(it.value)}`}>
-            {items.length <= 8 && <span className="hist-val">{n0(it.value)}</span>}
+        {items.map((it, i) => (
+          <div className={`hist-col${hover === i ? " on" : ""}`} key={it.label} onPointerEnter={() => setHover(i)} onPointerDown={() => setHover(i)}>
+            {n <= 8 && <span className="hist-val">{n0(it.value)}</span>}
             <div className="hist-bar" style={{ height: `${(it.value / max) * 100}%` }} />
           </div>
         ))}
       </div>
+      {hover != null && items[hover] && (
+        <div className="tip" style={{ left: `${((hover + 0.5) / n) * 100}%`, transform: `translateX(${hover < n * 0.2 ? 0 : hover > n * 0.8 ? -100 : -50}%)` }}>
+          <div className="tip-day">{items[hover].tip ?? items[hover].label}</div>
+          <div className="tip-row">
+            {unit} <b>{n0(items[hover].value)}</b>
+          </div>
+        </div>
+      )}
       <div className="hist-axis">
         {items.map((it, i) => (
           <span key={it.label}>{i % every === 0 ? it.label : ""}</span>
@@ -408,7 +418,9 @@ function PlayTab({ d }: { d: Ins }) {
     const off = local ? Math.round(-new Date().getTimezoneOffset() / 60) : 0;
     const out: number[] = Array(24).fill(0);
     base.forEach((v, h) => (out[(((h + off) % 24) + 24) % 24] = v));
-    return out.map((v, h) => ({ label: String(h), value: v }));
+    const zone = local ? new Intl.DateTimeFormat("en", { timeZoneName: "short" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? "Local" : "UTC";
+    const at = (h: number) => new Date(Date.UTC(2000, 0, 1, h % 24)).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+    return out.map((v, h) => ({ label: String(h), value: v, tip: `${at(h)} – ${at(h + 1)} ${zone}` }));
   }, [d.hours, local]);
   const kinds = KINDS.filter((k) => d.daily.some((x) => (x.byKind?.[k.k] ?? 0) > 0));
   const endings = Object.entries(d.match.endings ?? {}).sort((a, b) => b[1] - a[1]);
@@ -428,7 +440,7 @@ function PlayTab({ d }: { d: Ins }) {
       </Block>
       <div className="ins-cols two">
         <Block title="Hour of day" right={<Seg value={local ? "Local" : "UTC"} options={["UTC", "Local"] as const} onChange={(v) => setLocal(v === "Local")} />}>
-          <Hist items={hours} every={3} />
+          <Hist items={hours} every={3} unit="Matches" />
         </Block>
         <Block title="Endings">
           <BarList rows={endings.map(([k, v]) => ({ key: k, label: ENDINGS[k] ?? k, value: v, sub: `${pct(v, endTotal)}%` }))} />
@@ -474,7 +486,7 @@ function AudienceTab({ d }: { d: Ins }) {
       </div>
       <div className="ins-cols two">
         <Block title="Session length">
-          <Hist items={d.sessionLen.map((s) => ({ label: s.k, value: s.n }))} />
+          <Hist items={d.sessionLen.map((s) => ({ label: s.k, value: s.n }))} unit="Sessions" />
         </Block>
         <Block title="Sessions per day">
           <DayChart days={days} series={[{ name: "Sessions", color: "var(--blue)" }]} values={[d.daily.map((x) => x.sessions)]} />
