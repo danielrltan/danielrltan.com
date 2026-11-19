@@ -181,3 +181,52 @@ export const loadLive = (key: string): Promise<Live> => getJson(`${INSIGHTS_API}
 export type InsResult = Insights | { small: true };
 export const loadInsights = (key: string, days: number, seg?: string): Promise<InsResult> =>
   getJson(`${INSIGHTS_API}?days=${days}${seg ? `&seg=${encodeURIComponent(seg)}` : ""}`, key);
+
+// ---- Admin (poddleball.com/api/admin/*, contract in the Poddle repo docs/ADMIN.md) ----
+// Same key as above. Reads are GETs; every write is a JSON POST answering { ok, ... }.
+
+export type AdminHit = { name: string; lastOn: number | null; createdAt: number | null };
+export type AdminNotice = { id: number | string; kind: "warning" | "message"; text: string; at: number; seenAt: number | null };
+export type AdminGift = { id: number | string; coins: number; item: string | null; note: string | null; at: number; shownAt: number | null };
+export type AdminPlayer = {
+  name: string;
+  createdAt: number | null;
+  lastOn: number | null;
+  renamedAt: number | null;
+  lbHidden: boolean;
+  sharing: boolean;
+  coins: { coins: number; earned: number; spent: number };
+  trophies: number;
+  rank: { tier: string; div: number | string } | null;
+  played: number;
+  wins: number;
+  losses: number;
+  matches30d: number;
+  owned: string[];
+  notices: AdminNotice[];
+  gifts: AdminGift[];
+};
+export type AdminItem = { id: string; name: string; kind: string; rarity: string; sold?: boolean; won?: boolean };
+export type AdminCode = { code: string; coins: number; item: string | null; maxUses: number; uses: number; endsAt: number | null; off: boolean; madeAt: number | null };
+export type AdminLog = { at: number; action: string; target: string | null; detail: unknown };
+
+const ADMIN_API = "https://poddleball.com/api/admin";
+
+export const adminGet = (key: string, path: string) => getJson(`${ADMIN_API}/${path}`, key);
+
+export async function adminPost(key: string, path: string, body: Record<string, unknown>) {
+  const res = await fetch(`${ADMIN_API}/${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401 || res.status === 403) throw new KeyError("key rejected");
+  let out: { ok?: boolean; error?: string; [k: string]: unknown } = {};
+  try {
+    out = await res.json();
+  } catch {
+    /* no body */
+  }
+  if (!res.ok || out.ok === false) throw new Error(out.error ? String(out.error) : `${res.status}`);
+  return out;
+}

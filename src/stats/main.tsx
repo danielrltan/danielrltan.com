@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ArrowUpRight, KeyRound, RefreshCw } from "lucide-react";
 import { KeyError, loadPoddle, loadSite, type Day, type Row, type SiteStats } from "./data";
 import { Loading } from "./Loading";
+import { Admin } from "./Admin";
 import { Hint, Insights, VIEWS_HINT, VISITORS_HINT } from "./Insights";
 import "./stats.css";
 
@@ -301,6 +302,7 @@ function App() {
         </div>
       </header>
       <Insights tick={tick} keyName="stats.poddleKey" onKeys={() => setKeys(true)} />
+      <Admin keyName="stats.poddleKey" onKeys={() => setKeys(true)} />
       <div className="grid sites">
         {SITES.map((s) => (
           <SiteCard key={s.id} site={s} range={range} tick={tick} onKeys={() => setKeys(true)} />
