@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ArrowUpRight, KeyRound, RefreshCw } from "lucide-react";
 import { KeyError, loadPoddle, loadSite, type Day, type Row, type SiteStats } from "./data";
 import { Loading } from "./Loading";
-import { Insights } from "./Insights";
+import { Hint, Insights, VIEWS_HINT, VISITORS_HINT } from "./Insights";
 import "./stats.css";
 
 const RANGES = [7, 30, 90] as const;
@@ -172,10 +172,10 @@ function SiteCard({ site, range, tick, onKeys }: { site: SiteDef; range: Range; 
       {state.status === "ok" ? (
         <>
           <div className="totals">
-            <div className="total" title="Unique per UTC day, summed over the range">
+            <div className="total">
               <div className="total-label">
                 <i className="dot visitors" />
-                Visitors
+                <Hint text={VISITORS_HINT}>Visitors</Hint>
               </div>
               <div className="total-value">
                 {fmt.format(state.data.totals.visitors)}
@@ -185,7 +185,7 @@ function SiteCard({ site, range, tick, onKeys }: { site: SiteDef; range: Range; 
             <div className="total">
               <div className="total-label">
                 <i className="dot views" />
-                Views
+                <Hint text={VIEWS_HINT}>Views</Hint>
               </div>
               <div className="total-value">
                 {fmt.format(state.data.totals.views)}

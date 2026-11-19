@@ -1193,3 +1193,83 @@ h1 {
     justify-content: space-between;
   }
 }
+
+/* ---- audience lens + hints ---- */
+.hinted {
+  cursor: help;
+  text-decoration: underline dotted var(--faint);
+  text-underline-offset: 3px;
+  outline: none;
+}
+.hinted:focus-visible {
+  color: var(--text);
+}
+.tip.hint-tip {
+  position: fixed;
+  transform: none;
+  min-width: 0;
+  width: max-content;
+  max-width: min(240px, calc(100vw - 24px));
+  color: var(--text);
+  line-height: 1.4;
+  white-space: normal;
+  z-index: 30;
+}
+.who {
+  height: 32px;
+  max-width: 100%;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+.who:focus-visible {
+  outline: 1px solid var(--border-2);
+}
+.ins-table.compare td.cmp {
+  position: relative;
+}
+.ins-table.compare td.cmp i {
+  position: absolute;
+  left: 4px;
+  width: calc((100% - 8px) * var(--f, 0));
+  top: 5px;
+  bottom: 5px;
+  background: rgba(82, 168, 255, 0.16);
+  border-radius: 3px;
+  pointer-events: none;
+}
+.ins-table.compare td.cmp span {
+  position: relative;
+}
+.ins-table.compare tr.pick {
+  cursor: pointer;
+}
+.ins-table.compare tr.pick:hover td,
+.ins-table.compare tr.on td {
+  background: var(--hover);
+}
+.ins-table.compare tr.pick:focus-visible {
+  outline: 1px solid var(--border-2);
+  outline-offset: -1px;
+}
+.ins-block-head .seg {
+  max-width: 100%;
+  overflow-x: auto;
+}
+@media (max-width: 640px) {
+  .ins-head .who {
+    flex: 1;
+    min-width: 0;
+  }
+  .ins-block-head:has(.seg) {
+    flex-wrap: wrap;
+  }
+  .ins-block-head .seg {
+    width: 100%;
+  }
+}

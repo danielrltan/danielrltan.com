@@ -1,8 +1,8 @@
 // The Poddle admin section of the stats panel: Live, Players, Play, Audience, Behaviour.
 // Data: src/stats/data.ts (loadLive / loadInsights), anonymous totals only.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Eye, KeyRound } from "lucide-react";
-import { KeyError, loadInsights, loadLive, type Insights as Ins, type Live } from "./data";
+import { KeyError, loadInsights, loadLive, type InsResult, type Insights as Ins, type Live, type Segment } from "./data";
 
 const TABS = ["Live", "Players", "Play", "Audience", "Behaviour"] as const;
 type Tab = (typeof TABS)[number];
@@ -44,6 +44,24 @@ function country(cc: string) {
   return { flag, name };
 }
 
+const fmt1 = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
+const hrs = (v: number | undefined | null) => fmt1.format(v ?? 0);
+const HINT = {
+  matches: "Finished or abandoned matches, Matt included.",
+  gameHours: "Time on court summed over every player: a 10-minute match between two people is 20 minutes.",
+  siteHours: "Total time the game was open, menus included.",
+  sessions: "Each time the game was open, from opening to closing the tab.",
+  avgSession: "Mean time the game stayed open per session.",
+  visitors: "Different people each day: one person counts once per day, however many pages they load. Summed over the days shown.",
+  players: "Anyone who played at least one match (guests and accounts).",
+  accounts: "Signed in with Google.",
+  a1: "Played or signed in within the last 1 day.",
+  a7: "Played or signed in within the last 7 days.",
+  a30: "Played or signed in within the last 30 days.",
+};
+export const VIEWS_HINT = "Every page load, reloads included.";
+export const VISITORS_HINT = HINT.visitors;
+
 const prettyKey = (k: string) => k.replace(/[-_]/g, " ");
 
 function lsGet(k: string) {
@@ -63,12 +81,46 @@ function lsSet(k: string, v: string) {
 
 // ---- small parts ---------------------------------------------------------------
 
-function Tiles({ items }: { items: { label: string; value: string }[] }) {
+/** Hover, focus or tap shows a short explanation; fixed so no card edge clips it. */
+export function Hint({ text, children }: { text: string; children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const show = () => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const w = Math.min(240, window.innerWidth - 24);
+    setPos({ left: Math.max(12, Math.min(r.left, window.innerWidth - w - 12)), top: r.bottom + 6 });
+  };
+  const hide = () => setPos(null);
+  return (
+    <>
+      <span
+        ref={ref}
+        className="hinted"
+        tabIndex={0}
+        onPointerEnter={show}
+        onPointerLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        onClick={() => (pos ? hide() : show())}
+      >
+        {children}
+      </span>
+      {pos && (
+        <div className="tip hint-tip" role="tooltip" style={{ left: pos.left, top: pos.top }}>
+          {text}
+        </div>
+      )}
+    </>
+  );
+}
+
+function Tiles({ items }: { items: { label: string; value: string; hint?: string }[] }) {
   return (
     <div className="ins-tiles" style={{ ["--n" as string]: items.length }}>
       {items.map((t) => (
         <div className="tile" key={t.label}>
-          <div className="total-label">{t.label}</div>
+          <div className="total-label">{t.hint ? <Hint text={t.hint}>{t.label}</Hint> : t.label}</div>
           <div className="tile-value">{t.value}</div>
         </div>
       ))}
@@ -134,7 +186,7 @@ const countryRows = (rows: { cc: string; n: number }[], share: boolean): BarRow[
 
 /** Day columns, optionally stacked. Hover or tap a column for its numbers. */
 type Series = { name: string; color: string };
-function DayChart({ days, series, values }: { days: string[]; series: Series[]; values: number[][] }) {
+function DayChart({ days, series, values, dec = 0 }: { days: string[]; series: Series[]; values: number[][]; dec?: number }) {
   const [hover, setHover] = useState<number | null>(null);
   const totals = days.map((_, i) => values.reduce((a, v) => a + (v[i] ?? 0), 0));
   const max = Math.max(1, ...totals);
@@ -167,7 +219,7 @@ function DayChart({ days, series, values }: { days: string[]; series: Series[]; 
           {series.map((s, si) => (
             <div className="tip-row" key={s.name}>
               <i className="dot" style={{ background: s.color }} />
-              {s.name} <b>{n0(values[si][hover])}</b>
+              {s.name} <b>{dec ? hrs(values[si][hover]) : n0(values[si][hover])}</b>
             </div>
           ))}
         </div>
@@ -344,11 +396,11 @@ function PlayersTab({ d }: { d: Ins }) {
     <>
       <Tiles
         items={[
-          { label: "Accounts", value: n0(d.totals.accounts) },
-          { label: "Players", value: n0(d.totals.players) },
-          { label: "Active 1d", value: n0(a.d1) },
-          { label: "Active 7d", value: n0(a.d7) },
-          { label: "Active 30d", value: n0(a.d30) },
+          { label: "Accounts", value: n0(d.totals.accounts), hint: HINT.accounts },
+          { label: "Players", value: n0(d.totals.players), hint: HINT.players },
+          { label: "Active 1d", value: n0(a.d1), hint: HINT.a1 },
+          { label: "Active 7d", value: n0(a.d7), hint: HINT.a7 },
+          { label: "Active 30d", value: n0(a.d30), hint: HINT.a30 },
           { label: "Signed in", value: `${pct(a.d30Accounts, a.d30)}%` },
         ]}
       />
@@ -429,15 +481,22 @@ function PlayTab({ d }: { d: Ins }) {
     <>
       <Tiles
         items={[
-          { label: "Matches", value: n0(total) },
+          { label: "Matches", value: n0(total), hint: HINT.matches },
           { label: "Average length", value: dur(d.match.avgS) },
           { label: "Median length", value: dur(d.match.medianS) },
+          ...(d.gameHours != null ? [{ label: "Game hours", value: `${hrs(d.gameHours)}h`, hint: HINT.gameHours }] : []),
+          ...(d.totals.gameHoursAllTime != null ? [{ label: "All-time game hours", value: `${hrs(d.totals.gameHoursAllTime)}h`, hint: HINT.gameHours }] : []),
         ]}
       />
       <Block title="Matches">
         <DayChart days={days} series={kinds.map((k) => ({ name: k.name, color: k.color }))} values={kinds.map((k) => d.daily.map((x) => x.byKind?.[k.k] ?? 0))} />
         <Legend series={kinds} />
       </Block>
+      {d.daily.some((x) => x.gameHours != null) && (
+        <Block title="Game hours">
+          <DayChart days={days} series={[{ name: "Game hours", color: "#3fb950" }]} values={[d.daily.map((x) => x.gameHours ?? 0)]} dec={1} />
+        </Block>
+      )}
       <div className="ins-cols two">
         <Block title="Hour of day" right={<Seg value={local ? "Local" : "UTC"} options={["UTC", "Local"] as const} onChange={(v) => setLocal(v === "Local")} />}>
           <Hist items={hours} every={3} unit="Matches" />
@@ -450,9 +509,133 @@ function PlayTab({ d }: { d: Ins }) {
   );
 }
 
+// ---- Who (audience lens) ---------------------------------------------------------
+
+const DIMS = [
+  { dim: "country", name: "Country", group: "Country" },
+  { dim: "device", name: "Device", group: "Device" },
+  { dim: "os", name: "OS", group: "OS" },
+  { dim: "browser", name: "Browser", group: "Browser" },
+  { dim: "account", name: "Account", group: "Signed in / Guest" },
+  { dim: "newret", name: "New vs returning accounts", group: "Accounts: new / returning" },
+] as const;
+
+const cap = (v: string) => v.charAt(0).toUpperCase() + v.slice(1);
+function segLabel(s: Segment) {
+  const v = s.seg.slice(2);
+  if (s.seg === "c:other") return "Other countries";
+  switch (s.seg[0]) {
+    case "c": {
+      const c = country(v);
+      return `${c.flag} ${c.name}`;
+    }
+    case "a":
+      return v === "in" ? "Signed in" : "Guest";
+    case "n":
+      return v === "new" ? "New account" : "Returning account";
+    case "d":
+      return cap(v);
+    default:
+      return s.label || v;
+  }
+}
+const queryable = (s: Segment) => s.seg !== "c:other";
+
+function Compare({ segments, seg, onPick }: { segments: Segment[]; seg: string; onPick: (s: string) => void }) {
+  const [dim, setDim] = useState<string>(() => {
+    const v = lsGet("stats.insDim");
+    return DIMS.some((x) => x.dim === v) ? v : "country";
+  });
+  const rows = segments.filter((s) => s.dim === dim).sort((a, b) => b.visitors - a.visitors);
+  const cols: { name: string; get: (s: Segment) => number; show: (v: number) => string }[] = [
+    { name: "Visitors", get: (s) => s.visitors, show: n0 },
+    { name: "Sessions", get: (s) => s.sessions, show: n0 },
+    { name: "Avg session", get: (s) => s.avgSessionS, show: dur },
+    { name: "Game hours", get: (s) => s.gameHours, show: (v) => `${hrs(v)}h` },
+    { name: "Matches / visitor", get: (s) => (s.visitors ? s.matches / s.visitors : 0), show: (v) => v.toFixed(2) },
+    { name: "Presses / session", get: (s) => s.pressesPerSession, show: (v) => fmt1.format(v) },
+  ];
+  const max = cols.map((c) => Math.max(1e-9, ...rows.map(c.get)));
+  return (
+    <Block
+      title="Compare"
+      right={
+        <Seg
+          value={dim}
+          options={DIMS.map((x) => x.dim)}
+          label={(v) => DIMS.find((x) => x.dim === v)?.name ?? v}
+          onChange={(v) => {
+            setDim(v);
+            lsSet("stats.insDim", v);
+          }}
+        />
+      }
+    >
+      {rows.length === 0 ? (
+        <div className="list-empty">Too few people</div>
+      ) : (
+        <div className="scroll">
+          <table className="ins-table compare">
+            <thead>
+              <tr>
+                <th>{DIMS.find((x) => x.dim === dim)?.name}</th>
+                {cols.map((c) => (
+                  <th key={c.name}>{c.name}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((s) => (
+                <tr
+                  key={s.seg}
+                  className={`${queryable(s) ? "pick" : ""}${s.seg === seg ? " on" : ""}`}
+                  onClick={queryable(s) ? () => onPick(s.seg) : undefined}
+                  onKeyDown={queryable(s) ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onPick(s.seg)) : undefined}
+                  tabIndex={queryable(s) ? 0 : undefined}
+                >
+                  <td>{segLabel(s)}</td>
+                  {cols.map((c, i) => {
+                    const v = c.get(s);
+                    return (
+                      <td key={c.name} className="cmp">
+                        <i style={{ ["--f" as string]: v / max[i] }} />
+                        <span>{c.show(v)}</span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Block>
+  );
+}
+
+function WhoSelect({ segments, value, onChange }: { segments: Segment[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <select className="who" aria-label="Who" value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Everyone</option>
+      {DIMS.map((g) => {
+        const rows = segments.filter((s) => s.dim === g.dim && queryable(s)).sort((a, b) => b.visitors - a.visitors);
+        return rows.length ? (
+          <optgroup key={g.dim} label={g.group}>
+            {rows.map((s) => (
+              <option key={s.seg} value={s.seg}>
+                {segLabel(s)}
+              </option>
+            ))}
+          </optgroup>
+        ) : null;
+      })}
+    </select>
+  );
+}
+
 // ---- Audience --------------------------------------------------------------------
 
-function AudienceTab({ d }: { d: Ins }) {
+function AudienceTab({ d, segments, seg, onPick }: { d: Ins; segments: Segment[]; seg: string; onPick: (s: string) => void }) {
   const days = d.daily.map((x) => x.day);
   const sessions = d.daily.reduce((a, x) => a + x.sessions, 0);
   const avg = sessions ? d.daily.reduce((a, x) => a + x.avgSessionS * x.sessions, 0) / sessions : 0;
@@ -460,11 +643,13 @@ function AudienceTab({ d }: { d: Ins }) {
     <>
       <Tiles
         items={[
-          { label: "Sessions", value: n0(sessions) },
-          { label: "Average session", value: dur(avg) },
-          { label: "Visitors", value: n0(d.daily.reduce((a, x) => a + x.visitors, 0)) },
+          { label: "Sessions", value: n0(sessions), hint: HINT.sessions },
+          { label: "Average session", value: dur(avg), hint: HINT.avgSession },
+          { label: "Visitors", value: n0(d.daily.reduce((a, x) => a + x.visitors, 0)), hint: HINT.visitors },
+          ...(d.siteHours != null ? [{ label: "Hours on site", value: `${hrs(d.siteHours)}h`, hint: HINT.siteHours }] : []),
         ]}
       />
+      <Compare segments={segments} seg={seg} onPick={onPick} />
       <div className="ins-cols two">
         <Block title="Countries">
           <BarList rows={countryRows(d.countries, true)} />
@@ -568,7 +753,24 @@ export function Insights({ tick, keyName, onKeys }: { tick: number; keyName: str
   });
   const [live, setLive] = useState<Fetch<Live>>({ status: "loading" });
   const [ins, setIns] = useState<Fetch<Ins>>({ status: "loading" });
+  const [seg, setSeg] = useState<string>(() => lsGet("stats.insSeg"));
+  const [segIns, setSegIns] = useState<Fetch<Ins | "small"> & { for?: string }>({ status: "loading" });
   const isLive = tab === "Live";
+  const whoTab = tab === "Play" || tab === "Audience" || tab === "Behaviour";
+  const segments = (ins.status === "ok" ? ins.data.segments : undefined) ?? [];
+  const segKnown = ins.status === "ok" && ins.data.segments != null;
+  // a remembered choice that is no longer offered goes back to Everyone
+  const activeSeg = segKnown && segments.some((s) => s.seg === seg && s.seg !== "c:other") ? seg : "";
+  useEffect(() => {
+    if (segKnown && seg && !activeSeg) {
+      setSeg("");
+      lsSet("stats.insSeg", "");
+    }
+  }, [segKnown, seg, activeSeg]);
+  const pick = (v: string) => {
+    setSeg(v);
+    lsSet("stats.insSeg", v);
+  };
 
   useEffect(() => {
     if (!isLive) return;
@@ -598,20 +800,47 @@ export function Insights({ tick, keyName, onKeys }: { tick: number; keyName: str
     let alive = true;
     setIns((s) => (s.status === "ok" ? s : { status: "loading" }));
     loadInsights(key, days)
-      .then((data) => alive && setIns({ status: "ok", data: normalise(data) }))
+      .then((data) => alive && setIns({ status: "ok", data: normalise(data as Ins) }))
       .catch((e) => alive && setIns({ status: "error", key: e instanceof KeyError, msg: String(e?.message ?? e) }));
     return () => {
       alive = false;
     };
   }, [isLive, days, keyName, tick]);
 
-  const state: Fetch<unknown> = isLive ? live : ins;
+  useEffect(() => {
+    if (isLive || !activeSeg || !whoTab) return;
+    const key = lsGet(keyName);
+    if (!key) return;
+    let alive = true;
+    const tag = `${days}|${activeSeg}`;
+    setSegIns((s) => (s.status === "ok" && s.for === tag ? s : { status: "loading" }));
+    loadInsights(key, days, activeSeg)
+      .then((r: InsResult) => alive && setSegIns({ status: "ok", for: tag, data: "small" in r && r.small ? "small" : normalise(r as Ins) }))
+      .catch((e) => alive && setSegIns({ status: "error", key: e instanceof KeyError, msg: String(e?.message ?? e) }));
+    return () => {
+      alive = false;
+    };
+  }, [isLive, days, activeSeg, whoTab, keyName, tick]);
+
+  const useSeg = !isLive && whoTab && !!activeSeg;
+  const state: Fetch<unknown> = isLive ? live : useSeg && ins.status === "ok" ? segIns : ins;
   let body: ReactNode;
-  if (state.status === "ok") {
+  if (state.status === "ok" && useSeg && (segIns as { for?: string }).for !== `${days}|${activeSeg}`) {
+    body = (
+      <div className="empty">
+        <div className="spinner" />
+      </div>
+    );
+  } else if (state.status === "ok") {
+    const sd = (segIns as { data?: Ins | "small" }).data;
     body = isLive ? (
       <LiveTab data={(live as { data: Live }).data} />
+    ) : useSeg && sd === "small" ? (
+      <div className="empty">
+        <p>Too few people</p>
+      </div>
     ) : (
-      <Static d={(ins as { data: Ins }).data} tab={tab} />
+      <Static d={useSeg ? (sd as Ins) : (ins as { data: Ins }).data} tab={tab} segments={segments} seg={activeSeg} onPick={pick} />
     );
   } else if (state.status === "loading") {
     body = (
@@ -644,6 +873,7 @@ export function Insights({ tick, keyName, onKeys }: { tick: number; keyName: str
             }}
           />
         </div>
+        {whoTab && segKnown && <WhoSelect segments={segments} value={activeSeg} onChange={pick} />}
         {!isLive && (
           <Seg
             value={days}
@@ -661,14 +891,26 @@ export function Insights({ tick, keyName, onKeys }: { tick: number; keyName: str
   );
 }
 
-function Static({ d, tab }: { d: Ins; tab: Tab }) {
-  return tab === "Players" ? <PlayersTab d={d} /> : tab === "Play" ? <PlayTab d={d} /> : tab === "Audience" ? <AudienceTab d={d} /> : <BehaviourTab d={d} />;
+function Static({ d, tab, segments, seg, onPick }: { d: Ins; tab: Tab; segments: Segment[]; seg: string; onPick: (s: string) => void }) {
+  return tab === "Players" ? (
+    <PlayersTab d={d} />
+  ) : tab === "Play" ? (
+    <PlayTab d={d} />
+  ) : tab === "Audience" ? (
+    <AudienceTab d={d} segments={segments} seg={seg} onPick={onPick} />
+  ) : (
+    <BehaviourTab d={d} />
+  );
 }
 
 /** Fill anything the server left out so the tabs never trip on a missing field. */
 function normalise(d: Partial<Ins>): Ins {
   return {
     days: d.days ?? 30,
+    seg: d.seg,
+    gameHours: d.gameHours,
+    siteHours: d.siteHours,
+    segments: d.segments,
     totals: d.totals ?? { accounts: 0, players: 0, matches: 0 },
     active: d.active ?? { d1: 0, d7: 0, d30: 0, d1Accounts: 0, d7Accounts: 0, d30Accounts: 0 },
     daily: d.daily ?? [],

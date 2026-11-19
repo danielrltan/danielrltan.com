@@ -141,10 +141,26 @@ export type InsDay = {
   sessions: number;
   avgSessionS: number;
   visitors: number;
+  gameHours?: number;
+};
+export type Segment = {
+  seg: string;
+  dim: string;
+  label: string;
+  visitors: number;
+  sessions: number;
+  avgSessionS: number;
+  gameHours: number;
+  matches: number;
+  pressesPerSession: number;
 };
 export type Insights = {
   days: number;
-  totals: { accounts: number; players: number; matches: number };
+  seg?: string;
+  gameHours?: number;
+  siteHours?: number;
+  segments?: Segment[];
+  totals: { accounts: number; players: number; matches: number; gameHoursAllTime?: number };
   active: { d1: number; d7: number; d30: number; d1Accounts: number; d7Accounts: number; d30Accounts: number };
   daily: InsDay[];
   hours: number[];
@@ -162,4 +178,6 @@ export type Insights = {
 
 const INSIGHTS_API = "https://poddleball.com/api/insights";
 export const loadLive = (key: string): Promise<Live> => getJson(`${INSIGHTS_API}/live`, key);
-export const loadInsights = (key: string, days: number): Promise<Insights> => getJson(`${INSIGHTS_API}?days=${days}`, key);
+export type InsResult = Insights | { small: true };
+export const loadInsights = (key: string, days: number, seg?: string): Promise<InsResult> =>
+  getJson(`${INSIGHTS_API}?days=${days}${seg ? `&seg=${encodeURIComponent(seg)}` : ""}`, key);
