@@ -1,8 +1,12 @@
 // The Poddle admin section of the stats panel: Live, Players, Play, Audience, Behaviour.
 // Data: src/stats/data.ts (loadLive / loadInsights), anonymous totals only.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Eye, KeyRound } from "lucide-react";
 import { KeyError, loadInsights, loadLive, type InsResult, type Insights as Ins, type Live, type Segment } from "./data";
+import type { MapRow } from "./WorldMap";
+
+// The map and its shapes are one lazy chunk, fetched when a tab shows it.
+const WorldMap = lazy(() => import("./WorldMap"));
 
 const TABS = ["Live", "Players", "Play", "Audience", "Behaviour"] as const;
 type Tab = (typeof TABS)[number];
@@ -185,6 +189,27 @@ const countryRows = (rows: { cc: string; n: number }[], share: boolean): BarRow[
   });
 };
 
+/** Country choropleth; rows without a shape ('c:other', '??') stay in the list only. */
+function CountryMap({ rows, unit, share }: { rows: { cc: string; n: number }[]; unit: string; share: boolean }) {
+  const mapRows = useMemo(() => {
+    const total = rows.reduce((a, r) => a + r.n, 0);
+    const out = new Map<string, MapRow>();
+    for (const r of rows) {
+      if (!/^[A-Za-z]{2}$/.test(r.cc)) continue;
+      const cc = r.cc.toUpperCase();
+      const n = (out.get(cc)?.value ?? 0) + r.n;
+      const c = country(cc);
+      out.set(cc, { cc, label: `${c.flag} ${c.name}`, value: n, sub: share ? `${pct(n, total)}%` : undefined });
+    }
+    return [...out.values()];
+  }, [rows, share]);
+  return (
+    <Suspense fallback={<div className="wm" />}>
+      <WorldMap rows={mapRows} unit={unit} />
+    </Suspense>
+  );
+}
+
 /** Day columns, optionally stacked. Hover or tap a column for its numbers. */
 type Series = { name: string; color: string };
 export function DayChart({ days, series, values, dec = 0 }: { days: string[]; series: Series[]; values: number[][]; dec?: number }) {
@@ -337,12 +362,17 @@ function LiveTab({ data }: { data: Live }) {
           </div>
         )}
       </Block>
-      <div className="ins-cols three">
+      <div className="ins-cols">
+        <Block title="Countries">
+          <div className="wm-split">
+            <CountryMap rows={data.countries ?? []} unit="Online" share={false} />
+            <BarList rows={countryRows(data.countries ?? [], false)} />
+          </div>
+        </Block>
+      </div>
+      <div className="ins-cols two">
         <Block title="Screens">
           <BarList rows={(data.screens ?? []).map((s) => ({ key: s.screen, label: prettyKey(s.screen), value: s.n }))} />
-        </Block>
-        <Block title="Countries">
-          <BarList rows={countryRows(data.countries ?? [], false)} />
         </Block>
         <Block title="Devices">
           <BarList rows={(data.devices ?? []).map((d) => ({ key: d.k, label: d.k, value: d.n }))} />
@@ -653,6 +683,7 @@ function AudienceTab({ d, segments, seg, onPick }: { d: Ins; segments: Segment[]
       <Compare segments={segments} seg={seg} onPick={onPick} />
       <div className="ins-cols two">
         <Block title="Countries">
+          <CountryMap rows={d.countries} unit="Visitors" share />
           <BarList rows={countryRows(d.countries, true)} />
           <a className="credit" href="https://db-ip.com" target="_blank" rel="noreferrer">
             IP geolocation by DB-IP

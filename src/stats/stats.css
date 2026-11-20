@@ -2374,3 +2374,76 @@ textarea.adm-in {
     display: none;
   }
 }
+
+/* ---- country map (WorldMap.tsx) ---- */
+.wm {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1600 / 697;
+  touch-action: manipulation;
+}
+.wm svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.wm path {
+  fill: #1c1c1c;
+  stroke: var(--card);
+  stroke-width: 0.6px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.wm path.wm-hi {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.2px;
+  pointer-events: none;
+}
+.wm-dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 0 1.5px var(--card);
+}
+.wm-dot::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
+.wm-dot.on {
+  box-shadow: 0 0 0 1.5px var(--text);
+}
+.tip.wm-tip {
+  min-width: 0;
+  width: max-content;
+  max-width: 220px;
+}
+.wm-tip .tip-row b em {
+  margin-left: 6px;
+  color: var(--faint);
+  font-style: normal;
+}
+.ins-block .wm + .ins-bars,
+.ins-block .wm + .list-empty {
+  margin-top: 14px;
+}
+.wm-split {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.wm-split > * {
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .wm-split {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
