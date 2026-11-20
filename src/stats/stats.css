@@ -1360,6 +1360,12 @@ textarea.adm-in {
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+.adm-flag {
+  margin-left: -4px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: default;
+}
 .adm-spacer {
   flex: 1;
 }

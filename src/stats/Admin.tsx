@@ -134,19 +134,32 @@ const rarityRank = (r: string) => {
   return i < 0 ? 99 : i;
 };
 
+// The picker's groups, named as the game names them: the rackets (rank rackets, then the Win Streak and Matt styles) and their masteries
+// (Gold II Chrome) under their own headings, in the ladder's order (their ids sort Bronze I up to Pro); everything else by its kind, by rarity, then name.
+const GROUP: Record<string, string> = { racket: "Rackets", finish: "Masteries" };
+const LADDER = new Set(["racket", "finish"]);
+const FIN_ORDER: Record<string, string> = { chrome: "1", pearl: "2", obsidian: "3" };      // the masteries' own order (25, 50, 100 wins)
+const ladderKey = (id: string) => id.replace(/:(chrome|pearl|obsidian)$/, (_, f: string) => ":" + FIN_ORDER[f]);
+function groupItems(items: AdminItem[], q: string) {
+  const needle = q.trim().toLowerCase();
+  const by = new Map<string, AdminItem[]>();
+  for (const it of items) {
+    const g = GROUP[it.kind] ?? it.kind;
+    if (needle && !`${it.name} ${g} ${it.rarity} ${it.id}`.toLowerCase().includes(needle)) continue;
+    by.set(g, [...(by.get(g) ?? []), it]);
+  }
+  const cmp = (a: AdminItem, b: AdminItem) =>
+    LADDER.has(a.kind) && a.kind === b.kind ? ladderKey(a.id).localeCompare(ladderKey(b.id)) : rarityRank(a.rarity) - rarityRank(b.rarity) || a.name.localeCompare(b.name);
+  return [...by].sort(([a], [b]) => a.localeCompare(b)).map(([kind, list]) => ({ kind, list: list.sort(cmp) }));
+}
+
 /** Several items at once (a code's bundle): picked ones as chips, the list stays open while you tick rows. */
 function MultiItemPicker({ items, value, onChange }: { items: AdminItem[]; value: string[]; onChange: (ids: string[]) => void }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const groups = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const by = new Map<string, AdminItem[]>();
-    for (const it of items) {
-      if (needle && !`${it.name} ${it.kind} ${it.rarity} ${it.id}`.toLowerCase().includes(needle)) continue;
-      by.set(it.kind, [...(by.get(it.kind) ?? []), it]);
-    }
-    return [...by].sort(([a], [b]) => a.localeCompare(b)).map(([kind, list]) => ({ kind, list: list.sort((a, b) => rarityRank(a.rarity) - rarityRank(b.rarity) || a.name.localeCompare(b.name)) }));
+    return groupItems(items, q);
   }, [items, q]);
   const has = new Set(value);
   const toggle = (id: string) => onChange(has.has(id) ? value.filter((x) => x !== id) : [...value, id]);
@@ -206,6 +219,30 @@ function MultiItemPicker({ items, value, onChange }: { items: AdminItem[]; value
 }
 
 // ---- Players ------------------------------------------------------------------------
+
+// The country of the player's latest game connection (Poddle accounts.last_cc): its flag, the country's name on hover.
+const regionName = (() => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" });
+  } catch {
+    return null;
+  }
+})();
+function Flag({ cc }: { cc: string | null | undefined }) {
+  if (!cc || !/^[A-Z]{2}$/.test(cc)) return null;
+  const flag = String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+  let title = cc;
+  try {
+    title = regionName?.of(cc) ?? cc;
+  } catch {
+    /* an unknown code: the code itself */
+  }
+  return (
+    <span className="adm-flag" title={title} aria-label={title} role="img">
+      {flag}
+    </span>
+  );
+}
 
 const ACTIONS = ["Coins", "Item", "Inbox", "Rename", "Access"] as const;
 type Action = (typeof ACTIONS)[number];
@@ -378,6 +415,7 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
       <i className="adm-load" aria-hidden="true" />
       <div className="adm-who">
         <h3>{nm}</h3>
+        <Flag cc={p.cc} />
         {p.live && <span className="chip static st-live">{LIVE_LABEL[p.live.state]}</span>}
         <span className="dim">Created {whenDay(p.createdAt)}</span>
         <span className="chip static">{rank}</span>

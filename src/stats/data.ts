@@ -208,6 +208,7 @@ export type AdminPlayer = {
   name: string;
   createdAt: number | null;
   lastOn: number | null;
+  cc?: string | null;
   renamedAt: number | null;
   lbHidden: boolean;
   sharing: boolean;
