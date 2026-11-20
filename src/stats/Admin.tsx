@@ -134,73 +134,6 @@ const rarityRank = (r: string) => {
   return i < 0 ? 99 : i;
 };
 
-function ItemPicker({ items, value, onChange }: { items: AdminItem[]; value: string; onChange: (id: string) => void }) {
-  const [q, setQ] = useState("");
-  const [open, setOpen] = useState(false);
-  const picked = items.find((i) => i.id === value);
-  const groups = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const by = new Map<string, AdminItem[]>();
-    for (const it of items) {
-      if (needle && !`${it.name} ${it.kind} ${it.rarity} ${it.id}`.toLowerCase().includes(needle)) continue;
-      by.set(it.kind, [...(by.get(it.kind) ?? []), it]);
-    }
-    return [...by].sort(([a], [b]) => a.localeCompare(b)).map(([kind, list]) => ({ kind, list: list.sort((a, b) => rarityRank(a.rarity) - rarityRank(b.rarity) || a.name.localeCompare(b.name)) }));
-  }, [items, q]);
-
-  if (picked && !open) {
-    return (
-      <div className="adm-picked">
-        <span className={`adm-rar r-${picked.rarity.toLowerCase()}`} />
-        <b>{picked.name}</b>
-        <span className="dim">{picked.kind}</span>
-        <button className="adm-x" aria-label="Clear item" onClick={() => onChange("")}>
-          <X size={14} />
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div className="adm-picker">
-      <input
-        className="adm-in"
-        placeholder="Search items"
-        value={q}
-        onFocus={() => setOpen(true)}
-        onChange={(e) => {
-          setQ(e.target.value);
-          setOpen(true);
-        }}
-      />
-      {open && (
-        <div className="adm-pick-list">
-          {groups.length === 0 && <div className="list-empty">No items</div>}
-          {groups.map((g) => (
-            <div key={g.kind}>
-              <div className="adm-pick-kind">{g.kind}</div>
-              {g.list.map((it) => (
-                <button
-                  key={it.id}
-                  className="adm-pick-row"
-                  onClick={() => {
-                    onChange(it.id);
-                    setOpen(false);
-                    setQ("");
-                  }}
-                >
-                  <span className={`adm-rar r-${it.rarity.toLowerCase()}`} />
-                  <span className="adm-pick-name">{it.name}</span>
-                  <span className="dim">{it.rarity}</span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** Several items at once (a code's bundle): picked ones as chips, the list stays open while you tick rows. */
 function MultiItemPicker({ items, value, onChange }: { items: AdminItem[]; value: string[]; onChange: (ids: string[]) => void }) {
   const [q, setQ] = useState("");
@@ -407,7 +340,7 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
   const [amount, setAmount] = useState("");
   const [coinNote, setCoinNote] = useState("");
   const [coinGift, setCoinGift] = useState(true);
-  const [item, setItem] = useState("");
+  const [picks, setPicks] = useState<string[]>([]);
   const [itemNote, setItemNote] = useState("");
   const [itemGift, setItemGift] = useState(true);
   const [kind, setKind] = useState<"Warning" | "Message">("Warning");
@@ -488,7 +421,7 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
             )}
             {action === "Item" && (
               <div className="adm-form">
-                <ItemPicker items={items} value={item} onChange={setItem} />
+                <MultiItemPicker items={items} value={picks} onChange={setPicks} />
                 <label className="adm-f">
                   <span>Note</span>
                   <input className="adm-in" maxLength={NOTE_MAX} value={itemNote} onChange={(e) => setItemNote(e.target.value)} />
@@ -498,9 +431,25 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
                   <Go
                     id="item"
                     st={st}
-                    label="Give item"
-                    disabled={!item}
-                    onClick={() => run("item", () => post("item", { item, ...(itemNote.trim() ? { note: itemNote.trim() } : {}), gift: itemGift }), "Given").then((ok) => ok && (setItem(""), setItemNote("")))}
+                    label={picks.length > 1 ? `Give ${picks.length} items` : "Give item"}
+                    disabled={!picks.length}
+                    onClick={() =>
+                      run(
+                        "item",
+                        async () => {
+                          const bad: string[] = [];
+                          for (const id of picks) {
+                            try {
+                              await post("item", { item: id, ...(itemNote.trim() ? { note: itemNote.trim() } : {}), gift: itemGift });
+                            } catch (e) {
+                              bad.push(`${items.find((i) => i.id === id)?.name ?? id}: ${(e as Error)?.message ?? e}`);
+                            }
+                          }
+                          if (bad.length) throw new Error(`${picks.length - bad.length} given; not given ${bad.join(", ")}`);
+                        },
+                        picks.length > 1 ? `${picks.length} given` : "Given",
+                      ).then((ok) => ok && (setPicks([]), setItemNote("")))
+                    }
                   />
                 </div>
               </div>
