@@ -5,9 +5,9 @@
     <!-- In-house analytics + page-load diagnostics (public/rum.js): page views,
          sources, src/analytics.ts events, timings, long frames, clicks and, for
          every Chromium load, a JS profile, sent to the owner's own collector on
-         poddleball.com and read on /stats. No cookie, no third party. Async: it
+         playpoddle.com and read on /stats. No cookie, no third party. Async: it
          never holds up parsing. -->
-    <script async src="/rum.js" data-endpoint="https://poddleball.com/api/perf" data-site="danielrltan.com" data-profile="1" data-clicks="targets"></script>
+    <script async src="/rum.js" data-endpoint="https://playpoddle.com/api/perf" data-site="danielrltan.com" data-profile="1" data-clicks="targets"></script>
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
@@ -128,7 +128,7 @@
               { "@id": "https://devpost.com/software/cognetech#project" },
               { "@id": "https://devpost.com/software/reamp#project" },
               { "@id": "https://motrack.co/#project" },
-              { "@id": "https://poddleball.com/#project" }
+              { "@id": "https://playpoddle.com/#project" }
             ]
           },
           {
@@ -207,9 +207,9 @@
           },
           {
             "@type": "CreativeWork",
-            "@id": "https://poddleball.com/#project",
+            "@id": "https://playpoddle.com/#project",
             "name": "Poddle",
-            "url": "https://poddleball.com/",
+            "url": "https://playpoddle.com/",
             "sameAs": "https://github.com/danielrltan/poddle",
             "author": { "@id": "https://danielrltan.com/#person" },
             "description": "Wii Sports-style online pickleball where a phone or an AirPod is the paddle. Motion sensors stream to an authoritative Node and WebSocket game server, rendered in three.js. Built for Hack the North 2026.",

@@ -473,7 +473,7 @@ export function Loading({ range, tick, onKeys }: { range: number; tick: number; 
                 remember("stats.perfSite", s);
               }}
             >
-              {s}
+              {s === "poddleball.com" ? "playpoddle.com" : s /* the stored label stays poddleball.com (Poddle server/site.js STATS_LABEL) */}
             </button>
           ))}
         </div>

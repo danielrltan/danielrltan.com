@@ -39,9 +39,9 @@ export const MAC_PROJECTS: MacProject[] = [
     short:
       "Hack the North 2026. Wii Sports-style online pickleball where your phone (or one AirPod) is the paddle. Scan a QR code and the phone streams its motion sensors to the game, nothing to install; on a Mac, a Swift menu-bar app reads AirPod head-tracking via CoreMotion.",
     tags: ["Three.js", "Node.js", "WebSockets", "Swift", "CoreMotion", "MediaPipe"],
-    liveHref: "https://poddleball.com",
+    liveHref: "https://playpoddle.com",
     repoHref: "https://github.com/danielrltan/poddle",
-    // The game's own Open Graph card (1200×630 from poddleball.com), resized to
+    // The game's own Open Graph card (1200×630 from playpoddle.com), resized to
     // 1000px. Cover-fit into the CRT thumb frame.
     image: "/images/projects/poddle.webp",
     color: "#3a8fd8", // dominant of the OG card (sky blue)

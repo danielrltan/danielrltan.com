@@ -1,4 +1,4 @@
-// postbuild: send dist's hidden source maps (vite build.sourcemap "hidden") to the owner's collector on poddleball.com, privately, so the
+// postbuild: send dist's hidden source maps (vite build.sourcemap "hidden") to the owner's collector on playpoddle.com, privately, so the
 // stats panel can show real function names in its flame graphs (poddle NOTES 234); then delete every .map from dist so none is published.
 // Uploads only when PODDLE_STATS_KEY is set (the Vercel project's env; local builds skip it) and only the chunk names Poddle lacks: a
 // content-hashed name never changes content. An upload failure never fails the build; the deletion always runs.
@@ -7,7 +7,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 
 const DIST = path.resolve("dist");
-const API = process.env.PODDLE_API || "https://poddleball.com/api/perf"; // PODDLE_API: a local collector, for tests
+const API = process.env.PODDLE_API || "https://playpoddle.com/api/perf"; // PODDLE_API: a local collector, for tests
 const KEY = (process.env.PODDLE_STATS_KEY || "").trim();
 
 const maps = [];

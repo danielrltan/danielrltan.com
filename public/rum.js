@@ -1,4 +1,4 @@
-// Page-load diagnostics (NOTES 232; privacy 2 and 7). One copy serves poddleball.com, another danielrltan.com (public/rum.js there): keep them the same.
+// Page-load diagnostics (NOTES 232; privacy 2 and 7). One copy serves playpoddle.com, another danielrltan.com (public/rum.js there): keep them the same.
 // Loaded with <script async> first in <head>: it never holds up the parser, and the profiler still starts before most of the page's code. It reads what the browser already measured
 // (navigation phases, paints, the files fetched, long main-thread frames and the scripts in them, how long each click took to answer) and sends it
 // twice to the collector: the load part once the page has settled, the fin part when the tab is hidden or closed. For a sample of Chromium loads it
@@ -8,7 +8,7 @@
 // The load part also names where the visit came from (the referrer's origin only, and a ?ref= / ?utm_source= tag): the collector counts other sites'
 // page views from it (NOTES 233). Named events: the page pushes [name, { props }] onto window.rumEvents (danielrltan.com's src/analytics.ts track());
 // each fin part carries the ones not sent yet, as [name, detail], detail = the props' values in key order, URLs without query.
-// <script async src="/rum.js" data-endpoint="https://poddleball.com/api/perf" data-profile="0.5" data-clicks="targets"></script>
+// <script async src="/rum.js" data-endpoint="https://playpoddle.com/api/perf" data-profile="0.5" data-clicks="targets"></script>
 (function () {
   'use strict';
   var me = document.currentScript, ds = (me && me.dataset) || {};

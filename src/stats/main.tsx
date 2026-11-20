@@ -42,9 +42,9 @@ type SiteDef = {
 const SITES: SiteDef[] = [
   {
     id: "poddle",
-    name: "poddleball.com",
-    url: "https://poddleball.com",
-    icon: "https://poddleball.com/favicon-32.png",
+    name: "playpoddle.com",
+    url: "https://playpoddle.com",
+    icon: "https://playpoddle.com/favicon-32.png",
     keyName: "stats.poddleKey",
     keyLabel: "Poddle key",
     load: loadPoddle,

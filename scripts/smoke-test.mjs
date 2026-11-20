@@ -863,7 +863,7 @@ async function runPhoneScenario(browser, name, { viewport, query }) {
     mail: document.querySelector(".ph-mail")?.getAttribute("href"),
     socials: [...document.querySelectorAll(".ph-clist a")].map((a) => a.getAttribute("href")),
   }));
-  check(links.proj.length === 5 && links.proj.some((l) => l.startsWith("View live") && l.endsWith("poddleball.com")) && links.proj.some((l) => l.startsWith("View dev post")), `project links (${links.proj.length})`);
+  check(links.proj.length === 5 && links.proj.some((l) => l.startsWith("View live") && l.endsWith("playpoddle.com")) && links.proj.some((l) => l.startsWith("View dev post")), `project links (${links.proj.length})`);
   check(links.mail === "mailto:hello@danielrltan.com", "contact mailto");
   check(links.socials.length === 5 && links.socials.includes("/resume/Daniel_Tan_Resume.pdf"), `contact links (${links.socials.length})`);
 

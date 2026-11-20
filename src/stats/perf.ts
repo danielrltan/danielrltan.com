@@ -9,7 +9,7 @@
 //                                       symbolicate() turns minified frames back into real names and files
 import { KeyError } from "./data";
 
-const API = "https://poddleball.com/api/perf";
+const API = "https://playpoddle.com/api/perf";
 export const PERF_SITES = ["danielrltan.com", "poddleball.com"] as const;
 export type PerfSite = (typeof PERF_SITES)[number];
 
