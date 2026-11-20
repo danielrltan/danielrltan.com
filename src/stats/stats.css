@@ -1424,6 +1424,9 @@ textarea.adm-in {
 .adm-rar.r-legendary {
   background: #f2d16b;
 }
+.adm-rar.r-mythic {
+  background: #ff4fb8;
+}
 .adm-rar.r-exclusive {
   background: #b6f23c;
 }

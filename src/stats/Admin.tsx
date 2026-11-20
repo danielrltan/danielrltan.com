@@ -128,7 +128,7 @@ function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: 
 
 // ---- item picker --------------------------------------------------------------------
 
-const RARITY_ORDER = ["common", "rare", "epic", "legendary", "exclusive"];
+const RARITY_ORDER = ["common", "rare", "epic", "legendary", "mythic", "exclusive"];
 const rarityRank = (r: string) => {
   const i = RARITY_ORDER.indexOf(r.toLowerCase());
   return i < 0 ? 99 : i;
