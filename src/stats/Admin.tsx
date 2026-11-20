@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Copy, Dices, KeyRound, MessageSquare, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronDown, Copy, Dices, KeyRound, X } from "lucide-react";
 import {
   adminGet,
   adminPost,
@@ -433,6 +433,7 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
   const post = (path: string, body: Record<string, unknown>) => adminPost(keyVal, path, { name: nm, ...body });
   const rank = p.rank ? rankName(p.rank) : "Unranked";
   const withdraw = (id: number | string) => run(`w${id}`, () => adminPost(keyVal, "notice/withdraw", { id }), "Withdrawn");
+  const withdrawGift = (id: number | string) => run(`g${id}`, () => adminPost(keyVal, "gift/withdraw", { id }), "Withdrawn");
   const s = p.stats;
   const people = s ? s.play.hWins + s.play.hLosses : p.wins + p.losses;
   const wins = s ? s.play.hWins : p.wins;
@@ -512,10 +513,38 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
                   <textarea className="adm-in" rows={3} maxLength={MSG_MAX} value={text} onChange={(e) => setText(e.target.value)} />
                   <em className={text.length > MSG_MAX - 40 ? "warn" : ""}>{text.length}/{MSG_MAX}</em>
                 </label>
-                <div className={`adm-prev ${kind.toLowerCase()}`} aria-label="Preview">
-                  <div className="adm-prev-icon">{kind === "Warning" ? <TriangleAlert size={20} /> : <MessageSquare size={20} />}</div>
-                  <div className="adm-prev-text">{text.trim() || <span className="dim">Your text</span>}</div>
-                  <div className="adm-prev-ok">OK</div>
+                <div className="adm-prev" aria-label="Preview">
+                  <div className={`adm-nt ${kind.toLowerCase()}`}>
+                    <div className="adm-nt-head">
+                      <span className="adm-nt-tile" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="#fff" stroke="#fff">
+                          {kind === "Warning" ? (
+                            <>
+                              <path d="M12 5.2v8.6" strokeWidth="3.6" strokeLinecap="round" />
+                              <circle cx="12" cy="19" r="2.2" stroke="none" />
+                            </>
+                          ) : (
+                            <>
+                              <path d="M4.6 6.6a2.6 2.6 0 0 1 2.6-2.6h9.6a2.6 2.6 0 0 1 2.6 2.6v6.6a2.6 2.6 0 0 1-2.6 2.6h-4.6l-4.4 3.8v-3.8h-.6a2.6 2.6 0 0 1-2.6-2.6Z" stroke="none" />
+                              <circle cx="8.6" cy="9.9" r="1.25" fill="#00c2ff" stroke="none" />
+                              <circle cx="12" cy="9.9" r="1.25" fill="#00c2ff" stroke="none" />
+                              <circle cx="15.4" cy="9.9" r="1.25" fill="#00c2ff" stroke="none" />
+                            </>
+                          )}
+                        </svg>
+                      </span>
+                      <div className="adm-nt-hw">
+                        <h2 className="adm-nt-h">{kind}</h2>
+                        <span className="adm-nt-when">Today</span>
+                      </div>
+                    </div>
+                    <div className="adm-nt-plate">
+                      <p className={`adm-nt-text${text.trim() ? "" : " dim"}`}>{text.trim() || "Your text"}</p>
+                    </div>
+                    <div className="adm-nt-acts">
+                      <span className="adm-nt-ok">OK</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="adm-foot">
                   <span />
@@ -673,7 +702,8 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
                       {g.item ? <span className="chip static">{itemName.get(g.item)?.name ?? g.item}</span> : null}
                       <span className="dim">{ago(g.at)}</span>
                       <span className="adm-spacer" />
-                      <span className={`chip static ${g.shownAt ? "" : "st-unread"}`}>{g.shownAt ? "Shown" : "Not shown"}</span>
+                      <span className={`chip static ${g.shownAt ? "" : "st-unread"}`}>{g.shownAt ? "Claimed" : "Not claimed"}</span>
+                      {g.withdrawable && <Confirm id={`g${g.id}`} st={st} label="Withdraw" onConfirm={() => withdrawGift(g.id)} />}
                     </div>
                     {g.note && <div className="adm-text">{g.note}</div>}
                   </div>

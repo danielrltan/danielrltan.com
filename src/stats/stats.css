@@ -1638,48 +1638,186 @@ textarea.adm-in {
   border-bottom: 0;
   padding-bottom: 0;
 }
-.adm-prev {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px 12px;
-  align-items: start;
-  padding: 16px;
-  border-radius: 12px;
-  background: #fff;
-  color: #14181f;
-  max-width: 360px;
+/* Inbox preview: a replica of the game's notice card (poddle web/inbox.css section 4, ua-views.css .info-box, ui.css .btn.is-focus), every var() resolved.
+   The stage is a container; the card's font-size is the game's rem (17px at 1440) scaled down to fit, so all proportions hold. */
+@font-face {
+  font-family: "Poddle Heavy";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/stats/days-one-400.woff2") format("woff2");
 }
-.adm-prev-icon {
+@font-face {
+  font-family: "Poddle Text";
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/stats/rubik-var.woff2") format("woff2");
+}
+.adm-prev {
+  container-type: inline-size;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #e8edf5;
-  color: #1c3150;
+  padding: 26px 12px 30px;
+  border-radius: 12px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 70% at 20% 0%, rgba(255, 255, 255, 0.55), transparent 60%),
+    linear-gradient(180deg, #b9d4f7 0%, #a9c9f2 55%, #9dc0ee 100%);
 }
-.adm-prev.warning .adm-prev-icon {
-  background: #ffe9c2;
-  color: #a35a00;
+.adm-nt {
+  --nt-tone: #ff3b2f;
+  --nt-deep: #a8282b;
+  --nt-tint: #ffe4e1;
+  --nt-ink: #1c3150;
+  --nt-text: #0f2240;
+  --nt-ol: 0.1875em;
+  --nt-skew: -6deg;
+  font-size: min(17px, calc((100cqw - 24px) / 32));
+  width: 32em;
+  display: grid;
+  gap: 1.35em;
+  padding: 2em 2.2em 2.2em;
+  position: relative;
+  isolation: isolate;
+  color: var(--nt-text);
+  font-family: "Poddle Text", system-ui, sans-serif;
+  line-height: normal;
+  text-align: left;
 }
-.adm-prev-text {
-  align-self: center;
+.adm-nt.message {
+  --nt-tone: #00c2ff;
+  --nt-deep: #0068c2;
+  --nt-tint: #e3f6ff;
+}
+.adm-nt::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 0.7em;
+  background-color: #fff;
+  background-image: repeating-linear-gradient(180deg, rgba(0, 194, 255, 0.13) 0 0.15em, transparent 0.15em 0.4em);
+  box-shadow: inset 0 0 0 var(--nt-ol) var(--nt-ink), 0.47em 0.53em 0 var(--nt-ink), 0 1em 2.5em rgba(28, 49, 80, 0.18);
+}
+.adm-nt-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1.25em;
+}
+.adm-nt-tile {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  width: 5em;
+  aspect-ratio: 1;
+}
+.adm-nt-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 0.41em;
+  transform: skewX(var(--nt-skew));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 12%, rgba(255, 255, 255, 0.3) 12% 26%, rgba(255, 255, 255, 0) 26%), var(--nt-tone);
+  box-shadow: inset 0 0 0 var(--nt-ol) var(--nt-ink);
+}
+.adm-nt-tile svg {
+  width: 56%;
+  height: 56%;
+  overflow: visible;
+}
+.adm-nt-hw {
+  display: grid;
+  gap: 0.4em;
+  min-width: 0;
+}
+.adm-nt-h {
+  margin: 0;
+  font-family: "Poddle Heavy", "Poddle Text", system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 2.1em;
+  line-height: 1.05;
+  color: var(--nt-text);
+}
+.adm-nt.warning .adm-nt-h {
+  color: var(--nt-deep);
+}
+.adm-nt-when {
+  font-family: "Poddle Heavy", "Poddle Text", system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 1em;
+  line-height: 1;
+  color: rgba(15, 34, 64, 0.65);
+}
+.adm-nt-plate {
+  position: relative;
+  isolation: isolate;
+  padding: 1.15em 1.5em;
+}
+.adm-nt-plate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 0.41em;
+  background: var(--nt-tint);
+  transform: skewX(var(--nt-skew));
+  box-shadow: inset 0 0 0 0.147em var(--nt-tone);
+}
+.adm-nt-text {
+  margin: 0;
+  max-height: 20em;
+  overflow-y: auto;
+  font-weight: 500;
+  font-size: 1.2em;
+  line-height: 1.45;
+  color: var(--nt-text);
+  white-space: pre-line;
   overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  max-height: 160px;
-  overflow: auto;
 }
-.adm-prev .dim {
-  color: #8a93a3;
+.adm-nt-text.dim {
+  white-space: normal;
 }
-.adm-prev-ok {
-  grid-column: 1 / -1;
-  justify-self: end;
-  padding: 6px 22px;
-  border-radius: 8px;
-  background: #1c3150;
+.adm-nt-acts {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.15em;
+}
+.adm-nt-ok {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.6em;
+  min-width: 6.333em;
+  padding: 0 1.2em;
+  font-family: "Poddle Heavy", "Poddle Text", system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 1.5em;
   color: #fff;
-  font-weight: 600;
+}
+.adm-nt-ok::before,
+.adm-nt-ok::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0.25em;
+}
+.adm-nt-ok::before {
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 12%, rgba(255, 255, 255, 0.42) 12% 30%, rgba(255, 255, 255, 0) 30%), #00c2ff;
+  border: 0.125em solid #0068c2;
+  transform: skewX(var(--nt-skew));
+  box-shadow: inset 0 0.083em 0 rgba(255, 255, 255, 0.9);
+}
+.adm-nt-ok::after {
+  z-index: -2;
+  background: var(--nt-ink);
+  transform: translate(0.313em, 0.353em) skewX(var(--nt-skew));
 }
 .adm-danger {
   margin-top: 24px;

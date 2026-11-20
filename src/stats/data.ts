@@ -187,7 +187,7 @@ export const loadInsights = (key: string, days: number, seg?: string): Promise<I
 
 export type AdminHit = { name: string; lastOn: number | null; createdAt: number | null };
 export type AdminNotice = { id: number | string; kind: "warning" | "message"; text: string; at: number; seenAt: number | null };
-export type AdminGift = { id: number | string; coins: number; item: string | null; note: string | null; at: number; shownAt: number | null };
+export type AdminGift = { id: number | string; coins: number; item: string | null; note: string | null; at: number; shownAt: number | null; withdrawable?: boolean };
 export type AdminStats = {
   gameHours: number;
   play: { hits: number; returns: number; chances: number; winners: number; aces: number; smashes: number; ptsWon: number; ptsLost: number; bestRally: number; bestHit: number; bestSpeed: number; hWins: number; hLosses: number; streak: number; bestStreak: number; tourTitles: number };
