@@ -1309,6 +1309,9 @@ textarea.adm-in {
   position: relative;
   padding: 16px 20px 0;
 }
+.adm-search:last-child {
+  padding-bottom: 20px;      /* nothing picked yet: the box must not sit on the card's edge */
+}
 .adm-search .adm-spin {
   position: absolute;
   right: 32px;
