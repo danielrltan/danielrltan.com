@@ -15,7 +15,7 @@ const pct = (v: number, of: number) => (of > 0 ? Math.round((v / of) * 100) : 0)
 const fmtDay = (d: string) =>
   new Date(d + "T00:00:00Z").toLocaleDateString("en", { month: "short", day: "numeric", timeZone: "UTC" });
 
-function dur(s: number) {
+export function dur(s: number) {
   s = Math.max(0, Math.round(s));
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
@@ -115,20 +115,21 @@ export function Hint({ text, children }: { text: string; children: ReactNode }) 
   );
 }
 
-function Tiles({ items }: { items: { label: string; value: string; hint?: string }[] }) {
+export function Tiles({ items }: { items: { label: string; value: string; hint?: string; sub?: string }[] }) {
   return (
     <div className="ins-tiles" style={{ ["--n" as string]: items.length }}>
       {items.map((t) => (
         <div className="tile" key={t.label}>
           <div className="total-label">{t.hint ? <Hint text={t.hint}>{t.label}</Hint> : t.label}</div>
           <div className="tile-value">{t.value}</div>
+          {t.sub && <div className="tile-sub">{t.sub}</div>}
         </div>
       ))}
     </div>
   );
 }
 
-function Block({ title, right, children }: { title?: string; right?: ReactNode; children: ReactNode }) {
+export function Block({ title, right, children }: { title?: string; right?: ReactNode; children: ReactNode }) {
   return (
     <div className="ins-block">
       {(title || right) && (
@@ -186,7 +187,7 @@ const countryRows = (rows: { cc: string; n: number }[], share: boolean): BarRow[
 
 /** Day columns, optionally stacked. Hover or tap a column for its numbers. */
 type Series = { name: string; color: string };
-function DayChart({ days, series, values, dec = 0 }: { days: string[]; series: Series[]; values: number[][]; dec?: number }) {
+export function DayChart({ days, series, values, dec = 0 }: { days: string[]; series: Series[]; values: number[][]; dec?: number }) {
   const [hover, setHover] = useState<number | null>(null);
   const totals = days.map((_, i) => values.reduce((a, v) => a + (v[i] ?? 0), 0));
   const max = Math.max(1, ...totals);
@@ -242,7 +243,7 @@ function Legend({ series }: { series: Series[] }) {
 }
 
 /** Labelled vertical columns (hours of the day, session lengths). */
-function Hist({ items, every = 1, unit }: { items: { label: string; value: number; tip?: string }[]; every?: number; unit: string }) {
+export function Hist({ items, every = 1, unit }: { items: { label: string; value: number; tip?: string }[]; every?: number; unit: string }) {
   const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(1, ...items.map((i) => i.value));
   const n = items.length;

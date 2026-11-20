@@ -188,6 +188,22 @@ export const loadInsights = (key: string, days: number, seg?: string): Promise<I
 export type AdminHit = { name: string; lastOn: number | null; createdAt: number | null };
 export type AdminNotice = { id: number | string; kind: "warning" | "message"; text: string; at: number; seenAt: number | null };
 export type AdminGift = { id: number | string; coins: number; item: string | null; note: string | null; at: number; shownAt: number | null };
+export type AdminStats = {
+  gameHours: number;
+  play: { hits: number; returns: number; chances: number; winners: number; aces: number; smashes: number; ptsWon: number; ptsLost: number; bestRally: number; bestHit: number; bestSpeed: number; hWins: number; hLosses: number; streak: number; bestStreak: number; tourTitles: number };
+  matt: { level: string; wins: number; losses: number; bestStreak: number }[];
+  ladder: { trophies: number; bestRank: { tier: number | string; div: number | string } | null };
+  friends: number;
+  itemsOwned: number;
+  last30: {
+    days: { day: string; matches: number; secs: number }[];
+    byKind: { bot: number; human: number; tour: number; tourbot: number };
+    endings: { won: number; forfeit: number; left: number; dropped: number };
+    quits: number;
+    avgMatchS: number;
+    hours: number[];
+  };
+};
 export type AdminPlayer = {
   name: string;
   createdAt: number | null;
@@ -205,9 +221,11 @@ export type AdminPlayer = {
   owned: string[];
   notices: AdminNotice[];
   gifts: AdminGift[];
+  live?: { state: "menu" | "court" | "watching" } | null;
+  stats?: AdminStats;
 };
 export type AdminItem = { id: string; name: string; kind: string; rarity: string; sold?: boolean; won?: boolean };
-export type AdminCode = { code: string; coins: number; item: string | null; maxUses: number; uses: number; endsAt: number | null; off: boolean; madeAt: number | null };
+export type AdminCode = { code: string; coins: number; item: string | null; items?: string[]; maxUses: number; uses: number; endsAt: number | null; off: boolean; madeAt: number | null };
 export type AdminLog = { at: number; action: string; target: string | null; detail: unknown };
 
 const ADMIN_API = "https://poddleball.com/api/admin";

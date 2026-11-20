@@ -1920,3 +1920,313 @@ textarea.adm-in {
     justify-content: flex-start;
   }
 }
+/* several items for one code */
+.adm-multi-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center; }
+.adm-multi-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 9px; border: 1px solid var(--border-2); border-radius: 999px; font-size: 13px; }
+.adm-multi-chip .adm-x { padding: 2px; }
+.adm-multi-clear { background: none; border: 0; color: var(--muted); font-size: 12px; cursor: pointer; padding: 4px 6px; }
+.adm-multi-clear:hover { color: var(--text, #fff); }
+.adm-pick-top { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: #0f0f0f; border-bottom: 1px solid var(--border); }
+.adm-pick-tick { width: 14px; display: inline-flex; color: var(--blue); }
+.adm-pick-row.on { background: rgba(82, 168, 255, 0.1); }
+
+/* Admin: a player's Play section (docs/ADMIN.md stats) */
+.adm-body .ins-tiles {
+  margin: 0;
+}
+.adm-body .ins-tiles .tile-value {
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.adm-body .ins-block {
+  padding: 14px 0 4px;
+}
+.adm-play {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 28px;
+}
+.adm-play > * {
+  min-width: 0;
+}
+.adm-shots {
+  grid-template-columns: repeat(7, 1fr);
+}
+.adm-matt {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.adm-matt-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 1.2fr;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.adm-matt-row:first-child {
+  border-top: 0;
+}
+.adm-matt-row.head {
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+}
+.adm-matt-row span:not(:first-child) {
+  text-align: right;
+}
+.chip.st-live {
+  color: var(--green);
+  border-color: rgba(63, 185, 80, 0.45);
+}
+@media (max-width: 720px) {
+  .adm-play {
+    grid-template-columns: 1fr;
+  }
+  .adm-shots {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Admin: player dashboard, two columns on desktop */
+.adm-card {
+  overflow: clip;
+}
+.adm-prof {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.adm-prof > * {
+  min-width: 0;
+}
+.adm-load {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.adm-prof.loading .adm-load {
+  opacity: 1;
+  animation: adm-load 1s linear infinite;
+}
+@keyframes adm-load {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
+}
+.adm-main {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  container-type: inline-size;
+}
+.adm-main .adm-sub {
+  margin: 8px 0 -6px;
+}
+.adm-main .adm-sub.first {
+  margin-top: 0;
+}
+.adm-main .adm-sub .chip {
+  margin-left: auto;
+}
+.adm-main .ins-block {
+  padding: 0;
+}
+.adm-subtabs {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.adm-subtabs .seg {
+  width: max-content;
+}
+.adm-subtabs .seg button {
+  font-family: var(--sans);
+  white-space: nowrap;
+}
+.tile-sub {
+  margin-top: 2px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.adm-main .tile-value {
+  font-size: 17px;
+}
+.adm-t6 .ins-tiles {
+  grid-template-columns: repeat(6, 1fr);
+}
+.adm-t4 .ins-tiles {
+  grid-template-columns: repeat(4, 1fr);
+}
+.adm-main .adm-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 0;
+  background: none;
+  overflow: visible;
+}
+.adm-main .adm-shots .tile {
+  flex: 1 1 120px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+@container (max-width: 700px) {
+  .adm-t6 .ins-tiles {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@container (max-width: 440px) {
+  .adm-t6 .ins-tiles,
+  .adm-t4 .ins-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.adm-list {
+  display: grid;
+}
+.adm-line {
+  padding: 12px 0;
+}
+.adm-line:first-child {
+  padding-top: 0;
+}
+.chip.static.st-unread {
+  color: var(--blue);
+  border-color: rgba(82, 168, 255, 0.45);
+}
+.btn.sm {
+  padding: 3px 10px;
+  font-size: 12.5px;
+  min-height: 28px;
+}
+.btn.ghost.danger:not(:disabled) {
+  background: rgba(255, 97, 102, 0.1);
+}
+.adm-side {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  align-self: start;
+}
+.adm-side-title {
+  display: none;
+}
+.adm-side-toggle,
+.adm-danger-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.adm-side-toggle svg,
+.adm-danger-toggle svg {
+  flex: none;
+}
+.adm-side.open .adm-side-toggle svg,
+.adm-danger-toggle.open svg {
+  transform: rotate(180deg);
+}
+.adm-side-body {
+  display: none;
+  margin-top: 14px;
+}
+.adm-side.open .adm-side-body {
+  display: block;
+}
+.adm-actions > .seg {
+  width: 100%;
+}
+.adm-actions > .seg button {
+  flex: 1;
+  padding: 4px 6px;
+}
+.adm-danger-toggle {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--red);
+}
+.adm-danger {
+  margin-top: 12px;
+  padding: 14px;
+  gap: 12px;
+}
+.adm-danger .adm-f > span {
+  height: auto;
+  margin-bottom: 6px;
+}
+.adm-danger .adm-go {
+  justify-self: start;
+}
+.adm-hits {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+}
+.adm-hit {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-color: transparent;
+}
+@media (min-width: 980px) {
+  .adm-prof {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-rows: auto 1fr;
+    column-gap: 24px;
+  }
+  .adm-who {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .adm-main {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .adm-side {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    position: sticky;
+    top: 16px;
+  }
+  .adm-side-toggle {
+    display: none;
+  }
+  .adm-side-title {
+    display: block;
+    margin: 0 0 12px;
+  }
+  .adm-side-body {
+    display: block;
+    margin-top: 0;
+  }
+}
+@media (max-width: 720px) {
+  .adm-prof {
+    gap: 14px;
+  }
+  .adm-who .adm-spacer {
+    display: none;
+  }
+}

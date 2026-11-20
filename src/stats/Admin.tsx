@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, Copy, Dices, KeyRound, MessageSquare, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronDown, Copy, Dices, KeyRound, MessageSquare, TriangleAlert, X } from "lucide-react";
 import {
   adminGet,
   adminPost,
@@ -9,7 +9,9 @@ import {
   type AdminItem,
   type AdminLog,
   type AdminPlayer,
+  type AdminStats,
 } from "./data";
+import { Block, DayChart, Hist, Tiles, dur } from "./Insights";
 
 // The owner's Poddle admin tools (contract: Poddle docs/ADMIN.md). Same key as the rest of the panel.
 
@@ -45,6 +47,18 @@ function whenDay(t: number | null | undefined): string {
   if (!t) return "never";
   const ms = t < 1e12 ? t * 1000 : t;
   return new Date(ms).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" });
+}
+/** "5 min ago", "3 d ago". */
+function ago(t: number | string | null | undefined): string {
+  if (t == null || t === 0 || t === "") return "Never";
+  const ms = typeof t === "number" ? (t < 1e12 ? t * 1000 : t) : Date.parse(t);
+  if (!Number.isFinite(ms)) return "Never";
+  const m = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  if (m < 1) return "Just now";
+  if (m < 60) return `${m} min ago`;
+  if (m < 60 * 36) return `${Math.round(m / 60)} h ago`;
+  if (m < 60 * 24 * 60) return `${Math.round(m / 1440)} d ago`;
+  return `${Math.round(m / 43200)} mo ago`;
 }
 const msOf = (t: number | null | undefined) => (!t ? 0 : t < 1e12 ? t * 1000 : t);
 
@@ -187,6 +201,77 @@ function ItemPicker({ items, value, onChange }: { items: AdminItem[]; value: str
   );
 }
 
+/** Several items at once (a code's bundle): picked ones as chips, the list stays open while you tick rows. */
+function MultiItemPicker({ items, value, onChange }: { items: AdminItem[]; value: string[]; onChange: (ids: string[]) => void }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  const groups = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const by = new Map<string, AdminItem[]>();
+    for (const it of items) {
+      if (needle && !`${it.name} ${it.kind} ${it.rarity} ${it.id}`.toLowerCase().includes(needle)) continue;
+      by.set(it.kind, [...(by.get(it.kind) ?? []), it]);
+    }
+    return [...by].sort(([a], [b]) => a.localeCompare(b)).map(([kind, list]) => ({ kind, list: list.sort((a, b) => rarityRank(a.rarity) - rarityRank(b.rarity) || a.name.localeCompare(b.name)) }));
+  }, [items, q]);
+  const has = new Set(value);
+  const toggle = (id: string) => onChange(has.has(id) ? value.filter((x) => x !== id) : [...value, id]);
+  return (
+    <div className="adm-picker">
+      {value.length > 0 && (
+        <div className="adm-multi-chips">
+          {value.map((id) => {
+            const it = byId.get(id);
+            return (
+              <span className="adm-multi-chip" key={id}>
+                <span className={`adm-rar r-${(it?.rarity ?? "").toLowerCase()}`} />
+                {it?.name ?? id}
+                <button className="adm-x" aria-label={`Remove ${it?.name ?? id}`} onClick={() => toggle(id)}>
+                  <X size={12} />
+                </button>
+              </span>
+            );
+          })}
+          <button className="adm-multi-clear" onClick={() => onChange([])}>Clear</button>
+        </div>
+      )}
+      <input
+        className="adm-in"
+        placeholder={value.length ? "Add more items" : "Search items"}
+        value={q}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOpen(true);
+        }}
+      />
+      {open && (
+        <div className="adm-pick-list">
+          <div className="adm-pick-top">
+            <span className="dim">{value.length} picked</span>
+            <button className="btn" onClick={() => (setOpen(false), setQ(""))}>Done</button>
+          </div>
+          {groups.length === 0 && <div className="list-empty">No items</div>}
+          {groups.map((g) => (
+            <div key={g.kind}>
+              <div className="adm-pick-kind">{g.kind}</div>
+              {g.list.map((it) => (
+                <button key={it.id} className={`adm-pick-row${has.has(it.id) ? " on" : ""}`} aria-pressed={has.has(it.id)} onClick={() => toggle(it.id)}>
+                  <span className="adm-pick-tick">{has.has(it.id) ? <Check size={13} /> : null}</span>
+                  <span className={`adm-rar r-${it.rarity.toLowerCase()}`} />
+                  <span className="adm-pick-name">{it.name}</span>
+                  <span className="dim">{it.rarity}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Players ------------------------------------------------------------------------
 
 const ACTIONS = ["Coins", "Item", "Inbox", "Rename", "Access"] as const;
@@ -194,20 +279,126 @@ type Action = (typeof ACTIONS)[number];
 const NOTE_MAX = 140;
 const MSG_MAX = 500;
 
+const TIER_NAMES = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Champion", "Master", "Pro"];
+const ROMAN = ["I", "II", "III"];
+function rankName(r: { tier: number | string; div: number | string } | null | undefined): string {
+  if (!r) return "None";
+  const t = typeof r.tier === "number" ? TIER_NAMES[r.tier - 1] ?? String(r.tier) : r.tier;
+  const d = typeof r.div === "number" ? ROMAN[r.div - 1] ?? String(r.div) : r.div;
+  return t === "Pro" ? t : `${t} ${d}`;
+}
+const LIVE_LABEL = { menu: "In a menu", court: "On court", watching: "Watching" } as const;
+
+function PlayPanel({ s }: { s: AdminStats }) {
+  const [local, setLocal] = useState(false);
+  const l = s.last30;
+  const hours = useMemo(() => {
+    const off = local ? Math.round(-new Date().getTimezoneOffset() / 60) : 0;
+    const out: number[] = Array(24).fill(0);
+    l.hours.forEach((v, h) => (out[(((h + off) % 24) + 24) % 24] = v));
+    const zone = local ? new Intl.DateTimeFormat("en", { timeZoneName: "short" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? "Local" : "UTC";
+    const at = (h: number) => new Date(Date.UTC(2000, 0, 1, h % 24)).toLocaleTimeString("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+    return out.map((v, h) => ({ label: String(h), value: v, tip: `${at(h)} – ${at(h + 1)} ${zone}` }));
+  }, [l.hours, local]);
+  const pl = s.play;
+  const shots: [string, string][] = [
+    ["Hits", n0(pl.hits)],
+    ["Returns", n0(pl.returns)],
+    ["Chances", n0(pl.chances)],
+    ["Winners", n0(pl.winners)],
+    ["Aces", n0(pl.aces)],
+    ["Smashes", n0(pl.smashes)],
+    ["Points won", n0(pl.ptsWon)],
+    ["Points lost", n0(pl.ptsLost)],
+    ["Best rally", n0(pl.bestRally)],
+    ["Best hit", n0(pl.bestHit)],
+    ["Best speed", String(Math.round(pl.bestSpeed * 10) / 10)],
+    ["Win streak", `${n0(pl.streak)} / ${n0(pl.bestStreak)}`],
+    ["Tour titles", n0(pl.tourTitles)],
+    ["Best rank", rankName(s.ladder.bestRank)],
+  ];
+  return (
+    <>
+      <Block title="Hour of day" right={<Seg value={local ? "Local" : "UTC"} options={["UTC", "Local"] as const} onChange={(v) => setLocal(v === "Local")} />}>
+        <Hist items={hours} every={3} unit="Matches" />
+      </Block>
+      <div className="adm-sub">Against Matt</div>
+      <div className="adm-matt">
+        <div className="adm-matt-row head"><span>Level</span><span>Wins</span><span>Losses</span><span>Best streak</span></div>
+        {s.matt.map((m) => (
+          <div className="adm-matt-row" key={m.level}><span>{m.level}</span><span>{n0(m.wins)}</span><span>{n0(m.losses)}</span><span>{n0(m.bestStreak)}</span></div>
+        ))}
+      </div>
+      <div className="adm-sub">Shots</div>
+      <div className="ins-tiles adm-shots">
+        {shots.map(([lab, v]) => (
+          <div className="tile" key={lab}>
+            <div className="total-label">{lab}</div>
+            <div className="tile-value">{v}</div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/** Ghost button that asks for a second click before it fires. */
+function Confirm({ id, st, label, onConfirm }: { id: string; st: Record<string, St>; label: string; onConfirm: () => void }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 3500);
+    return () => clearTimeout(t);
+  }, [armed]);
+  const s = st[id];
+  return (
+    <span className="adm-go">
+      <button
+        className={`btn ghost sm${armed ? " danger" : ""}`}
+        disabled={s?.busy}
+        onClick={() => {
+          if (!armed) return setArmed(true);
+          setArmed(false);
+          onConfirm();
+        }}
+      >
+        {s?.busy ? <i className="adm-spin" /> : null}
+        {armed ? "Confirm" : label}
+      </button>
+      {s?.msg && !s.busy && s.err && (
+        <span className="adm-res err" role="status">
+          <X size={13} />
+          {s.msg}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const SUBS = ["Overview", "Play", "Inbox & gifts", "Items"] as const;
+type Sub = (typeof SUBS)[number];
+
 function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; name: string; items: AdminItem[]; onGone: () => void; onRenamed: (n: string) => void }) {
   const [p, setP] = useState<AdminPlayer | null>(null);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
   const [action, setAction] = useState<Action>("Coins");
+  const [sub, setSub] = useState<Sub>("Overview");
+  const [actOpen, setActOpen] = useState(false);
+  const [dangerOpen, setDangerOpen] = useState(false);
+  // Reloads keep the old profile on screen (no unmount, no scroll jump) and show a thin bar.
   const reload = useCallback(async () => {
+    setLoading(true);
     try {
       setP((await adminGet(keyVal, `player?name=${encodeURIComponent(name)}`)) as AdminPlayer);
       setErr("");
     } catch (e) {
       setErr(String((e as Error)?.message ?? e) === "404" ? "No such player" : `Couldn’t load (${(e as Error)?.message})`);
+    } finally {
+      setLoading(false);
     }
   }, [keyVal, name]);
   useEffect(() => {
-    setP(null);
     void reload();
   }, [reload]);
   const { st, run } = useRuns(reload);
@@ -227,6 +418,10 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
   const [confDel, setConfDel] = useState("");
 
   const itemName = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  const ownedSorted = useMemo(
+    () => [...(p?.owned ?? [])].sort((a, b) => rarityRank(itemName.get(b)?.rarity ?? "") - rarityRank(itemName.get(a)?.rarity ?? "") || (itemName.get(a)?.name ?? a).localeCompare(itemName.get(b)?.name ?? b)),
+    [p?.owned, itemName],
+  );
   const amt = Number(amount);
   const amtOk = amount.trim() !== "" && Number.isInteger(amt) && amt !== 0 && Math.abs(amt) <= 100000;
   const taking = amtOk && amt < 0;
@@ -236,231 +431,278 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
 
   const nm = p.name;
   const post = (path: string, body: Record<string, unknown>) => adminPost(keyVal, path, { name: nm, ...body });
-  const rank = p.rank ? `${p.rank.tier} ${p.rank.div}` : "Unranked";
+  const rank = p.rank ? rankName(p.rank) : "Unranked";
   const withdraw = (id: number | string) => run(`w${id}`, () => adminPost(keyVal, "notice/withdraw", { id }), "Withdrawn");
+  const s = p.stats;
+  const people = s ? s.play.hWins + s.play.hLosses : p.wins + p.losses;
+  const wins = s ? s.play.hWins : p.wins;
+  const m30 = s ? s.last30.days.reduce((a, d) => a + d.matches, 0) : p.matches30d;
+  const unread = p.notices.filter((n) => !n.seenAt).length;
 
   return (
-    <div className="adm-body">
+    <div className={`adm-body adm-prof${loading ? " loading" : ""}`}>
+      <i className="adm-load" aria-hidden="true" />
       <div className="adm-who">
         <h3>{nm}</h3>
+        {p.live && <span className="chip static st-live">{LIVE_LABEL[p.live.state]}</span>}
         <span className="dim">Created {whenDay(p.createdAt)}</span>
+        <span className="chip static">{rank}</span>
         <span className="adm-spacer" />
         <span className={`chip static${p.lbHidden ? " bot" : ""}`}>{p.lbHidden ? "Hidden on boards" : "On boards"}</span>
         <span className="chip static">{p.sharing ? "Sharing on" : "Sharing off"}</span>
       </div>
 
-      <div className="ins-tiles adm-tiles">
-        {[
-          ["Rank", rank],
-          ["Trophies", n0(p.trophies)],
-          ["Coins", n0(p.coins.coins)],
-          ["Earned", n0(p.coins.earned)],
-          ["Spent", n0(p.coins.spent)],
-          ["Played", n0(p.played)],
-          ["Wins", n0(p.wins)],
-          ["Losses", n0(p.losses)],
-          ["Matches 30d", n0(p.matches30d)],
-          ["Last online", when(p.lastOn)],
-        ].map(([l, v]) => (
-          <div className="tile" key={l}>
-            <div className="total-label">{l}</div>
-            <div className="tile-value">{v}</div>
+      <aside className={`adm-side${actOpen ? " open" : ""}`}>
+        <button className="adm-side-toggle" aria-expanded={actOpen} onClick={() => setActOpen((o) => !o)}>
+          <span>Actions</span>
+          <ChevronDown size={16} />
+        </button>
+        <div className="adm-sub adm-side-title">Actions</div>
+        <div className="adm-side-body">
+          <div className="adm-actions">
+            <Seg value={action} options={ACTIONS} onChange={setAction} />
+            {action === "Coins" && (
+              <div className="adm-form">
+                <div className="adm-grid">
+                  <label className="adm-f">
+                    <span>Amount</span>
+                    <input className="adm-in mono" inputMode="numeric" placeholder="500 or -500" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                  </label>
+                  <label className="adm-f grow">
+                    <span>Note</span>
+                    <input className="adm-in" maxLength={NOTE_MAX} value={coinNote} onChange={(e) => setCoinNote(e.target.value)} />
+                  </label>
+                </div>
+                <div className="adm-foot">
+                  <Toggle on={coinGift && !taking} disabled={taking} onChange={setCoinGift} label="As a gift" />
+                  <Go
+                    id="coins"
+                    st={st}
+                    label={taking ? "Take coins" : "Give coins"}
+                    disabled={!amtOk}
+                    onClick={() => run("coins", () => post("coins", { amount: amt, ...(coinNote.trim() ? { note: coinNote.trim() } : {}), gift: coinGift && !taking }), "Done").then((ok) => ok && (setAmount(""), setCoinNote("")))}
+                  />
+                </div>
+              </div>
+            )}
+            {action === "Item" && (
+              <div className="adm-form">
+                <ItemPicker items={items} value={item} onChange={setItem} />
+                <label className="adm-f">
+                  <span>Note</span>
+                  <input className="adm-in" maxLength={NOTE_MAX} value={itemNote} onChange={(e) => setItemNote(e.target.value)} />
+                </label>
+                <div className="adm-foot">
+                  <Toggle on={itemGift} onChange={setItemGift} label="As a gift" />
+                  <Go
+                    id="item"
+                    st={st}
+                    label="Give item"
+                    disabled={!item}
+                    onClick={() => run("item", () => post("item", { item, ...(itemNote.trim() ? { note: itemNote.trim() } : {}), gift: itemGift }), "Given").then((ok) => ok && (setItem(""), setItemNote("")))}
+                  />
+                </div>
+              </div>
+            )}
+            {action === "Inbox" && (
+              <div className="adm-form">
+                <Seg value={kind} options={["Warning", "Message"] as const} onChange={setKind} />
+                <label className="adm-f">
+                  <span>Text</span>
+                  <textarea className="adm-in" rows={3} maxLength={MSG_MAX} value={text} onChange={(e) => setText(e.target.value)} />
+                  <em className={text.length > MSG_MAX - 40 ? "warn" : ""}>{text.length}/{MSG_MAX}</em>
+                </label>
+                <div className={`adm-prev ${kind.toLowerCase()}`} aria-label="Preview">
+                  <div className="adm-prev-icon">{kind === "Warning" ? <TriangleAlert size={20} /> : <MessageSquare size={20} />}</div>
+                  <div className="adm-prev-text">{text.trim() || <span className="dim">Your text</span>}</div>
+                  <div className="adm-prev-ok">OK</div>
+                </div>
+                <div className="adm-foot">
+                  <span />
+                  <Go
+                    id="notice"
+                    st={st}
+                    label="Send"
+                    disabled={!text.trim()}
+                    onClick={() => run("notice", () => post("notice", { kind: kind.toLowerCase(), text: text.trim() }), "Sent").then((ok) => ok && setText(""))}
+                  />
+                </div>
+              </div>
+            )}
+            {action === "Rename" && (
+              <div className="adm-form">
+                <label className="adm-f">
+                  <span>New name</span>
+                  <input className="adm-in" maxLength={24} value={to} onChange={(e) => setTo(e.target.value)} />
+                </label>
+                <div className="adm-foot">
+                  <Toggle on={reserved} onChange={setReserved} label="Reserved" />
+                  <Go
+                    id="rename"
+                    st={st}
+                    label="Rename"
+                    disabled={!to.trim()}
+                    onClick={async () => {
+                      const target = to.trim();
+                      const ok = await run("rename", () => post("rename", { to: target, reserved }), "Renamed", false);
+                      if (ok) {
+                        setTo("");
+                        onRenamed(target);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            {action === "Access" && (
+              <div className="adm-form">
+                <div className="adm-row">
+                  <span>{p.lbHidden ? "Hidden on leaderboards" : "Visible on leaderboards"}</span>
+                  <Go id="lb" st={st} label={p.lbHidden ? "Show" : "Hide"} onClick={() => run("lb", () => post("lb-hide", { hidden: !p.lbHidden }), "Updated")} />
+                </div>
+                <div className="adm-row">
+                  <span>Share link</span>
+                  <Go id="unshare" st={st} label="Stop sharing" disabled={!p.sharing} onClick={() => run("unshare", () => post("unshare", {}), "Stopped")} />
+                </div>
+                <div className="adm-row">
+                  <span>Name hold</span>
+                  <Go id="release" st={st} label="Release" onClick={() => run("release", () => post("release", {}), "Released")} />
+                </div>
+              </div>
+            )}
           </div>
-        ))}
-      </div>
 
-      <div className="adm-sub">Items <b>{p.owned.length}</b></div>
-      {p.owned.length === 0 ? (
-        <div className="list-empty adm-pad">None</div>
-      ) : (
-        <div className="adm-chips">
-          {p.owned.map((id) => {
-            const it = itemName.get(id);
-            return (
-              <span className="chip static" key={id}>
-                {it && <span className={`adm-rar r-${it.rarity.toLowerCase()}`} />}
-                {it?.name ?? id}
-              </span>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="adm-two">
-        <div>
-          <div className="adm-sub">Notices <b>{p.notices.length}</b></div>
-          {p.notices.length === 0 && <div className="list-empty adm-pad">None</div>}
-          {p.notices.map((n) => (
-            <div className="adm-line" key={n.id}>
-              <div className="adm-line-top">
-                <span className={`chip static ${n.kind === "warning" ? "st-away" : ""}`}>{n.kind === "warning" ? "Warning" : "Message"}</span>
-                <span className="dim">Sent {when(n.at)}</span>
-                <span className={n.seenAt ? "dim" : "adm-unread"}>{n.seenAt ? `Read ${when(n.seenAt)}` : "Unread"}</span>
-                <span className="adm-spacer" />
-                <Go id={`w${n.id}`} st={st} label="Withdraw" danger onClick={() => withdraw(n.id)} />
-              </div>
-              <div className="adm-text">{n.text}</div>
-            </div>
-          ))}
-        </div>
-        <div>
-          <div className="adm-sub">Gifts <b>{p.gifts.length}</b></div>
-          {p.gifts.length === 0 && <div className="list-empty adm-pad">None</div>}
-          {p.gifts.map((g) => (
-            <div className="adm-line" key={g.id}>
-              <div className="adm-line-top">
-                {g.coins ? <span className="chip static">{n0(g.coins)} coins</span> : null}
-                {g.item ? <span className="chip static">{itemName.get(g.item)?.name ?? g.item}</span> : null}
-                <span className="dim">{when(g.at)}</span>
-                <span className="adm-spacer" />
-                <span className={g.shownAt ? "dim" : "adm-unread"}>{g.shownAt ? "Shown" : "Not shown"}</span>
-              </div>
-              {g.note && <div className="adm-text">{g.note}</div>}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="adm-sub">Actions</div>
-      <div className="adm-actions">
-        <Seg value={action} options={ACTIONS} onChange={setAction} />
-        {action === "Coins" && (
-          <div className="adm-form">
-            <div className="adm-grid">
+          <button className={`adm-danger-toggle${dangerOpen ? " open" : ""}`} aria-expanded={dangerOpen} onClick={() => setDangerOpen((o) => !o)}>
+            <span>Danger</span>
+            <ChevronDown size={16} />
+          </button>
+          {dangerOpen && (
+            <div className="adm-danger">
               <label className="adm-f">
-                <span>Amount</span>
-                <input className="adm-in mono" inputMode="numeric" placeholder="500 or -500" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                <span>Reset stats: type <code>{nm}</code></span>
+                <input className="adm-in mono" value={confReset} onChange={(e) => setConfReset(e.target.value)} />
               </label>
-              <label className="adm-f grow">
-                <span>Note</span>
-                <input className="adm-in" maxLength={NOTE_MAX} value={coinNote} onChange={(e) => setCoinNote(e.target.value)} />
+              <Go id="reset" st={st} label="Reset stats" danger disabled={confReset !== nm} onClick={() => run("reset", () => post("reset-stats", { confirm: confReset }), "Reset").then((ok) => ok && setConfReset(""))} />
+              <label className="adm-f">
+                <span>Delete account: type <code>delete {nm}</code></span>
+                <input className="adm-in mono" value={confDel} onChange={(e) => setConfDel(e.target.value)} />
               </label>
-            </div>
-            <div className="adm-foot">
-              <Toggle on={coinGift && !taking} disabled={taking} onChange={setCoinGift} label="As a gift" />
               <Go
-                id="coins"
+                id="delete"
                 st={st}
-                label={taking ? "Take coins" : "Give coins"}
-                disabled={!amtOk}
-                onClick={() => run("coins", () => post("coins", { amount: amt, ...(coinNote.trim() ? { note: coinNote.trim() } : {}), gift: coinGift && !taking }), "Done").then((ok) => ok && (setAmount(""), setCoinNote("")))}
-              />
-            </div>
-          </div>
-        )}
-        {action === "Item" && (
-          <div className="adm-form">
-            <ItemPicker items={items} value={item} onChange={setItem} />
-            <label className="adm-f">
-              <span>Note</span>
-              <input className="adm-in" maxLength={NOTE_MAX} value={itemNote} onChange={(e) => setItemNote(e.target.value)} />
-            </label>
-            <div className="adm-foot">
-              <Toggle on={itemGift} onChange={setItemGift} label="As a gift" />
-              <Go
-                id="item"
-                st={st}
-                label="Give item"
-                disabled={!item}
-                onClick={() => run("item", () => post("item", { item, ...(itemNote.trim() ? { note: itemNote.trim() } : {}), gift: itemGift }), "Given").then((ok) => ok && (setItem(""), setItemNote("")))}
-              />
-            </div>
-          </div>
-        )}
-        {action === "Inbox" && (
-          <div className="adm-form">
-            <Seg value={kind} options={["Warning", "Message"] as const} onChange={setKind} />
-            <label className="adm-f">
-              <span>Text</span>
-              <textarea className="adm-in" rows={3} maxLength={MSG_MAX} value={text} onChange={(e) => setText(e.target.value)} />
-              <em className={text.length > MSG_MAX - 40 ? "warn" : ""}>{text.length}/{MSG_MAX}</em>
-            </label>
-            <div className={`adm-prev ${kind.toLowerCase()}`} aria-label="Preview">
-              <div className="adm-prev-icon">{kind === "Warning" ? <TriangleAlert size={20} /> : <MessageSquare size={20} />}</div>
-              <div className="adm-prev-text">{text.trim() || <span className="dim">Your text</span>}</div>
-              <div className="adm-prev-ok">OK</div>
-            </div>
-            <div className="adm-foot">
-              <span />
-              <Go
-                id="notice"
-                st={st}
-                label="Send"
-                disabled={!text.trim()}
-                onClick={() => run("notice", () => post("notice", { kind: kind.toLowerCase(), text: text.trim() }), "Sent").then((ok) => ok && setText(""))}
-              />
-            </div>
-          </div>
-        )}
-        {action === "Rename" && (
-          <div className="adm-form">
-            <label className="adm-f">
-              <span>New name</span>
-              <input className="adm-in" maxLength={24} value={to} onChange={(e) => setTo(e.target.value)} />
-            </label>
-            <div className="adm-foot">
-              <Toggle on={reserved} onChange={setReserved} label="Reserved" />
-              <Go
-                id="rename"
-                st={st}
-                label="Rename"
-                disabled={!to.trim()}
+                label="Delete account"
+                danger
+                disabled={confDel !== `delete ${nm}`}
                 onClick={async () => {
-                  const target = to.trim();
-                  const ok = await run("rename", () => post("rename", { to: target, reserved }), "Renamed", false);
-                  if (ok) {
-                    setTo("");
-                    onRenamed(target);
-                  }
+                  const ok = await run("delete", () => post("delete", { confirm: confDel }), "Deleted", false);
+                  if (ok) onGone();
                 }}
               />
             </div>
-          </div>
-        )}
-        {action === "Access" && (
-          <div className="adm-form">
-            <div className="adm-row">
-              <span>{p.lbHidden ? "Hidden on leaderboards" : "Visible on leaderboards"}</span>
-              <Go id="lb" st={st} label={p.lbHidden ? "Show" : "Hide"} onClick={() => run("lb", () => post("lb-hide", { hidden: !p.lbHidden }), "Updated")} />
-            </div>
-            <div className="adm-row">
-              <span>Share link</span>
-              <Go id="unshare" st={st} label="Stop sharing" disabled={!p.sharing} onClick={() => run("unshare", () => post("unshare", {}), "Stopped")} />
-            </div>
-            <div className="adm-row">
-              <span>Name hold</span>
-              <Go id="release" st={st} label="Release" onClick={() => run("release", () => post("release", {}), "Released")} />
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </aside>
 
-      <div className="adm-danger">
-        <div className="adm-sub red">Danger</div>
-        <div className="adm-grid">
-          <label className="adm-f grow">
-            <span>Reset stats: type <code>{nm}</code></span>
-            <input className="adm-in mono" value={confReset} onChange={(e) => setConfReset(e.target.value)} />
-          </label>
-          <Go id="reset" st={st} label="Reset stats" danger disabled={confReset !== nm} onClick={() => run("reset", () => post("reset-stats", { confirm: confReset }), "Reset").then((ok) => ok && setConfReset(""))} />
+      <div className="adm-main">
+        <div className="adm-subtabs">
+          <Seg value={sub} options={SUBS} onChange={setSub} />
         </div>
-        <div className="adm-grid">
-          <label className="adm-f grow">
-            <span>Delete account: type <code>delete {nm}</code></span>
-            <input className="adm-in mono" value={confDel} onChange={(e) => setConfDel(e.target.value)} />
-          </label>
-          <Go
-            id="delete"
-            st={st}
-            label="Delete account"
-            danger
-            disabled={confDel !== `delete ${nm}`}
-            onClick={async () => {
-              const ok = await run("delete", () => post("delete", { confirm: confDel }), "Deleted", false);
-              if (ok) onGone();
-            }}
-          />
-        </div>
+
+        {sub === "Overview" && (
+          <>
+            <div className="adm-t6"><Tiles
+              items={[
+                { label: "Rank", value: rank, sub: `${n0(p.trophies)} trophies` },
+                { label: "Coins", value: n0(p.coins.coins), hint: `Earned ${n0(p.coins.earned)}, spent ${n0(p.coins.spent)}` },
+                { label: "Game hours", value: s ? `${s.gameHours}h` : "None" },
+                { label: "Matches 30d", value: n0(m30) },
+                { label: "Win rate vs people", value: people ? `${Math.round((wins / people) * 100)}%` : "None" },
+                { label: "Last online", value: ago(p.lastOn), hint: when(p.lastOn) },
+              ]}
+            /></div>
+            {s && (
+              <>
+                <Block title="Matches, last 30 days">
+                  <DayChart days={s.last30.days.map((d) => d.day)} series={[{ name: "Matches", color: "var(--blue)" }]} values={[s.last30.days.map((d) => d.matches)]} />
+                </Block>
+                <div className="adm-t4"><Tiles
+                  items={[
+                    { label: "Friends", value: n0(s.friends) },
+                    { label: "Items", value: n0(s.itemsOwned) },
+                    { label: "Quits 30d", value: n0(s.last30.quits) },
+                    { label: "Average match", value: s.last30.avgMatchS ? dur(s.last30.avgMatchS) : "None" },
+                  ]}
+                /></div>
+              </>
+            )}
+          </>
+        )}
+
+        {sub === "Play" && (s ? <PlayPanel s={s} /> : <div className="list-empty adm-pad">None</div>)}
+
+        {sub === "Inbox & gifts" && (
+          <>
+            <div className="adm-sub first">Notices <b>{p.notices.length}</b>{unread > 0 && <span className="chip static st-unread">{unread} unread</span>}</div>
+            {p.notices.length === 0 ? (
+              <div className="list-empty adm-pad">None</div>
+            ) : (
+              <div className="adm-list">
+                {p.notices.map((n) => (
+                  <div className="adm-line" key={n.id}>
+                    <div className="adm-line-top">
+                      <span className={`chip static ${n.kind === "warning" ? "st-away" : ""}`}>{n.kind === "warning" ? "Warning" : "Message"}</span>
+                      <span className="dim">{ago(n.at)}</span>
+                      <span className={`chip static ${n.seenAt ? "" : "st-unread"}`}>{n.seenAt ? "Read" : "Unread"}</span>
+                      <span className="adm-spacer" />
+                      <Confirm id={`w${n.id}`} st={st} label="Withdraw" onConfirm={() => withdraw(n.id)} />
+                    </div>
+                    <div className="adm-text">{n.text}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="adm-sub">Gifts <b>{p.gifts.length}</b></div>
+            {p.gifts.length === 0 ? (
+              <div className="list-empty adm-pad">None</div>
+            ) : (
+              <div className="adm-list">
+                {p.gifts.map((g) => (
+                  <div className="adm-line" key={g.id}>
+                    <div className="adm-line-top">
+                      {g.coins ? <span className="chip static">{n0(g.coins)} coins</span> : null}
+                      {g.item ? <span className="chip static">{itemName.get(g.item)?.name ?? g.item}</span> : null}
+                      <span className="dim">{ago(g.at)}</span>
+                      <span className="adm-spacer" />
+                      <span className={`chip static ${g.shownAt ? "" : "st-unread"}`}>{g.shownAt ? "Shown" : "Not shown"}</span>
+                    </div>
+                    {g.note && <div className="adm-text">{g.note}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {sub === "Items" && (
+          <>
+            <div className="adm-sub first">Items <b>{p.owned.length}</b></div>
+            {p.owned.length === 0 ? (
+              <div className="list-empty adm-pad">None</div>
+            ) : (
+              <div className="adm-chips">
+                {ownedSorted.map((id) => {
+                  const it = itemName.get(id);
+                  return (
+                    <span className="chip static" key={id}>
+                      {it && <span className={`adm-rar r-${it.rarity.toLowerCase()}`} />}
+                      {it?.name ?? id}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -469,15 +711,18 @@ function Profile({ keyVal, name, items, onGone, onRenamed }: { keyVal: string; n
 function PlayersTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<AdminHit[] | null>(null);
+  const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [sel, setSel] = useState("");
   const [err, setErr] = useState("");
   const seq = useRef(0);
   useEffect(() => {
     const term = q.trim();
+    if (!open) return;
     if (term.length < 2) {
       setHits(null);
       setErr("");
+      setSearching(false);
       return;
     }
     const mine = ++seq.current;
@@ -496,22 +741,52 @@ function PlayersTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
       }
     }, 280);
     return () => clearTimeout(t);
-  }, [q, keyVal]);
+  }, [q, keyVal, open]);
+
+  const pick = (n: string) => {
+    seq.current++;
+    setSel(n);
+    setQ(n);
+    setOpen(false);
+    setSearching(false);
+  };
+  const clear = () => {
+    seq.current++;
+    setQ("");
+    setHits(null);
+    setOpen(false);
+    setSearching(false);
+    setErr("");
+  };
 
   return (
     <>
       <div className="adm-search">
-        <input className="adm-in" placeholder="Search players" value={q} autoCapitalize="off" spellCheck={false} onChange={(e) => setQ(e.target.value)} />
+        <input
+          className="adm-in"
+          placeholder="Search players"
+          value={q}
+          autoCapitalize="off"
+          spellCheck={false}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && open && hits && hits[0]) pick(hits[0].name);
+            else if (e.key === "Escape") clear();
+          }}
+        />
         {searching && <i className="adm-spin big" />}
       </div>
-      {err && <div className="adm-pad adm-res err"><X size={13} />{err}</div>}
-      {hits && (
+      {err && open && <div className="adm-pad adm-res err"><X size={13} />{err}</div>}
+      {open && hits && (
         <div className="adm-hits">
           {hits.length === 0 && <div className="list-empty">No players</div>}
           {hits.map((h) => (
-            <button key={h.name} className={`adm-hit${sel === h.name ? " on" : ""}`} onClick={() => setSel(h.name)}>
+            <button key={h.name} className={`adm-hit${sel === h.name ? " on" : ""}`} onClick={() => pick(h.name)}>
               <b>{h.name}</b>
-              <span className="dim">{when(h.lastOn)}</span>
+              <span className="dim">{ago(h.lastOn)}</span>
             </button>
           ))}
         </div>
@@ -524,12 +799,12 @@ function PlayersTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
           items={items}
           onGone={() => {
             setSel("");
-            setHits(null);
-            setQ("");
+            clear();
           }}
           onRenamed={(n) => {
             setSel(n);
             setQ(n);
+            setOpen(false);
           }}
         />
       )}
@@ -571,13 +846,13 @@ function CodesTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
 
   const [code, setCode] = useState("");
   const [coins, setCoins] = useState("");
-  const [item, setItem] = useState("");
+  const [picks, setPicks] = useState<string[]>([]);
   const [uses, setUses] = useState("");
   const [days, setDays] = useState("");
   const [made, setMade] = useState("");
   const [copied, setCopied] = useState(false);
   const num = (s: string) => (s.trim() === "" ? undefined : Number(s));
-  const bad = [coins, uses, days].some((s) => s.trim() !== "" && !(Number(s) >= 0 && Number.isFinite(Number(s)))) || (!item && !(Number(coins) > 0));
+  const bad = [coins, uses, days].some((s) => s.trim() !== "" && !(Number(s) >= 0 && Number.isFinite(Number(s)))) || (!picks.length && !(Number(coins) > 0));
 
   const create = () =>
     run(
@@ -586,7 +861,7 @@ function CodesTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
         const r = await adminPost(keyVal, "codes", {
           ...(code.trim() ? { code: code.trim().toUpperCase() } : {}),
           ...(num(coins) ? { coins: num(coins) } : {}),
-          ...(item ? { item } : {}),
+          ...(picks.length ? { items: picks } : {}),
           ...(num(uses) ? { uses: num(uses) } : {}),
           ...(num(days) ? { days: num(days) } : {}),
         });
@@ -594,7 +869,7 @@ function CodesTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
         setCopied(false);
       },
       "Created",
-    ).then((ok) => ok && (setCode(""), setCoins(""), setItem(""), setUses(""), setDays("")));
+    ).then((ok) => ok && (setCode(""), setCoins(""), setPicks([]), setUses(""), setDays("")));
 
   return (
     <>
@@ -627,8 +902,8 @@ function CodesTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
             </label>
           </div>
           <div className="adm-f">
-            <span>Item</span>
-            <ItemPicker items={items} value={item} onChange={setItem} />
+            <span>Items</span>
+            <MultiItemPicker items={items} value={picks} onChange={setPicks} />
           </div>
           <div className="adm-foot">
             <span />
@@ -676,7 +951,7 @@ function CodesTab({ keyVal, items }: { keyVal: string; items: AdminItem[] }) {
                     <td className="mono c-code">{c.code}</td>
                     <td className="l c-gives">
                       {c.coins ? <span className="chip static">{n0(c.coins)} coins</span> : null}
-                      {c.item ? <span className="chip static">{names.get(c.item) ?? c.item}</span> : null}
+                      {(c.items?.length ? c.items : c.item ? [c.item] : []).map((id) => <span key={id} className="chip static">{names.get(id) ?? id}</span>)}
                     </td>
                     <td className="c-uses">
                       {n0(c.uses)}/{c.maxUses ? n0(c.maxUses) : "∞"}
