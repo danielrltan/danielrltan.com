@@ -356,7 +356,7 @@ export default function App() {
         }}
         onPointerLeave={() => setMoveableHover(false)}
       >
-        {/* Stylized loading overlay: pixel meter + VT323 readout on the orange
+        {/* Stylized loading overlay: voxel build + Geist readout on the orange
             field. Runs 0→100 / READY, lifts, then unmounts (at loaderDone) so
             the hero signature draws onto the bare orange scrim beneath. */}
         <BootLoader />

@@ -1,4 +1,4 @@
-/* Live boot loader: ONE big pixel number climbing on the International Orange
+/* Live boot loader: ONE big number climbing on the International Orange
    scrim, nothing else. White ink only, so the hand-off to the hero signature
    draw on the same orange field stays seamless. transform/opacity-only outro. */
 .boot-loader {
@@ -27,15 +27,19 @@
    size --s, in container units, so index.html's static #boot-screen "0" can
    mirror the count's box exactly (same formulas in vh / vmin there):
      scene  6s × 5.4s, top 50% - 3.76s   (the whole block is 7.52s tall,
-     count  1.6s type, top 50% + 1.74s    centred on the stage)
-     meta   0.42s type, top 50% + 3.39s */
+     count  1.25s type, top 50% + 1.96s   centred on the stage)
+     meta   0.28s type, top 50% + 3.45s
+   Type is the site's Geist, not a pixel face (owner 2026-11-22: the VT323
+   readout looked "extremely vibecoded"). Sizes are set so the digits keep
+   VT323's on-screen height (Geist's figures are ~0.71em tall, VT323's
+   ~0.55em). */
 .vbuild-stage {
   position: absolute;
   inset: 0;
   container-type: size;
   overflow: hidden;
   color: #ffffff;
-  font-family: "VT323", var(--font-pixel, "Offbit", monospace);
+  font-family: var(--font-body, "Geist", system-ui, -apple-system, "Segoe UI", sans-serif);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   user-select: none;
@@ -119,20 +123,24 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(50cqh + var(--s) * 1.74);
+  top: calc(50cqh + var(--s) * 1.96);
   text-align: center;
-  font-size: calc(var(--s) * 1.6);
+  font-size: calc(var(--s) * 1.25);
+  font-weight: 500;
+  letter-spacing: -0.03em;
 }
 .vbuild__meta {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(50cqh + var(--s) * 3.39);
+  top: calc(50cqh + var(--s) * 3.45);
   display: flex;
   justify-content: center;
-  gap: 1.4em;
-  font-size: calc(var(--s) * 0.42);
-  opacity: 0.92;
+  gap: 1.6em;
+  font-size: calc(var(--s) * 0.28);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
 }
 
 /* Reduced motion: the count snaps to target; the fade is instant. */
