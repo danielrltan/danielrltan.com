@@ -4,6 +4,8 @@ import { ArrowUpRight, KeyRound, RefreshCw } from "lucide-react";
 import { KeyError, loadPoddle, loadSite, type Day, type Row, type SiteStats } from "./data";
 import { Loading } from "./Loading";
 import { Admin } from "./Admin";
+import { Sponsors } from "./Sponsors";
+import { PODDLE, PODDLE_LOCAL } from "./poddle";
 import { Hint, Insights, VIEWS_HINT, VISITORS_HINT } from "./Insights";
 import "./stats.css";
 
@@ -275,7 +277,8 @@ function App() {
   return (
     <main className="page">
       <header className="top">
-        <h1>Stats</h1>
+        <h1>Admin</h1>
+        {PODDLE_LOCAL && <span className="chip static spn-local" title="?poddle=live goes back to playpoddle.com">Poddle: {PODDLE.replace(/^http:\/\//, "")}</span>}
         <div className="controls">
           <div className="seg" role="tablist">
             {RANGES.map((r) => (
@@ -303,6 +306,7 @@ function App() {
       </header>
       <Insights tick={tick} keyName="stats.poddleKey" onKeys={() => setKeys(true)} />
       <Admin keyName="stats.poddleKey" onKeys={() => setKeys(true)} />
+      <Sponsors keyName="stats.poddleKey" tick={tick} onKeys={() => setKeys(true)} />
       <div className="grid sites">
         {SITES.map((s) => (
           <SiteCard key={s.id} site={s} range={range} tick={tick} onKeys={() => setKeys(true)} />

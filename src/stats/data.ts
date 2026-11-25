@@ -1,5 +1,7 @@
-// Data for the stats panel (/stats). Both sites are counted in-house by Poddle's
-// server (no third party) and read from GET https://playpoddle.com/api/traffic
+import { PODDLE } from "./poddle";
+
+// Data for the owner's panel (/admin). Both sites are counted in-house by Poddle's
+// server (no third party) and read from GET <PODDLE>/api/traffic (src/stats/poddle.ts)
 // with the STATS_KEY bearer (the Poddle key):
 //  - playpoddle.com: its pages, counted as they are served (poddle NOTES 231).
 //  - danielrltan.com: counted from public/rum.js's load beacons, with the named
@@ -23,7 +25,7 @@ export type SiteStats = {
 export class KeyError extends Error {}
 
 const DAY_MS = 86400e3;
-const PODDLE_API = "https://playpoddle.com/api/traffic";
+const PODDLE_API = `${PODDLE}/api/traffic`;
 
 const dayOf = (t: number) => new Date(t).toISOString().slice(0, 10);
 const startOfUtcDay = (t: number) => Math.floor(t / DAY_MS) * DAY_MS;
@@ -176,13 +178,13 @@ export type Insights = {
   presses: { key: string; n: number }[];
 };
 
-const INSIGHTS_API = "https://playpoddle.com/api/insights";
+const INSIGHTS_API = `${PODDLE}/api/insights`;
 export const loadLive = (key: string): Promise<Live> => getJson(`${INSIGHTS_API}/live`, key);
 export type InsResult = Insights | { small: true };
 export const loadInsights = (key: string, days: number, seg?: string): Promise<InsResult> =>
   getJson(`${INSIGHTS_API}?days=${days}${seg ? `&seg=${encodeURIComponent(seg)}` : ""}`, key);
 
-// ---- Admin (playpoddle.com/api/admin/*, contract in the Poddle repo docs/ADMIN.md) ----
+// ---- Admin (<PODDLE>/api/admin/*, contract in the Poddle repo docs/ADMIN.md) ----
 // Same key as above. Reads are GETs; every write is a JSON POST answering { ok, ... }.
 
 export type AdminHit = { name: string; lastOn: number | null; createdAt: number | null };
@@ -229,7 +231,7 @@ export type AdminItem = { id: string; name: string; kind: string; rarity: string
 export type AdminCode = { code: string; coins: number; item: string | null; items?: string[]; maxUses: number; uses: number; endsAt: number | null; off: boolean; madeAt: number | null };
 export type AdminLog = { at: number; action: string; target: string | null; detail: unknown };
 
-const ADMIN_API = "https://playpoddle.com/api/admin";
+const ADMIN_API = `${PODDLE}/api/admin`;
 
 export const adminGet = (key: string, path: string) => getJson(`${ADMIN_API}/${path}`, key);
 

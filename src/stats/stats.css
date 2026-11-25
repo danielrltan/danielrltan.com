@@ -1,4 +1,4 @@
-/* The stats panel (/stats): Vercel-style dark. Its own page, so nothing from
+/* The owner's panel (/admin): Vercel-style dark. Its own page, so nothing from
    src/index.css applies here. */
 :root {
   color-scheme: dark;
@@ -2451,5 +2451,243 @@ textarea.adm-in {
   .wm-split {
     grid-template-columns: 1fr;
     gap: 14px;
+  }
+}
+
+/* ---- Sponsors (src/stats/Sponsors.tsx, poddle NOTES 1056): the sponsor admin moved here from playpoddle.com ---- */
+.top:has(.spn-local) {
+  flex-wrap: wrap;      /* a local Poddle's chip beside the title: the controls wrap under it on a phone */
+}
+.spn-local {
+  margin-right: auto;
+  color: var(--blue);
+  border-color: var(--blue-dim);
+}
+.spn-card .seg button .spn-n,
+.spn-n {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--blue-dim);
+  color: var(--blue);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+.spn-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px 20px 0;
+}
+.spn-q {
+  flex: 1 1 200px;
+  width: auto;
+  min-width: 0;
+}
+.spn-bar .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.spn-group {
+  padding: 16px 20px 0;
+  display: grid;
+  gap: 10px;
+}
+.spn-group:last-child {
+  padding-bottom: 20px;
+}
+.spn-group-head {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.spn-sub {
+  padding-bottom: 0;
+}
+.spn-none {
+  padding: 8px 0;
+}
+.spn-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+.spn-item.fresh {
+  border-color: var(--blue-dim);
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.spn-item.done {
+  opacity: 0.6;
+}
+.spn-item-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 15px;
+}
+.spn-st.pending,
+.spn-st.review,
+.spn-st.checkout {
+  color: #f2b84b;
+  border-color: rgba(242, 184, 75, 0.4);
+}
+.spn-st.live {
+  color: var(--green);
+  border-color: rgba(63, 185, 80, 0.4);
+}
+.spn-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.spn-card > .spn-chips {
+  margin: 16px 20px 0;
+}
+.spn-chip.blue {
+  color: var(--blue);
+  border-color: var(--blue-dim);
+}
+.spn-chip.amber {
+  color: #f2b84b;
+  border-color: rgba(242, 184, 75, 0.4);
+}
+.spn-chip.red {
+  color: var(--red);
+  border-color: rgba(255, 97, 102, 0.35);
+}
+.spn-chip.green {
+  color: var(--green);
+  border-color: rgba(63, 185, 80, 0.4);
+}
+.spn-row {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+  align-items: start;
+}
+.spn-logo {
+  position: relative;
+  min-width: 0;
+}
+.spn-logo canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--hover);
+}
+.spn-logo .dim {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12.5px;
+}
+.spn-meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px 16px;
+  font-size: 13px;
+  min-width: 0;
+}
+.spn-meta div {
+  min-width: 0;
+}
+.spn-meta dt {
+  color: var(--faint);
+  font-size: 12px;
+}
+.spn-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.spn-meta a {
+  color: var(--blue);
+  text-decoration: none;
+}
+.spn-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+.spn-ask {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--hover);
+  font-size: 13px;
+}
+.spn-link {
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.spn-link:hover {
+  color: var(--text);
+}
+.spn-note {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.spn-ask-text {
+  margin: 8px 0 10px;
+  white-space: pre-wrap;
+}
+.spn-panels {
+  margin-top: 16px;
+}
+.spn-panels .chip + .chip {
+  margin-left: 4px;
+}
+.spn-now {
+  color: var(--green);
+  border-color: rgba(63, 185, 80, 0.4);
+}
+.spn-switches {
+  display: grid;
+  gap: 10px;
+}
+.spn-switch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.spn-switch > span:first-child {
+  min-width: 140px;
+}
+.spn-open {
+  color: var(--green);
+}
+.spn-paused {
+  color: #f2b84b;
+}
+@media (max-width: 600px) {
+  .spn-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .spn-bar,
+  .spn-group {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 }

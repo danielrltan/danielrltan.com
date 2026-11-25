@@ -3,7 +3,7 @@
  * track() queues [event, data] on window.rumEvents; rum.js sends the queue with
  * its next beacon to the owner's collector on playpoddle.com, which counts each
  * event per day as name + detail (the data's values in key order, URLs without
- * their query). Read on /stats. Safe before rum.js has loaded (the queue waits)
+ * their query). Read on /admin. Safe before rum.js has loaded (the queue waits)
  * and when it never loads (headless runs, blocked requests): a silent no-op.
  *
  * Naming convention: a small set of meaningful event NAMES, each carrying

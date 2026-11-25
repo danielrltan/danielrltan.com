@@ -1,6 +1,6 @@
 // Country choropleth for the Poddle Insights tabs. Loaded lazily (with its
 // pre-projected shapes, world.json from scripts/build-world-map.mjs) only when a
-// tab that shows it opens, so the first paint of /stats does not carry it.
+// tab that shows it opens, so the first paint of /admin does not carry it.
 import { useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import world from "./world.json";
 

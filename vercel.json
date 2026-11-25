@@ -1,17 +1,21 @@
 {
+  "redirects": [
+    { "source": "/stats", "destination": "/admin", "permanent": true },
+    { "source": "/stats.html", "destination": "/admin", "permanent": true }
+  ],
   "rewrites": [
-    { "source": "/stats", "destination": "/stats.html" },
+    { "source": "/admin", "destination": "/admin.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
     {
-      "source": "/((?!stats).*)",
+      "source": "/((?!admin).*)",
       "headers": [
         { "key": "Document-Policy", "value": "js-profiling" }
       ]
     },
     {
-      "source": "/stats(.*)",
+      "source": "/admin(.*)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
       ]

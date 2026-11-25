@@ -1,8 +1,30 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+// The owner's panel lives at /admin (admin.html); /stats and /stats.html, its old address, are a
+// permanent redirect to it. vercel.json does this in production; this does the same in dev and preview.
+type Req = { url?: string };
+type Res = { statusCode: number; setHeader(k: string, v: string): void; end(): void };
+const adminRoutes = (req: Req, res: Res, next: () => void) => {
+  const [path, query] = (req.url ?? "/").split("?");
+  if (path === "/stats" || path === "/stats/" || path === "/stats.html") {
+    res.statusCode = 308;
+    res.setHeader("Location", "/admin" + (query ? "?" + query : ""));
+    return res.end();
+  }
+  if (path === "/admin" || path === "/admin/") req.url = "/admin.html" + (query ? "?" + query : "");
+  next();
+};
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "admin-routes",
+      configureServer: (s) => void s.middlewares.use(adminRoutes as never),
+      configurePreviewServer: (s) => void s.middlewares.use(adminRoutes as never),
+    },
+  ],
   // Document-Policy: js-profiling lets public/rum.js profile a load (vercel.json
   // sends it in production); the same here so dev and preview behave alike.
   server: {
@@ -15,12 +37,12 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1500,
     // hidden maps: no sourceMappingURL in the chunks; scripts/upload-sourcemaps.mjs
-    // (postbuild) sends them privately to Poddle for /stats' flame graphs, then
+    // (postbuild) sends them privately to Poddle for /admin's flame graphs, then
     // deletes them from dist, so none is ever published.
     sourcemap: "hidden",
     rollupOptions: {
-      // stats.html: the owner's stats panel (src/stats), its own light entry
-      input: { main: "index.html", stats: "stats.html" },
+      // admin.html: the owner's private panel (src/stats) at /admin, its own light entry
+      input: { main: "index.html", admin: "admin.html" },
       output: {
         // Split heavy vendor groups into their own chunks so the first paint
         // only parses what the room+hero need (three+r3f), and large libs are

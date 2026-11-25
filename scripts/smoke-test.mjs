@@ -891,6 +891,28 @@ async function runPhoneScenario(browser, name, { viewport, query }) {
   await context.close();
 }
 
+// The owner's private panel (src/stats) at /admin: it mounts, stays out of search, and the old /stats
+// address redirects to it (vite.config.ts mirrors vercel.json's redirect in preview). No key is set, so
+// it asks for one and calls nothing keyed.
+async function runAdminScenario(browser) {
+  console.log("\n[admin]");
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  const base = new globalThis.URL(URL);
+  const old = await page.request.get(new globalThis.URL("/stats?x=1", base).toString(), { maxRedirects: 0 });
+  check([301, 308].includes(old.status()) && old.headers().location === "/admin?x=1", `/stats redirects to /admin (${old.status()} ${old.headers().location})`);
+  await page.goto(new globalThis.URL("/admin", base).toString(), { waitUntil: "load" });
+  const ok = await waitFor(page, () => document.querySelector("h1")?.textContent === "Admin" && !!document.querySelector("#sponsors"));
+  check(ok, "/admin mounts the panel with its Sponsors card");
+  check(await page.evaluate(() => document.querySelector('meta[name="robots"]')?.getAttribute("content") === "noindex, nofollow"), "/admin is noindex");
+  check(await page.evaluate(() => !document.querySelector('script[src*="rum.js"]')), "/admin loads no rum.js");
+  check(errors.length === 0, `/admin: no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/admin.png`, fullPage: true });
+  await context.close();
+}
+
 async function startPreview() {
   if (process.env.URL) return null;
   const child = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
@@ -919,6 +941,7 @@ try {
   const q = TIER ? `tier=${TIER}` : "";
   await runScenario(browser, "desktop", { viewport: { width: 1440, height: 900 }, mobile: false, query: q });
   await runPhoneScenario(browser, "mobile", { viewport: { width: 390, height: 844 }, query: q });
+  await runAdminScenario(browser);
 } finally {
   await browser.close();
   preview?.kill();

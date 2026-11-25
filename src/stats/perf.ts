@@ -8,8 +8,9 @@
 //  - GET /api/perf/sourcemap?file=      a danielrltan.com chunk's source map, uploaded privately by the build (poddle NOTES 234):
 //                                       symbolicate() turns minified frames back into real names and files
 import { KeyError } from "./data";
+import { PODDLE } from "./poddle";
 
-const API = "https://playpoddle.com/api/perf";
+const API = `${PODDLE}/api/perf`;
 export const PERF_SITES = ["danielrltan.com", "poddleball.com"] as const;
 export type PerfSite = (typeof PERF_SITES)[number];
 
