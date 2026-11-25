@@ -537,6 +537,8 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
       );
       check(open, "mobile project accordion expands");
     }
+    const posters = await page.evaluate(() => document.querySelectorAll(".portfolio-mac .mac-acc-video").length);
+    check(posters === 2, `mobile project accordion has demo-video posters (${posters})`);
   } else {
     const openBtn = page.getByRole("button", { name: /Open .* detail/ }).first();
     const hasOpen = (await openBtn.count()) > 0;
@@ -560,6 +562,27 @@ async function runScenario(browser, name, { viewport, mobile, query }) {
         { timeout: 4000 },
       );
       check(closed, "project detail closes");
+
+      // Demo video: open Firewatch, play its demo in the theater, Esc closes
+      // ONLY the theater (the CRT detail stays open), then close the project.
+      const fw = page.getByRole("button", { name: "Open Firewatch detail" }).first();
+      if ((await fw.count()) > 0) {
+        await fw.evaluate((b) => b.click());
+        await waitFor(page, () => !!document.querySelector(".mac-col.is-detail-open"), { timeout: 4000 });
+        const watch = page.locator(".mac-detail-a11y button", { hasText: "Watch demo" }).first();
+        check((await watch.count()) > 0, "project detail offers Watch demo");
+        if ((await watch.count()) > 0) {
+          await watch.evaluate((b) => b.click());
+          const up = await waitFor(page, () => !!document.querySelector('.theater[role="dialog"] video'), { timeout: 3000 });
+          check(up, "theater opens with a video");
+          await page.keyboard.press("Escape");
+          const down = await waitFor(page, () => !document.querySelector(".theater"), { timeout: 3000 });
+          const still = await page.evaluate(() => !!document.querySelector(".mac-col.is-detail-open"));
+          check(down && still, "Escape closes the theater, not the project");
+        }
+        await page.keyboard.press("Escape");
+        await waitFor(page, () => !document.querySelector(".mac-col.is-detail-open"), { timeout: 4000 });
+      } else check(false, "Firewatch project present");
     }
   }
 
@@ -863,8 +886,19 @@ async function runPhoneScenario(browser, name, { viewport, query }) {
     mail: document.querySelector(".ph-mail")?.getAttribute("href"),
     socials: [...document.querySelectorAll(".ph-clist a")].map((a) => a.getAttribute("href")),
   }));
-  check(links.proj.length === 5 && links.proj.some((l) => l.startsWith("View live") && l.endsWith("playpoddle.com")) && links.proj.some((l) => l.startsWith("View dev post")), `project links (${links.proj.length})`);
+  check(links.proj.length === 7 && links.proj.some((l) => l.startsWith("View live") && l.endsWith("playpoddle.com")) && links.proj.some((l) => l.startsWith("View dev post")), `project links (${links.proj.length})`);
   check(links.mail === "mailto:hello@danielrltan.com", "contact mailto");
+  // Demo videos: one "Watch demo" per project with a video; it opens the theater.
+  const nWatch = await page.locator(".ph-proj .ph-links button", { hasText: "Watch demo" }).count();
+  check(nWatch === 2, `phone "Watch demo" buttons (${nWatch})`);
+  if (nWatch) {
+    await page.locator(".ph-proj .ph-links button", { hasText: "Watch demo" }).first().evaluate((b) => b.click());
+    const up = await waitFor(page, () => !!document.querySelector('.theater[role="dialog"] video'), { timeout: 3000 });
+    check(up, "phone theater opens with a video");
+    await page.keyboard.press("Escape");
+    const down = await waitFor(page, () => !document.querySelector(".theater"), { timeout: 3000 });
+    check(down, "phone theater closes on Escape");
+  }
   check(links.socials.length === 5 && links.socials.includes("/resume/Daniel_Tan_Resume.pdf"), `contact links (${links.socials.length})`);
 
   // 7. Assets: photos laid out from the manifest; loaded images are intact.

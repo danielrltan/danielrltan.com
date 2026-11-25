@@ -1,0 +1,222 @@
+/* Project theater (ProjectTheater.tsx): the demo video with sound over a dark
+   scrim, the project record under it. Sits under the custom cursor (10000)
+   and the pan cursor (10001), over every section and the HUD. */
+.theater {
+  position: fixed;
+  inset: 0;
+  z-index: 9800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(24px, var(--safe-top, 0px)) max(16px, var(--safe-right, 0px))
+    max(24px, var(--safe-bottom, 0px)) max(16px, var(--safe-left, 0px));
+  background: rgba(10, 10, 12, 0.86);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.theater.is-open {
+  opacity: 1;
+}
+
+.theater-panel {
+  position: relative;
+  width: min(92vw, 1180px);
+  margin: auto;
+  color: #f2efe9;
+  opacity: 0;
+  transform: scale(0.96) translateY(8px);
+  transition:
+    opacity 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.theater.is-open .theater-panel {
+  opacity: 1;
+  transform: none;
+}
+
+/* Video, 16:9 on black, framed by orange L-ticks just outside it: the CRT
+   panel's corner ticks, grown up. */
+.theater-frame {
+  position: relative;
+  /* Sized by the viewport HEIGHT too, so the title + first blurb lines sit
+     on screen under the video instead of below the fold. */
+  width: min(100%, calc((100svh - 300px) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  margin: 0 auto;
+  background: #000;
+}
+.theater-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.theater-tick {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+  border-color: var(--accent, #ff4f00);
+  border-style: solid;
+  border-width: 0;
+}
+.theater-tick.tl { top: -8px; left: -8px; border-top-width: 3px; border-left-width: 3px; }
+.theater-tick.tr { top: -8px; right: -8px; border-top-width: 3px; border-right-width: 3px; }
+.theater-tick.bl { bottom: -8px; left: -8px; border-bottom-width: 3px; border-left-width: 3px; }
+.theater-tick.br { bottom: -8px; right: -8px; border-bottom-width: 3px; border-right-width: 3px; }
+
+.theater-close {
+  position: fixed;
+  z-index: 1;
+  top: max(16px, calc(var(--safe-top, 0px) + 12px));
+  right: max(16px, calc(var(--safe-right, 0px) + 12px));
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #f2efe9;
+  background: transparent;
+  border: 1px solid rgba(242, 239, 233, 0.28);
+  border-radius: 0;
+  cursor: pointer;
+  transition: background-color var(--t-fast, 180ms) ease, border-color var(--t-fast, 180ms) ease;
+}
+.theater-close:hover {
+  background: var(--accent, #ff4f00);
+  border-color: var(--accent, #ff4f00);
+}
+.theater-close:focus-visible {
+  outline: 2px solid var(--accent, #ff4f00);
+  outline-offset: 3px;
+}
+
+.theater-info {
+  width: min(100%, max(720px, calc((100svh - 300px) * 16 / 9)));
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  gap: var(--space-7, 48px);
+  margin-top: var(--space-6, 32px);
+}
+.theater-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 0 var(--space-2, 8px);
+  font-family: var(--font-body);
+  font-size: var(--fs-meta, 13px);
+  font-variant-numeric: tabular-nums;
+  color: rgba(242, 239, 233, 0.6);
+}
+.theater-stack {
+  color: rgba(242, 239, 233, 0.42);
+}
+.theater-title {
+  margin: 0 0 var(--space-4, 16px);
+  font-family: var(--font-pixel);
+  font-size: clamp(2rem, 4vw, 3.25rem);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: 0;
+  color: var(--accent, #ff4f00);
+}
+.theater-blurb {
+  max-width: 68ch;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--fs-body, 16px);
+  line-height: 1.6;
+  color: rgba(242, 239, 233, 0.86);
+}
+.theater-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5, 24px);
+  padding-top: 4px;
+}
+.theater-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.theater-tags li {
+  padding: 5px 12px;
+  font-family: var(--font-body);
+  font-size: var(--fs-meta, 13px);
+  font-weight: 500;
+  color: rgba(242, 239, 233, 0.72);
+  border: 1px solid rgba(242, 239, 233, 0.18);
+}
+.theater-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.theater-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 11px 22px;
+  font-family: var(--font-body);
+  font-size: var(--fs-sub, 14px);
+  font-weight: 600;
+  color: #fff;
+  text-decoration: none;
+  background: var(--accent, #ff4f00);
+  border: 1px solid var(--accent, #ff4f00);
+  transition: background-color var(--t-fast, 180ms) ease, color var(--t-fast, 180ms) ease;
+}
+.theater-link-o {
+  color: #f2efe9;
+  background: transparent;
+  border-color: rgba(242, 239, 233, 0.34);
+}
+.theater-link:hover {
+  color: #fff;
+  background: #ff6a24;
+  border-color: #ff6a24;
+}
+.theater-link:focus-visible {
+  outline: 2px solid #f2efe9;
+  outline-offset: 2px;
+}
+
+@media (max-width: 899px) {
+  .theater {
+    align-items: flex-start;
+    padding: max(64px, calc(var(--safe-top, 0px) + 56px)) 0 max(32px, var(--safe-bottom, 0px));
+  }
+  .theater-panel {
+    width: 100%;
+  }
+  .theater-frame {
+    width: 100%;
+  }
+  .theater-tick {
+    display: none;
+  }
+  .theater-info {
+    width: auto;
+    grid-template-columns: 1fr;
+    gap: var(--space-5, 24px);
+    margin-top: var(--space-5, 24px);
+    padding: 0 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theater-panel {
+    transform: none;
+    transition: opacity 200ms ease;
+  }
+}

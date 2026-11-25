@@ -86,7 +86,7 @@ interface Props {
    * can't track the bulge; that was the "hover elements aren't correctly placed"
    * bug). The hotspots are now invisible hover/click detectors only.
    */
-  hoveredControl?: "back" | "link" | null;
+  hoveredControl?: "back" | "link" | "video" | null;
 }
 
 /** CRT screen face projected to on-screen CSS pixels (canvas-relative). */
@@ -101,6 +101,9 @@ export interface ScreenRect {
    *  the DOM link hotspot matches the actual painted button (whose width varies
    *  by label) instead of a fixed fraction that overshoots it. */
   linkWFrac?: number;
+  /** The painted demo-video panel as fractions of the screen face, so the DOM
+   *  "watch" hotspot sits over it. Absent when the project has no video. */
+  videoFrac?: { x: number; y: number; w: number; h: number } | null;
 }
 
 // Beat map in cine vh (./macBeats.ts owns the numbers; Macintosh.tsx reads
@@ -1414,7 +1417,7 @@ function useScreenTexture(
   cursorOn: boolean,
   // Which detail control the pointer is over ("back"|"link"|null) — painted as
   // an on-canvas hover state so it aligns with the bulged button.
-  hovered: "back" | "link" | null,
+  hovered: "back" | "link" | "video" | null,
 ): THREE.CanvasTexture {
   // PERF (GPU texture leak fix):
   //   OLD: every dependency change (bootProgress/hoverIndex/detailReveal/...
@@ -1564,6 +1567,149 @@ const CRT_LAYOUT = {
 // fraction overshot it — the empty lit box right of the button the owner flagged).
 let DETAIL_CTA_WFRAC = 0;
 
+// The painted demo-video panel of the open project (canvas px), its face
+// fractions for the DOM hotspot, and the alpha/hover it was last painted with,
+// so the per-video-frame blit (paintCrtVideoFrame) matches the full paint.
+let DETAIL_VIDEO_RECT: { x: number; y: number; w: number; h: number } | null = null;
+let DETAIL_VIDEO_FRAC: { x: number; y: number; w: number; h: number } | null = null;
+let DETAIL_VIDEO_ALPHA = 1;
+let DETAIL_VIDEO_HOT = false;
+
+/* ─────────────────────────────────────────────────────────────────
+ * CRT DEMO VIDEO. One hidden <video> plays the open project's short muted
+ * loop; its frames are blitted into the detail's video panel on the screen
+ * canvas, so the CRT shader lays scanlines + bulge over real footage. Only
+ * the panel rect is redrawn per video frame (the rest of the detail paint is
+ * untouched), and the element exists only while a video project is open.
+ * ──────────────────────────────────────────────────────────────── */
+let crtVideoEl: HTMLVideoElement | null = null;
+
+function crtVideoFor(src: string): HTMLVideoElement {
+  if (crtVideoEl && crtVideoEl.dataset.src === src) return crtVideoEl;
+  releaseCrtVideo();
+  const v = document.createElement("video");
+  v.muted = true;
+  v.defaultMuted = true;
+  v.loop = true;
+  v.playsInline = true;
+  v.setAttribute("playsinline", "");
+  v.setAttribute("muted", "");
+  v.preload = "auto";
+  v.dataset.src = src;
+  v.src = src;
+  crtVideoEl = v;
+  return v;
+}
+
+function releaseCrtVideo() {
+  if (!crtVideoEl) return;
+  crtVideoEl.pause();
+  crtVideoEl.removeAttribute("src");
+  crtVideoEl.load();
+  crtVideoEl = null;
+}
+
+function crtVideoReady(project: MacProject): HTMLVideoElement | null {
+  const v = crtVideoEl;
+  if (!v || !project.video || v.dataset.src !== project.video.loop) return null;
+  return v.readyState >= 2 && v.videoWidth > 0 ? v : null;
+}
+
+/** Cover-fit a source (image or video frame) into a dest rect, clipped. */
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  src: CanvasImageSource,
+  iw: number,
+  ih: number,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+) {
+  const ir = iw / ih;
+  const tr = dw / dh;
+  let sx = 0;
+  let sy = 0;
+  let sw = iw;
+  let sh = ih;
+  if (ir > tr) {
+    sw = ih * tr;
+    sx = (iw - sw) / 2;
+  } else {
+    sh = iw / tr;
+    sy = (ih - sh) / 2;
+  }
+  ctx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
+}
+
+/** The video panel: footage (or the still until the first frame decodes),
+ *  hairline, orange corner ticks and the WATCH chip. Draws ONLY inside the
+ *  rect, so it can be re-run per video frame over the finished detail paint. */
+function drawVideoPanel(
+  ctx: CanvasRenderingContext2D,
+  project: MacProject,
+  rect: { x: number; y: number; w: number; h: number },
+  alpha: number,
+  hot: boolean,
+) {
+  const { x, y, w, h } = rect;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = CRT_BASE;
+  ctx.fillRect(x, y, w, h);
+  ctx.globalAlpha = alpha;
+  const v = crtVideoReady(project);
+  if (v) {
+    drawCover(ctx, v, v.videoWidth, v.videoHeight, x, y, w, h);
+  } else if (project.image) {
+    const img = getProjectImage(project.image);
+    if (imageReady(img)) drawCover(ctx, img, img.naturalWidth, img.naturalHeight, x, y, w, h);
+    else {
+      ctx.fillStyle = CRT_BAR;
+      ctx.fillRect(x, y, w, h);
+    }
+  }
+  ctx.strokeStyle = hot ? CRT_ACCENT : CRT_HAIRLINE;
+  ctx.lineWidth = hot ? 2 : 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.fillStyle = CRT_ACCENT;
+  const tk = 14;
+  ctx.fillRect(x, y, tk, 2);
+  ctx.fillRect(x, y, 2, tk);
+  ctx.fillRect(x + w - tk, y, tk, 2);
+  ctx.fillRect(x + w - 2, y, 2, tk);
+  ctx.fillRect(x, y + h - 2, tk, 2);
+  ctx.fillRect(x, y + h - tk, 2, tk);
+  ctx.fillRect(x + w - tk, y + h - 2, tk, 2);
+  ctx.fillRect(x + w - 2, y + h - tk, 2, tk);
+  // WATCH chip, lower-left inside the panel (same token as "OPEN ↵").
+  ctx.font = `19px ${PIXEL_FONT}`;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  const label = "▶ WATCH";
+  const cw = Math.round(ctx.measureText(label).width + 24);
+  const ch = 30;
+  const cx = x + 12;
+  const cy = y + h - ch - 12;
+  ctx.fillStyle = hot ? CRT_HOT : CRT_ACCENT;
+  ctx.fillRect(cx, cy, cw, ch);
+  ctx.fillStyle = CRT_ACCENT_INK;
+  ctx.fillText(label, cx + 12, cy + ch / 2 + 1);
+  ctx.restore();
+  ctx.textBaseline = "alphabetic";
+}
+
+/** Per-video-frame blit into the live screen canvas. False when there is no
+ *  painted panel to draw into (detail closed / not yet revealed). */
+function paintCrtVideoFrame(ctx: CanvasRenderingContext2D, project: MacProject): boolean {
+  if (!DETAIL_VIDEO_RECT || !crtVideoReady(project)) return false;
+  drawVideoPanel(ctx, project, DETAIL_VIDEO_RECT, DETAIL_VIDEO_ALPHA, DETAIL_VIDEO_HOT);
+  return true;
+}
+
 function drawProjectDetail(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -1571,7 +1717,7 @@ function drawProjectDetail(
   project: MacProject,
   reveal: number,
   cursorOn: boolean,
-  hovered: "back" | "link" | null,
+  hovered: "back" | "link" | "video" | null,
 ) {
   const r = clamp01(reveal);
   const PAD = Math.round(w * CRT_LAYOUT.padFrac);
@@ -1660,10 +1806,12 @@ function drawProjectDetail(
   // Content insets. Content left == PAD (so the painted title/blurb/CTA all
   // share the CTA's DOM-hotspot left edge); the frame sits a touch outside it.
   const cX = PAD;
+  const hasVideo = !!project.video;
   const hasImage =
-    !!project.image && imageReady(getProjectImage(project.image));
+    hasVideo || (!!project.image && imageReady(getProjectImage(project.image)));
   const colGap = Math.round(w * 0.04);
-  const imgW = hasImage ? Math.round(w * 0.27) : 0;
+  // A demo video gets a wider column: it is the screen's moving centrepiece.
+  const imgW = hasImage ? Math.round(w * (hasVideo ? 0.37 : 0.27)) : 0;
   const imgRight = frameX + frameW - Math.round(w * 0.025);
   const imgX = imgRight - imgW;
   const textRight = hasImage ? imgX - colGap : imgRight;
@@ -1712,7 +1860,33 @@ function drawProjectDetail(
   ctx.globalAlpha = 1;
 
   // ── Thumbnail (right column): amber ordered-dither + orange corner ticks ──
-  if (hasImage) {
+  if (hasVideo) {
+    const vidH = Math.round(imgW * (9 / 16));
+    const panelTop = frameTop + Math.round(h * 0.06);
+    const panelBottom = frameTop + frameH - Math.round(h * 0.05);
+    const vidTop = Math.round(panelTop + (panelBottom - panelTop - vidH) / 2);
+    const rect = { x: imgX, y: vidTop, w: imgW, h: vidH };
+    DETAIL_VIDEO_RECT = rect;
+    DETAIL_VIDEO_FRAC = { x: rect.x / w, y: rect.y / h, w: rect.w / w, h: rect.h / h };
+    DETAIL_VIDEO_ALPHA = headReveal;
+    DETAIL_VIDEO_HOT = hovered === "video";
+    // Hover: an orange bloom around the panel (outside it, so the per-frame
+    // video blits, which stay inside the rect, never stack the glow).
+    if (DETAIL_VIDEO_HOT && headReveal > 0.5) {
+      ctx.save();
+      ctx.shadowColor = "rgba(255, 79, 0, 0.75)";
+      ctx.shadowBlur = 18;
+      ctx.strokeStyle = CRT_ACCENT;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(rect.x - 3, rect.y - 3, rect.w + 6, rect.h + 6);
+      ctx.restore();
+    }
+    drawVideoPanel(ctx, project, rect, headReveal, DETAIL_VIDEO_HOT);
+  } else {
+    DETAIL_VIDEO_RECT = null;
+    DETAIL_VIDEO_FRAC = null;
+  }
+  if (hasImage && !hasVideo) {
     const imgH = Math.round(imgW * (537 / 806));
     const panelTop = frameTop + Math.round(h * 0.06);
     const panelBottom = frameTop + frameH - Math.round(h * 0.05);
@@ -2564,6 +2738,54 @@ function Scene({
     invalidate();
   }, [imageVersion, invalidate]);
 
+  // CRT DEMO VIDEO: while a project with a video is open, play its muted loop
+  // and blit each decoded frame into the detail's video panel (only that rect
+  // is redrawn), then flag the texture and ask the demand frameloop for a
+  // frame. Paused while the tab is hidden; never plays under reduced motion
+  // (the still stays up). Released on close / project switch.
+  const videoSrc = !narrow && selected?.video ? selected.video.loop : null;
+  useEffect(() => {
+    if (!videoSrc || !selected) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return;
+    const project = selected;
+    const v = crtVideoFor(videoSrc);
+    let alive = true;
+    let handle = 0;
+    const hasRvfc = "requestVideoFrameCallback" in HTMLVideoElement.prototype;
+    const onFrame = () => {
+      if (!alive) return;
+      const cv = screenTexture.image as HTMLCanvasElement;
+      const c = cv.getContext("2d");
+      if (c && paintCrtVideoFrame(c, project)) {
+        screenTexture.needsUpdate = true;
+        invalidate();
+      }
+      schedule();
+    };
+    const schedule = () => {
+      if (!alive) return;
+      handle = hasRvfc ? v.requestVideoFrameCallback(onFrame) : requestAnimationFrame(onFrame);
+    };
+    const play = () => {
+      if (document.hidden) return;
+      v.play().catch(() => {});
+    };
+    const onVis = () => (document.hidden ? v.pause() : play());
+    document.addEventListener("visibilitychange", onVis);
+    play();
+    schedule();
+    return () => {
+      alive = false;
+      if (hasRvfc) v.cancelVideoFrameCallback(handle);
+      else cancelAnimationFrame(handle);
+      document.removeEventListener("visibilitychange", onVis);
+      releaseCrtVideo();
+    };
+    // `selected` is keyed through videoSrc; screenTexture swaps only on resize.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoSrc, screenTexture, invalidate]);
+
   // CRT PAGE-TRANSITION GLITCH: stamp the pulse whenever the "page"
   // changes (project opened, closed, or switched). The useFrame below
   // decays uGlitch from 1 → 0 over ~400ms — a brief sync-loss tear,
@@ -2860,6 +3082,7 @@ function Scene({
             h: maxY - minY,
             vis: easeInOutCubic(clamp01(dz)),
             linkWFrac: DETAIL_CTA_WFRAC,
+            videoFrac: selected.video ? DETAIL_VIDEO_FRAC : null,
           });
         } else {
           onScreenRect(null);

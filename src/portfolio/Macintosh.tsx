@@ -20,6 +20,7 @@ const MacintoshScene = lazy(() =>
 import { TechStackTicker } from "../macintosh/TechStackTicker";
 import { MAC_PROJECTS, liveLinkLabel, type MacProject } from "../macintosh/projects";
 import { track } from "../analytics";
+import { ProjectTheater } from "./ProjectTheater";
 import { useMacNarrow } from "../macintosh/useMacNarrow";
 import { useSectionCanvasMount } from "../useSectionCanvasMount";
 import { useReveal } from "./useReveal";
@@ -145,9 +146,11 @@ export function Macintosh() {
   // CANVAS-painted hover feedback. The DOM hotspots are invisible hover/click
   // detectors; painting the hover on the canvas keeps it aligned with the
   // bulged button (a flat DOM glow drifted off it — owner-flagged).
-  const [hoveredControl, setHoveredControl] = useState<"back" | "link" | null>(
-    null,
-  );
+  const [hoveredControl, setHoveredControl] = useState<
+    "back" | "link" | "video" | null
+  >(null);
+  // The project whose demo video plays in the theater overlay (null = shut).
+  const [theaterProject, setTheaterProject] = useState<MacProject | null>(null);
   // MOBILE ACCORDION: which project's inline detail is expanded on the
   // narrow/landed path. Replaces the old open -> detail -> Back flow with a
   // tap-to-expand dropdown per project (user request: "just make it
@@ -628,6 +631,24 @@ export function Macintosh() {
                 onPointerLeave={() => setHoveredControl(null)}
                 aria-label="Close project"
               />
+              {selected.video && screenRect.videoFrac && (() => {
+                const f = screenRect.videoFrac;
+                // Same bulge compensation as the controls above: nudge the
+                // panel's hotspot ~1% toward the screen centre.
+                const vx = x + (f.x - 0.008) * w;
+                const vy = y + (f.y + 0.006) * h;
+                return (
+                  <button
+                    type="button"
+                    className="mac-crt-video"
+                    style={{ left: vx, top: vy, width: f.w * w, height: f.h * h }}
+                    onClick={() => setTheaterProject(selected)}
+                    onPointerEnter={() => setHoveredControl("video")}
+                    onPointerLeave={() => setHoveredControl(null)}
+                    aria-label={`Watch the ${selected.title} demo`}
+                  />
+                );
+              })()}
               {(selected.liveHref || selected.repoHref) && (
                 <a
                   className="mac-crt-link"
@@ -716,6 +737,21 @@ export function Macintosh() {
                 </button>
                 <div id={panelId} className="mac-acc-panel" role="region">
                   <div className="mac-acc-panel-inner">
+                    {p.video && (
+                      <button
+                        type="button"
+                        className="mac-acc-video"
+                        onClick={() => setTheaterProject(p)}
+                        aria-label={`Watch the ${p.title} demo`}
+                      >
+                        <img src={p.video.poster} alt="" loading="lazy" />
+                        <span className="mac-acc-play" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 18 18">
+                            <path d="M5 3l10 6-10 6z" fill="currentColor" />
+                          </svg>
+                        </span>
+                      </button>
+                    )}
                     <p className="mac-acc-blurb">{p.blurb}</p>
                     {p.tags.length > 0 && (
                       <ul className="mac-detail-tags">
@@ -832,6 +868,15 @@ export function Macintosh() {
                 ))}
               </ul>
             )}
+            {selected.video && (
+              <button
+                type="button"
+                className="mac-detail-link"
+                onClick={() => setTheaterProject(selected)}
+              >
+                Watch demo
+              </button>
+            )}
             {selected.liveHref && (
               <a
                 className="mac-detail-link"
@@ -867,7 +912,7 @@ export function Macintosh() {
           </article>
         )}
       </div>
-
+      <ProjectTheater project={theaterProject} onClose={() => setTheaterProject(null)} />
     </section>
   );
 }

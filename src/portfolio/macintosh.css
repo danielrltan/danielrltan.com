@@ -350,7 +350,8 @@
    painted button (user screenshot). Same specificity bug class as the
    Other titles. */
 .mac-crt-controls .mac-crt-close,
-.mac-crt-controls .mac-crt-link {
+.mac-crt-controls .mac-crt-link,
+.mac-crt-controls .mac-crt-video {
   position: absolute;
   /* Transparent: the CRT canvas paints the visible face; this is the
      clickable hotspot sitting on top of it. */
@@ -374,6 +375,7 @@
    (owner: "these hover elements aren't correctly placed"). These hotspots are
    now invisible hover/click detectors only; keyboard focus still rings below. */
 .mac-crt-close:focus-visible,
+.mac-crt-video:focus-visible,
 .mac-crt-link:focus-visible {
   /* Draw the keyboard focus ring directly over the painted control. */
   outline: 2px solid var(--accent, #ff4f00);
@@ -692,6 +694,48 @@
   }
   /* Scoped under .mac-acc-panel so it beats the sitewide `.portfolio-section p`
      (0,1,1) — a bare `.mac-acc-blurb` (0,1,0) loses and renders as faded body. */
+  /* Demo-video poster: opens the project theater (ProjectTheater.tsx). */
+  .mac-acc-panel .mac-acc-video {
+    position: relative;
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    padding: 0;
+    overflow: hidden;
+    background: var(--ink, #0d0e10);
+    border: 0;
+    border-radius: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mac-acc-video img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--t-med) var(--ease-out);
+  }
+  .mac-acc-play {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    color: #fff;
+    background: var(--accent, #ff4f00);
+    transform: translate(-50%, -50%);
+  }
+  @media (hover: hover) {
+    .mac-acc-video:hover img {
+      transform: scale(1.03);
+    }
+  }
+  .mac-acc-panel .mac-acc-video:focus-visible {
+    outline: 2px solid var(--ink, #0d0e10);
+    outline-offset: 2px;
+  }
   .mac-acc-panel .mac-acc-blurb {
     margin: 0;
     opacity: 1;

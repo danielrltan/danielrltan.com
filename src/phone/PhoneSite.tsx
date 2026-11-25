@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useRef } from "react";
-import { MAC_PROJECTS, liveLinkLabel } from "../macintosh/projects";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { MAC_PROJECTS, liveLinkLabel, type MacProject } from "../macintosh/projects";
+import { ProjectTheater } from "../portfolio/ProjectTheater";
 import { STINTS } from "../portfolio/workData";
 import {
   ENTRIES,
@@ -72,6 +73,8 @@ const OTHERS = ENTRIES.filter((e) => !e.featured);
 
 export default function PhoneSite() {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // The project whose demo video plays in the theater overlay (null = shut).
+  const [theaterProject, setTheaterProject] = useState<MacProject | null>(null);
 
   useEffect(() => {
     // Native scroll on touch; installs the loader lock (html.loading-active).
@@ -188,6 +191,14 @@ export default function PhoneSite() {
                   <p className="ph-stack">{stack}</p>
                   <p className="ph-body">{p.short}</p>
                   <p className="ph-links">
+                    {p.video && (
+                      <button className="ph-btn ph-btn-ink" type="button" onClick={() => setTheaterProject(p)}>
+                        Watch demo
+                        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                          <path d="M2.5 1.5l8 4.5-8 4.5z" fill="currentColor" />
+                        </svg>
+                      </button>
+                    )}
                     {p.liveHref && (
                       <a
                         className="ph-btn ph-btn-o"
@@ -367,6 +378,7 @@ export default function PhoneSite() {
           </span>
         </div>
       </nav>
+      <ProjectTheater project={theaterProject} onClose={() => setTheaterProject(null)} />
     </div>
   );
 }

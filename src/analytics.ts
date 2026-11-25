@@ -28,6 +28,7 @@ export type AnalyticsEvent =
   // Projects (Macintosh)
   | "project_open" // opened a project detail — { project }
   | "project_link" // clicked a project's live/repo link — { project, type }
+  | "project_video" // opened a project's demo video — { project }
   // Work
   | "work_expand" // expanded a work role — { role }
   // Outbound / conversions (used site-wide)

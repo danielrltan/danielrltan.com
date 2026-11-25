@@ -1,3 +1,10 @@
+import firewatchVideo from "./media/firewatch.mp4?url";
+import firewatchLoop from "./media/firewatch-loop.mp4?url";
+import firewatchPoster from "./media/firewatch-poster.webp?url";
+import revampVideo from "./media/revamp.mp4?url";
+import revampLoop from "./media/revamp-loop.mp4?url";
+import revampPoster from "./media/revamp-poster.webp?url";
+
 /**
  * Shared project / skill data for the Macintosh section. Skill logos
  * orbit, project tiles appear on the CRT screen, click-to-expand
@@ -18,6 +25,13 @@ export interface MacProject {
   image?: string;
   /** Hex color for the tile gradient; fallback before the image loads. */
   color: string;
+  /**
+   * Demo video, ripped from the project's Devpost page and re-encoded
+   * (hashed /assets/ URLs via ?url so a re-encode never serves stale).
+   * `src` is the full cut with sound (theater player); `loop` is a short
+   * muted, cropped clip for the CRT screen; `poster` is a still from `src`.
+   */
+  video?: { src: string; loop: string; poster: string };
 }
 
 /**
@@ -47,6 +61,23 @@ export const MAC_PROJECTS: MacProject[] = [
     color: "#3a8fd8", // dominant of the OG card (sky blue)
   },
   {
+    id: "firewatch",
+    title: "Firewatch",
+    meta: "Nov 2026 · Python, C, QNX, MediaPipe",
+    blurb:
+      "Hack Western 13. X-ray vision for first responders. Two phones run MediaPipe pose detection in Safari and stream every person they see to a Raspberry Pi 5 on QNX, which fuses both views into one map of the room and draws a HUD over the wearer's camera. Someone only the second phone can see appears as a skeleton behind the wall with their distance; a person lying down pulses magenta. I built the phone page (pinhole bearings, distance from apparent height, 17 joints packed into one UDP datagram over secure WebSockets), the Python relay and the HUD design; my teammate wrote the C fusion and display on QNX.",
+    short:
+      "Hack Western 13. X-ray vision for first responders: two phones share what they see with a QNX Raspberry Pi, which draws people hidden behind walls into the wearer's HUD.",
+    tags: ["Python", "JavaScript", "MediaPipe", "QNX", "C", "Raspberry Pi"],
+    liveHref: "https://devpost.com/software/seeker-q2dzso",
+    repoHref: "https://github.com/thisisunkno3n/hackwestern-13",
+    // A HUD frame from the demo video: the green "out of sight" skeleton
+    // drawn behind the wall. Cover-fit into the CRT thumb frame.
+    image: "/images/projects/firewatch.webp",
+    color: "#2f8f5b", // the HUD's out-of-sight green
+    video: { src: firewatchVideo, loop: firewatchLoop, poster: firewatchPoster },
+  },
+  {
     id: "cognetech",
     title: "Cognetech",
     // Meta lines ration the middle dot to ONE per line (date · stack);
@@ -73,6 +104,7 @@ export const MAC_PROJECTS: MacProject[] = [
     liveHref: "https://devpost.com/software/reamp",
     image: "/images/projects/reamp.webp",
     color: "#5a3a1f",
+    video: { src: revampVideo, loop: revampLoop, poster: revampPoster },
   },
   {
     id: "motrack",

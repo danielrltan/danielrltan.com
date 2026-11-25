@@ -112,6 +112,7 @@ const SHOT_SPEC: Record<string, { at: StationKey; pos: THREE.Vector3; look: THRE
   mac1: { at: "mac", pos: V(2.3, 1.3, 7.7), look: V(0, 0.7, 0), fov: 30 },
   mac2: { at: "mac", pos: V(-1.1, 0.75, 8.0), look: V(0, 0.75, 0), fov: 30 },
   mac3: { at: "mac", pos: V(0.6, 1.2, 7.3), look: V(0, 0.78, 0), fov: 30 },
+  mac4: { at: "mac", pos: V(-2.0, 1.05, 7.6), look: V(0, 0.74, 0), fov: 30 },
   props: { at: "props", pos: V(0, 1.4, 6.9), look: V(0, -0.15, 0), fov: 30, arrive: V(1.2, 1.6, 2.2) }, // crane down
   podium: { at: "podium", pos: V(2.0, 1.5, 7.0), look: V(0, 0.58, 0), fov: 30, arrive: V(1.0, 0.5, 3.0) }, // dolly in (aim mid-height: the #25 trophy tops out at 1.44)
   keypad: { at: "keypad", pos: V(2.5, 1.4, 8.6), look: V(0, -0.22, 0.3), fov: 32, arrive: V(0.9, 0.5, 3.6) }, // dolly in, slight 3/4 so its depth shows
