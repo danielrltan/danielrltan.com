@@ -73,7 +73,7 @@ export const MAC_PROJECTS: MacProject[] = [
     repoHref: "https://github.com/thisisunkno3n/hackwestern-13",
     // A HUD frame from the demo video: the green "out of sight" skeleton
     // drawn behind the wall. Cover-fit into the CRT thumb frame.
-    image: "/images/projects/firewatch.webp",
+    image: "/images/projects/firewatch-hud.webp",
     color: "#2f8f5b", // the HUD's out-of-sight green
     video: { src: firewatchVideo, loop: firewatchLoop, poster: firewatchPoster },
   },
