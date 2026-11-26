@@ -10,8 +10,8 @@ const W: { w: number; h: number; shapes: Record<string, string>; dots: [string, 
 const fmt = new Intl.NumberFormat("en");
 
 // One hue: neutral land, then any visitor at a visible floor, up to --blue.
-const LAND = [0x1c, 0x1c, 0x1c];
-const BLUE = [0x52, 0xa8, 0xff];
+const LAND = [0x3a, 0x3e, 0x45];
+const BLUE = [0x7c, 0xbc, 0xff];
 function shade(n: number, max: number) {
   if (n <= 0) return undefined;
   const t = 0.25 + 0.75 * (max > 1 ? Math.log1p(n) / Math.log1p(max) : 1);

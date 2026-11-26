@@ -4,7 +4,8 @@
 // for these routes only (server/api.js). Logos come from the keyed /logo?id= routes, so they are fetched with the key and drawn
 // from a blob; never an <img src> on Poddle.
 import { KeyError } from "../data";
-import { PODDLE } from "../poddle";
+import { PODDLE, PODDLE_LOCAL } from "../poddle";
+import { boardOf } from "./face";
 
 export type Kind = "sponsors" | "billboard" | "auctions";
 export class OffError extends Error {}
@@ -14,6 +15,7 @@ export type SpRow = {
   w: number; h: number; v: number; status: string; panel: number; name: string; start: number | null; end: number | null; listed: number; price: number; offer: boolean;
   feature: number; total: number; pkg: number; discount: number; mode: string; corner: boolean; decided: number | null; stripe: string | null; authLeft: number | null;
   showing: boolean; ord: number; refunded: number | null; fit: { s: number; x: number; y: number } | null; byBuyer: boolean; account: boolean; adminNote: string;
+  board?: string | null;
 };
 export type SpPanel = { id: number; name: string; price: number; corner: boolean; booked: { id: number; company: string; from: string; to: string; now: boolean }[] };
 export type SpAsk = { id: number; kind: "panel" | "court"; ref: number; text: string; at: number; done: number | null; company: string | null; contact: string | null; email: string | null };
@@ -24,15 +26,23 @@ export type SpData = {
 export type BbRow = {
   id: number; at: number; company: string; contact: string; email: string; website?: string; category: string; w: number; h: number; v: number; mode: string; price: number;
   status: string; review_at: number | null; live_at: number | null; ended_at: number | null; releasesAt: number | null; stripe: string | null; fit: SpRow["fit"];
-  account: boolean; adminNote: string; refunded: number | null; byBuyer?: boolean;
+  account: boolean; adminNote: string; refunded: number | null; byBuyer?: boolean; board?: string | null; now?: number;
 };
 export type BbData = {
   configured: boolean; paused: boolean; state: "open" | "locked" | "review" | string; price: number; buyIn: number; heat: number; players: number; rate: number;
   opensAt: number | null; hold: { sessions: number; target: number } | null; testClock: boolean; rows: BbRow[];
 };
-export type AuBid = { id: number; amount: number; company: string; logo_ok: boolean; w: number; h: number; v: number; fit: SpRow["fit"]; email: string | null; card: string | null };
-export type AuCheck = { id: number; auction: number; amount: number; company: string; logo_w: number; logo_h: number; logo_v: number; fit: SpRow["fit"]; panel: number; ends_at: number };
+export type AuBid = { id: number; amount: number; company: string; logo_ok: boolean; w: number; h: number; v: number; fit: SpRow["fit"]; email: string | null; card: string | null; board?: string | null };
+export type AuCheck = { id: number; auction: number; amount: number; company: string; logo_w: number; logo_h: number; logo_v: number; fit: SpRow["fit"]; panel: number; ends_at: number; board?: string | null };
 export type AuData = { now: number; toCheck: AuCheck[]; reviews: { id: number; panel: number; startsAt: number; bid: AuBid | null }[] };
+
+/** The buyer's board colour ('#rrggbb') from a row: its `board`, or an older server's colour in `mode`; null: the panel's own fill. */
+export const boardOfRow = (r: { board?: string | null; mode?: string }) => boardOf(r.board) ?? boardOf(r.mode);
+
+/** A PaymentIntent's page in the Stripe dashboard: test mode when the Poddle base is a local test server, else live. null for anything
+ *  but a pi_ id (a cs_ Checkout session has no payment yet). */
+export const stripeUrl = (id: string | null | undefined) =>
+  id && /^pi_[A-Za-z0-9]+$/.test(id) ? `https://dashboard.stripe.com/${PODDLE_LOCAL ? "test/" : ""}payments/${id}` : null;
 
 const url = (k: Kind, logo = false) => `${PODDLE}/api/${k}/admin${logo ? "/logo" : ""}`;
 

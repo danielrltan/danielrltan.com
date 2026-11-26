@@ -1,19 +1,23 @@
 /* The owner's panel (/admin): Vercel-style dark. Its own page, so nothing from
-   src/index.css applies here. */
+   src/index.css applies here. Contrast (owner 2026-11-26, "too dark"): every text token is WCAG AA (4.5:1) or
+   better on --bg, --card, --hover and --raised; --edge (card outlines) is 3.4:1 on the page, --border-2
+   (inputs, buttons, chips) 3.3:1 on a card. Surfaces step up: bg < card < hover < raised. */
 :root {
   color-scheme: dark;
-  --bg: #000;
-  --card: #0a0a0a;
-  --hover: #111;
-  --border: #1f1f1f;
-  --border-2: #2e2e2e;
-  --text: #ededed;
-  --muted: #a1a1a1;
-  --faint: #707070;
-  --blue: #52a8ff;
-  --blue-dim: rgba(82, 168, 255, 0.22);
-  --green: #3fb950;
-  --red: #ff6166;
+  --bg: #0b0c0e;
+  --card: #1c1f23;
+  --hover: #262a2f;
+  --raised: #30343a;
+  --edge: #62676f;
+  --border: #43474f;
+  --border-2: #6a6f79;
+  --text: #f5f6f7;
+  --muted: #c8cbd1;
+  --faint: #a5aab2;
+  --blue: #7cbcff;
+  --blue-dim: rgba(124, 188, 255, 0.32);
+  --green: #5fd273;
+  --red: #ff8a8e;
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -80,7 +84,7 @@ h1 {
   color: var(--text);
 }
 .seg button.on {
-  background: #1f1f1f;
+  background: var(--raised);
   color: var(--text);
 }
 
@@ -90,9 +94,9 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-2);
   background: var(--card);
-  color: var(--muted);
+  color: var(--text);
   border-radius: 8px;
   cursor: pointer;
   transition:
@@ -112,7 +116,7 @@ h1 {
 .icon-btn:hover,
 .btn:hover {
   color: var(--text);
-  border-color: var(--border-2);
+  border-color: var(--muted);
   background: var(--hover);
 }
 .btn.primary {
@@ -136,7 +140,7 @@ h1 {
   gap: 16px;
 }
 .card {
-  border: 1px solid var(--border);
+  border: 1px solid var(--edge);
   border-radius: 12px;
   background: var(--card);
   overflow: hidden;
@@ -203,15 +207,15 @@ h1 {
 }
 .delta.up {
   color: var(--green);
-  background: rgba(63, 185, 80, 0.12);
+  background: rgba(95, 210, 115, 0.12);
 }
 .delta.down {
   color: var(--red);
-  background: rgba(255, 97, 102, 0.12);
+  background: rgba(255, 138, 142, 0.12);
 }
 .delta.flat {
   color: var(--muted);
-  background: #1a1a1a;
+  background: var(--hover);
 }
 .dot {
   display: inline-block;
@@ -224,7 +228,7 @@ h1 {
 }
 .dot.views {
   background: var(--blue-dim);
-  box-shadow: inset 0 0 0 1px rgba(82, 168, 255, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(124, 188, 255, 0.5);
 }
 
 .chart {
@@ -280,7 +284,7 @@ h1 {
   padding: 8px 10px;
   border: 1px solid var(--border-2);
   border-radius: 8px;
-  background: #0f0f0f;
+  background: var(--raised);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   pointer-events: none;
   font-size: 13px;
@@ -336,7 +340,7 @@ h1 {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: 6px;
-  background: #161616;
+  background: var(--raised);
 }
 .list-label,
 .list-value {
@@ -423,7 +427,7 @@ h1 {
   padding: 0 10px;
   border: 1px solid var(--border-2);
   border-radius: 8px;
-  background: #000;
+  background: var(--bg);
   font-family: var(--mono);
   font-size: 13px;
 }
@@ -508,7 +512,7 @@ h1 {
   padding: 14px 20px 0;
 }
 .chip {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-2);
   background: none;
   color: var(--muted);
   border-radius: 999px;
@@ -726,14 +730,14 @@ h1 {
   height: 100%;
   min-width: 1px;
   border-radius: 2px;
-  background: #555;
+  background: #7c818a;
 }
-.ph-redirect { background: #8b8b8b; }
+.ph-redirect { background: #a5aab2; }
 .ph-dns { background: #5eead4; }
 .ph-connect { background: #f2d16b; }
 .ph-request { background: #52a8ff; }
 .ph-download { background: #a78bfa; }
-.wf-bar.loaf { background: rgba(255, 97, 102, 0.75); }
+.wf-bar.loaf { background: rgba(255, 138, 142, 0.75); }
 .res-script { background: #ffb347; }
 .res-link,
 .res-css { background: #a78bfa; }
@@ -742,7 +746,7 @@ h1 {
 .res-fetch,
 .res-xmlhttprequest,
 .res-beacon { background: #52a8ff; }
-.res-other { background: #777; }
+.res-other { background: #8f949c; }
 .wf-marks {
   position: absolute;
   inset: 0 0 18px calc(var(--wf-label) + 8px);
@@ -1044,7 +1048,7 @@ h1 {
   flex: 1;
   height: 8px;
   border-radius: 4px;
-  background: #161616;
+  background: var(--raised);
   overflow: hidden;
 }
 .share-track div {
@@ -1121,7 +1125,7 @@ h1 {
 .chip.static:hover {
   background: none;
   color: var(--muted);
-  border-color: var(--border);
+  border-color: var(--border-2);
 }
 .chip.bot {
   color: #ffb347;
@@ -1138,7 +1142,7 @@ h1 {
 }
 .chip.st-paused {
   color: var(--blue);
-  border-color: rgba(82, 168, 255, 0.4);
+  border-color: rgba(124, 188, 255, 0.4);
 }
 .chip.st-calibrating {
   color: #a78bfa;
@@ -1239,7 +1243,7 @@ h1 {
   width: calc((100% - 8px) * var(--f, 0));
   top: 5px;
   bottom: 5px;
-  background: rgba(82, 168, 255, 0.16);
+  background: rgba(124, 188, 255, 0.16);
   border-radius: 3px;
   pointer-events: none;
 }
@@ -1290,7 +1294,7 @@ h1 {
   padding: 6px 10px;
   border: 1px solid var(--border-2);
   border-radius: 8px;
-  background: #000;
+  background: var(--bg);
   font-size: 14px;
 }
 .adm-in.mono {
@@ -1419,7 +1423,7 @@ textarea.adm-in {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #8b8b8b;
+  background: #a5aab2;
 }
 .adm-rar.r-rare {
   background: #52a8ff;
@@ -1577,10 +1581,10 @@ textarea.adm-in {
 }
 .btn.danger {
   color: var(--red);
-  border-color: rgba(255, 97, 102, 0.35);
+  border-color: rgba(255, 138, 142, 0.35);
 }
 .btn.danger:hover:not(:disabled) {
-  background: rgba(255, 97, 102, 0.1);
+  background: rgba(255, 138, 142, 0.1);
   border-color: var(--red);
   color: var(--red);
 }
@@ -1836,7 +1840,7 @@ textarea.adm-in {
 .adm-danger {
   margin-top: 24px;
   padding: 14px;
-  border: 1px solid rgba(255, 97, 102, 0.35);
+  border: 1px solid rgba(255, 138, 142, 0.35);
   border-radius: 10px;
   display: grid;
   gap: 14px;
@@ -1850,13 +1854,13 @@ textarea.adm-in {
   overflow-y: auto;
   border: 1px solid var(--border-2);
   border-radius: 8px;
-  background: #000;
+  background: var(--bg);
 }
 .adm-pick-kind {
   position: sticky;
   top: 0;
   padding: 5px 10px;
-  background: #111;
+  background: var(--hover);
   color: var(--muted);
   font-size: 12px;
   border-bottom: 1px solid var(--border);
@@ -1946,11 +1950,11 @@ textarea.adm-in {
 }
 .adm-state.live {
   color: var(--green);
-  border-color: rgba(63, 185, 80, 0.4);
+  border-color: rgba(95, 210, 115, 0.4);
 }
 .adm-state.off {
   color: var(--red);
-  border-color: rgba(255, 97, 102, 0.35);
+  border-color: rgba(255, 138, 142, 0.35);
 }
 .adm-log {
   padding: 4px 20px 12px;
@@ -2081,9 +2085,9 @@ textarea.adm-in {
 .adm-multi-chip .adm-x { padding: 2px; }
 .adm-multi-clear { background: none; border: 0; color: var(--muted); font-size: 12px; cursor: pointer; padding: 4px 6px; }
 .adm-multi-clear:hover { color: var(--text, #fff); }
-.adm-pick-top { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: #0f0f0f; border-bottom: 1px solid var(--border); }
+.adm-pick-top { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: var(--hover); border-bottom: 1px solid var(--border); }
 .adm-pick-tick { width: 14px; display: inline-flex; color: var(--blue); }
-.adm-pick-row.on { background: rgba(82, 168, 255, 0.1); }
+.adm-pick-row.on { background: rgba(124, 188, 255, 0.1); }
 
 /* Admin: a player's Play section (docs/ADMIN.md stats) */
 .adm-body .ins-tiles {
@@ -2136,7 +2140,7 @@ textarea.adm-in {
 }
 .chip.st-live {
   color: var(--green);
-  border-color: rgba(63, 185, 80, 0.45);
+  border-color: rgba(95, 210, 115, 0.45);
 }
 @media (max-width: 720px) {
   .adm-play {
@@ -2260,7 +2264,7 @@ textarea.adm-in {
 }
 .chip.static.st-unread {
   color: var(--blue);
-  border-color: rgba(82, 168, 255, 0.45);
+  border-color: rgba(124, 188, 255, 0.45);
 }
 .btn.sm {
   padding: 3px 10px;
@@ -2268,7 +2272,7 @@ textarea.adm-in {
   min-height: 28px;
 }
 .btn.ghost.danger:not(:disabled) {
-  background: rgba(255, 97, 102, 0.1);
+  background: rgba(255, 138, 142, 0.1);
 }
 .adm-side {
   border: 1px solid var(--border);
@@ -2399,7 +2403,7 @@ textarea.adm-in {
   height: 100%;
 }
 .wm path {
-  fill: #1c1c1c;
+  fill: #3a3e45;
   stroke: var(--card);
   stroke-width: 0.6px;
   stroke-linejoin: round;
@@ -2526,7 +2530,7 @@ textarea.adm-in {
   box-shadow: inset 3px 0 0 var(--blue);
 }
 .spn-item.done {
-  opacity: 0.6;
+  opacity: 0.75;
 }
 .spn-item-head {
   display: flex;
@@ -2543,7 +2547,7 @@ textarea.adm-in {
 }
 .spn-st.live {
   color: var(--green);
-  border-color: rgba(63, 185, 80, 0.4);
+  border-color: rgba(95, 210, 115, 0.4);
 }
 .spn-chips {
   display: flex;
@@ -2564,11 +2568,11 @@ textarea.adm-in {
 }
 .spn-chip.red {
   color: var(--red);
-  border-color: rgba(255, 97, 102, 0.35);
+  border-color: rgba(255, 138, 142, 0.35);
 }
 .spn-chip.green {
   color: var(--green);
-  border-color: rgba(63, 185, 80, 0.4);
+  border-color: rgba(95, 210, 115, 0.4);
 }
 .spn-row {
   display: grid;
@@ -2619,6 +2623,19 @@ textarea.adm-in {
   color: var(--blue);
   text-decoration: none;
 }
+.spn-meta a:hover {
+  text-decoration: underline;
+}
+/* the buyer's board colour beside its hex */
+.spn-sw {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border: 1px solid var(--border-2);
+  border-radius: 3px;
+  vertical-align: -2px;
+}
 .spn-acts {
   display: flex;
   flex-wrap: wrap;
@@ -2665,7 +2682,7 @@ textarea.adm-in {
 }
 .spn-now {
   color: var(--green);
-  border-color: rgba(63, 185, 80, 0.4);
+  border-color: rgba(95, 210, 115, 0.4);
 }
 .spn-switches {
   display: grid;

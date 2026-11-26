@@ -7,11 +7,13 @@ import { aspectOf, drawFace } from "./sponsor/face";
 import { drawMat } from "./sponsor/mat";
 import {
   OffError,
+  boardOfRow,
   day,
   left,
   logoOf,
   spGet,
   spPost,
+  stripeUrl,
   usd,
   whenUtc,
   type AuData,
@@ -62,7 +64,6 @@ const ERR: Record<string, string> = {
   clash: "Those months on that panel are already paid for by someone else: reject this one.",
   state: "Not from this status.",
   past: "Those months are over: reject it.",
-  corner: "A corner panel shows logos in one tone only.",
   capture: "Stripe refused the charge: it is released.",
   stripe: "Stripe did not answer. Nothing changed: try again.",
   refund: "Stripe refused the refund. Check the payment in Stripe.",
@@ -185,8 +186,35 @@ function Meta({ rows }: { rows: [string, ReactNode][] }) {
 const mail = (e: string | null | undefined, subject?: string) =>
   e ? <a href={`mailto:${encodeURIComponent(e).replace(/%40/g, "@")}${subject ? `?subject=${encodeURIComponent(subject)}` : ""}`}>{e}</a> : null;
 
+/** The buyer's board colour: a swatch and its hex; null: the panel's own. */
+const Board = ({ c }: { c: string | null }) =>
+  c ? (
+    <>
+      <span className="spn-sw" style={{ background: c }} />
+      <span className="mono">{c}</span>
+    </>
+  ) : (
+    <>The panel's own colour</>
+  );
+
+/** A Stripe id: a PaymentIntent opens in the Stripe dashboard (test mode on a local Poddle); a Checkout session has no payment yet. */
+const Pay = ({ id }: { id: string | null }) => {
+  if (!id) return null;
+  const href = stripeUrl(id);
+  return href ? (
+    <a className="mono spn-stripe" href={href} target="_blank" rel="noopener noreferrer">
+      {id}
+    </a>
+  ) : (
+    <>
+      <span className="mono">{id}</span>
+      {id.startsWith("cs_") ? " (Checkout not finished: no payment yet)" : ""}
+    </>
+  );
+};
+
 /** A logo from a keyed route, drawn on its board (a panel's face, or King of the Court's mat seen from above). */
-function Logo({ keyVal, kind, id, v, panel, mode, fit, court }: { keyVal: string; kind: Kind; id: number; v?: number; panel?: number; mode: string; fit: SpRow["fit"]; court?: boolean }) {
+function Logo({ keyVal, kind, id, v, panel, board, fit, court }: { keyVal: string; kind: Kind; id: number; v?: number; panel?: number; board: string | null; fit: SpRow["fit"]; court?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [none, setNone] = useState(false);
   useEffect(() => {
@@ -196,7 +224,7 @@ function Logo({ keyVal, kind, id, v, panel, mode, fit, court }: { keyVal: string
       if (!live || !c) return;
       if (!img) return setNone(true);
       if (court) {
-        const m = drawMat(document.createElement("canvas"), img, mode, fit);
+        const m = drawMat(document.createElement("canvas"), img, fit);
         c.width = 512;
         c.height = 144;
         const g = c.getContext("2d")!;
@@ -204,12 +232,12 @@ function Logo({ keyVal, kind, id, v, panel, mode, fit, court }: { keyVal: string
         g.fillRect(0, 0, c.width, c.height);
         const h = (m.height * c.width) / m.width;
         g.drawImage(m, 0, (c.height - h) / 2, c.width, h);
-      } else drawFace(c, img, mode, panel ?? 3, aspectOf(panel ?? 3), fit);
+      } else drawFace(c, img, board, panel ?? 3, aspectOf(panel ?? 3), fit);
     });
     return () => {
       live = false;
     };
-  }, [keyVal, kind, id, v, panel, mode, fit, court]);
+  }, [keyVal, kind, id, v, panel, board, fit, court]);
   return (
     <div className={`spn-logo${court ? " court" : ""}`}>
       <canvas ref={ref} width={512} height={court ? 144 : 309} aria-label="Logo on its board" data-logo={`${kind}:${id}`} />
@@ -273,6 +301,19 @@ const flags = (r: { account: boolean; byBuyer?: boolean; refunded: number | null
 function PanelCard({ r, sp, keyVal, st, run, fresh }: { r: SpRow; sp: SpData; keyVal: string; st: St; run: Run; fresh: boolean }) {
   const ord = sp.rows.filter((x) => x.ord === r.ord);
   const ordTotal = ord.reduce((a, x) => a + x.total, 0);
+  const refundedAt = r.refunded ?? ord.find((x) => x.refunded)?.refunded ?? null;
+  const pay =
+    r.status === "checkout"
+      ? "Not paid: the buyer is still at Stripe Checkout"
+      : refundedAt
+        ? `Refunded ${usd(ordTotal)} in full, ${whenUtc(refundedAt)}`
+        : r.status === "pending"
+          ? `Authorised ${usd(ordTotal)}, not captured`
+          : ["live", "pulled"].includes(r.status)
+            ? `Captured ${usd(ordTotal)}${r.decided ? ", " + whenUtc(r.decided) : ""}`
+            : ["rejected", "expired", "lost"].includes(r.status)
+              ? "Released: nothing captured"
+              : null;
   const post = (b: Record<string, unknown>) => spPost(keyVal, "sponsors", b);
   const id = (op: string) => `sp${op}${r.id}`;
   return (
@@ -283,7 +324,7 @@ function PanelCard({ r, sp, keyVal, st, run, fresh }: { r: SpRow; sp: SpData; ke
       </div>
       <Chips list={flags(r)} />
       <div className="spn-row">
-        <Logo keyVal={keyVal} kind="sponsors" id={r.id} v={r.v} panel={r.panel} mode={r.mode} fit={r.fit} />
+        <Logo keyVal={keyVal} kind="sponsors" id={r.id} v={r.v} panel={r.panel} board={boardOfRow(r)} fit={r.fit} />
         <Meta
           rows={[
             ["Panel", r.name],
@@ -293,16 +334,18 @@ function PanelCard({ r, sp, keyVal, st, run, fresh }: { r: SpRow; sp: SpData; ke
             ["Launch post", r.feature ? `Yes, ${usd(r.feature)}: feature this logo in a launch post by hand` : null],
             ["Package", `${r.pkg} month${r.pkg > 1 ? "s" : ""}${r.discount ? `, ${Math.round(r.discount * 100)}% off` : ""}`],
             ["Total", `${usd(r.total)}, charged at once`],
+            ["Payment", pay],
             ["Hold left", r.authLeft != null ? `${left(r.authLeft)}, then released by itself` : null],
-            ["Refunded", r.refunded ? `${whenUtc(r.refunded)}, cancelled by the buyer` : null],
+            ["Refunded", r.refunded ? `${whenUtc(r.refunded)}${r.byBuyer ? ", cancelled by the buyer" : ", by you"}` : null],
             ["Contact", r.contact],
             ["Email", mail(r.email)],
             ["Website", r.website || null],
             ["Sells", r.category],
             ["Note", r.note || null],
             ["Applied", day(r.at)],
-            ["Stripe", r.stripe ? <span className="mono">{r.stripe}</span> : null],
-            ["Logo", `${r.w} x ${r.h} px, shown ${r.mode === "colour" ? "in its colours" : "in the panel tone"}`],
+            ["Stripe", r.stripe ? <Pay id={r.stripe} /> : null],
+            ["Logo", `${r.w} x ${r.h} px, in its own colours`],
+            ["Board", <Board c={boardOfRow(r)} />],
           ]}
         />
       </div>
@@ -314,9 +357,6 @@ function PanelCard({ r, sp, keyVal, st, run, fresh }: { r: SpRow; sp: SpData; ke
           </>
         )}
         {r.status === "live" && <Act id={id("pull")} st={st} run={run} danger label="Pull" ask={`Take ${r.company} off the boards? Nothing is refunded by this.`} fn={() => post({ op: "pull", id: r.id })} ok="Pulled" />}
-        {(r.status === "pending" || r.status === "live") && !r.corner && (
-          <Act id={id("mode")} st={st} run={run} label={r.mode === "colour" ? "Show in panel tone" : "Show in its colours"} fn={() => post({ op: "mode", id: r.id, mode: r.mode === "colour" ? "mark" : "colour" })} />
-        )}
         {["live", "pulled"].includes(r.status) && !r.refunded && !ord.some((x) => x.refunded) && (
           <Act
             id={id("refund")}
@@ -339,6 +379,18 @@ function PanelCard({ r, sp, keyVal, st, run, fresh }: { r: SpRow; sp: SpData; ke
 function CourtCard({ r, keyVal, st, run, fresh }: { r: BbRow; keyVal: string; st: St; run: Run; fresh: boolean }) {
   const post = (b: Record<string, unknown>) => spPost(keyVal, "billboard", b);
   const id = (op: string) => `bb${op}${r.id}`;
+  const pay =
+    r.status === "checkout"
+      ? "Not paid: the buyer is still at Stripe Checkout"
+      : r.refunded
+        ? `Refunded ${usd(r.price)} in full, ${whenUtc(r.refunded)}`
+        : r.status === "review"
+          ? `Authorised ${usd(r.price)}, not captured`
+          : ["live", "outbid", "pulled"].includes(r.status) && r.live_at
+            ? `Captured ${usd(r.price)}, ${whenUtc(r.live_at)}`
+            : ["released", "expired", "lost"].includes(r.status)
+              ? "Released: nothing captured"
+              : null;
   return (
     <div className={`spn-item${fresh ? " fresh" : ""}`} data-kind="court" data-id={r.id}>
       <div className="spn-item-head">
@@ -347,11 +399,14 @@ function CourtCard({ r, keyVal, st, run, fresh }: { r: BbRow; keyVal: string; st
       </div>
       <Chips list={flags(r)} />
       <div className="spn-row">
-        <Logo keyVal={keyVal} kind="billboard" id={r.id} v={r.v} mode={r.mode} fit={r.fit} court />
+        <Logo keyVal={keyVal} kind="billboard" id={r.id} v={r.v} board={null} fit={r.fit} court />
         <Meta
           rows={[
             ["Spot", "King of the Court"],
             ["Price", usd(r.price)],
+            ["Payment", pay],
+            ["Hold left", r.status === "review" && r.releasesAt && r.now ? `${left(Math.max(0, r.releasesAt - r.now))}, then released by itself` : null],
+            ["Refunded", r.refunded ? `${whenUtc(r.refunded)}${r.byBuyer ? ", cancelled by the buyer" : ", by you"}` : null],
             ["Contact", r.contact],
             ["Email", mail(r.email)],
             ["Website", r.website || null],
@@ -361,7 +416,7 @@ function CourtCard({ r, keyVal, st, run, fresh }: { r: BbRow; keyVal: string; st
             ["Auto-release", r.releasesAt ? whenUtc(r.releasesAt) : null],
             ["Live", whenUtc(r.live_at)],
             ["Ended", whenUtc(r.ended_at)],
-            ["Stripe", r.stripe ? <span className="mono">{r.stripe}</span> : null],
+            ["Stripe", r.stripe ? <Pay id={r.stripe} /> : null],
           ]}
         />
       </div>
@@ -373,9 +428,6 @@ function CourtCard({ r, keyVal, st, run, fresh }: { r: BbRow; keyVal: string; st
           </>
         )}
         {r.status === "live" && <Act id={id("pull")} st={st} run={run} danger label="Pull" ask={`Take ${r.company} off the court? The spot opens now; nothing is refunded by this.`} fn={() => post({ op: "pull", id: r.id })} ok="Pulled" />}
-        {(r.status === "review" || r.status === "live") && (
-          <Act id={id("mode")} st={st} run={run} label={r.mode === "colour" ? "Show in mat tone" : "Show in its colours"} fn={() => post({ op: "mode", id: r.id, mode: r.mode === "colour" ? "mark" : "colour" })} />
-        )}
         {["live", "outbid", "pulled"].includes(r.status) && !!r.live_at && !r.refunded && (
           <Act
             id={id("refund")}
@@ -401,11 +453,11 @@ const csvCell = (v: unknown) => {
   return /[",\n\r]/.test(t) || f ? '"' + (f ? "'" : "") + t.replace(/"/g, '""') + '"' : t; // a leading ' so a spreadsheet never runs a typed formula
 };
 function downloadCsv(sp: SpData | null, bb: BbData | null) {
-  const head = ["kind", "id", "order", "status", "company", "contact", "email", "spot", "start", "end", "months", "price", "total", "refunded", "applied"];
+  const head = ["kind", "id", "order", "status", "company", "contact", "email", "spot", "start", "end", "months", "price", "total", "refunded", "applied", "category", "stripe"];
   const lines = [
     head,
-    ...(sp?.rows ?? []).map((r) => ["panel", r.id, r.ord, r.status, r.company, r.contact, r.email, r.name, day(r.start), day(r.end), r.pkg, (r.price / 100).toFixed(2), (r.total / 100).toFixed(2), r.refunded ? day(r.refunded) : "", day(r.at)]),
-    ...(bb?.rows ?? []).map((r) => ["court", r.id, "", r.status, r.company, r.contact, r.email, "King of the Court", day(r.live_at), day(r.ended_at), "", (r.price / 100).toFixed(2), (r.price / 100).toFixed(2), "", day(r.at)]),
+    ...(sp?.rows ?? []).map((r) => ["panel", r.id, r.ord, r.status, r.company, r.contact, r.email, r.name, day(r.start), day(r.end), r.pkg, (r.price / 100).toFixed(2), (r.total / 100).toFixed(2), r.refunded ? day(r.refunded) : "", day(r.at), r.category, r.stripe ?? ""]),
+    ...(bb?.rows ?? []).map((r) => ["court", r.id, "", r.status, r.company, r.contact, r.email, "King of the Court", day(r.live_at), day(r.ended_at), "", (r.price / 100).toFixed(2), (r.price / 100).toFixed(2), r.refunded ? day(r.refunded) : "", day(r.at), r.category, r.stripe ?? ""]),
   ].map((l) => l.map(csvCell).join(","));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([lines.join("\r\n") + "\r\n"], { type: "text/csv" }));
@@ -475,12 +527,14 @@ function AuctionsTab({ au, keyVal, st, run }: { au: AuData | "off" | null; keyVa
                   <b>{b ? b.company : "No bid left"}</b>
                 </div>
                 <div className="spn-row">
-                  {b ? <Logo keyVal={keyVal} kind="auctions" id={b.id} v={b.v} panel={a.panel} mode="mark" fit={b.fit} /> : <div className="spn-logo" />}
+                  {b ? <Logo keyVal={keyVal} kind="auctions" id={b.id} v={b.v} panel={a.panel} board={boardOfRow(b)} fit={b.fit} /> : <div className="spn-logo" />}
                   <Meta
                     rows={[
                       ["Panel", panelName(a.panel)],
                       ["Winning bid", b ? usd(b.amount) : null],
                       ["Card", b?.card ?? null],
+                      ["Payment", b ? `Saved card, charged ${usd(b.amount)} only when you approve` : null],
+                      ["Board", b ? <Board c={boardOfRow(b)} /> : null],
                       ["Email", mail(b?.email)],
                       ["Logo", b ? (b.logo_ok ? "Checked" : "Not checked yet") : null],
                       ["Starts", whenUtc(a.startsAt)],
@@ -507,11 +561,12 @@ function AuctionsTab({ au, keyVal, st, run }: { au: AuData | "off" | null; keyVa
                 <b>{b.company}</b>
               </div>
               <div className="spn-row">
-                <Logo keyVal={keyVal} kind="auctions" id={b.id} v={b.logo_v} panel={b.panel} mode="mark" fit={b.fit} />
+                <Logo keyVal={keyVal} kind="auctions" id={b.id} v={b.logo_v} panel={b.panel} board={boardOfRow(b)} fit={b.fit} />
                 <Meta
                   rows={[
                     ["Panel", panelName(b.panel)],
                     ["Bid", usd(b.amount)],
+                    ["Board", <Board c={boardOfRow(b)} />],
                     ["Ends", whenUtc(b.ends_at)],
                   ]}
                 />
