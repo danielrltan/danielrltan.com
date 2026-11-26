@@ -1566,6 +1566,11 @@ textarea.adm-in {
 .adm-res.err {
   color: var(--red);
 }
+.spn-done {
+  display: flex;
+  margin: 0 16px 12px;
+  font-size: 13px;
+}
 .btn:disabled {
   opacity: 0.4;
   cursor: default;

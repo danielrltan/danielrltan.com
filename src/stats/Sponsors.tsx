@@ -517,7 +517,7 @@ function AuctionsTab({ au, keyVal, st, run }: { au: AuData | "off" | null; keyVa
                 />
               </div>
               <div className="spn-acts">
-                <Act id={`aulogo${b.id}`} st={st} run={run} go label="Logo is fine: show it" fn={() => post({ op: "logook", id: b.id })} ok="Shown" />
+                <Act id={`aulogo${b.id}`} st={st} run={run} go label="Logo is fine: show it" fn={() => post({ op: "logook", id: b.id })} ok={`${b.company}’s logo is showing on ${panelName(b.panel)}`} />
               </div>
             </div>
           ))}
@@ -738,6 +738,14 @@ export function Sponsors({ keyName, onKeys, tick }: { keyName: string; onKeys: (
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const seen = useRef<Set<string> | null>(null);
   const [st, setSt] = useState<St>({});
+  // the last action's result, above the lists: a row that an action files (Shown, Approved, Refused) leaves its list at the reload, its own note with it
+  const [done, setDone] = useState<{ msg: string; err: boolean } | null>(null);
+  const doneT = useRef<number | undefined>(undefined);
+  const say = useCallback((msg: string, err: boolean) => {
+    setDone({ msg, err });
+    window.clearTimeout(doneT.current);
+    doneT.current = window.setTimeout(() => setDone(null), 8000);
+  }, []);
 
   const load = useCallback(async () => {
     if (!keyVal) return;
@@ -776,15 +784,17 @@ export function Sponsors({ keyName, onKeys, tick }: { keyName: string; onKeys: (
       try {
         await fn();
         setSt((s) => ({ ...s, [id]: { msg: ok } }));
+        say(ok, false);
         await load();
         return true;
       } catch (e) {
         setSt((s) => ({ ...s, [id]: { msg: errText(e), err: true } }));
+        say(errText(e), true);
         await load().catch(() => {});
         return false;
       }
     },
-    [load],
+    [load, say],
   );
 
   const { sp, bb, au } = got;
@@ -818,6 +828,12 @@ export function Sponsors({ keyName, onKeys, tick }: { keyName: string; onKeys: (
     body = (
       <>
         <Tiles items={overview(sp, court, counts.total)} />
+        {done && (
+          <p className={`adm-res spn-done${done.err ? " err" : ""}`} role="status">
+            {done.err ? <X size={13} /> : <Check size={13} />}
+            {done.msg}
+          </p>
+        )}
         {tab === "Bookings" && <BookingsTab sp={sp} bb={court} keyVal={keyVal} st={st} run={run} fresh={fresh} />}
         {tab === "Auctions" && <AuctionsTab au={au} keyVal={keyVal} st={st} run={run} />}
         {tab === "Requests" && <RequestsTab asks={sp.asks} keyVal={keyVal} st={st} run={run} fresh={fresh} />}
